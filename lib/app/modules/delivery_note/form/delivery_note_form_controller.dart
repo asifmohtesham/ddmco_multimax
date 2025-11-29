@@ -7,6 +7,7 @@ class DeliveryNoteFormController extends GetxController {
 
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
+  final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
 
   var isLoading = true.obs;
   var deliveryNote = Rx<DeliveryNote?>(null);
@@ -14,7 +15,26 @@ class DeliveryNoteFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchDeliveryNote();
+    if (mode == 'new') {
+      _createNewDeliveryNote();
+    } else {
+      fetchDeliveryNote();
+    }
+  }
+
+  void _createNewDeliveryNote() {
+    // Create a new empty DeliveryNote, optionally pre-filling data
+    deliveryNote.value = DeliveryNote(
+      name: '',
+      customer: posUploadCustomer ?? '',
+      grandTotal: 0.0,
+      postingDate: DateTime.now().toString().split(' ')[0], // Today's date
+      modified: '',
+      status: 'Draft',
+      currency: 'USD', // Default or fetch from settings
+      items: [],
+    );
+    isLoading.value = false;
   }
 
   Future<void> fetchDeliveryNote() async {

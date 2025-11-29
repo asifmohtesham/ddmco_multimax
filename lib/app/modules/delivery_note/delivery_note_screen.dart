@@ -4,6 +4,7 @@ import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_controlle
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -91,6 +92,54 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     );
   }
 
+  Widget _getRelativeTimeWidget(String? modified) {
+    if (modified == null || modified.isEmpty) return const SizedBox.shrink();
+
+    try {
+      final date = DateTime.parse(modified);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      String text;
+      if (difference.inDays > 0) {
+        text = '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        text = '${difference.inHours}h ago';
+      } else {
+        text = '${difference.inMinutes}m ago';
+      }
+
+      Color color;
+      Color bgColor;
+
+      if (difference.inHours < 6) {
+        color = const Color(0xFF8A6D3B); 
+        bgColor = const Color(0xFFFCF8E3); 
+      } else if (difference.inHours < 48) {
+        color = const Color(0xFFE65100);
+        bgColor = const Color(0xFFFFF3E0);
+      } else {
+        color = const Color(0xFFA94442);
+        bgColor = const Color(0xFFF2DEDE);
+      }
+
+      return Container(
+        margin: const EdgeInsets.only(top: 4.0),
+        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(4.0),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        ),
+      );
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -132,11 +181,119 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new'});
-        },
+        onPressed: () => _showPosUploadSelectionBottomSheet(context),
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  void _showPosUploadSelectionBottomSheet(BuildContext context) {
+    controller.fetchPosUploadsForSelection();
+
+    Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+            ),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Select POS Upload',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Get.back(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  onChanged: controller.filterPosUploads,
+                  decoration: const InputDecoration(
+                    labelText: 'Search POS Uploads',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: Obx(() {
+                    if (controller.isFetchingPosUploads.value) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (controller.posUploadsForSelection.isEmpty) {
+                      return const Center(child: Text('No POS Uploads found.'));
+                    }
+
+                    return ListView.builder(
+                      controller: scrollController,
+                      itemCount: controller.posUploadsForSelection.length,
+                      itemBuilder: (context, index) {
+                        final posUpload = controller.posUploadsForSelection[index];
+                        return Card(
+                          elevation: 0,
+                          color: Colors.grey[50],
+                          margin: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: ListTile(
+                            title: Text(posUpload.name),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${posUpload.customer} • ${posUpload.date}'),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    StatusPill(status: posUpload.status),
+                                    const SizedBox(width: 8),
+                                    _getRelativeTimeWidget(posUpload.modified),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              controller.createNewDeliveryNote(posUpload);
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Get.back();
+                      controller.createNewDeliveryNote(null);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Skip & Create Blank'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+      isScrollControlled: true,
     );
   }
 }
@@ -146,6 +303,11 @@ class DeliveryNoteCard extends StatelessWidget {
   final DeliveryNoteController controller = Get.find();
 
   DeliveryNoteCard({super.key, required this.note});
+
+  String _getCurrencySymbol(String currency) {
+    final format = NumberFormat.simpleCurrency(name: currency);
+    return format.currencySymbol;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +324,7 @@ class DeliveryNoteCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                      '${note.customer} - \$${note.grandTotal.toStringAsFixed(2)}'),
+                      '${note.customer} - ${_getCurrencySymbol(note.currency)}${note.grandTotal.toStringAsFixed(2)}'),
                   const SizedBox(height: 4),
                   StatusPill(status: note.status),
                 ],
@@ -202,29 +364,26 @@ class DeliveryNoteCard extends StatelessWidget {
                                   children: [
                                     if (detailed.status == 'Draft') ...[
                                       TextButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                                        child: const Text('Submit'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
                                         onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
                                         child: const Text('Edit'),
                                       ),
-                                    ] else if (detailed.status == 'Submitted') ...[
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
+                                        child: const Text('Submit'),
+                                      ),
+                                    ] else ...[
                                       TextButton(
                                         onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
                                         child: const Text('View'),
                                       ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                                        child: const Text('Cancel'),
-                                      ),
-                                    ] else ...[
-                                      ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
+                                      if (detailed.status == 'Submitted') ...[
+                                        const SizedBox(width: 8),
+                                        TextButton(
+                                          onPressed: () => Get.snackbar('TODO', 'Cancel document'),
+                                          child: const Text('Cancel'),
+                                        ),
+                                      ]
                                     ]
                                   ],
                                 ),

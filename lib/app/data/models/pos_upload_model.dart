@@ -23,29 +23,19 @@ class PosUpload {
     var itemsList = json['items'] as List? ?? [];
     List<PosUploadItem> items = itemsList.map((i) => PosUploadItem.fromJson(i)).toList();
 
+    // Directly use the 'status' field from JSON, default to 'Pending' if null/empty
+    final String docStatus = json['status'] ?? 'Pending';
+
     return PosUpload(
       name: json['name'] ?? '',
       customer: json['customer'] ?? '',
       date: json['date'] ?? '',
       modified: json['modified'] ?? '',
-      status: _getStatusFromDocstatus(json['docstatus'] as int? ?? 0),
+      status: docStatus,
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
       totalQty: (json['total_qty'] as num?)?.toInt(),
       items: items,
     );
-  }
-
-  static String _getStatusFromDocstatus(int docstatus) {
-    switch (docstatus) {
-      case 0:
-        return 'Draft';
-      case 1:
-        return 'Submitted';
-      case 2:
-        return 'Cancelled';
-      default:
-        return 'Unknown';
-    }
   }
 }
 

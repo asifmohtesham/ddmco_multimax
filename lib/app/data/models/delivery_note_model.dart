@@ -5,6 +5,7 @@ class DeliveryNote {
   final String postingDate;
   final String modified;
   final String status;
+  final String currency;
   final List<DeliveryNoteItem> items;
 
   DeliveryNote({
@@ -14,6 +15,7 @@ class DeliveryNote {
     required this.postingDate,
     required this.modified,
     required this.status,
+    required this.currency,
     required this.items,
   });
 
@@ -28,6 +30,7 @@ class DeliveryNote {
       postingDate: json['posting_date'],
       modified: json['modified'],
       status: json['status'],
+      currency: json['currency'],
       items: items,
     );
   }

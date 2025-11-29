@@ -1,9 +1,13 @@
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
+import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -18,13 +22,19 @@ class DeliveryNoteController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
+  // For POS Upload selection dialog
+  var isFetchingPosUploads = false.obs;
+  var posUploadsForSelection = <PosUpload>[].obs;
+  var posUploadSearchQuery = ''.obs;
+  List<PosUpload> _allFetchedPosUploads = []; // Store all fetched for local filtering
+
+  DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
+
   @override
   void onInit() {
     super.onInit();
     fetchDeliveryNotes();
   }
-
-  DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -76,7 +86,8 @@ class DeliveryNoteController extends GetxController {
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
-      } else {
+      }
+      if (isLoading.value) {
         isLoading.value = false;
       }
     }
@@ -109,6 +120,61 @@ class DeliveryNoteController extends GetxController {
     } else {
       expandedNoteName.value = name;
       _fetchAndCacheNoteDetails(name);
+    }
+  }
+
+  Future<void> fetchPosUploadsForSelection() async {
+    isFetchingPosUploads.value = true;
+    try {
+      final response = await _posUploadProvider.getPosUploads(limit: 100);
+
+      final List<PosUpload> fetchedUploads = [];
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        fetchedUploads.addAll((response.data['data'] as List).map((json) {
+          final posUpload = PosUpload.fromJson(json);
+          print('Fetched POS Upload: ${posUpload.name}, Status: ${posUpload.status}'); // Log status
+          return posUpload;
+        }).toList());
+      }
+      
+      // Filter locally: Keep if status is 'Pending' (including null/empty) or 'In Progress'
+      _allFetchedPosUploads = fetchedUploads.where((upload) {
+        final status = upload.status;
+        return status == 'Pending' || status == 'In Progress';
+      }).toList();
+
+      posUploadsForSelection.assignAll(_allFetchedPosUploads);
+      posUploadSearchQuery.value = ''; 
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch POS Uploads for selection: $e');
+    } finally {
+      isFetchingPosUploads.value = false;
+    }
+  }
+
+  void filterPosUploads(String query) {
+    posUploadSearchQuery.value = query;
+    if (query.isEmpty) {
+      posUploadsForSelection.assignAll(_allFetchedPosUploads);
+    } else {
+      posUploadsForSelection.value = _allFetchedPosUploads
+          .where((upload) => upload.name.toLowerCase().contains(query.toLowerCase()) ||
+                          upload.customer.toLowerCase().contains(query.toLowerCase()) ||
+                          upload.status.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    }
+  }
+
+  void createNewDeliveryNote(PosUpload? selectedPosUpload) {
+    if (selectedPosUpload != null) {
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+        'name': '',
+        'mode': 'new',
+        'posUploadCustomer': selectedPosUpload.customer,
+        'posUploadName': selectedPosUpload.name,
+      });
+    } else {
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new'});
     }
   }
 }

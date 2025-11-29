@@ -229,7 +229,7 @@ class ApiProvider {
 
     const String endpoint = '/api/resource/Stock Entry';
     final queryParameters = {
-      'fields': '["name", "purpose", "total_amount", "posting_date", "modified", "docstatus"]',
+      'fields': '["name", "purpose", "total_amount", "modified", "docstatus"]',
       'limit_page_length': limit,
       'limit_start': limitStart,
       'order_by': 'modified desc',
@@ -273,7 +273,7 @@ class ApiProvider {
 
     const String endpoint = '/api/resource/Delivery Note';
     final queryParameters = {
-      'fields': '["name", "customer", "grand_total", "posting_date", "modified", "status"]',
+      'fields': '["name", "customer", "grand_total", "posting_date", "modified", "status", "currency"]',
       'limit_page_length': limit,
       'limit_start': limitStart,
       'order_by': 'modified desc',
@@ -317,11 +317,16 @@ class ApiProvider {
 
     const String endpoint = '/api/resource/POS Upload';
     final queryParameters = {
-      'fields': '["name", "customer", "date", "modified", "docstatus"]',
+      'fields': '["name", "customer", "date", "modified", "status"]',
       'limit_page_length': limit,
       'limit_start': limitStart,
       'order_by': 'modified desc',
     };
+
+    // Remove docstatus filter if it exists, as we're now filtering by 'status' field directly
+    if (filters != null && filters.containsKey('docstatus')) {
+      filters.remove('docstatus');
+    }
 
     if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
