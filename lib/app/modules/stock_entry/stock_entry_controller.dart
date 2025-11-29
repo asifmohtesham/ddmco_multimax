@@ -20,6 +20,12 @@ class StockEntryController extends GetxController {
 
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
+  @override
+  void onInit() {
+    super.onInit();
+    fetchStockEntries();
+  }
+
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchStockEntries(isLoadMore: false, clear: true);
