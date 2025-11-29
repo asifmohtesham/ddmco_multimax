@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:collection/collection.dart'; // For firstWhereOrNull
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart'; // For UI elements like AlertDialog, SnackBar
 import 'package:get/get.dart' hide Response;
@@ -28,57 +27,36 @@ class AuthenticationController extends GetxController {
     checkAuthenticationStatus();
   }
 
+  Future<void> fetchUserDetails() async {
+    try {
+      final response = await _apiProvider.getLoggedUser();
+      if (response.statusCode == 200 && response.data?['message'] != null) {
+        final loggedInUserEmail = response.data['message'];
+
+        final userDetailsResponse = await _apiProvider.getUserDetails(loggedInUserEmail);
+        if (userDetailsResponse.statusCode == 200 && userDetailsResponse.data?['data'] != null) {
+          final user = User.fromJson(userDetailsResponse.data['data']);
+          currentUser.value = user;
+          isAuthenticated.value = true;
+          printInfo(info: "User details loaded: ${user.name}");
+        } else {
+          await _clearSessionAndLocalData();
+        }
+      } else {
+        await _clearSessionAndLocalData();
+      }
+    } catch (e) {
+      printError(info: "Failed to fetch or process logged user details: $e");
+      await _clearSessionAndLocalData();
+    }
+  }
+
   Future<void> checkAuthenticationStatus() async {
     isLoading.value = true;
     try {
       bool hasSession = await _apiProvider.hasSessionCookies();
       if (hasSession) {
-        try {
-          // Correctly call getLoggedUser via _apiProvider
-          final response = await _apiProvider.getLoggedUser();
-
-          if (response.statusCode == 200 && response.data?['message'] != null) {
-            final loggedInUserEmail = response.data['message'];
-
-            // Fetch 'full_name' from cookies. Requires a helper in ApiProvider.
-            // Ensure loadCookiesForBaseUrl() is implemented in ApiProvider.
-            var cookies = await _apiProvider.loadCookiesForBaseUrl();
-            String? fullNameFromCookie;
-            try {
-              // Using firstWhereOrNull from collection package (add if not present)
-              // Or use a loop:
-              for (var cookie in cookies) {
-                if (cookie.name == 'full_name') {
-                  fullNameFromCookie = Uri.decodeComponent(cookie.value); // Decode cookie value
-                  break;
-                }
-              }
-            } catch (e) {
-              printError(info: "Error parsing full_name from cookie: $e");
-              // fullNameFromCookie will remain null
-            }
-
-            final user = User(
-              id: loggedInUserEmail,
-              name: fullNameFromCookie ?? loggedInUserEmail, // Use decoded full name
-              email: loggedInUserEmail,
-            );
-            currentUser.value = user;
-            isAuthenticated.value = true;
-            printInfo(info: "User details loaded: ${user.name}");
-          } else {
-            Get.log( // Warning log
-                "getLoggedUser response not successful or message is null. Status: ${response.statusCode}",
-                isError: false); // Use isError: false for warnings, or just log without it for info
-            await _clearSessionAndLocalData();
-          }
-        } on DioException catch (e) { // Catch DioException specifically if getLoggedUser fails
-          printError(info: "DioException during getLoggedUser: ${e.message} - ${e.response?.data}");
-          await _clearSessionAndLocalData();
-        } catch (e) { // Catch other generic errors from getLoggedUser or User model parsing
-          printError(info: "Failed to fetch or process logged user details: $e");
-          await _clearSessionAndLocalData();
-        }
+        await fetchUserDetails();
       } else {
         printInfo(info: "No active session found.");
         await _clearSessionAndLocalData();
@@ -129,12 +107,7 @@ class AuthenticationController extends GetxController {
               isLoading.value = true;
 
               try {
-                // Optional: Call a logout endpoint on your API if it exists
-                // try {
-                //   await _apiProvider.logoutApiCall(); // Create this in ApiProvider
-                // } catch (e) {
-                //   printError(info: "API logout call failed: $e");
-                // }
+                await _apiProvider.logoutApiCall();
 
                 await _clearSessionAndLocalData();
 

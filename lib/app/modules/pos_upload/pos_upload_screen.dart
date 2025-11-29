@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
+import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 
-class StockEntryScreen extends StatefulWidget {
-  const StockEntryScreen({super.key});
+class PosUploadScreen extends StatefulWidget {
+  const PosUploadScreen({super.key});
 
   @override
-  State<StockEntryScreen> createState() => _StockEntryScreenState();
+  State<PosUploadScreen> createState() => _PosUploadScreenState();
 }
 
-class _StockEntryScreenState extends State<StockEntryScreen> {
-  final StockEntryController controller = Get.find();
+class _PosUploadScreenState extends State<PosUploadScreen> {
+  final PosUploadController controller = Get.find();
   final _scrollController = ScrollController();
 
   @override
@@ -31,7 +31,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
   void _onScroll() {
     if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
-      controller.fetchStockEntries(isLoadMore: true);
+      controller.fetchPosUploads(isLoadMore: true);
     }
   }
 
@@ -43,29 +43,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   }
 
   void _showFilterDialog(BuildContext context) {
-    final purposeController = TextEditingController(text: controller.activeFilters['purpose']);
-    int? selectedDocstatus = controller.activeFilters['docstatus'];
+    final statusController = TextEditingController(text: controller.activeFilters['status']);
 
     Get.dialog(
       AlertDialog(
-        title: const Text('Filter Stock Entries'),
+        title: const Text('Filter POS Uploads'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: purposeController,
-              decoration: const InputDecoration(labelText: 'Purpose'),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              value: selectedDocstatus,
+              controller: statusController,
               decoration: const InputDecoration(labelText: 'Status'),
-              items: const [
-                DropdownMenuItem(value: 0, child: Text('Draft')),
-                DropdownMenuItem(value: 1, child: Text('Submitted')),
-                DropdownMenuItem(value: 2, child: Text('Cancelled')),
-              ],
-              onChanged: (value) => selectedDocstatus = value,
             ),
           ],
         ),
@@ -80,8 +68,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ElevatedButton(
             onPressed: () {
               final filters = {
-                if (purposeController.text.isNotEmpty) 'purpose': purposeController.text,
-                if (selectedDocstatus != null) 'docstatus': selectedDocstatus,
+                if (statusController.text.isNotEmpty) 'status': statusController.text,
               };
               controller.applyFilters(filters);
               Get.back();
@@ -97,7 +84,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Stock Entries'),
+        title: const Text('POS Uploads'),
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_alt_outlined),
@@ -106,20 +93,20 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         ],
       ),
       body: Obx(() {
-        if (controller.isLoading.value && controller.stockEntries.isEmpty) {
+        if (controller.isLoading.value && controller.posUploads.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (controller.stockEntries.isEmpty) {
-          return const Center(child: Text('No stock entries found.'));
+        if (controller.posUploads.isEmpty) {
+          return const Center(child: Text('No POS uploads found.'));
         }
 
         return Scrollbar(
           child: ListView.builder(
             controller: _scrollController,
-            itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
+            itemCount: controller.posUploads.length + (controller.hasMore.value ? 1 : 0),
             itemBuilder: (context, index) {
-              if (index >= controller.stockEntries.length) {
+              if (index >= controller.posUploads.length) {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(8.0),
@@ -127,15 +114,15 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                   ),
                 );
               }
-              final entry = controller.stockEntries[index];
-              return StockEntryCard(entry: entry);
+              final upload = controller.posUploads[index];
+              return PosUploadCard(upload: upload);
             },
           ),
         );
       }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': '', 'mode': 'new'});
+          Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': '', 'mode': 'new'});
         },
         child: const Icon(Icons.add),
       ),
@@ -143,11 +130,11 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   }
 }
 
-class StockEntryCard extends StatelessWidget {
-  final dynamic entry;
-  final StockEntryController controller = Get.find();
+class PosUploadCard extends StatelessWidget {
+  final dynamic upload;
+  final PosUploadController controller = Get.find();
 
-  StockEntryCard({super.key, required this.entry});
+  PosUploadCard({super.key, required this.upload});
 
   @override
   Widget build(BuildContext context) {
@@ -155,18 +142,17 @@ class StockEntryCard extends StatelessWidget {
       margin: const EdgeInsets.all(8.0),
       clipBehavior: Clip.antiAlias,
       child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
+        final isCurrentlyExpanded = controller.expandedUploadName.value == upload.name;
         return Column(
           children: [
             ListTile(
-              title: Text(entry.name),
+              title: Text(upload.name),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                      '${entry.purpose} - \$${entry.totalAmount.toStringAsFixed(2)}'),
+                  Text('Modified: ${upload.modified}'),
                   const SizedBox(height: 4),
-                  StatusPill(status: entry.status),
+                  StatusPill(status: upload.status),
                 ],
               ),
               trailing: AnimatedRotation(
@@ -174,7 +160,7 @@ class StockEntryCard extends StatelessWidget {
                 duration: const Duration(milliseconds: 300),
                 child: const Icon(Icons.expand_more),
               ),
-              onTap: () => controller.toggleExpand(entry.name),
+              onTap: () => controller.toggleExpand(upload.name),
             ),
             AnimatedSize(
               duration: const Duration(milliseconds: 300),
@@ -183,12 +169,12 @@ class StockEntryCard extends StatelessWidget {
                 child: !isCurrentlyExpanded
                     ? const SizedBox.shrink()
                     : Obx(() {
-                        final detailed = controller.detailedEntry;
-                        if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
+                        final detailed = controller.detailedUpload;
+                        if (controller.isLoadingDetails.value && detailed?.name != upload.name) {
                           return const LinearProgressIndicator();
                         }
 
-                        if (detailed != null && detailed.name == entry.name) {
+                        if (detailed != null && detailed.name == upload.name) {
                           return Padding(
                             padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
                             child: Column(
@@ -197,7 +183,7 @@ class StockEntryCard extends StatelessWidget {
                                 const Divider(height: 1),
                                 Padding(
                                   padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Posting Date: ${detailed.postingDate}'),
+                                  child: Text('Modified On: ${detailed.modified}'),
                                 ),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
@@ -209,12 +195,12 @@ class StockEntryCard extends StatelessWidget {
                                       ),
                                       const SizedBox(width: 8),
                                       ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
+                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'edit'}),
                                         child: const Text('Edit'),
                                       ),
                                     ] else if (detailed.status == 'Submitted') ...[
                                       TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
+                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'view'}),
                                         child: const Text('View'),
                                       ),
                                       const SizedBox(width: 8),
@@ -224,7 +210,7 @@ class StockEntryCard extends StatelessWidget {
                                       ),
                                     ] else ...[
                                       ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
+                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'view'}),
                                         child: const Text('View'),
                                       ),
                                     ]

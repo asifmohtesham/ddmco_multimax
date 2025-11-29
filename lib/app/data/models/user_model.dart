@@ -2,32 +2,50 @@ class User {
   final String id;
   final String name;
   final String email;
-  final String? token; // Example: if your API returns a token
+  final String? designation;
+  final String? department;
 
   User({
     required this.id,
     required this.name,
     required this.email,
-    this.token,
+    this.designation,
+    this.department,
   });
 
-  // Factory constructor to create a User from JSON
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      email: json['email'] as String,
-      token: json['token'] as String?,
+      id: json['name'],
+      name: json['full_name'],
+      email: json['email'],
+      designation: json['designation'],
+      department: json['department'],
     );
   }
 
-  // Method to convert User instance to JSON (useful for storing locally)
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'name': name,
+      'name': id,
+      'full_name': name,
       'email': email,
-      'token': token,
+      'designation': designation,
+      'department': department,
     };
+  }
+
+  User copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? designation,
+    String? department,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      designation: designation ?? this.designation,
+      department: department ?? this.department,
+    );
   }
 }
