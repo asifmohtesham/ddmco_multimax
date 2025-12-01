@@ -38,20 +38,29 @@ class PurchaseReceipt {
 
 class PurchaseReceiptItem {
   final String itemCode;
+  final String? itemName;
   final double qty;
   final double rate;
+  final String? batchNo;
+  final String? rack;
 
   PurchaseReceiptItem({
     required this.itemCode,
+    this.itemName,
     required this.qty,
     required this.rate,
+    this.batchNo,
+    this.rack,
   });
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
     return PurchaseReceiptItem(
       itemCode: json['item_code'],
+      itemName: json['item_name'],
       qty: (json['qty'] as num).toDouble(),
       rate: (json['rate'] as num).toDouble(),
+      batchNo: json['batch_no'],
+      rack: json['rack'],
     );
   }
 }
