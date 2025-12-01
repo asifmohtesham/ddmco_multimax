@@ -54,24 +54,18 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildDetailsView(dynamic note) {
-    const valueStyle = TextStyle(fontSize: 16, fontFamily: 'monospace');
-    const labelStyle = TextStyle(fontSize: 14, color: Colors.grey);
-
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (note.poNo != null && note.poNo.isNotEmpty) ...[
-            Text('PO No:', style: labelStyle),
-            Text(note.poNo!, style: valueStyle),
-            const SizedBox(height: 12),
-          ],
-          Text('Customer:', style: labelStyle),
-          Text(note.customer, style: valueStyle),
-          const SizedBox(height: 12),
-          Text('Posting Date:', style: labelStyle),
-          Text(note.postingDate, style: valueStyle),
+          if (note.poNo != null && note.poNo.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text('PO No: ${note.poNo}', style: Theme.of(Get.context!).textTheme.titleMedium),
+            ),
+          Text('Customer: ${note.customer}'),
+          Text('Posting Date: ${note.postingDate}'),
         ],
       ),
     );
