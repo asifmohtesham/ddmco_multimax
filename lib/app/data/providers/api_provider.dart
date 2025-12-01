@@ -205,6 +205,31 @@ class ApiProvider {
     }
   }
 
+  // New method for report fetching
+  Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {
+    if (!_dioInitialized) await _initDio();
+    
+    try {
+      final response = await _dio.post(
+        '/api/method/frappe.desk.query_report.run',
+        data: {
+          'report_name': 'Batch-Wise Balance History',
+          'filters': {
+            'item_code': itemCode,
+            'batch_no': batchNo,
+          },
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+        )
+      );
+      return response;
+    } on DioException catch (e) {
+      Get.log("ApiProvider DioException fetching Batch Balance: ${e.message}", isError: true);
+      rethrow;
+    }
+  }
+
   // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
 
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
@@ -241,12 +266,8 @@ class ApiProvider {
 
    Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) {
-      filters.remove('docstatus'); // Remove docstatus for POS Upload as per previous logic, filtering handled specially or locally? 
-      // Actually, for POS Upload we fetch 'status' field.
+      filters.remove('docstatus'); 
     }
-    
-    // Note: Special handling for POS Upload status filtering logic might be needed in controller or here if passed as filter.
-    // Assuming controller handles complex status logic or passes 'status' filter correctly if backend supports it.
     
     return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status']);
   }

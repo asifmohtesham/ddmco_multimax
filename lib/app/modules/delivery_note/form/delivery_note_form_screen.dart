@@ -14,12 +14,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         appBar: AppBar(
           title: Obx(() {
             final note = controller.deliveryNote.value;
+            // Ensure we handle potential nulls gracefully and trigger updates
+            final name = note?.name ?? 'Loading...';
+            final poNo = note?.poNo;
+            
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(note?.name ?? 'Loading...'),
-                if (note?.poNo != null && note!.poNo!.isNotEmpty)
-                  Text(note.poNo!, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                Text(name),
+                if (poNo != null && poNo.isNotEmpty)
+                  Text(poNo, style: const TextStyle(fontSize: 14, color: Colors.white70)),
               ],
             );
           }),
@@ -54,18 +58,25 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildDetailsView(dynamic note) {
+    // Re-applying the monospace style as requested previously
+    const valueStyle = TextStyle(fontSize: 16, fontFamily: 'monospace');
+    const labelStyle = TextStyle(fontSize: 14, color: Colors.grey);
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (note.poNo != null && note.poNo.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Text('PO No: ${note.poNo}', style: Theme.of(Get.context!).textTheme.titleMedium),
-            ),
-          Text('Customer: ${note.customer}'),
-          Text('Posting Date: ${note.postingDate}'),
+          if (note.poNo != null && note.poNo.isNotEmpty) ...[
+            Text('PO No:', style: labelStyle),
+            Text(note.poNo!, style: valueStyle),
+            const SizedBox(height: 12),
+          ],
+          Text('Customer:', style: labelStyle),
+          Text(note.customer, style: valueStyle),
+          const SizedBox(height: 12),
+          Text('Posting Date:', style: labelStyle),
+          Text(note.postingDate, style: valueStyle),
         ],
       ),
     );

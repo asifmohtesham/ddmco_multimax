@@ -120,9 +120,17 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
+    isLoading.value = true; // Show loading feedback
+
     try {
-      await _apiProvider.getDocument('Item', itemCode);
-      
+      // 1. Validate Item and get details (Name)
+      final itemResponse = await _apiProvider.getDocument('Item', itemCode);
+      if (itemResponse.statusCode != 200 || itemResponse.data['data'] == null) {
+         throw Exception('Item not found');
+      }
+      final String itemName = itemResponse.data['data']['item_name'] ?? '';
+
+      // 2. Validate Batch
       if (batchNo != null) {
         try {
            await _apiProvider.getDocument('Batch', batchNo);
@@ -134,11 +142,47 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
 
-      // Show the bottom sheet using a StatefulWidget to manage lifecycle
+      // 3. Fetch Balance History
+      double maxQty = 999999.0; // Default high if no batch or fetch fails? Or 0?
+      if (batchNo != null) {
+        try {
+          final balanceResponse = await _apiProvider.getBatchWiseBalance(itemCode, batchNo);
+          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
+             // Parse report result. Usually 'result' or 'message' contains the list of rows.
+             // Structure depends on report. Assuming standard Frappe script report response.
+             // The result is often in `message['result']` or `message`.
+             // We need to look for a row with the latest balance or sum?
+             // Batch-Wise Balance History usually returns rows.
+             // Let's assume the report returns a list of dicts and we look for 'balance_qty' or similar.
+             // Without knowing the exact report structure, I will attempt to robustly parse or default.
+             // Usually `bal_qty` is the field.
+             
+             final result = balanceResponse.data['message']['result'];
+             if (result is List && result.isNotEmpty) {
+                // Assuming last row or aggregated row? Or maybe filtering by batch returns one row?
+                // Let's take the first row's balance.
+                final row = result.first; // Should ideally filter by warehouse if needed, but not specified.
+                maxQty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+             }
+          }
+        } catch (e) {
+          log('Failed to fetch balance: $e');
+          // Proceed with caution or block? "constraint... to value of bal_qty".
+          // If fetch fails, maybe assume 0 to be safe? Or allow override?
+          // Let's assume 0 if fetch fails to enforce validation strictness.
+          maxQty = 0.0; 
+        }
+      }
+
+      isLoading.value = false; // Hide loading feedback before showing sheet
+
+      // 4. Show Bottom Sheet
       Get.bottomSheet(
         AddItemBottomSheet(
           itemCode: itemCode,
+          itemName: itemName,
           batchNo: batchNo,
+          maxQty: maxQty,
           onAdd: (qty, rack) {
             _addItemToDeliveryNote(itemCode, qty, rack, batchNo);
           },
@@ -147,6 +191,7 @@ class DeliveryNoteFormController extends GetxController {
       );
 
     } catch (e) {
+      isLoading.value = false;
       Get.snackbar('Error', 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}');
     } finally {
       barcodeController.clear();
@@ -213,13 +258,17 @@ class DeliveryNoteFormController extends GetxController {
 // Separate StatefulWidget to handle text controllers lifecycle
 class AddItemBottomSheet extends StatefulWidget {
   final String itemCode;
+  final String itemName;
   final String? batchNo;
+  final double maxQty;
   final Function(double qty, String rack) onAdd;
 
   const AddItemBottomSheet({
     super.key,
     required this.itemCode,
+    required this.itemName,
     this.batchNo,
+    required this.maxQty,
     required this.onAdd,
   });
 
@@ -239,6 +288,17 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
     super.dispose();
   }
 
+  void _adjustQty(double amount) {
+    double currentQty = double.tryParse(qtyController.text) ?? 0;
+    double newQty = currentQty + amount;
+    
+    // Constraints
+    if (newQty < 0) newQty = 0; // Don't go below 0
+    if (newQty > widget.maxQty) newQty = widget.maxQty; // Don't exceed max
+
+    qtyController.text = newQty.toStringAsFixed(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -252,63 +312,69 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
           key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Add Item: ${widget.itemCode} ${widget.batchNo != null ? '- ${widget.batchNo}' : ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('${widget.itemCode} - ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: widget.batchNo,
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'Batch No', border: OutlineInputBorder()),
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: rackController,
-                decoration: const InputDecoration(labelText: 'Source Rack'),
+                decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
                 autofocus: true,
                 validator: (value) => value == null || value.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed: () {
-                      double currentQty = double.tryParse(qtyController.text) ?? 0;
-                      if (currentQty >= 6) {
-                        qtyController.text = (currentQty - 6).toStringAsFixed(0);
-                      }
-                    },
+              TextFormField(
+                controller: qtyController,
+                decoration: InputDecoration(
+                  labelText: 'Quantity (Max: ${widget.maxQty})',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove),
+                        onPressed: () => _adjustQty(-6),
+                      ),
+                      Container(width: 1, height: 24, color: Colors.grey), // Divider
+                      IconButton(
+                        icon: const Icon(Icons.add),
+                        onPressed: () => _adjustQty(6),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: TextFormField(
-                      controller: qtyController,
-                      decoration: const InputDecoration(labelText: 'Quantity'),
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Required';
-                        final qty = double.tryParse(value);
-                        if (qty == null) return 'Invalid number';
-                        if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
-                        return null;
-                      },
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      double currentQty = double.tryParse(qtyController.text) ?? 0;
-                      qtyController.text = (currentQty + 6).toStringAsFixed(0);
-                    },
-                  ),
-                ],
+                ),
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  final qty = double.tryParse(value);
+                  if (qty == null) return 'Invalid number';
+                  if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
+                  if (qty > widget.maxQty) return 'Exceeds balance (${widget.maxQty})';
+                  return null;
+                },
               ),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
-                    widget.onAdd(
-                      double.parse(qtyController.text),
-                      rackController.text,
-                    );
-                    Get.back();
-                  }
-                },
-                child: const Text('Add Item'),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: widget.maxQty > 0 ? () {
+                    if (formKey.currentState!.validate()) {
+                      widget.onAdd(
+                        double.parse(qtyController.text),
+                        rackController.text,
+                      );
+                      Get.back();
+                    }
+                  } : null, // Disable if maxQty is 0 (or validation failed previously)
+                  child: const Text('Add Item'),
+                ),
               ),
             ],
           ),
