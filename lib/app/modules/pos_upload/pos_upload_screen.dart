@@ -136,6 +136,25 @@ class PosUploadCard extends StatelessWidget {
 
   PosUploadCard({super.key, required this.upload});
 
+  Widget _getRelativeTimeWidget(String isoString) {
+    try {
+      final dateTime = DateTime.parse(isoString);
+      final difference = DateTime.now().difference(dateTime);
+
+      if (difference.inSeconds < 60) {
+        return Text('${difference.inSeconds}s ago');
+      } else if (difference.inMinutes < 60) {
+        return Text('${difference.inMinutes}m ago');
+      } else if (difference.inHours < 24) {
+        return Text('${difference.inHours}h ago');
+      } else {
+        return Text(DateFormat.yMMMd().format(dateTime));
+      }
+    } catch (e) {
+      return const Text('Invalid date');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -150,7 +169,7 @@ class PosUploadCard extends StatelessWidget {
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Modified: ${upload.modified}'),
+                  _getRelativeTimeWidget(upload.modified),
                   const SizedBox(height: 4),
                   StatusPill(status: upload.status),
                 ],
@@ -183,7 +202,7 @@ class PosUploadCard extends StatelessWidget {
                                 const Divider(height: 1),
                                 Padding(
                                   padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Modified On: ${detailed.modified}'),
+                                  child: Text('Modified On: ${DateFormat.yMMMd().add_jms().format(DateTime.parse(detailed.modified))}'),
                                 ),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
