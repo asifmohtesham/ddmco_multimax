@@ -45,6 +45,12 @@ class AppNavDrawer extends StatelessWidget {
             onTap: homeController.goToHome,
           )),
           Obx(() => ListTile(
+            leading: const Icon(Icons.check_box_outlined),
+            title: const Text('ToDo'),
+            selected: homeController.selectedDrawerIndex.value == 6,
+            onTap: homeController.goToToDo,
+          )),
+          Obx(() => ListTile(
             leading: const Icon(Icons.receipt_outlined),
             title: const Text('Purchase Receipt'),
             selected: homeController.selectedDrawerIndex.value == 4,

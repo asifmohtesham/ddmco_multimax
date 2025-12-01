@@ -21,6 +21,9 @@ import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_binding.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_screen.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart';
+import 'package:ddmco_multimax/app/modules/todo/todo_binding.dart';
+import 'package:ddmco_multimax/app/modules/todo/todo_screen.dart';
+import 'package:ddmco_multimax/app/modules/todo/form/todo_form_screen.dart';
 
 import 'app_routes.dart';
 
@@ -87,6 +90,17 @@ class AppPages {
       name: AppRoutes.POS_UPLOAD_FORM,
       page: () => const PosUploadFormScreen(),
       binding: PosUploadFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.TODO,
+      page: () => const ToDoScreen(),
+      binding: ToDoBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.TODO_FORM,
+      page: () => const ToDoFormScreen(),
+      // Add binding if ToDoFormController is created later
       transition: Transition.rightToLeftWithFade,
     ),
   ];

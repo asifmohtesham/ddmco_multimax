@@ -136,20 +136,31 @@ class ApiProvider {
     return _cookieJar.loadForRequest(Uri.parse(_baseUrl));
   }
 
-  Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
+  // --- Generic Document Fetching Methods ---
+
+  Future<Response> getDocumentList(String doctype, {
+    int limit = 20,
+    int limitStart = 0,
+    List<String>? fields,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+  }) async {
     if (!_dioInitialized) await _initDio();
 
-    const String endpoint = '/api/resource/Purchase Receipt';
+    final String endpoint = '/api/resource/$doctype';
     final queryParameters = {
-      'fields': '["name", "supplier", "grand_total", "posting_date", "modified", "status", "currency"]',
       'limit_page_length': limit,
       'limit_start': limitStart,
-      'order_by': 'modified desc',
+      'order_by': orderBy,
     };
+
+    if (fields != null) {
+      queryParameters['fields'] = json.encode(fields);
+    }
 
     if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        return ['Purchase Receipt', entry.key, '=', entry.value];
+        return [doctype, entry.key, '=', entry.value];
       }).toList();
       queryParameters['filters'] = json.encode(filterList);
     }
@@ -158,206 +169,83 @@ class ApiProvider {
       final response = await _dio.get(endpoint, queryParameters: queryParameters);
       return response;
     } on DioException catch (e) {
-      Get.log("ApiProvider DioException during getPurchaseReceipts: ${e.message} - ${e.response?.data}", isError: true);
+      Get.log("ApiProvider DioException during getDocumentList for $doctype: ${e.message} - ${e.response?.data}", isError: true);
       rethrow;
     } catch (e) {
-      Get.log("ApiProvider generic error during getPurchaseReceipts: $e", isError: true);
+      Get.log("ApiProvider generic error during getDocumentList for $doctype: $e", isError: true);
       rethrow;
     }
+  }
+
+  Future<Response> getDocument(String doctype, String name) async {
+    if (!_dioInitialized) await _initDio();
+    final String endpoint = '/api/resource/$doctype/$name';
+    try {
+      return await _dio.get(endpoint);
+    } on DioException catch (e) {
+      Get.log("ApiProvider DioException for $doctype '$name': ${e.message} - ${e.response?.data}", isError: true);
+      rethrow;
+    } catch (e) {
+      Get.log("ApiProvider generic error for $doctype '$name': $e", isError: true);
+      rethrow;
+    }
+  }
+
+  // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
+
+  Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
+    return getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'supplier', 'grand_total', 'posting_date', 'modified', 'status', 'currency']);
   }
 
   Future<Response> getPurchaseReceipt(String name) async {
-    if (!_dioInitialized) await _initDio();
-    final String endpoint = '/api/resource/Purchase Receipt/$name';
-    try {
-      return await _dio.get(endpoint);
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException for '$name': ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error for '$name': $e", isError: true);
-      rethrow;
-    }
+    return getDocument('Purchase Receipt', name);
   }
 
   Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    if (!_dioInitialized) await _initDio();
-
-    const String endpoint = '/api/resource/Packing Slip';
-    final queryParameters = {
-      'fields': '["name", "delivery_note", "modified", "docstatus"]',
-      'limit_page_length': limit,
-      'limit_start': limitStart,
-      'order_by': 'modified desc',
-    };
-
-    if (filters != null && filters.isNotEmpty) {
-      final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        return ['Packing Slip', entry.key, '=', entry.value];
-      }).toList();
-      queryParameters['filters'] = json.encode(filterList);
-    }
-
-    try {
-      final response = await _dio.get(endpoint, queryParameters: queryParameters);
-      return response;
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException during getPackingSlips: ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error during getPackingSlips: $e", isError: true);
-      rethrow;
-    }
+    return getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'docstatus']);
   }
 
   Future<Response> getPackingSlip(String name) async {
-    if (!_dioInitialized) await _initDio();
-    final String endpoint = '/api/resource/Packing Slip/$name';
-    try {
-      return await _dio.get(endpoint);
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException for '$name': ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error for '$name': $e", isError: true);
-      rethrow;
-    }
+    return getDocument('Packing Slip', name);
   }
 
   Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    if (!_dioInitialized) await _initDio();
-
-    const String endpoint = '/api/resource/Stock Entry';
-    final queryParameters = {
-      'fields': '["name", "purpose", "total_amount", "modified", "docstatus"]',
-      'limit_page_length': limit,
-      'limit_start': limitStart,
-      'order_by': 'modified desc',
-    };
-
-    if (filters != null && filters.isNotEmpty) {
-      final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        return ['Stock Entry', entry.key, '=', entry.value];
-      }).toList();
-      queryParameters['filters'] = json.encode(filterList);
-    }
-
-    try {
-      final response = await _dio.get(endpoint, queryParameters: queryParameters);
-      return response;
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException during getStockEntries: ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error during getStockEntries: $e", isError: true);
-      rethrow;
-    }
+    return getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'modified', 'docstatus']);
   }
 
   Future<Response> getStockEntry(String name) async {
-    if (!_dioInitialized) await _initDio();
-    final String endpoint = '/api/resource/Stock Entry/$name';
-    try {
-      return await _dio.get(endpoint);
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException for '$name': ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error for '$name': $e", isError: true);
-      rethrow;
-    }
+    return getDocument('Stock Entry', name);
   }
 
   Future<Response> getDeliveryNotes({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    if (!_dioInitialized) await _initDio();
-
-    const String endpoint = '/api/resource/Delivery Note';
-    final queryParameters = {
-      'fields': '["name", "customer", "grand_total", "posting_date", "modified", "status", "currency"]',
-      'limit_page_length': limit,
-      'limit_start': limitStart,
-      'order_by': 'modified desc',
-    };
-
-    if (filters != null && filters.isNotEmpty) {
-      final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        return ['Delivery Note', entry.key, '=', entry.value];
-      }).toList();
-      queryParameters['filters'] = json.encode(filterList);
-    }
-
-    try {
-      final response = await _dio.get(endpoint, queryParameters: queryParameters);
-      return response;
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException during getDeliveryNotes: ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error during getDeliveryNotes: $e", isError: true);
-      rethrow;
-    }
+    return getDocumentList('Delivery Note', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency']);
   }
 
   Future<Response> getDeliveryNote(String name) async {
-    if (!_dioInitialized) await _initDio();
-    final String endpoint = '/api/resource/Delivery Note/$name';
-    try {
-      return await _dio.get(endpoint);
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException for '$name': ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error for '$name': $e", isError: true);
-      rethrow;
-    }
+    return getDocument('Delivery Note', name);
   }
 
    Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    if (!_dioInitialized) await _initDio();
-
-    const String endpoint = '/api/resource/POS Upload';
-    final queryParameters = {
-      'fields': '["name", "customer", "date", "modified", "status"]',
-      'limit_page_length': limit,
-      'limit_start': limitStart,
-      'order_by': 'modified desc',
-    };
-
-    // Remove docstatus filter if it exists, as we're now filtering by 'status' field directly
     if (filters != null && filters.containsKey('docstatus')) {
-      filters.remove('docstatus');
+      filters.remove('docstatus'); // Remove docstatus for POS Upload as per previous logic, filtering handled specially or locally? 
+      // Actually, for POS Upload we fetch 'status' field.
     }
-
-    if (filters != null && filters.isNotEmpty) {
-      final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        return ['POS Upload', entry.key, '=', entry.value];
-      }).toList();
-      queryParameters['filters'] = json.encode(filterList);
-    }
-
-    try {
-      final response = await _dio.get(endpoint, queryParameters: queryParameters);
-      return response;
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException during getPosUploads: ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error during getPosUploads: $e", isError: true);
-      rethrow;
-    }
+    
+    // Note: Special handling for POS Upload status filtering logic might be needed in controller or here if passed as filter.
+    // Assuming controller handles complex status logic or passes 'status' filter correctly if backend supports it.
+    
+    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status']);
   }
 
   Future<Response> getPosUpload(String name) async {
-    if (!_dioInitialized) await _initDio();
-    final String endpoint = '/api/resource/POS Upload/$name';
-    try {
-      return await _dio.get(endpoint);
-    } on DioException catch (e) {
-      Get.log("ApiProvider DioException for '$name': ${e.message} - ${e.response?.data}", isError: true);
-      rethrow;
-    } catch (e) {
-      Get.log("ApiProvider generic error for '$name': $e", isError: true);
-      rethrow;
-    }
+    return getDocument('POS Upload', name);
+  }
+
+  Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
+    return getDocumentList('ToDo', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'status', 'description', 'modified', 'priority', 'date']);
+  }
+
+  Future<Response> getTodo(String name) async {
+    return getDocument('ToDo', name);
   }
 }

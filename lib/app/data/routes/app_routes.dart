@@ -10,6 +10,8 @@ abstract class AppRoutes {
   static const PACKING_SLIP = _Paths.PACKING_SLIP;
   static const POS_UPLOAD = _Paths.POS_UPLOAD;
   static const POS_UPLOAD_FORM = _Paths.POS_UPLOAD_FORM;
+  static const TODO = _Paths.TODO;
+  static const TODO_FORM = _Paths.TODO_FORM;
 }
 
 abstract class _Paths {
@@ -22,4 +24,6 @@ abstract class _Paths {
   static const PACKING_SLIP = '/packing-slip';
   static const POS_UPLOAD = '/pos-upload';
   static const POS_UPLOAD_FORM = '/pos-upload/form';
+  static const TODO = '/todo';
+  static const TODO_FORM = '/todo/form';
 }
