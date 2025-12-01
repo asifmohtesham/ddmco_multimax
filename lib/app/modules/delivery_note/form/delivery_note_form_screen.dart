@@ -40,11 +40,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             return const Center(child: Text('Delivery note not found.'));
           }
 
-          return TabBarView(
-            children: [
-              _buildDetailsView(note),
-              _buildItemsView(),
-            ],
+          return SafeArea(
+            child: TabBarView(
+              children: [
+                _buildDetailsView(note),
+                _buildItemsView(),
+              ],
+            ),
           );
         }),
       ),
@@ -109,16 +111,19 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ),
         Expanded(
           child: Obx(() {
+            if (controller.isLoading.value && controller.posUpload.value == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
             final posUpload = controller.posUpload.value;
             final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
 
-            // If no POS Upload is linked, just show a flat list of items
             if (posUpload == null) {
               if (deliveryNoteItems.isEmpty) {
                 return const Center(child: Text('No items to display.'));
               }
               return ListView.builder(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0), // Added bottom padding
                 itemCount: deliveryNoteItems.length,
                 itemBuilder: (context, index) {
                   final item = deliveryNoteItems[index];
@@ -130,11 +135,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             final posItems = posUpload.items;
             final groupedDnItems = controller.groupedItems;
 
-            // Apply filtering logic based on cumulative quantity
+            // Apply filtering logic
             final filteredItems = posItems.where((posItem) {
-              // Match POS Item index (1-based) to the grouping key
               final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
-              
               final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
               final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
               
@@ -151,53 +154,58 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }
 
             return ListView.builder(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0), // Added bottom padding
               itemCount: filteredItems.length,
               itemBuilder: (context, index) {
                 final posItem = filteredItems[index];
                 
-                // Re-calculate serial number to access grouped items
                 final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
-                
-                // Use a unique key for expansion state
                 final expansionKey = '${serialNumber}_$index';
 
                 final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
                 final isCompleted = cumulativeQty >= posItem.quantity;
                 final bgColor = isCompleted ? const Color(0xFFE8F5E9) : null;
 
-                return ExpansionTile(
-                  key: PageStorageKey(expansionKey),
-                  backgroundColor: bgColor,
-                  collapsedBackgroundColor: bgColor,
-                  title: Text(posItem.itemName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildInfoColumn('Quantity', '${cumulativeQty.toStringAsFixed(2)} / ${posItem.quantity.toStringAsFixed(2)}', width: 120),
-                        _buildInfoColumn('Rate', posItem.rate.toStringAsFixed(2)),
-                        _buildInfoColumn('Scanned', dnItemsForThisPosItem.length.toString()),
-                      ],
-                    ),
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4.0),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(4.0),
                   ),
-                  onExpansionChanged: (isExpanded) {
-                    controller.toggleInvoiceExpand(expansionKey);
-                  },
-                  initiallyExpanded: controller.expandedInvoice.value == expansionKey,
-                  children: [
-                    const Divider(height: 1),
-                    if (dnItemsForThisPosItem.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Center(child: Text('No items scanned for this entry yet.')),
-                      )
-                    else
-                      // Render the nested items using the custom card widget
-                      ...dnItemsForThisPosItem.map((item) => DeliveryNoteItemCard(item: item)).toList(),
-                  ],
+                  child: ExpansionTile(
+                    key: PageStorageKey(expansionKey),
+                    backgroundColor: Colors.transparent, // Handle color in Container
+                    collapsedBackgroundColor: Colors.transparent,
+                    shape: const Border(), // Remove ExpansionTile default borders
+                    title: Text('${posItem.idx}. ${posItem.itemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildInfoColumn('Quantity', '${cumulativeQty.toStringAsFixed(2)} / ${posItem.quantity.toStringAsFixed(2)}', width: 120),
+                          _buildInfoColumn('Rate', posItem.rate.toStringAsFixed(2)),
+                          _buildInfoColumn('Scanned', dnItemsForThisPosItem.length.toString()),
+                        ],
+                      ),
+                    ),
+                    onExpansionChanged: (isExpanded) {
+                      controller.toggleInvoiceExpand(expansionKey);
+                    },
+                    initiallyExpanded: controller.expandedInvoice.value == expansionKey,
+                    children: [
+                      const Divider(height: 1),
+                      if (dnItemsForThisPosItem.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Center(child: Text('No items scanned for this entry yet.')),
+                        )
+                      else
+                        ...dnItemsForThisPosItem.map((item) => DeliveryNoteItemCard(item: item)).toList(),
+                    ],
+                  ),
                 );
               },
             );
@@ -219,7 +227,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              fontFamily: 'monospace', // Monospace font as requested
+              fontFamily: 'monospace',
             ),
           ),
         ],
