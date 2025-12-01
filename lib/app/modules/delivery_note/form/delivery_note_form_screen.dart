@@ -217,6 +217,18 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     );
   }
 
+  Widget _buildFilterChip(String label, int count) {
+    return ChoiceChip(
+      label: Text('$label ($count)'),
+      selected: controller.itemFilter.value == label,
+      onSelected: (bool selected) {
+        if (selected) {
+          controller.setFilter(label);
+        }
+      },
+    );
+  }
+
   Widget _buildInfoColumn(String title, String value, {double? width}) {
     return SizedBox(
       width: width,
