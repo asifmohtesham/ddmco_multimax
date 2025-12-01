@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 
@@ -20,6 +21,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
             ListTile(
               title: Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(item.itemName ?? ''),
+              title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               trailing: AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0.0,
                 duration: const Duration(milliseconds: 300),
@@ -42,10 +44,9 @@ class DeliveryNoteItemCard extends StatelessWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildInfoColumn('Quantity', item.qty.toString()),
-                                _buildInfoColumn('Rate', item.rate.toStringAsFixed(2)),
+                                _buildInfoColumn('Rack', item.rack?.toString() ?? 'N/A'),
+                                _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
                                 _buildInfoColumn('UoM', item.uom ?? 'N/A'),
-                                _buildInfoColumn('Origin', item.countryOfOrigin ?? 'N/A'),
                               ],
                             ),
                             const SizedBox(height: 16),
@@ -76,7 +77,13 @@ class DeliveryNoteItemCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(value, style: const TextStyle(fontSize: 16)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontFamily: 'monospace', // Applied monospace
+          ),
+        ),
       ],
     );
   }

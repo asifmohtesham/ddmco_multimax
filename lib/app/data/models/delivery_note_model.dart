@@ -71,6 +71,7 @@ class DeliveryNoteItem {
   final String? countryOfOrigin;
   final String? uom;
   final String? customInvoiceSerialNumber;
+  final String? rack;
 
   DeliveryNoteItem({
     required this.itemCode,
@@ -80,6 +81,7 @@ class DeliveryNoteItem {
     this.countryOfOrigin,
     this.uom,
     this.customInvoiceSerialNumber,
+    this.rack,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -91,6 +93,7 @@ class DeliveryNoteItem {
       countryOfOrigin: json['country_of_origin'],
       uom: json['uom'],
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      rack: json['rack'],
     );
   }
 }
