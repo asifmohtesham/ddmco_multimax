@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart'; // Update path
 
 // Enum to manage current active screen for bottom bar context
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload }
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo }
 
 class HomeController extends GetxController {
   var selectedDrawerIndex = 0.obs; // To highlight active item in NavDrawer
@@ -85,6 +85,10 @@ class HomeController extends GetxController {
         activeScreen.value = ActiveScreen.posUpload;
         selectedDrawerIndex.value = 5;
         break;
+      case AppRoutes.TODO:
+        activeScreen.value = ActiveScreen.todo;
+        selectedDrawerIndex.value = 6;
+        break;
     // ... other cases
     }
   }
@@ -96,6 +100,7 @@ class HomeController extends GetxController {
   void goToDeliveryNote() => changeDrawerPage(2, AppRoutes.DELIVERY_NOTE);
   void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
   void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
+  void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
 
   @override
   void onInit() {
