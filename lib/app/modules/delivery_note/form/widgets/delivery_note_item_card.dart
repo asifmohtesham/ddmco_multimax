@@ -19,9 +19,8 @@ class DeliveryNoteItemCard extends StatelessWidget {
         return Column(
           children: [
             ListTile(
-              title: Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(item.itemName ?? ''),
               title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(item.batchNo ?? ''),
               trailing: AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0.0,
                 duration: const Duration(milliseconds: 300),
