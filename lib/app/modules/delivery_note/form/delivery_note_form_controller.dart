@@ -5,10 +5,12 @@ import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
@@ -38,7 +40,7 @@ class DeliveryNoteFormController extends GetxController {
   void _createNewDeliveryNote() async {
     isLoading.value = true;
     deliveryNote.value = DeliveryNote(
-      name: '',
+      name: 'New Delivery Note',
       customer: posUploadCustomer ?? '',
       grandTotal: 0.0,
       postingDate: DateTime.now().toString().split(' ')[0],
@@ -62,7 +64,7 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
-        
+
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -95,9 +97,153 @@ class DeliveryNoteFormController extends GetxController {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
 
-  void addItemFromBarcode(String barcode) {
-    Get.snackbar('Scan', 'Scanned: $barcode (Not implemented)');
-    barcodeController.clear();
+  Future<void> addItemFromBarcode(String barcode) async {
+    final RegExp eanRegex = RegExp(r'^\d{8,13}$');
+    final RegExp batchRegex = RegExp(r'^(\d{8,13})-([a-zA-Z0-9]{3,6})$');
+
+    String itemCode = '';
+    String? batchNo;
+
+    if (eanRegex.hasMatch(barcode)) {
+      itemCode = barcode.length == 8 ? barcode.substring(0,7) : barcode.substring(0,12);
+    } else if (batchRegex.hasMatch(barcode)) {
+      final match = batchRegex.firstMatch(barcode);
+      itemCode = match!.group(1)!;
+      itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
+      batchNo = barcode;
+    } else {
+      Get.snackbar('Error', 'Invalid barcode format. Expected EAN (7-13 digits) or EAN-BATCH (3-6 chars)');
+      barcodeController.clear();
+      return;
+    }
+
+    try {
+      await _apiProvider.getDocument('Item', itemCode);
+      
+      if (batchNo != null) {
+        try {
+           await _apiProvider.getDocument('Batch', batchNo);
+        } catch (e) {
+           final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': itemCode});
+           if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
+             throw Exception('Batch not found');
+           }
+        }
+      }
+
+      _showAddItemBottomSheet(itemCode, batchNo);
+
+    } catch (e) {
+      Get.snackbar('Error', 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}');
+    } finally {
+      barcodeController.clear();
+    }
+  }
+
+  Future<void> _showAddItemBottomSheet(String itemCode, String? batchNo) async {
+    final rackController = TextEditingController();
+    final qtyController = TextEditingController(text: '6');
+    final formKey = GlobalKey<FormState>();
+
+    await Get.bottomSheet(
+      SafeArea(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Add Item: $itemCode ${batchNo != null ? '- $batchNo' : ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: rackController,
+                  decoration: const InputDecoration(labelText: 'Source Rack'),
+                  autofocus: true,
+                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove),
+                      onPressed: () {
+                        double currentQty = double.tryParse(qtyController.text) ?? 0;
+                        if (currentQty >= 6) {
+                          qtyController.text = (currentQty - 6).toStringAsFixed(0); // Assuming integer multiples
+                        }
+                      },
+                    ),
+                    Expanded(
+                      child: TextFormField(
+                        controller: qtyController,
+                        decoration: const InputDecoration(labelText: 'Quantity'),
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Required';
+                          final qty = double.tryParse(value);
+                          if (qty == null) return 'Invalid number';
+                          if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
+                          return null;
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        double currentQty = double.tryParse(qtyController.text) ?? 0;
+                        qtyController.text = (currentQty + 6).toStringAsFixed(0);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState!.validate()) {
+                      _addItemToDeliveryNote(
+                        itemCode,
+                        double.parse(qtyController.text),
+                        rackController.text,
+                        batchNo
+                      );
+                      Get.back();
+                    }
+                  },
+                  child: const Text('Add Item'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+
+    rackController.dispose();
+    qtyController.dispose();
+  }
+
+  void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo) {
+    final newItem = DeliveryNoteItem(
+      itemCode: itemCode,
+      qty: qty,
+      rate: 0.0,
+      rack: rack,
+      batchNo: batchNo,
+      customInvoiceSerialNumber: '0', 
+    );
+    
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    currentItems.add(newItem);
+    
+    deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
+    Get.snackbar('Success', 'Item added');
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {
@@ -117,7 +263,6 @@ class DeliveryNoteFormController extends GetxController {
     if (posUpload.value == null) return 0;
     final groups = groupedItems;
     return posUpload.value!.items.where((posItem) {
-      // Logic for matching: using original index + 1 as per screen logic
       final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
       final dnItems = groups[serialNumber] ?? [];
       final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
