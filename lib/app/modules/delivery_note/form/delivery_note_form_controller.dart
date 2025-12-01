@@ -1,16 +1,29 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:collection/collection.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
+import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
 
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
+  final String? posUploadNameArg = Get.arguments['posUploadName'];
 
   var isLoading = true.obs;
   var deliveryNote = Rx<DeliveryNote?>(null);
+  var posUpload = Rx<PosUpload?>(null);
+
+  final TextEditingController barcodeController = TextEditingController();
+  var expandedItemCode = ''.obs;
+  var expandedInvoice = ''.obs;
+
+  var itemFilter = 'All'.obs;
 
   @override
   void onInit() {
@@ -22,18 +35,23 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  void _createNewDeliveryNote() {
-    // Create a new empty DeliveryNote, optionally pre-filling data
+  void _createNewDeliveryNote() async {
+    isLoading.value = true;
     deliveryNote.value = DeliveryNote(
       name: '',
       customer: posUploadCustomer ?? '',
       grandTotal: 0.0,
-      postingDate: DateTime.now().toString().split(' ')[0], // Today's date
+      postingDate: DateTime.now().toString().split(' ')[0],
       modified: '',
       status: 'Draft',
-      currency: 'USD', // Default or fetch from settings
+      currency: 'USD',
       items: [],
+      poNo: posUploadNameArg,
     );
+
+    if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
+      await fetchPosUpload(posUploadNameArg!);
+    }
     isLoading.value = false;
   }
 
@@ -42,7 +60,13 @@ class DeliveryNoteFormController extends GetxController {
     try {
       final response = await _provider.getDeliveryNote(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
+        final note = DeliveryNote.fromJson(response.data['data']);
+        deliveryNote.value = note;
+        
+        // Restore logic to fetch linked POS Upload
+        if (note.poNo != null && note.poNo!.isNotEmpty) {
+          await fetchPosUpload(note.poNo!);
+        }
       } else {
         Get.snackbar('Error', 'Failed to fetch delivery note');
       }
@@ -51,5 +75,42 @@ class DeliveryNoteFormController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<void> fetchPosUpload(String posName) async {
+    try {
+      final response = await _posUploadProvider.getPosUpload(posName);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        posUpload.value = PosUpload.fromJson(response.data['data']);
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch linked POS Upload: $e');
+    }
+  }
+
+  void toggleExpand(String itemCode) {
+    expandedItemCode.value = expandedItemCode.value == itemCode ? '' : itemCode;
+  }
+
+  void toggleInvoiceExpand(String key) {
+    expandedInvoice.value = expandedInvoice.value == key ? '' : key;
+  }
+
+  void addItemFromBarcode(String barcode) {
+    Get.snackbar('Scan', 'Scanned: $barcode (Not implemented)');
+    barcodeController.clear();
+  }
+
+  Map<String, List<DeliveryNoteItem>> get groupedItems {
+    if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
+      return {};
+    }
+    return groupBy(deliveryNote.value!.items, (DeliveryNoteItem item) {
+      return item.customInvoiceSerialNumber ?? '0'; 
+    });
+  }
+
+  void setFilter(String filter) {
+    itemFilter.value = filter;
   }
 }

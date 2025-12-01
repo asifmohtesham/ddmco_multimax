@@ -1,0 +1,83 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
+import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+
+class DeliveryNoteItemCard extends StatelessWidget {
+  final DeliveryNoteItem item;
+  final DeliveryNoteFormController controller = Get.find();
+
+  DeliveryNoteItemCard({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: Obx(() {
+        final isExpanded = controller.expandedItemCode.value == item.itemCode;
+        return Column(
+          children: [
+            ListTile(
+              title: Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(item.itemName ?? ''),
+              trailing: AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: const Icon(Icons.expand_more),
+              ),
+              onTap: () => controller.toggleExpand(item.itemCode),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: Container(
+                child: !isExpanded
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
+                        child: Column(
+                          children: [
+                            const Divider(height: 1),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _buildInfoColumn('Quantity', item.qty.toString()),
+                                _buildInfoColumn('Rate', item.rate.toStringAsFixed(2)),
+                                _buildInfoColumn('UoM', item.uom ?? 'N/A'),
+                                _buildInfoColumn('Origin', item.countryOfOrigin ?? 'N/A'),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () {
+                                    // TODO: Implement item deletion
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildInfoColumn(String title, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(value, style: const TextStyle(fontSize: 16)),
+      ],
+    );
+  }
+}

@@ -16,4 +16,12 @@ class DeliveryNoteProvider {
   Future<Response> getPosUploads({int limit = 100, int limitStart = 0, Map<String, dynamic>? filters}) async {
     return _apiProvider.getPosUploads(limit: limit, limitStart: limitStart, filters: filters);
   }
+
+  Future<Response> getPosUpload(String name) async {
+    return _apiProvider.getPosUpload(name);
+  }
+
+  Future<Response> getItemDetails(String barcode) async {
+    return _apiProvider.getDocument('Item', barcode.substring(0, 7));
+  }
 }
