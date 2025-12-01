@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'dart:developer';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
@@ -50,6 +51,7 @@ class DeliveryNoteFormController extends GetxController {
       items: [],
       poNo: posUploadNameArg,
     );
+    log('[CONTROLLER] New DN created with poNo: ${deliveryNote.value?.poNo}');
 
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
@@ -64,7 +66,8 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
-
+        log('[CONTROLLER] Fetched DN. poNo from JSON: ${note.poNo}');
+        
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -131,102 +134,23 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
 
-      _showAddItemBottomSheet(itemCode, batchNo);
+      // Show the bottom sheet using a StatefulWidget to manage lifecycle
+      Get.bottomSheet(
+        AddItemBottomSheet(
+          itemCode: itemCode,
+          batchNo: batchNo,
+          onAdd: (qty, rack) {
+            _addItemToDeliveryNote(itemCode, qty, rack, batchNo);
+          },
+        ),
+        isScrollControlled: true,
+      );
 
     } catch (e) {
       Get.snackbar('Error', 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}');
     } finally {
       barcodeController.clear();
     }
-  }
-
-  Future<void> _showAddItemBottomSheet(String itemCode, String? batchNo) async {
-    final rackController = TextEditingController();
-    final qtyController = TextEditingController(text: '6');
-    final formKey = GlobalKey<FormState>();
-
-    await Get.bottomSheet(
-      SafeArea(
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Add Item: $itemCode ${batchNo != null ? '- $batchNo' : ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: rackController,
-                  decoration: const InputDecoration(labelText: 'Source Rack'),
-                  autofocus: true,
-                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove),
-                      onPressed: () {
-                        double currentQty = double.tryParse(qtyController.text) ?? 0;
-                        if (currentQty >= 6) {
-                          qtyController.text = (currentQty - 6).toStringAsFixed(0); // Assuming integer multiples
-                        }
-                      },
-                    ),
-                    Expanded(
-                      child: TextFormField(
-                        controller: qtyController,
-                        decoration: const InputDecoration(labelText: 'Quantity'),
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Required';
-                          final qty = double.tryParse(value);
-                          if (qty == null) return 'Invalid number';
-                          if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
-                          return null;
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () {
-                        double currentQty = double.tryParse(qtyController.text) ?? 0;
-                        qtyController.text = (currentQty + 6).toStringAsFixed(0);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {
-                    if (formKey.currentState!.validate()) {
-                      _addItemToDeliveryNote(
-                        itemCode,
-                        double.parse(qtyController.text),
-                        rackController.text,
-                        batchNo
-                      );
-                      Get.back();
-                    }
-                  },
-                  child: const Text('Add Item'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      isScrollControlled: true,
-    );
-
-    rackController.dispose();
-    qtyController.dispose();
   }
 
   void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo) {
@@ -283,5 +207,113 @@ class DeliveryNoteFormController extends GetxController {
 
   void setFilter(String filter) {
     itemFilter.value = filter;
+  }
+}
+
+// Separate StatefulWidget to handle text controllers lifecycle
+class AddItemBottomSheet extends StatefulWidget {
+  final String itemCode;
+  final String? batchNo;
+  final Function(double qty, String rack) onAdd;
+
+  const AddItemBottomSheet({
+    super.key,
+    required this.itemCode,
+    this.batchNo,
+    required this.onAdd,
+  });
+
+  @override
+  State<AddItemBottomSheet> createState() => _AddItemBottomSheetState();
+}
+
+class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
+  final rackController = TextEditingController();
+  final qtyController = TextEditingController(text: '6');
+  final formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    rackController.dispose();
+    qtyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Add Item: ${widget.itemCode} ${widget.batchNo != null ? '- ${widget.batchNo}' : ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: rackController,
+                decoration: const InputDecoration(labelText: 'Source Rack'),
+                autofocus: true,
+                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove),
+                    onPressed: () {
+                      double currentQty = double.tryParse(qtyController.text) ?? 0;
+                      if (currentQty >= 6) {
+                        qtyController.text = (currentQty - 6).toStringAsFixed(0);
+                      }
+                    },
+                  ),
+                  Expanded(
+                    child: TextFormField(
+                      controller: qtyController,
+                      decoration: const InputDecoration(labelText: 'Quantity'),
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return 'Required';
+                        final qty = double.tryParse(value);
+                        if (qty == null) return 'Invalid number';
+                        if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
+                        return null;
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () {
+                      double currentQty = double.tryParse(qtyController.text) ?? 0;
+                      qtyController.text = (currentQty + 6).toStringAsFixed(0);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    widget.onAdd(
+                      double.parse(qtyController.text),
+                      rackController.text,
+                    );
+                    Get.back();
+                  }
+                },
+                child: const Text('Add Item'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
