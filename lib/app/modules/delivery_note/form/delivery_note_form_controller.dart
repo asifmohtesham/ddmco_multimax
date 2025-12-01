@@ -63,7 +63,6 @@ class DeliveryNoteFormController extends GetxController {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
         
-        // Restore logic to fetch linked POS Upload
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -108,6 +107,33 @@ class DeliveryNoteFormController extends GetxController {
     return groupBy(deliveryNote.value!.items, (DeliveryNoteItem item) {
       return item.customInvoiceSerialNumber ?? '0'; 
     });
+  }
+
+  // --- Counts for Filtering ---
+
+  int get allCount => posUpload.value?.items.length ?? 0;
+
+  int get completedCount {
+    if (posUpload.value == null) return 0;
+    final groups = groupedItems;
+    return posUpload.value!.items.where((posItem) {
+      // Logic for matching: using original index + 1 as per screen logic
+      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final dnItems = groups[serialNumber] ?? [];
+      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
+      return cumulativeQty >= posItem.quantity;
+    }).length;
+  }
+
+  int get pendingCount {
+    if (posUpload.value == null) return 0;
+    final groups = groupedItems;
+    return posUpload.value!.items.where((posItem) {
+      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final dnItems = groups[serialNumber] ?? [];
+      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
+      return cumulativeQty < posItem.quantity;
+    }).length;
   }
 
   void setFilter(String filter) {

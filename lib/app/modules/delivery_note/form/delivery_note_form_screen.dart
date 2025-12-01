@@ -101,20 +101,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Obx(() => Row(
-                children: ['All', 'Pending', 'Completed'].map((filter) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text(filter),
-                      selected: controller.itemFilter.value == filter,
-                      onSelected: (bool selected) {
-                        if (selected) {
-                          controller.setFilter(filter);
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
+                children: [
+                  _buildFilterChip('All', controller.allCount),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Pending', controller.pendingCount),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Completed', controller.completedCount),
+                ],
               )),
         ),
         const Divider(),
