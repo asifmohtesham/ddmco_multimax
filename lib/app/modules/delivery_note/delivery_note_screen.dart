@@ -191,107 +191,109 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     controller.fetchPosUploadsForSelection();
 
     Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-            ),
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Select POS Upload',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Get.back(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  onChanged: controller.filterPosUploads,
-                  decoration: const InputDecoration(
-                    labelText: 'Search POS Uploads',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select POS Upload',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: Obx(() {
-                    if (controller.isFetchingPosUploads.value) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: controller.filterPosUploads,
+                    decoration: const InputDecoration(
+                      labelText: 'Search POS Uploads',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingPosUploads.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                    if (controller.posUploadsForSelection.isEmpty) {
-                      return const Center(child: Text('No POS Uploads found.'));
-                    }
+                      if (controller.posUploadsForSelection.isEmpty) {
+                        return const Center(child: Text('No POS Uploads found.'));
+                      }
 
-                    return ListView.builder(
-                      controller: scrollController,
-                      itemCount: controller.posUploadsForSelection.length,
-                      itemBuilder: (context, index) {
-                        final posUpload = controller.posUploadsForSelection[index];
-                        return Card(
-                          elevation: 0,
-                          color: Colors.grey[50],
-                          margin: const EdgeInsets.symmetric(vertical: 4.0),
-                          child: ListTile(
-                            title: Text(posUpload.name),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('${posUpload.customer} • ${posUpload.date}'),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    StatusPill(status: posUpload.status),
-                                    const SizedBox(width: 8),
-                                    _getRelativeTimeWidget(posUpload.modified),
-                                  ],
-                                ),
-                              ],
+                      return ListView.builder(
+                        controller: scrollController,
+                        itemCount: controller.posUploadsForSelection.length,
+                        itemBuilder: (context, index) {
+                          final posUpload = controller.posUploadsForSelection[index];
+                          return Card(
+                            elevation: 0,
+                            color: Colors.grey[50],
+                            margin: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: ListTile(
+                              title: Text(posUpload.name),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${posUpload.customer} • ${posUpload.date}'),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      StatusPill(status: posUpload.status),
+                                      const SizedBox(width: 8),
+                                      _getRelativeTimeWidget(posUpload.modified),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                Get.back();
+                                controller.createNewDeliveryNote(posUpload);
+                              },
                             ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Get.back();
-                              controller.createNewDeliveryNote(posUpload);
-                            },
-                          ),
-                        );
-                      },
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Get.back();
-                      controller.createNewDeliveryNote(null);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text('Skip & Create Blank'),
+                          );
+                        },
+                      );
+                    }),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Get.back();
+                        controller.createNewDeliveryNote(null);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text('Skip & Create Blank'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
       isScrollControlled: true,
     );
