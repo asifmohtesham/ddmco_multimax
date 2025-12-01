@@ -75,40 +75,43 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller.barcodeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Scan or enter barcode',
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (value) {
-                    if (value.isNotEmpty) {
-                      controller.addItemFromBarcode(value);
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Obx(() => DropdownButton<String>(
-                value: controller.itemFilter.value,
-                items: ['All', 'Completed', 'Pending']
-                    .map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
-                onChanged: (newValue) {
-                  if (newValue != null) controller.setFilter(newValue);
-                },
-              )),
-            ],
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+          child: TextField(
+            controller: controller.barcodeController,
+            decoration: const InputDecoration(
+              labelText: 'Scan or enter barcode',
+              prefixIcon: Icon(Icons.qr_code_scanner),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                controller.addItemFromBarcode(value);
+              }
+            },
           ),
         ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Obx(() => Row(
+                children: ['All', 'Pending', 'Completed'].map((filter) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ChoiceChip(
+                      label: Text(filter),
+                      selected: controller.itemFilter.value == filter,
+                      onSelected: (bool selected) {
+                        if (selected) {
+                          controller.setFilter(filter);
+                        }
+                      },
+                    ),
+                  );
+                }).toList(),
+              )),
+        ),
+        const Divider(),
         Expanded(
           child: Obx(() {
             if (controller.isLoading.value && controller.posUpload.value == null) {
@@ -123,7 +126,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 return const Center(child: Text('No items to display.'));
               }
               return ListView.builder(
-                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0), // Added bottom padding
+                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 0.0, bottom: 80.0),
                 itemCount: deliveryNoteItems.length,
                 itemBuilder: (context, index) {
                   final item = deliveryNoteItems[index];
@@ -154,11 +157,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }
 
             return ListView.builder(
-              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0), // Added bottom padding
+              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 0.0, bottom: 80.0),
               itemCount: filteredItems.length,
               itemBuilder: (context, index) {
                 final posItem = filteredItems[index];
-                
                 final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
                 final expansionKey = '${serialNumber}_$index';
@@ -176,14 +178,15 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   ),
                   child: ExpansionTile(
                     key: PageStorageKey(expansionKey),
-                    backgroundColor: Colors.transparent, // Handle color in Container
+                    backgroundColor: Colors.transparent,
                     collapsedBackgroundColor: Colors.transparent,
-                    shape: const Border(), // Remove ExpansionTile default borders
+                    shape: const Border(),
                     title: Text('${posItem.idx}. ${posItem.itemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildInfoColumn('Quantity', '${cumulativeQty.toStringAsFixed(2)} / ${posItem.quantity.toStringAsFixed(2)}', width: 120),
                           _buildInfoColumn('Rate', posItem.rate.toStringAsFixed(2)),
