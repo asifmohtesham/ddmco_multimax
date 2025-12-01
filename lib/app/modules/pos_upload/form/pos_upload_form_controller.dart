@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
@@ -9,6 +10,7 @@ class PosUploadFormController extends GetxController {
   final String mode = Get.arguments['mode'];
 
   var isLoading = true.obs;
+  var isSaving = false.obs;
   var posUpload = Rx<PosUpload?>(null);
 
   // State for search and filtering
@@ -49,6 +51,24 @@ class PosUploadFormController extends GetxController {
       filteredItems.value = posUpload.value?.items
           .where((item) => item.itemName.toLowerCase().contains(query.toLowerCase()))
           .toList() ?? [];
+    }
+  }
+
+  Future<void> updatePosUpload(Map<String, dynamic> data) async {
+    isSaving.value = true;
+    try {
+      final response = await _provider.updatePosUpload(name, data);
+      if (response.statusCode == 200) {
+        Get.snackbar('Success', 'POS Upload updated successfully');
+        // Refresh the data
+        fetchPosUpload(); 
+      } else {
+        Get.snackbar('Error', 'Failed to update POS Upload');
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Update failed: $e');
+    } finally {
+      isSaving.value = false;
     }
   }
 }

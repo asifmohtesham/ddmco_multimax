@@ -191,6 +191,20 @@ class ApiProvider {
     }
   }
 
+  Future<Response> updateDocument(String doctype, String name, Map<String, dynamic> data) async {
+    if (!_dioInitialized) await _initDio();
+    final String endpoint = '/api/resource/$doctype/$name';
+    try {
+      return await _dio.put(endpoint, data: data);
+    } on DioException catch (e) {
+      Get.log("ApiProvider DioException during updateDocument for $doctype '$name': ${e.message} - ${e.response?.data}", isError: true);
+      rethrow;
+    } catch (e) {
+      Get.log("ApiProvider generic error during updateDocument for $doctype '$name': $e", isError: true);
+      rethrow;
+    }
+  }
+
   // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
 
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {

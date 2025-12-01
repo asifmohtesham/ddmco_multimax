@@ -12,4 +12,8 @@ class PosUploadProvider {
   Future<Response> getPosUpload(String name) async {
     return _apiProvider.getPosUpload(name);
   }
+
+  Future<Response> updatePosUpload(String name, Map<String, dynamic> data) async {
+    return _apiProvider.updateDocument('POS Upload', name, data);
+  }
 }
