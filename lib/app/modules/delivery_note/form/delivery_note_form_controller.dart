@@ -156,8 +156,8 @@ class DeliveryNoteFormController extends GetxController {
                 maxQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
              }
           }
-        } catch (e) {
-          log('Failed to fetch balance: $e');
+        } catch (e, stackTrace) {
+          log('Failed to fetch balance', error: e, stackTrace: stackTrace);
           maxQty = 6.0; // Fail safe
         }
       }
