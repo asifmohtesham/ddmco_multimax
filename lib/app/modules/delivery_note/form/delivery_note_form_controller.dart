@@ -181,7 +181,9 @@ class DeliveryNoteFormController extends GetxController {
 
     } catch (e) {
       isLoading.value = false;
-      Get.snackbar('Error', 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}');
+      final errorMessage = 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}';
+      Get.snackbar('Error', errorMessage);
+      log(errorMessage, error: e, stackTrace: stackTrace);
     } finally {
       barcodeController.clear();
     }
