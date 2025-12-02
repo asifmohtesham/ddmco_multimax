@@ -75,7 +75,8 @@ class DeliveryNoteFormController extends GetxController {
         Get.snackbar('Error', 'Failed to fetch delivery note');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      Get.snackbar('Error', 'Failed to load initial data: ${e.toString()}');
+      log('Error loading initial data: $e');
     } finally {
       isLoading.value = false;
     }
