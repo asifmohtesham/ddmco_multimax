@@ -428,7 +428,8 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                   if (value == null || value.isEmpty) return 'Required';
                   final qty = double.tryParse(value);
                   if (qty == null) return 'Invalid number';
-                  if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
+                  if (qty <= 0) return 'Must be > 0';
+                  if (qty % 6 != 0) return 'Must be a multiple of 6';
                   if (qty > maxQty) return 'Exceeds balance ($maxQty)';
                   return null;
                 },
