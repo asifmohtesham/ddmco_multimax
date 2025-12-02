@@ -179,7 +179,7 @@ class DeliveryNoteFormController extends GetxController {
         isScrollControlled: true,
       );
 
-    } catch (e) {
+    } catch (e, stackTrace) {
       isLoading.value = false;
       final errorMessage = 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}';
       Get.snackbar('Error', errorMessage);
