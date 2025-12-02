@@ -120,7 +120,8 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    isLoading.value = true; // Show loading feedback
+    // Show loading immediately
+    isLoading.value = true; 
 
     try {
       // 1. Validate Item and get details (Name)
@@ -130,61 +131,48 @@ class DeliveryNoteFormController extends GetxController {
       }
       final String itemName = itemResponse.data['data']['item_name'] ?? '';
 
-      // 2. Validate Batch
+      double maxQty = 0.0;
+
+      // 2. If Batch is present, Validate and Fetch Balance
       if (batchNo != null) {
         try {
            await _apiProvider.getDocument('Batch', batchNo);
         } catch (e) {
+           // If direct fetch fails, try searching
            final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': itemCode});
            if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
              throw Exception('Batch not found');
            }
         }
-      }
 
-      // 3. Fetch Balance History
-      double maxQty = 999999.0; // Default high if no batch or fetch fails? Or 0?
-      if (batchNo != null) {
+        // Fetch Balance
         try {
           final balanceResponse = await _apiProvider.getBatchWiseBalance(itemCode, batchNo);
           if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-             // Parse report result. Usually 'result' or 'message' contains the list of rows.
-             // Structure depends on report. Assuming standard Frappe script report response.
-             // The result is often in `message['result']` or `message`.
-             // We need to look for a row with the latest balance or sum?
-             // Batch-Wise Balance History usually returns rows.
-             // Let's assume the report returns a list of dicts and we look for 'balance_qty' or similar.
-             // Without knowing the exact report structure, I will attempt to robustly parse or default.
-             // Usually `bal_qty` is the field.
-             
              final result = balanceResponse.data['message']['result'];
              if (result is List && result.isNotEmpty) {
-                // Assuming last row or aggregated row? Or maybe filtering by batch returns one row?
-                // Let's take the first row's balance.
-                final row = result.first; // Should ideally filter by warehouse if needed, but not specified.
-                maxQty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+                final row = result.first; 
+                maxQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
              }
           }
         } catch (e) {
           log('Failed to fetch balance: $e');
-          // Proceed with caution or block? "constraint... to value of bal_qty".
-          // If fetch fails, maybe assume 0 to be safe? Or allow override?
-          // Let's assume 0 if fetch fails to enforce validation strictness.
-          maxQty = 0.0; 
+          maxQty = 6.0; // Fail safe
         }
       }
 
-      isLoading.value = false; // Hide loading feedback before showing sheet
+      isLoading.value = false; // Hide global loading
 
-      // 4. Show Bottom Sheet
+      // 3. Show Bottom Sheet
+      // If batchNo was null, the BottomSheet will handle entry and validation
       Get.bottomSheet(
         AddItemBottomSheet(
           itemCode: itemCode,
           itemName: itemName,
-          batchNo: batchNo,
-          maxQty: maxQty,
-          onAdd: (qty, rack) {
-            _addItemToDeliveryNote(itemCode, qty, rack, batchNo);
+          initialBatchNo: batchNo,
+          initialMaxQty: maxQty,
+          onAdd: (qty, rack, finalBatchNo) {
+            _addItemToDeliveryNote(itemCode, qty, rack, finalBatchNo);
           },
         ),
         isScrollControlled: true,
@@ -255,20 +243,20 @@ class DeliveryNoteFormController extends GetxController {
   }
 }
 
-// Separate StatefulWidget to handle text controllers lifecycle
+// Stateful Widget for Bottom Sheet Logic
 class AddItemBottomSheet extends StatefulWidget {
   final String itemCode;
   final String itemName;
-  final String? batchNo;
-  final double maxQty;
-  final Function(double qty, String rack) onAdd;
+  final String? initialBatchNo;
+  final double initialMaxQty;
+  final Function(double qty, String rack, String batchNo) onAdd;
 
   const AddItemBottomSheet({
     super.key,
     required this.itemCode,
     required this.itemName,
-    this.batchNo,
-    required this.maxQty,
+    this.initialBatchNo,
+    required this.initialMaxQty,
     required this.onAdd,
   });
 
@@ -277,15 +265,78 @@ class AddItemBottomSheet extends StatefulWidget {
 }
 
 class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  
+  late TextEditingController batchController;
   final rackController = TextEditingController();
   final qtyController = TextEditingController(text: '6');
   final formKey = GlobalKey<FormState>();
 
+  bool isBatchReadOnly = false;
+  bool isLoadingBatch = false;
+  double maxQty = 0.0;
+  String? batchError;
+
+  @override
+  void initState() {
+    super.initState();
+    batchController = TextEditingController(text: widget.initialBatchNo ?? '');
+    isBatchReadOnly = widget.initialBatchNo != null;
+    maxQty = widget.initialMaxQty;
+  }
+
   @override
   void dispose() {
+    batchController.dispose();
     rackController.dispose();
     qtyController.dispose();
     super.dispose();
+  }
+
+  Future<void> _validateAndFetchBatch(String batchNo) async {
+    if (batchNo.isEmpty) return;
+
+    setState(() {
+      isLoadingBatch = true;
+      batchError = null;
+    });
+
+    try {
+      // 1. Check if batch exists
+      try {
+         await _apiProvider.getDocument('Batch', batchNo);
+      } catch (e) {
+         // Fallback search
+         final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': widget.itemCode});
+         if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
+           throw Exception('Batch not found');
+         }
+      }
+
+      // 2. Fetch Balance
+      final balanceResponse = await _apiProvider.getBatchWiseBalance(widget.itemCode, batchNo);
+      double fetchedQty = 0.0;
+      if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
+         final result = balanceResponse.data['message']['result'];
+         if (result is List && result.isNotEmpty) {
+            final row = result.first;
+            log(row);
+            fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
+         }
+      }
+
+      setState(() {
+        maxQty = fetchedQty;
+        isLoadingBatch = false;
+      });
+
+    } catch (e) {
+      setState(() {
+        isLoadingBatch = false;
+        batchError = 'Invalid Batch';
+        maxQty = 0.0;
+      });
+    }
   }
 
   void _adjustQty(double amount) {
@@ -293,8 +344,8 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
     double newQty = currentQty + amount;
     
     // Constraints
-    if (newQty < 0) newQty = 0; // Don't go below 0
-    if (newQty > widget.maxQty) newQty = widget.maxQty; // Don't exceed max
+    if (newQty < 0) newQty = 0; 
+    if (newQty > maxQty) newQty = maxQty; 
 
     qtyController.text = newQty.toStringAsFixed(0);
   }
@@ -316,23 +367,45 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
             children: [
               Text('${widget.itemCode} - ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
+              
+              if (isLoadingBatch)
+                const LinearProgressIndicator(),
+                
               TextFormField(
-                initialValue: widget.batchNo,
-                readOnly: true,
-                decoration: const InputDecoration(labelText: 'Batch No', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: rackController,
-                decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
-                autofocus: true,
+                controller: batchController,
+                readOnly: isBatchReadOnly,
+                autofocus: !isBatchReadOnly, // Focus if editable
+                decoration: InputDecoration(
+                  labelText: 'Batch No', 
+                  border: const OutlineInputBorder(),
+                  errorText: batchError,
+                  suffixIcon: !isBatchReadOnly && !isLoadingBatch 
+                    ? IconButton(
+                        icon: const Icon(Icons.check),
+                        onPressed: () => _validateAndFetchBatch(batchController.text),
+                      ) 
+                    : null,
+                ),
+                onFieldSubmitted: (val) {
+                  if (!isBatchReadOnly) _validateAndFetchBatch(val);
+                },
                 validator: (value) => value == null || value.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
+              
+              TextFormField(
+                controller: rackController,
+                decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
+                // Only autofocus rack if batch is already known
+                autofocus: isBatchReadOnly, 
+                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+              
               TextFormField(
                 controller: qtyController,
                 decoration: InputDecoration(
-                  labelText: 'Quantity (Max: ${widget.maxQty})',
+                  labelText: 'Quantity (Max: $maxQty)',
                   border: const OutlineInputBorder(),
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -341,7 +414,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                         icon: const Icon(Icons.remove),
                         onPressed: () => _adjustQty(-6),
                       ),
-                      Container(width: 1, height: 24, color: Colors.grey), // Divider
+                      Container(width: 1, height: 24, color: Colors.grey),
                       IconButton(
                         icon: const Icon(Icons.add),
                         onPressed: () => _adjustQty(6),
@@ -356,7 +429,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                   final qty = double.tryParse(value);
                   if (qty == null) return 'Invalid number';
                   if (qty % 6 != 0) return 'Quantity must be a multiple of 6';
-                  if (qty > widget.maxQty) return 'Exceeds balance (${widget.maxQty})';
+                  if (qty > maxQty) return 'Exceeds balance ($maxQty)';
                   return null;
                 },
               ),
@@ -364,15 +437,17 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: widget.maxQty > 0 ? () {
+                  // Disable if loading, maxQty is 0, or batch is empty
+                  onPressed: (!isLoadingBatch && maxQty > 0 && batchController.text.isNotEmpty) ? () {
                     if (formKey.currentState!.validate()) {
                       widget.onAdd(
                         double.parse(qtyController.text),
                         rackController.text,
+                        batchController.text,
                       );
                       Get.back();
                     }
-                  } : null, // Disable if maxQty is 0 (or validation failed previously)
+                  } : null,
                   child: const Text('Add Item'),
                 ),
               ),

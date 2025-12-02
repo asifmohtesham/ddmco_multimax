@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData; // For Get.find or dependency injection
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart'; // To get a persistent storage path for cookies
 
 class ApiProvider {
@@ -205,23 +206,25 @@ class ApiProvider {
     }
   }
 
-  // New method for report fetching
+  // New method for report fetching - UPDATED to GET
   Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {
     if (!_dioInitialized) await _initDio();
     
     try {
-      final response = await _dio.post(
+      final response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
-        data: {
+        queryParameters: {
           'report_name': 'Batch-Wise Balance History',
-          'filters': {
+          'filters': json.encode({
+            'company': 'Multimax',
+            'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+            'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
             'item_code': itemCode,
             'batch_no': batchNo,
-          },
+            'warehouse': 'WH-DXB1 - KA'
+          }),
+          'ignore_prepared_report': 'true',
         },
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-        )
       );
       return response;
     } on DioException catch (e) {
