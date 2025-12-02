@@ -378,15 +378,15 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                   border: const OutlineInputBorder(),
                   errorText: batchError,
                   suffixIcon: isLoadingBatch
-                      ? const Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    ),
-                  )
-                      : (!isBatchReadOnly
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      )
+                    : (!isBatchReadOnly
                       ? IconButton(
                     icon: const Icon(Icons.check),
                     onPressed: () => _validateAndFetchBatch(batchController.text),
