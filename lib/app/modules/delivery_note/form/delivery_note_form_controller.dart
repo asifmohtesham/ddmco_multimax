@@ -109,7 +109,8 @@ class DeliveryNoteFormController extends GetxController {
     String? batchNo;
 
     if (eanRegex.hasMatch(barcode)) {
-      itemCode = barcode.length == 8 ? barcode.substring(0,7) : barcode.substring(0,12);
+      itemCode = barcode;
+      itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
     } else if (batchRegex.hasMatch(barcode)) {
       final match = batchRegex.firstMatch(barcode);
       itemCode = match!.group(1)!;
