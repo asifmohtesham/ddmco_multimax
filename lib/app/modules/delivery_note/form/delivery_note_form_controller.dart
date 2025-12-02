@@ -368,7 +368,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
             children: [
               Text('${widget.itemCode} - ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
-
+              
               TextFormField(
                 controller: batchController,
                 readOnly: isBatchReadOnly || isLoadingBatch,
