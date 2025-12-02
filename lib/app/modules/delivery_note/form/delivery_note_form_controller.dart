@@ -388,9 +388,9 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                       )
                     : (!isBatchReadOnly
                       ? IconButton(
-                    icon: const Icon(Icons.check),
-                    onPressed: () => _validateAndFetchBatch(batchController.text),
-                  )
+                          icon: const Icon(Icons.check),
+                          onPressed: () => _validateAndFetchBatch(batchController.text),
+                        ) 
                       : null),
                 ),
                 onFieldSubmitted: (val) {
