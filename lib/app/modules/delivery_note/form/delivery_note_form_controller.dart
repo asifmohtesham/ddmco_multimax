@@ -368,27 +368,33 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
             children: [
               Text('${widget.itemCode} - ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
-              
-              if (isLoadingBatch)
-                const LinearProgressIndicator(),
-                
+
               TextFormField(
                 controller: batchController,
-                readOnly: isBatchReadOnly,
-                autofocus: !isBatchReadOnly, // Focus if editable
+                readOnly: isBatchReadOnly || isLoadingBatch,
+                autofocus: !isBatchReadOnly,
                 decoration: InputDecoration(
-                  labelText: 'Batch No', 
+                  labelText: 'Batch No',
                   border: const OutlineInputBorder(),
                   errorText: batchError,
-                  suffixIcon: !isBatchReadOnly && !isLoadingBatch 
-                    ? IconButton(
-                        icon: const Icon(Icons.check),
-                        onPressed: () => _validateAndFetchBatch(batchController.text),
-                      ) 
-                    : null,
+                  suffixIcon: isLoadingBatch
+                      ? const Padding(
+                    padding: EdgeInsets.all(12.0),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  )
+                      : (!isBatchReadOnly
+                      ? IconButton(
+                    icon: const Icon(Icons.check),
+                    onPressed: () => _validateAndFetchBatch(batchController.text),
+                  )
+                      : null),
                 ),
                 onFieldSubmitted: (val) {
-                  if (!isBatchReadOnly) _validateAndFetchBatch(val);
+                  if (!isBatchReadOnly && !isLoadingBatch) _validateAndFetchBatch(val);
                 },
                 validator: (value) => value == null || value.isEmpty ? 'Required' : null,
               ),
