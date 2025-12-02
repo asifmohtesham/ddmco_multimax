@@ -456,6 +456,10 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                       Get.back();
                     }
                   } : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                  ),
                   child: const Text('Add Item'),
                 ),
               ),
