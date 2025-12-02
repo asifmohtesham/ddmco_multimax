@@ -22,11 +22,11 @@ class StockEntry {
     List<StockEntryItem> items = itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
 
     return StockEntry(
-      name: json['name'],
-      purpose: json['purpose'],
-      totalAmount: (json['total_amount'] as num).toDouble(),
-      postingDate: json['posting_date'],
-      modified: json['modified'],
+      name: json['name'] ?? 'No Name',
+      purpose: json['purpose'] ?? 'No Purpose',
+      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+      postingDate: json['posting_date'] ?? '',
+      modified: json['modified'] ?? '',
       status: _getStatusFromDocstatus(json['docstatus'] as int? ?? 0),
       items: items,
     );
@@ -59,9 +59,9 @@ class StockEntryItem {
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
-      itemCode: json['item_code'],
-      qty: (json['qty'] as num).toDouble(),
-      basicRate: (json['basic_rate'] as num).toDouble(),
+      itemCode: json['item_code'] ?? '',
+      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
+      basicRate: (json['basic_rate'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

@@ -111,7 +111,20 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         }
 
         if (controller.stockEntries.isEmpty) {
-          return const Center(child: Text('No stock entries found.'));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('No stock entries found.'),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => controller.fetchStockEntries(clear: true),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reload'),
+                ),
+              ],
+            ),
+          );
         }
 
         return Scrollbar(
@@ -159,12 +172,12 @@ class StockEntryCard extends StatelessWidget {
         return Column(
           children: [
             ListTile(
-              title: Text(entry.name),
+              title: Text(entry.name ?? 'No Name'),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                      '${entry.purpose} - \$${entry.totalAmount.toStringAsFixed(2)}'),
+                      '${entry.purpose ?? 'No Purpose'} - \$${entry.totalAmount.toStringAsFixed(2)}'),
                   const SizedBox(height: 4),
                   StatusPill(status: entry.status),
                 ],
