@@ -331,7 +331,9 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
         isLoadingBatch = false;
       });
 
-    } catch (e) {
+    } catch (e, stackTrace) {
+      final errorMessage = 'Failed to validate batch: ${e.toString()}';
+      log(errorMessage, error: e, stackTrace: stackTrace);
       setState(() {
         isLoadingBatch = false;
         batchError = 'Invalid Batch';
