@@ -414,7 +414,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                         icon: const Icon(Icons.remove),
                         onPressed: () => _adjustQty(-6),
                       ),
-                      Container(width: 1, height: 24, color: Colors.grey),
+                      Container(width: 1, height: 24, color: Colors.grey.shade400),
                       IconButton(
                         icon: const Icon(Icons.add),
                         onPressed: () => _adjustQty(6),
