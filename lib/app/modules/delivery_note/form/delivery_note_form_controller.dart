@@ -10,6 +10,8 @@ import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 
+import 'delivery_note_form_screen.dart'; // Import to access AddItemBottomSheet
+
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
@@ -21,7 +23,7 @@ class DeliveryNoteFormController extends GetxController {
   final String? posUploadNameArg = Get.arguments['posUploadName'];
 
   var isLoading = true.obs;
-  var isScanning = false.obs; // New state for barcode scanning UX
+  var isScanning = false.obs;
   var isAddingItem = false.obs;
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload = Rx<PosUpload?>(null);
@@ -32,6 +34,24 @@ class DeliveryNoteFormController extends GetxController {
 
   var itemFilter = 'All'.obs;
 
+  // Bottom Sheet State
+  final bsBatchController = TextEditingController();
+  final bsRackController = TextEditingController();
+  final bsQtyController = TextEditingController(text: '6');
+  final bsRackFocusNode = FocusNode();
+  
+  var bsIsLoadingBatch = false.obs;
+  var bsMaxQty = 0.0.obs;
+  var bsBatchError = RxnString();
+  var bsIsBatchValid = false.obs;
+  var bsIsBatchReadOnly = false.obs;
+  
+  // New Field State
+  var bsInvoiceSerialNo = RxnString();
+  
+  String currentItemCode = '';
+  String currentItemName = '';
+
   @override
   void onInit() {
     super.onInit();
@@ -40,6 +60,16 @@ class DeliveryNoteFormController extends GetxController {
     } else {
       fetchDeliveryNote();
     }
+  }
+
+  @override
+  void onClose() {
+    barcodeController.dispose();
+    bsBatchController.dispose();
+    bsRackController.dispose();
+    bsQtyController.dispose();
+    bsRackFocusNode.dispose();
+    super.onClose();
   }
 
   void _createNewDeliveryNote() async {
@@ -105,6 +135,114 @@ class DeliveryNoteFormController extends GetxController {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
 
+  // --- Bottom Sheet Logic ---
+
+  List<String> get bsAvailableInvoiceSerialNos {
+    if (posUpload.value == null) return [];
+    return posUpload.value!.items
+        // .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
+        .map((item) => item.idx.toString())
+        .toList();
+  }
+
+  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty) {
+    currentItemCode = itemCode;
+    currentItemName = itemName;
+    
+    bsBatchController.text = batchNo ?? '';
+    bsRackController.clear();
+    bsQtyController.text = '6';
+    
+    bsMaxQty.value = maxQty;
+    bsBatchError.value = null;
+    
+    // Initialize Invoice Serial No
+    final availableSerials = bsAvailableInvoiceSerialNos;
+    if (availableSerials.isNotEmpty) {
+      bsInvoiceSerialNo.value = availableSerials.first;
+    } else {
+      bsInvoiceSerialNo.value = null;
+    }
+    
+    if (batchNo != null && maxQty > 0) {
+      bsIsBatchValid.value = true;
+      bsIsBatchReadOnly.value = true;
+      // Focus rack slightly after build to ensure visibility
+      Future.delayed(const Duration(milliseconds: 100), () {
+        bsRackFocusNode.requestFocus();
+      });
+    } else {
+      bsIsBatchValid.value = false;
+      bsIsBatchReadOnly.value = false;
+    }
+    
+    bsIsLoadingBatch.value = false;
+  }
+
+  Future<void> validateAndFetchBatch(String batchNo) async {
+    if (batchNo.isEmpty) return;
+
+    bsIsLoadingBatch.value = true;
+    bsBatchError.value = null;
+
+    try {
+      // 1. Check if batch exists
+      try {
+         await _apiProvider.getDocument('Batch', batchNo);
+      } catch (e) {
+         // Fallback search
+         final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': currentItemCode});
+         if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
+           throw Exception('Batch not found');
+         }
+      }
+
+      // 2. Fetch Balance
+      final balanceResponse = await _apiProvider.getBatchWiseBalance(currentItemCode, batchNo);
+      double fetchedQty = 0.0;
+      if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
+         final result = balanceResponse.data['message']['result'];
+         if (result is List && result.isNotEmpty) {
+            final row = result.first;
+            log(jsonEncode(row));
+            fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
+         }
+      }
+
+      bsMaxQty.value = fetchedQty;
+      bsIsLoadingBatch.value = false;
+
+      if (fetchedQty > 0) {
+        bsIsBatchValid.value = true;
+        bsIsBatchReadOnly.value = true; // Lock the field
+        bsBatchError.value = null;
+        bsRackFocusNode.requestFocus();
+      } else {
+        bsIsBatchValid.value = false;
+        bsBatchError.value = 'Batch has no stock';
+      }
+
+    } catch (e, stackTrace) {
+      final errorMessage = 'Failed to validate batch: ${e.toString()}';
+      log(errorMessage, error: e, stackTrace: stackTrace);
+      
+      bsIsLoadingBatch.value = false;
+      bsBatchError.value = 'Invalid Batch';
+      bsMaxQty.value = 0.0;
+      bsIsBatchValid.value = false;
+    }
+  }
+
+  void adjustSheetQty(double amount) {
+    double currentQty = double.tryParse(bsQtyController.text) ?? 0;
+    double newQty = currentQty + amount;
+    
+    if (newQty < 0) newQty = 0; 
+    if (newQty > bsMaxQty.value && bsMaxQty.value > 0) newQty = bsMaxQty.value; 
+
+    bsQtyController.text = newQty.toStringAsFixed(0);
+  }
+
   Future<void> addItemFromBarcode(String barcode) async {
     final RegExp eanRegex = RegExp(r'^\d{8,13}$');
     final RegExp batchRegex = RegExp(r'^(\d{8,13})-([a-zA-Z0-9]{3,6})$');
@@ -143,14 +281,12 @@ class DeliveryNoteFormController extends GetxController {
         try {
            await _apiProvider.getDocument('Batch', batchNo);
         } catch (e) {
-           // If direct fetch fails, try searching
            final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': itemCode});
            if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
              throw Exception('Batch not found');
            }
         }
 
-        // Fetch Balance
         try {
           final balanceResponse = await _apiProvider.getBatchWiseBalance(itemCode, batchNo);
           if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -166,18 +302,15 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
 
+      isScanning.value = false;
+      isAddingItem.value = true;
+      
+      // Initialize Sheet State
+      initBottomSheet(itemCode, itemName, batchNo, maxQty);
+
       // 3. Show Bottom Sheet
-      // If batchNo was null, the BottomSheet will handle entry and validation
-      Get.bottomSheet(
-        AddItemBottomSheet(
-          itemCode: itemCode,
-          itemName: itemName,
-          initialBatchNo: batchNo,
-          initialMaxQty: maxQty,
-          onAdd: (qty, rack, finalBatchNo) {
-            _addItemToDeliveryNote(itemCode, qty, rack, finalBatchNo);
-          },
-        ),
+      await Get.bottomSheet(
+        const AddItemBottomSheet(),
         isScrollControlled: true,
       );
 
@@ -187,18 +320,29 @@ class DeliveryNoteFormController extends GetxController {
       log(errorMessage, error: e, stackTrace: stackTrace);
     } finally {
       isScanning.value = false;
+      isAddingItem.value = false;
       barcodeController.clear();
     }
   }
 
-  void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo) {
+  void submitSheet() {
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    final rack = bsRackController.text;
+    final batch = bsBatchController.text;
+    final invoiceSerial = bsInvoiceSerialNo.value; // Get the selected serial
+    
+    _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
+    Get.back();
+  }
+
+  void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) {
     final newItem = DeliveryNoteItem(
       itemCode: itemCode,
       qty: qty,
       rate: 0.0,
       rack: rack,
       batchNo: batchNo,
-      customInvoiceSerialNumber: '0', 
+      customInvoiceSerialNumber: invoiceSerial ?? '0', // Use the selected serial
     );
     
     final currentItems = deliveryNote.value?.items.toList() ?? [];
@@ -245,258 +389,5 @@ class DeliveryNoteFormController extends GetxController {
 
   void setFilter(String filter) {
     itemFilter.value = filter;
-  }
-}
-
-// Stateful Widget for Bottom Sheet Logic
-class AddItemBottomSheet extends StatefulWidget {
-  final String itemCode;
-  final String itemName;
-  final String? initialBatchNo;
-  final double initialMaxQty;
-  final Function(double qty, String rack, String batchNo) onAdd;
-
-  const AddItemBottomSheet({
-    super.key,
-    required this.itemCode,
-    required this.itemName,
-    this.initialBatchNo,
-    required this.initialMaxQty,
-    required this.onAdd,
-  });
-
-  @override
-  State<AddItemBottomSheet> createState() => _AddItemBottomSheetState();
-}
-
-class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  
-  late TextEditingController batchController;
-  final rackController = TextEditingController();
-  final qtyController = TextEditingController(text: '6');
-  final formKey = GlobalKey<FormState>();
-
-  final _rackFocusNode = FocusNode();
-  late final VoidCallback _rackListener;
-
-  bool isBatchReadOnly = false;
-  bool isLoadingBatch = false;
-  bool _isBatchValid = false;
-  double maxQty = 0.0;
-  String? batchError;
-
-  @override
-  void initState() {
-    super.initState();
-    batchController = TextEditingController(text: widget.initialBatchNo ?? '');
-    isBatchReadOnly = widget.initialBatchNo != null;
-    maxQty = widget.initialMaxQty;
-    _isBatchValid = widget.initialBatchNo != null && widget.initialMaxQty > 0;
-
-    _rackListener = () => setState(() {});
-    rackController.addListener(_rackListener);
-  }
-
-  @override
-  void dispose() {
-    batchController.dispose();
-    rackController.removeListener(_rackListener);
-    rackController.dispose();
-    qtyController.dispose();
-    _rackFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _validateAndFetchBatch(String batchNo) async {
-    if (batchNo.isEmpty) return;
-
-    setState(() {
-      isLoadingBatch = true;
-      batchError = null;
-    });
-
-    try {
-      // 1. Check if batch exists
-      try {
-         await _apiProvider.getDocument('Batch', batchNo);
-      } catch (e) {
-         // Fallback search
-         final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': widget.itemCode});
-         if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
-           throw Exception('Batch not found');
-         }
-      }
-
-      // 2. Fetch Balance
-      final balanceResponse = await _apiProvider.getBatchWiseBalance(widget.itemCode, batchNo);
-      double fetchedQty = 0.0;
-      if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-         final result = balanceResponse.data['message']['result'];
-         if (result is List && result.isNotEmpty) {
-            final row = result.first;
-            log(jsonEncode(row));
-            fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
-         }
-      }
-
-      setState(() {
-        maxQty = fetchedQty;
-        isLoadingBatch = false;
-        if (fetchedQty > 0) {
-          _isBatchValid = true;
-          isBatchReadOnly = true; // Lock the field
-          batchError = null;
-        } else {
-          _isBatchValid = false;
-          batchError = 'Batch has no stock';
-        }
-      });
-      if (_isBatchValid) {
-        _rackFocusNode.requestFocus();
-      }
-
-    } catch (e, stackTrace) {
-      final errorMessage = 'Failed to validate batch: ${e.toString()}';
-      log(errorMessage, error: e, stackTrace: stackTrace);
-      setState(() {
-        isLoadingBatch = false;
-        batchError = 'Invalid Batch';
-        maxQty = 0.0;
-        _isBatchValid = false;
-      });
-    }
-  }
-
-  void _adjustQty(double amount) {
-    double currentQty = double.tryParse(qtyController.text) ?? 0;
-    double newQty = currentQty + amount;
-    
-    // Constraints
-    if (newQty < 0) newQty = 0; 
-    if (newQty > maxQty && maxQty > 0) newQty = maxQty; 
-
-    qtyController.text = newQty.toStringAsFixed(0);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: Form(
-          key: formKey,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Text('${widget.itemCode}: ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: batchController,
-                readOnly: isBatchReadOnly || isLoadingBatch,
-                autofocus: !isBatchReadOnly,
-                decoration: InputDecoration(
-                  labelText: 'Batch No',
-                  border: const OutlineInputBorder(),
-                  errorText: batchError,
-                  suffixIcon: isLoadingBatch
-                    ? const Padding(
-                        padding: EdgeInsets.all(12.0),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
-                        ),
-                      )
-                    : (isBatchReadOnly
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : IconButton(
-                          icon: const Icon(Icons.check),
-                          onPressed: () => _validateAndFetchBatch(batchController.text),
-                        )),
-                ),
-                onFieldSubmitted: (val) {
-                  if (!isBatchReadOnly && !isLoadingBatch) _validateAndFetchBatch(val);
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  if (!_isBatchValid) return 'Batch is not valid';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: rackController,
-                focusNode: _rackFocusNode,
-                decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
-                autofocus: isBatchReadOnly, 
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: qtyController,
-                decoration: InputDecoration(
-                  labelText: 'Quantity (Max: $maxQty)',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove),
-                        onPressed: () => _adjustQty(-6),
-                      ),
-                      Container(width: 1, height: 24, color: Colors.grey.shade400),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: () => _adjustQty(6),
-                      ),
-                    ],
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  final qty = double.tryParse(value);
-                  if (qty == null) return 'Invalid number';
-                  if (qty <= 0) return 'Must be > 0';
-                  if (qty % 6 != 0) return 'Must be a multiple of 6';
-                  if (qty > maxQty) return 'Exceeds balance ($maxQty)';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (_isBatchValid && rackController.text.isNotEmpty && !isLoadingBatch) ? () {
-                    if (formKey.currentState!.validate()) {
-                      widget.onAdd(
-                        double.parse(qtyController.text),
-                        rackController.text,
-                        batchController.text,
-                      );
-                      Get.back();
-                    }
-                  } : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                  ),
-                  child: const Text('Add Item'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
