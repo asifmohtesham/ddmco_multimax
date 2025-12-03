@@ -17,6 +17,8 @@ class PosUploadController extends GetxController {
   final _detailedUploadsCache = <String, PosUpload>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
+  var sortField = 'modified'.obs;
+  var sortOrder = 'desc'.obs;
 
   @override
   void onInit() {
@@ -33,6 +35,12 @@ class PosUploadController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    fetchPosUploads(isLoadMore: false, clear: true);
+  }
+
+  void setSort(String field, String order) {
+    sortField.value = field;
+    sortOrder.value = order;
     fetchPosUploads(isLoadMore: false, clear: true);
   }
 
@@ -53,6 +61,7 @@ class PosUploadController extends GetxController {
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
+        orderBy: '${sortField.value} ${sortOrder.value}',
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
@@ -91,7 +100,7 @@ class PosUploadController extends GetxController {
     try {
       final response = await _provider.getPosUpload(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        print(response.data); // Log the full response
+        // print(response.data); 
         final upload = PosUpload.fromJson(response.data['data']);
         _detailedUploadsCache[name] = upload;
       } else {

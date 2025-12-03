@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:ddmco_multimax/app/modules/pos_upload/widgets/pos_upload_filter_bottom_sheet.dart';
 
 class PosUploadScreen extends StatefulWidget {
   const PosUploadScreen({super.key});
@@ -41,42 +43,22 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterDialog(BuildContext context) {
-    final statusController = TextEditingController(text: controller.activeFilters['status']);
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter POS Uploads'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: statusController,
-              decoration: const InputDecoration(labelText: 'Status'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.clearFilters();
-              Get.back();
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final filters = {
-                if (statusController.text.isNotEmpty) 'status': statusController.text,
-              };
-              controller.applyFilters(filters);
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
+  void _showFilterBottomSheet(BuildContext context) {
+    Get.bottomSheet(
+      const PosUploadFilterBottomSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending': return Colors.orange;
+      case 'completed': return Colors.green;
+      case 'failed': return Colors.red;
+      case 'processed': return Colors.blue;
+      default: return Colors.grey;
+    }
   }
   
   String _getRelativeTime(String? dateString) {
@@ -107,8 +89,8 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
         title: const Text('POS Uploads'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _showFilterDialog(context),
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => _showFilterBottomSheet(context),
           ),
         ],
       ),
@@ -204,15 +186,5 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
         child: const Icon(Icons.add),
       ),
     );
-  }
-  
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending': return Colors.orange;
-      case 'completed': return Colors.green;
-      case 'failed': return Colors.red;
-      case 'processed': return Colors.blue;
-      default: return Colors.grey;
-    }
   }
 }
