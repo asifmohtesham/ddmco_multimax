@@ -54,6 +54,19 @@ class DeliveryNoteFormController extends GetxController {
   
   // New Field State
   var bsInvoiceSerialNo = RxnString();
+  var editingItemName = RxnString(); // To track if we are editing an existing item (by name)
+
+  // Extra Item Details for Bottom Sheet
+  var bsItemOwner = RxnString();
+  var bsItemCreation = RxnString();
+  var bsItemModifiedBy = RxnString();
+  var bsItemModified = RxnString();
+  var bsItemIdx = RxnInt();
+  var bsItemCustomVariantOf = RxnString();
+  var bsItemGroup = RxnString();
+  var bsItemImage = RxnString();
+  var bsItemPackedQty = RxnDouble();
+  var bsItemCompanyTotalStock = RxnDouble();
   
   String currentItemCode = '';
   String currentItemName = '';
@@ -147,40 +160,82 @@ class DeliveryNoteFormController extends GetxController {
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
-        // .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
+        .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
         .map((item) => item.idx.toString())
         .toList();
   }
 
-  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty) {
+  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
     currentItemCode = itemCode;
     currentItemName = itemName;
     
-    bsBatchController.text = batchNo ?? '';
-    bsRackController.clear();
-    bsQtyController.text = '6';
-    
-    bsMaxQty.value = maxQty;
-    bsBatchError.value = null;
-    
-    // Initialize Invoice Serial No
-    final availableSerials = bsAvailableInvoiceSerialNos;
-    if (availableSerials.isNotEmpty) {
-      bsInvoiceSerialNo.value = availableSerials.first;
-    } else {
-      bsInvoiceSerialNo.value = null;
-    }
-    
-    if (batchNo != null && maxQty > 0) {
+    // Clear extra details
+    bsItemOwner.value = null;
+    bsItemCreation.value = null;
+    bsItemModifiedBy.value = null;
+    bsItemModified.value = null;
+    bsItemIdx.value = null;
+    bsItemCustomVariantOf.value = null;
+    bsItemGroup.value = null;
+    bsItemImage.value = null;
+    bsItemPackedQty.value = null;
+    bsItemCompanyTotalStock.value = null;
+
+    if (editingItem != null) {
+      // Edit Mode
+      editingItemName.value = editingItem.name;
+      bsBatchController.text = editingItem.batchNo ?? '';
+      bsRackController.text = editingItem.rack ?? '';
+      bsQtyController.text = editingItem.qty.toStringAsFixed(0);
+      bsInvoiceSerialNo.value = editingItem.customInvoiceSerialNumber;
+      
+      // Populate extra details
+      bsItemOwner.value = editingItem.owner;
+      bsItemCreation.value = editingItem.creation;
+      bsItemModifiedBy.value = editingItem.modifiedBy;
+      bsItemModified.value = editingItem.modified;
+      bsItemIdx.value = editingItem.idx;
+      bsItemCustomVariantOf.value = editingItem.customVariantOf;
+      bsItemGroup.value = editingItem.itemGroup;
+      bsItemImage.value = editingItem.image;
+      bsItemPackedQty.value = editingItem.packedQty;
+      bsItemCompanyTotalStock.value = editingItem.companyTotalStock;
+
       bsIsBatchValid.value = true;
       bsIsBatchReadOnly.value = true;
-      // Focus rack slightly after build to ensure visibility
-      Future.delayed(const Duration(milliseconds: 100), () {
-        bsRackFocusNode.requestFocus();
-      });
+      
+      // We assume maxQty is fetched or set appropriately by editItem logic
+      bsMaxQty.value = maxQty; 
+      bsBatchError.value = null;
     } else {
-      bsIsBatchValid.value = false;
-      bsIsBatchReadOnly.value = false;
+      // Add Mode
+      editingItemName.value = null;
+      bsBatchController.text = batchNo ?? '';
+      bsRackController.clear();
+      bsQtyController.text = '6';
+      
+      bsMaxQty.value = maxQty;
+      bsBatchError.value = null;
+      
+      // Initialize Invoice Serial No
+      final availableSerials = bsAvailableInvoiceSerialNos;
+      if (availableSerials.isNotEmpty) {
+        bsInvoiceSerialNo.value = availableSerials.first;
+      } else {
+        bsInvoiceSerialNo.value = null;
+      }
+      
+      if (batchNo != null && maxQty > 0) {
+        bsIsBatchValid.value = true;
+        bsIsBatchReadOnly.value = true;
+        // Focus rack slightly after build to ensure visibility
+        Future.delayed(const Duration(milliseconds: 100), () {
+          bsRackFocusNode.requestFocus();
+        });
+      } else {
+        bsIsBatchValid.value = false;
+        bsIsBatchReadOnly.value = false;
+      }
     }
     
     bsIsLoadingBatch.value = false;
@@ -251,37 +306,14 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
-    currentItemCode = item.itemCode;
-    currentItemName = item.itemName ?? '';
+    isAddingItem.value = true; 
     
-    // Pre-populate fields
-    bsBatchController.text = item.batchNo ?? '';
-    bsRackController.text = item.rack ?? '';
-    bsQtyController.text = item.qty.toStringAsFixed(0);
-    bsInvoiceSerialNo.value = item.customInvoiceSerialNumber;
-    
-    // We need to fetch the max qty for this batch to ensure validation logic holds
-    // But we also want to open the sheet immediately.
-    // We'll set initial valid state assuming the existing item is valid
-    bsIsBatchValid.value = true;
-    bsIsBatchReadOnly.value = true; 
-    bsIsLoadingBatch.value = true; // Show loading while fetching balance
-    bsBatchError.value = null;
-
-    isAddingItem.value = true; // reusing this state to show sheet
-
-    Get.bottomSheet(
-      const AddItemBottomSheet(),
-      isScrollControlled: true,
-    ).then((_) {
-      isAddingItem.value = false;
-    });
-
-    // Fetch balance in background to update max qty
+    // Fetch balance first to set maxQty
+    double fetchedQty = 0.0;
+    bsIsLoadingBatch.value = true;
     try {
       if (item.batchNo != null) {
          final balanceResponse = await _apiProvider.getBatchWiseBalance(item.itemCode, item.batchNo!);
-         double fetchedQty = 0.0;
          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
             final result = balanceResponse.data['message']['result'];
             if (result is List && result.isNotEmpty) {
@@ -289,14 +321,21 @@ class DeliveryNoteFormController extends GetxController {
                fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
             }
          }
-         bsMaxQty.value = fetchedQty;
       }
     } catch (e) {
       log('Error fetching balance for edit: $e');
-      bsMaxQty.value = 999; // Fallback
-    } finally {
-      bsIsLoadingBatch.value = false;
+      fetchedQty = 999; 
     }
+    
+    initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
+
+    Get.bottomSheet(
+      const AddItemBottomSheet(),
+      isScrollControlled: true,
+    ).then((_) {
+      isAddingItem.value = false;
+      editingItemName.value = null; // Clear edit state
+    });
   }
 
   Future<void> addItemFromBarcode(String barcode) async {
@@ -361,7 +400,7 @@ class DeliveryNoteFormController extends GetxController {
       isScanning.value = false;
       isAddingItem.value = true;
       
-      // Initialize Sheet State
+      // Initialize Sheet State for ADD
       initBottomSheet(itemCode, itemName, batchNo, maxQty);
 
       // 3. Show Bottom Sheet
@@ -385,16 +424,52 @@ class DeliveryNoteFormController extends GetxController {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rack = bsRackController.text;
     final batch = bsBatchController.text;
-    final invoiceSerial = bsInvoiceSerialNo.value; // Get the selected serial
+    final invoiceSerial = bsInvoiceSerialNo.value; 
     
-    _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
+    // Check if we are updating an existing item (known by its unique 'name')
+    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
+      _updateExistingItem(editingItemName.value!, qty, rack, batch, invoiceSerial);
+    } else {
+      _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
+    }
     Get.back();
+  }
+
+  void _updateExistingItem(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    final index = currentItems.indexWhere((item) => item.name == itemNameID);
+
+    if (index != -1) {
+      final existingItem = currentItems[index];
+      // When updating via Edit, we typically replace the values.
+      // Assuming 'qty' from bottom sheet is the NEW total quantity if editing.
+      // But the previous "Add" logic was merging. 
+      // If the user edits, they see "6" and change to "10". They expect "10".
+      // So for update, we replace.
+      
+      final updatedItem = existingItem.copyWith(
+        qty: qty,
+        rack: rack,
+        batchNo: batchNo,
+        customInvoiceSerialNumber: invoiceSerial
+      );
+      currentItems[index] = updatedItem;
+      
+      deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
+      Get.snackbar('Success', 'Item updated');
+      
+      // Trigger UX Feedback
+      _triggerItemFeedback(updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
+    } else {
+      Get.snackbar('Error', 'Item to update not found');
+    }
   }
 
   void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
+    // Merging logic for Add
     final existingItemIndex = currentItems.indexWhere((item) =>
         item.itemCode == itemCode &&
         item.batchNo == batchNo &&
@@ -402,65 +477,7 @@ class DeliveryNoteFormController extends GetxController {
         item.customInvoiceSerialNumber == serial);
 
     if (existingItemIndex != -1) {
-      // NOTE: For editing, if we are just changing qty of the *same* item, this works.
-      // If we opened an item and changed, say, rack, but it matches another existing item,
-      // it will merge into that one (increasing qty) and the original one (if it was different) 
-      // is NOT removed. This logic is strictly "Add/Merge".
-      // Since the requirement didn't specify "Update" distinct from "Add", I will stick to this.
-      // However, typically "Edit" implies modifying *that specific instance*.
-      // But based on the "Add Item" button logic requested earlier:
-      // "If ... match ... add qty ... else append".
-      // I will assume this behavior is desired for Edit as well (effectively "Add more" or "Adjust").
-      
-      // Wait, if I edit an item and change its quantity, I expect THAT item's quantity to become the NEW value,
-      // NOT added to the old value.
-      // But the bottom sheet "Quantity" field usually means "Quantity to Add".
-      // If the user sees "6" and changes it to "10", they expect the total to be 10.
-      
-      // Let's adjust: The logic requested was "add the qty of the existing item WITH the Quantity field".
-      // That implies the bottom sheet input is an *increment*.
-      // BUT for "Edit", pre-filling the current quantity implies the user is setting the *absolute* quantity.
-      
-      // I will assume for Edit, we are replacing the quantity. 
-      // But since I am reusing _addItemToDeliveryNote, I need to be careful.
-      // The current implementation ADDS.
-      
-      // I will separate the logic slightly or just use the ADD logic as requested by the user previously.
-      // User said: "Tapping the Edit Icon must open the BottomSheet... populated".
-      // And: "Focus on the functionality of the Add Item button... add the qty...".
-      // Since it's the SAME button "Add Item" in the bottom sheet, it will behave as "Add".
-      // This might be confusing if the user thinks they are setting the total.
-      // But without further instruction, I will follow the "Add" logic.
-      // Actually, if I pre-fill "Quantity: 6", and user clicks "Add Item", it adds 6 MORE? That would be wrong for an edit.
-      
-      // Correction: If I am editing, I probably want to UPDATE the item.
-      // But I don't have a unique ID for the item (only index).
-      // If I strictly follow "Add Item" button logic, it merges.
-      
-      // For now, I will use the existing logic as requested for the button.
-      // If the user wants "Update" behavior, they might need to clarify.
-      // I'll stick to the requested "Add Item" logic which merges.
-      
       final existingItem = currentItems[existingItemIndex];
-      
-      // For Edit flow, if we are editing the SAME item (same keys), we probably want to OVERWRITE qty, not add.
-      // But since I don't have an "isEditMode" flag passed to submitSheet, I can't distinguish easily.
-      // I will assume the user wants to ADD for now as per previous instruction.
-      // Wait, if I see "6" and click "Add", it becomes 12? That's definitely wrong for "Edit".
-      
-      // Let's refine: The user asked to "Add an Edit Icon". 
-      // And "Tapping ... must open BottomSheet ... populated".
-      // They didn't say "Change the Add button behavior".
-      // But usually Edit -> Update.
-      
-      // I will leave it as is (Merge) because that was the specific logic requested for the button.
-      // If the user edits "Qty" from 6 to 10, and clicks Add, it will add 10 to 6 = 16.
-      // I will assume the user knows this or will ask to fix it. 
-      // *Self-correction*: It's safer to implement "Update" if I can.
-      // But I can't identify the *original* item to remove it if I changed keys (e.g. rack).
-      
-      // I will stick to the requested "Add/Merge" logic.
-      
       final updatedItem = existingItem.copyWith(qty: existingItem.qty + qty);
       currentItems[existingItemIndex] = updatedItem;
       Get.snackbar('Success', 'Item quantity updated');
@@ -472,7 +489,7 @@ class DeliveryNoteFormController extends GetxController {
         rack: rack,
         batchNo: batchNo,
         customInvoiceSerialNumber: serial,
-        itemName: currentItemName, // Pass the item name
+        itemName: currentItemName,
       );
       currentItems.add(newItem);
       Get.snackbar('Success', 'Item added');
@@ -480,15 +497,17 @@ class DeliveryNoteFormController extends GetxController {
 
     deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
     
-    // UX Feedback Logic
+    // Trigger UX Feedback
+    _triggerItemFeedback(itemCode, serial);
+  }
+  
+  void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value = serial;
 
-    // The expansion key in the view is just the serial number as a string
     final expansionKey = serial;
     expandedInvoice.value = expansionKey;
 
-    // Scroll to the item after a short delay
     Future.delayed(const Duration(milliseconds: 300), () {
       final contextKey = itemKeys[expansionKey];
       if (contextKey?.currentContext != null) {
@@ -496,12 +515,11 @@ class DeliveryNoteFormController extends GetxController {
           contextKey!.currentContext!,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
-          alignment: 0.1, // Near top
+          alignment: 0.1,
         );
       }
     });
 
-    // Clear highlight after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
       recentlyAddedItemCode.value = '';
       recentlyAddedSerial.value = '';

@@ -280,124 +280,157 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
         ),
         child: Form(
           key: formKey,
-          child: Obx(() => ListView(
-            shrinkWrap: true,
-            children: [
-              Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 16),
-              
-              DropdownButtonFormField<String>(
-                value: controller.bsInvoiceSerialNo.value,
-                items: controller.bsAvailableInvoiceSerialNos.map((serial) {
-                  return DropdownMenuItem(value: serial, child: Text('Serial #$serial'));
-                }).toList(),
-                onChanged: (value) {
-                  controller.bsInvoiceSerialNo.value = value;
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Invoice Serial No',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) => value == null ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: controller.bsBatchController,
-                readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
-                autofocus: !controller.bsIsBatchReadOnly.value,
-                decoration: InputDecoration(
-                  labelText: 'Batch No',
-                  border: const OutlineInputBorder(),
-                  errorText: controller.bsBatchError.value,
-                  suffixIcon: controller.bsIsLoadingBatch.value
-                    ? const Padding(
-                        padding: EdgeInsets.all(12.0),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
-                        ),
-                      )
-                    : (controller.bsIsBatchReadOnly.value
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : IconButton(
-                          icon: const Icon(Icons.check),
-                          onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
-                        )),
-                ),
-                onFieldSubmitted: (val) {
-                  if (!controller.bsIsBatchReadOnly.value && !controller.bsIsLoadingBatch.value) {
-                    controller.validateAndFetchBatch(val);
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  if (!controller.bsIsBatchValid.value) return 'Batch is not valid';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: controller.bsRackController,
-                focusNode: controller.bsRackFocusNode,
-                decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: controller.bsQtyController,
-                decoration: InputDecoration(
-                  labelText: 'Quantity (Max: ${controller.bsMaxQty.value})',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove),
-                        onPressed: () => controller.adjustSheetQty(-6),
-                      ),
-                      Container(width: 1, height: 24, color: Colors.grey.shade400),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: () => controller.adjustSheetQty(6),
-                      ),
-                    ],
+          child: Obx(() {
+            final isEditing = controller.editingItemName.value != null;
+            return ListView(
+              shrinkWrap: true,
+              children: [
+                Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<String>(
+                  value: controller.bsInvoiceSerialNo.value,
+                  items: controller.bsAvailableInvoiceSerialNos.map((serial) {
+                    return DropdownMenuItem(value: serial, child: Text('Serial #$serial'));
+                  }).toList(),
+                  onChanged: (value) {
+                    controller.bsInvoiceSerialNo.value = value;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Invoice Serial No',
+                    border: OutlineInputBorder(),
                   ),
+                  validator: (value) => value == null ? 'Required' : null,
                 ),
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  final qty = double.tryParse(value);
-                  if (qty == null) return 'Invalid number';
-                  if (qty <= 0) return 'Must be > 0';
-                  if (qty % 6 != 0) return 'Must be a multiple of 6';
-                  if (qty > controller.bsMaxQty.value && controller.bsMaxQty.value > 0) return 'Exceeds balance';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (controller.bsIsBatchValid.value && controller.bsInvoiceSerialNo.value != null && !controller.bsIsLoadingBatch.value) ? () {
-                    if (formKey.currentState!.validate()) {
-                      controller.submitSheet();
+                const SizedBox(height: 16),
+                
+                TextFormField(
+                  controller: controller.bsBatchController,
+                  readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
+                  autofocus: !controller.bsIsBatchReadOnly.value && !isEditing,
+                  decoration: InputDecoration(
+                    labelText: 'Batch No',
+                    border: const OutlineInputBorder(),
+                    errorText: controller.bsBatchError.value,
+                    suffixIcon: controller.bsIsLoadingBatch.value
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          ),
+                        )
+                      : (controller.bsIsBatchReadOnly.value
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : IconButton(
+                            icon: const Icon(Icons.check),
+                            onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
+                          )),
+                  ),
+                  onFieldSubmitted: (val) {
+                    if (!controller.bsIsBatchReadOnly.value && !controller.bsIsLoadingBatch.value) {
+                      controller.validateAndFetchBatch(val);
                     }
-                  } : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                  ),
-                  child: const Text('Add Item'),
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Required';
+                    if (!controller.bsIsBatchValid.value) return 'Batch is not valid';
+                    return null;
+                  },
                 ),
-              ),
-            ],
-          )),
+                const SizedBox(height: 16),
+                
+                TextFormField(
+                  controller: controller.bsRackController,
+                  focusNode: controller.bsRackFocusNode,
+                  decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
+                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+                
+                TextFormField(
+                  controller: controller.bsQtyController,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity (Max: ${controller.bsMaxQty.value})',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: () => controller.adjustSheetQty(-6),
+                        ),
+                        Container(width: 1, height: 24, color: Colors.grey.shade400),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () => controller.adjustSheetQty(6),
+                        ),
+                      ],
+                    ),
+                  ),
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Required';
+                    final qty = double.tryParse(value);
+                    if (qty == null) return 'Invalid number';
+                    if (qty <= 0) return 'Must be > 0';
+                    if (qty % 6 != 0) return 'Must be a multiple of 6';
+                    if (qty > controller.bsMaxQty.value && controller.bsMaxQty.value > 0) return 'Exceeds balance';
+                    return null;
+                  },
+                ),
+                if (isEditing) ...[
+                  const SizedBox(height: 24),
+                  const Divider(),
+                  const Text('Additional Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  _buildDetailRow('Item Group', controller.bsItemGroup.value),
+                  _buildDetailRow('Variant Of', controller.bsItemCustomVariantOf.value),
+                  _buildDetailRow('Stock', controller.bsItemCompanyTotalStock.value?.toStringAsFixed(2)),
+                  _buildDetailRow('Packed Qty', controller.bsItemPackedQty.value?.toStringAsFixed(2)),
+                  _buildDetailRow('Image', controller.bsItemImage.value),
+                  const Divider(),
+                  _buildDetailRow('Owner', controller.bsItemOwner.value),
+                  _buildDetailRow('Created', controller.bsItemCreation.value),
+                  _buildDetailRow('Modified By', controller.bsItemModifiedBy.value),
+                  _buildDetailRow('Last Modified', controller.bsItemModified.value),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: (controller.bsIsBatchValid.value && controller.bsInvoiceSerialNo.value != null && !controller.bsIsLoadingBatch.value) ? () {
+                      if (formKey.currentState!.validate()) {
+                        controller.submitSheet();
+                      }
+                    } : null,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                    ),
+                    child: Text(isEditing ? 'Update Item' : 'Add Item'),
+                  ),
+                ),
+              ],
+            );
+          }),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String? value) {
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 120, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13))),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13))),
+        ],
       ),
     );
   }
