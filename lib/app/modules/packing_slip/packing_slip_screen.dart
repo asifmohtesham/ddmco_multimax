@@ -72,6 +72,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           return const Center(child: Text('No packing slips found.'));
         }
 
+        final grouped = controller.groupedPackingSlips;
+        final groupKeys = grouped.keys.toList();
+
         return RefreshIndicator(
           onRefresh: () async {
             await controller.fetchPackingSlips(clear: true);
@@ -79,9 +82,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           child: Scrollbar(
             child: ListView.builder(
               controller: _scrollController,
-              itemCount: controller.packingSlips.length + (controller.hasMore.value ? 1 : 0),
+              itemCount: groupKeys.length + (controller.hasMore.value ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index >= controller.packingSlips.length) {
+                if (index >= groupKeys.length) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(8.0),
@@ -89,8 +92,54 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                     ),
                   );
                 }
-                final slip = controller.packingSlips[index];
-                return PackingSlipCard(slip: slip);
+
+                final groupKey = groupKeys[index];
+                final slips = grouped[groupKey]!;
+                final isExpanded = controller.expandedGroup.value == groupKey; // Use a separate expansion state for groups if needed, or just always show
+
+                // Using a custom card for the group header + items
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Group Header
+                      Container(
+                        padding: const EdgeInsets.all(12.0),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.description_outlined, size: 20, color: Colors.blueGrey),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                groupKey, 
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey),
+                              ),
+                            ),
+                            Text('${slips.length} slips', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // List of Slips in this group
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: slips.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, slipIndex) {
+                          final slip = slips[slipIndex];
+                          return PackingSlipListTile(slip: slip);
+                        },
+                      ),
+                    ],
+                  ),
+                );
               },
             ),
           ),
@@ -100,11 +149,12 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   }
 }
 
-class PackingSlipCard extends StatelessWidget {
+// Renamed and simplified for use inside the group
+class PackingSlipListTile extends StatelessWidget {
   final dynamic slip;
   final PackingSlipController controller = Get.find();
 
-  PackingSlipCard({super.key, required this.slip});
+  PackingSlipListTile({super.key, required this.slip});
 
   String _getRelativeTime(String? dateString) {
     if (dateString == null || dateString.isEmpty) return '';
@@ -129,129 +179,47 @@ class PackingSlipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => controller.toggleExpand(slip.name),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Row 1: PO Number (or Name) + Status
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      slip.customPoNo != null && slip.customPoNo.isNotEmpty ? slip.customPoNo : slip.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  StatusPill(status: slip.status),
-                ],
-              ),
-              const SizedBox(height: 6),
-              
-              // Row 2: Owner + Time
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          slip.owner ?? 'Unknown',
-                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    _getRelativeTime(slip.creation),
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              
-              // Row 3: Case Range (if available)
-              if (slip.fromCaseNo != null && slip.toCaseNo != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.blue.shade100),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 14, color: Colors.blue.shade700),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Packages: ${slip.fromCaseNo} - ${slip.toCaseNo}',
-                        style: TextStyle(
-                          color: Colors.blue.shade900,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+    return InkWell(
+      onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {'name': slip.name, 'mode': 'view'}),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    slip.name, 
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
-              
-              // Expansion Content
-              Obx(() {
-                final isCurrentlyExpanded = controller.expandedSlipName.value == slip.name;
-                return AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: Container(
-                    child: !isCurrentlyExpanded
-                        ? const SizedBox.shrink()
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 12),
-                              const Divider(height: 1),
-                              const SizedBox(height: 12),
-                              // Expanded details (can add more here if needed, keeping it simple for now)
-                              if (slip.customPoNo != null && slip.customPoNo != slip.name)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text('Document: ${slip.name}', style: const TextStyle(color: Colors.grey)),
-                                ),
-                              if (slip.deliveryNote.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text('Linked DN: ${slip.deliveryNote}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                                ),
-                              
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {'name': slip.name, 'mode': 'view'}),
-                                    child: const Text('View Full Details'),
-                                  ),
-                                ],
-                              )
-                            ],
-                          ),
-                  ),
-                );
-              }),
-            ],
-          ),
+                StatusPill(status: slip.status),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Text(
+                  'Cases: ${slip.fromCaseNo ?? "?"} - ${slip.toCaseNo ?? "?"}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13),
+                ),
+                const Spacer(),
+                Text(
+                  _getRelativeTime(slip.creation),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
+              ],
+            ),
+            if (slip.owner != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  'Created by ${slip.owner}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
+          ],
         ),
       ),
     );

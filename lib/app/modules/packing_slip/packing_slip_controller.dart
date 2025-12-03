@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:collection/collection.dart';
 import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
 import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
@@ -15,6 +16,7 @@ class PackingSlipController extends GetxController {
   int _currentPage = 0;
 
   var expandedSlipName = ''.obs;
+  var expandedGroup = ''.obs; // To track expanded groups
   
   final activeFilters = <String, dynamic>{}.obs;
   var sortField = 'creation'.obs;
@@ -24,7 +26,6 @@ class PackingSlipController extends GetxController {
   void onInit() {
     super.onInit();
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
-    // Assuming Packing Slip drawer index is handled elsewhere or I should set it if known.
     // _homeController.selectedDrawerIndex.value = ...; 
     fetchPackingSlips();
   }
@@ -100,5 +101,33 @@ class PackingSlipController extends GetxController {
     } else {
       expandedSlipName.value = name;
     }
+  }
+
+  void toggleGroup(String key) {
+    if (expandedGroup.value == key) {
+      expandedGroup.value = '';
+    } else {
+      expandedGroup.value = key;
+    }
+  }
+
+  Map<String, List<PackingSlip>> get groupedPackingSlips {
+    // Group by customPoNo, or fallback to deliveryNote, or "Unknown"
+    final grouped = groupBy(packingSlips, (PackingSlip slip) {
+      if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
+        return slip.customPoNo!;
+      }
+      if (slip.deliveryNote.isNotEmpty) {
+        return slip.deliveryNote;
+      }
+      return 'Other';
+    });
+
+    // Sort items within each group by fromCaseNo
+    grouped.forEach((key, list) {
+      list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
+    });
+
+    return grouped;
   }
 }
