@@ -39,55 +39,69 @@ class ItemGroupCard extends StatelessWidget {
           width: 1,
         ),
       ),
-      child: ExpansionTile(
-        initiallyExpanded: isExpanded,
-        onExpansionChanged: (expanded) => onToggle(),
-        title: Text(
-          '$serialNo: $itemName',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4.0),
-            child: Text(
+      child: Column(
+        children: [
+          ListTile(
+            onTap: onToggle,
+            title: Text(
+              '$serialNo: $itemName',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
                 isCompleted ? 'Completed' : 'Pending',
                 style: TextStyle(
-                    color: isCompleted ? Colors.green : Colors.orange.shade700,
-                    fontWeight: FontWeight.w500,
-                ),
-            ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularPercentIndicator(
-                radius: 22.0,
-                lineWidth: 4.0,
-                percent: percent,
-                center: Text(
-                '${(percent * 100).toInt()}%',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                ),
-                progressColor: isCompleted ? Colors.green : Colors.orange,
-                backgroundColor: Colors.grey.shade300,
-            ),
-            const SizedBox(width: 8),
-            AnimatedExpandIcon(isExpanded: isExpanded),
-          ],
-        ),
-        children: <Widget>[
-          const Divider(height: 1, indent: 16, endIndent: 16),
-           Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildInfoColumn('Required', totalQty.toStringAsFixed(0)),
-                    _buildInfoColumn('Scanned', scannedQty.toStringAsFixed(0)),
-                    _buildInfoColumn('Rate', rate.toStringAsFixed(2)),
-                  ],
+                  color: isCompleted ? Colors.green : Colors.orange.shade700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-          ...children,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularPercentIndicator(
+                  radius: 22.0,
+                  lineWidth: 4.0,
+                  percent: percent,
+                  center: Text(
+                    '${(percent * 100).toInt()}%',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                  progressColor: isCompleted ? Colors.green : Colors.orange,
+                  backgroundColor: Colors.grey.shade300,
+                ),
+                const SizedBox(width: 8),
+                AnimatedExpandIcon(isExpanded: isExpanded),
+              ],
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: Container(
+              child: !isExpanded
+                  ? const SizedBox.shrink()
+                  : Column(
+                      children: [
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildInfoColumn('Required', totalQty.toStringAsFixed(0)),
+                              _buildInfoColumn('Scanned', scannedQty.toStringAsFixed(0)),
+                              _buildInfoColumn('Rate', rate.toStringAsFixed(2)),
+                            ],
+                          ),
+                        ),
+                        ...children,
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );

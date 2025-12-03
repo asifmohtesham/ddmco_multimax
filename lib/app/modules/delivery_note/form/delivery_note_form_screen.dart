@@ -152,6 +152,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               return const Center(child: CircularProgressIndicator());
             }
 
+            // Access the expandedInvoice value here to ensure Obx subscription
+            final currentExpandedKey = controller.expandedInvoice.value;
+
             final posUpload = controller.posUpload.value;
             final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
 
@@ -210,7 +213,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 return Container(
                   key: controller.itemKeys[expansionKey], // Attach Key
                   child: ItemGroupCard(
-                    isExpanded: controller.expandedInvoice.value == expansionKey,
+                    isExpanded: currentExpandedKey == expansionKey,
                     serialNo: posItem.idx,
                     itemName: posItem.itemName,
                     rate: posItem.rate,
