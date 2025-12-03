@@ -42,7 +42,16 @@ class DeliveryNoteItemCard extends StatelessWidget {
             ListTile(
               title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(item.batchNo ?? ''),
-              trailing: AnimatedExpandIcon(isExpanded: isExpanded),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () => controller.editItem(item),
+                  ),
+                  AnimatedExpandIcon(isExpanded: isExpanded),
+                ],
+              ),
               onTap: () => controller.toggleExpand(item.itemCode),
             ),
             AnimatedSize(
