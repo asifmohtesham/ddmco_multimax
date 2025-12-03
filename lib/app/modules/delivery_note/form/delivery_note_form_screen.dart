@@ -413,22 +413,56 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   const Text('Additional Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
                   
-                  // Image
+                  // Image Tile with Full Screen View
                   if (controller.bsItemImage.value != null && controller.bsItemImage.value!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16.0),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8.0),
-                        child: Image.network(
-                          'https://erp.multimax.cloud${controller.bsItemImage.value}', // Assuming relative path
-                          height: 150,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            height: 150,
-                            color: Colors.grey.shade200,
+                      child: InkWell(
+                        onTap: () {
+                          final imageUrl = 'https://erp.multimax.cloud${controller.bsItemImage.value}';
+                          Get.dialog(
+                            Stack(
+                              children: [
+                                InteractiveViewer(
+                                  child: Center(
+                                    child: Image.network(imageUrl),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 30,
+                                  right: 20,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                                    onPressed: () => Get.back(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            barrierColor: Colors.black.withOpacity(0.9),
+                          );
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8.0),
+                          child: Stack(
                             alignment: Alignment.center,
-                            child: const Text('Image load failed', style: TextStyle(color: Colors.grey)),
+                            children: [
+                              Image.network(
+                                'https://erp.multimax.cloud${controller.bsItemImage.value}', 
+                                height: 150,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  height: 150,
+                                  color: Colors.grey.shade200,
+                                  alignment: Alignment.center,
+                                  child: const Text('Image load failed', style: TextStyle(color: Colors.grey)),
+                                ),
+                              ),
+                              Container(
+                                color: Colors.black26,
+                                child: const Icon(Icons.zoom_in, color: Colors.white, size: 40),
+                              ),
+                            ],
                           ),
                         ),
                       ),
