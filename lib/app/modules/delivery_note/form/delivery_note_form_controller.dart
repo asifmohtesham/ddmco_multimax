@@ -371,7 +371,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${widget.itemCode} - ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('${widget.itemCode}: ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
               
               TextFormField(
