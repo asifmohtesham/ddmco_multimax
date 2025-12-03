@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
+import 'package:ddmco_multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -43,52 +44,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterDialog(BuildContext context) {
-    final customerController = TextEditingController(text: controller.activeFilters['customer']);
-    String? selectedStatus = controller.activeFilters['status'];
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter Delivery Notes'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: customerController,
-              decoration: const InputDecoration(labelText: 'Customer'),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: ['Draft', 'Submitted', 'Completed', 'Cancelled']
-                  .map((status) => DropdownMenuItem(value: status, child: Text(status)))
-                  .toList(),
-              onChanged: (value) => selectedStatus = value,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.clearFilters();
-              Get.back();
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final filters = {
-                if (customerController.text.isNotEmpty) 'customer': customerController.text,
-                if (selectedStatus != null) 'status': selectedStatus,
-              };
-              controller.applyFilters(filters);
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
+  void _showFilterBottomSheet(BuildContext context) {
+    Get.bottomSheet(
+      const FilterBottomSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 
@@ -147,8 +107,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         title: const Text('Delivery Notes'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _showFilterDialog(context),
+            icon: const Icon(Icons.filter_list), // Changed icon to list/sort/filter
+            onPressed: () => _showFilterBottomSheet(context),
           ),
         ],
       ),
@@ -493,14 +453,14 @@ class DeliveryNoteCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   if (detailed.status == 'Draft') ...[
-                    TextButton(
+                    OutlinedButton.icon(
                       onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
-                      child: const Text('Edit'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                      child: const Text('Submit'),
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Edit'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        side: const BorderSide(color: Colors.blue),
+                      ),
                     ),
                   ] else ...[
                     TextButton(

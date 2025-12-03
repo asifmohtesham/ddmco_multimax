@@ -1,3 +1,4 @@
+
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
@@ -21,6 +22,8 @@ class DeliveryNoteController extends GetxController {
   final _detailedNotesCache = <String, DeliveryNote>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
+  var sortField = 'creation'.obs;
+  var sortOrder = 'desc'.obs;
 
   // For POS Upload selection dialog
   var isFetchingPosUploads = false.obs;
@@ -46,6 +49,12 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
+  void setSort(String field, String order) {
+    sortField.value = field;
+    sortOrder.value = order;
+    fetchDeliveryNotes(isLoadMore: false, clear: true);
+  }
+
   Future<void> fetchDeliveryNotes({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
@@ -59,11 +68,27 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
+      // Need to update provider to accept orderBy if not already.
+      // Assuming we need to pass orderBy as a separate parameter or hack it into filters?
+      // Best to update provider signature.
+      // But looking at ApiProvider.getDocumentList, it accepts orderBy.
+      // DeliveryNoteProvider.getDeliveryNotes calls _apiProvider.getDeliveryNotes which calls getDocumentList.
+      // I need to update DeliveryNoteProvider to pass orderBy.
+      
+      // Since I can't update provider signature easily here without reading/writing it, 
+      // I'll assume I'll update it next or it already supports it if I pass it.
+      // Actually, I'll update the provider first to be sure.
+      // Wait, I am in the controller. I will call provider with orderBy.
+      
       final response = await _provider.getDeliveryNotes(
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
+        // Passing orderBy directly if provider supports it or I update it.
+        // Let's assume I will update the provider to accept named 'orderBy'.
+        orderBy: '${sortField.value} ${sortOrder.value}',
       );
+      
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newNotes = data.map((json) => DeliveryNote.fromJson(json)).toList();
