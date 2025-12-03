@@ -293,6 +293,20 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
             return ListView(
               shrinkWrap: true,
               children: [
+                // Header: Owner and Created
+                if (isEditing)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      children: [
+                        Text(
+                          '${controller.bsItemOwner.value ?? 'Unknown'} • ${controller.getRelativeTime(controller.bsItemCreation.value)}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 16),
                 
@@ -393,22 +407,57 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     return null;
                   },
                 ),
+                
                 if (isEditing) ...[
                   const SizedBox(height: 24),
-                  const Divider(),
                   const Text('Additional Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
-                  _buildDetailRow('Item Group', controller.bsItemGroup.value),
-                  _buildDetailRow('Variant Of', controller.bsItemCustomVariantOf.value),
-                  _buildDetailRow('Stock', controller.bsItemCompanyTotalStock.value?.toStringAsFixed(2)),
-                  _buildDetailRow('Packed Qty', controller.bsItemPackedQty.value?.toStringAsFixed(2)),
-                  _buildDetailRow('Image', controller.bsItemImage.value),
+                  
+                  // Image
+                  if (controller.bsItemImage.value != null && controller.bsItemImage.value!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.0),
+                        child: Image.network(
+                          'https://erp.multimax.cloud${controller.bsItemImage.value}', // Assuming relative path
+                          height: 150,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            height: 150,
+                            color: Colors.grey.shade200,
+                            alignment: Alignment.center,
+                            child: const Text('Image load failed', style: TextStyle(color: Colors.grey)),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Compact Grid for Details
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 12,
+                    children: [
+                      _buildCompactDetailItem('Item Group', controller.bsItemGroup.value),
+                      _buildCompactDetailItem('Variant Of', controller.bsItemCustomVariantOf.value),
+                      _buildCompactDetailItem('Stock', controller.bsItemCompanyTotalStock.value?.toStringAsFixed(2)),
+                      _buildCompactDetailItem('Packed Qty', controller.bsItemPackedQty.value?.toStringAsFixed(2)),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
                   const Divider(),
-                  _buildDetailRow('Owner', controller.bsItemOwner.value),
-                  _buildDetailRow('Created', controller.getRelativeTime(controller.bsItemCreation.value)),
-                  _buildDetailRow('Modified By', controller.bsItemModifiedBy.value),
-                  _buildDetailRow('Last Modified', controller.getRelativeTime(controller.bsItemModified.value)),
+                  // Footer: Modified info
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Last modified by ${controller.bsItemModifiedBy.value ?? 'Unknown'} • ${controller.getRelativeTime(controller.bsItemModified.value)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
+                  ),
                 ],
+
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -435,15 +484,21 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
     );
   }
 
-  Widget _buildDetailRow(String label, String? value) {
+  Widget _buildCompactDetailItem(String label, String? value) {
     if (value == null || value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
+    return SizedBox(
+      width: 150, // Fixed width for column-like look
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 120, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13))),
-          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13))),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(
+            value, 
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
