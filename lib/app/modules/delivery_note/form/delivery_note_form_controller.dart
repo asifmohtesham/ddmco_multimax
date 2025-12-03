@@ -276,8 +276,12 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
   final qtyController = TextEditingController(text: '6');
   final formKey = GlobalKey<FormState>();
 
+  final _rackFocusNode = FocusNode();
+  late final VoidCallback _rackListener;
+
   bool isBatchReadOnly = false;
   bool isLoadingBatch = false;
+  bool _isBatchValid = false;
   double maxQty = 0.0;
   String? batchError;
 
@@ -287,13 +291,19 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
     batchController = TextEditingController(text: widget.initialBatchNo ?? '');
     isBatchReadOnly = widget.initialBatchNo != null;
     maxQty = widget.initialMaxQty;
+    _isBatchValid = widget.initialBatchNo != null && widget.initialMaxQty > 0;
+
+    _rackListener = () => setState(() {});
+    rackController.addListener(_rackListener);
   }
 
   @override
   void dispose() {
     batchController.dispose();
+    rackController.removeListener(_rackListener);
     rackController.dispose();
     qtyController.dispose();
+    _rackFocusNode.dispose();
     super.dispose();
   }
 
@@ -332,7 +342,18 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
       setState(() {
         maxQty = fetchedQty;
         isLoadingBatch = false;
+        if (fetchedQty > 0) {
+          _isBatchValid = true;
+          isBatchReadOnly = true; // Lock the field
+          batchError = null;
+        } else {
+          _isBatchValid = false;
+          batchError = 'Batch has no stock';
+        }
       });
+      if (_isBatchValid) {
+        _rackFocusNode.requestFocus();
+      }
 
     } catch (e, stackTrace) {
       final errorMessage = 'Failed to validate batch: ${e.toString()}';
@@ -341,6 +362,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
         isLoadingBatch = false;
         batchError = 'Invalid Batch';
         maxQty = 0.0;
+        _isBatchValid = false;
       });
     }
   }
@@ -351,7 +373,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
     
     // Constraints
     if (newQty < 0) newQty = 0; 
-    if (newQty > maxQty) newQty = maxQty; 
+    if (newQty > maxQty && maxQty > 0) newQty = maxQty; 
 
     qtyController.text = newQty.toStringAsFixed(0);
   }
@@ -390,24 +412,28 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
                           child: CircularProgressIndicator(strokeWidth: 2.5),
                         ),
                       )
-                    : (!isBatchReadOnly
-                      ? IconButton(
+                    : (isBatchReadOnly
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : IconButton(
                           icon: const Icon(Icons.check),
                           onPressed: () => _validateAndFetchBatch(batchController.text),
-                        ) 
-                      : null),
+                        )),
                 ),
                 onFieldSubmitted: (val) {
                   if (!isBatchReadOnly && !isLoadingBatch) _validateAndFetchBatch(val);
                 },
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (!_isBatchValid) return 'Batch is not valid';
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               
               TextFormField(
                 controller: rackController,
+                focusNode: _rackFocusNode,
                 decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
-                // Only autofocus rack if batch is already known
                 autofocus: isBatchReadOnly, 
                 validator: (value) => value == null || value.isEmpty ? 'Required' : null,
               ),
@@ -449,8 +475,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  // Disable if loading, maxQty is 0, or batch is empty
-                  onPressed: (!isLoadingBatch && maxQty > 0 && batchController.text.isNotEmpty) ? () {
+                  onPressed: (_isBatchValid && rackController.text.isNotEmpty && !isLoadingBatch) ? () {
                     if (formKey.currentState!.validate()) {
                       widget.onAdd(
                         double.parse(qtyController.text),
