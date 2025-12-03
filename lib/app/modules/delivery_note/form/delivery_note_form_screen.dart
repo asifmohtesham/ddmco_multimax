@@ -25,9 +25,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                Text(name),
                 if (poNo != null && poNo.isNotEmpty)
-                  Text(poNo),
+                  Text(poNo, style: const TextStyle(fontSize: 14, color: Colors.white70)),
               ],
             );
           }),
@@ -196,9 +196,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               itemCount: filteredItems.length,
               itemBuilder: (context, index) {
                 final posItem = filteredItems[index];
-                final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
+                final serialNumber = posItem.idx.toString();
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
-                final expansionKey = '${serialNumber}_$index';
+                final expansionKey = '${posItem.idx}';
 
                 // Register Key
                 if (!controller.itemKeys.containsKey(expansionKey)) {
@@ -206,16 +206,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 }
 
                 final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
-                // final isCompleted = cumulativeQty >= posItem.quantity;
-                // final bgColor = isCompleted ? const Color(0xFFE8F5E9) : null;
 
                 return Container(
                   key: controller.itemKeys[expansionKey], // Attach Key
-                  margin: const EdgeInsets.symmetric(vertical: 4.0),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(14.0),
-                  ),
                   child: ItemGroupCard(
                     isExpanded: controller.expandedInvoice.value == expansionKey,
                     serialNo: posItem.idx,
