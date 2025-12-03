@@ -488,6 +488,37 @@ class DeliveryNoteFormController extends GetxController {
     await _saveDocumentAndReflect(currentItems, itemCode, serial);
   }
 
+  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text('Are you sure you want to delete ${item.itemCode}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Get.back(); // Close dialog
+              _deleteItem(item);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteItem(DeliveryNoteItem item) async {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    currentItems.remove(item);
+    
+    // API Call
+    await _saveDocumentAndReflect(currentItems, item.itemCode, item.customInvoiceSerialNumber ?? '0');
+  }
+
   Future<void> _saveDocumentAndReflect(List<DeliveryNoteItem> updatedItems, String itemCode, String serial) async {
     isSaving.value = true;
     try {
@@ -516,7 +547,7 @@ class DeliveryNoteFormController extends GetxController {
         // Update local model with server response
         deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
         
-        Get.back(); // Close sheet only on success
+        if (Get.isBottomSheetOpen == true) Get.back(); // Close sheet only on success
         Get.snackbar('Success', 'Document saved');
         
         // Trigger UX Feedback
