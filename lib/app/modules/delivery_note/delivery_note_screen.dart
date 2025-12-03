@@ -161,22 +161,27 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           return const Center(child: Text('No delivery notes found.'));
         }
 
-        return Scrollbar(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.deliveryNotes.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.deliveryNotes.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-              final note = controller.deliveryNotes[index];
-              return DeliveryNoteCard(note: note);
-            },
+        return RefreshIndicator(
+          onRefresh: () async {
+            await controller.fetchDeliveryNotes(clear: true);
+          },
+          child: Scrollbar(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: controller.deliveryNotes.length + (controller.hasMore.value ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= controller.deliveryNotes.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                final note = controller.deliveryNotes[index];
+                return DeliveryNoteCard(note: note);
+              },
+            ),
           ),
         );
       }),
