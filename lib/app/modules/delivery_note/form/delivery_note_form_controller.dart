@@ -336,20 +336,35 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) {
-    final newItem = DeliveryNoteItem(
-      itemCode: itemCode,
-      qty: qty,
-      rate: 0.0,
-      rack: rack,
-      batchNo: batchNo,
-      customInvoiceSerialNumber: invoiceSerial ?? '0', // Use the selected serial
-    );
-    
     final currentItems = deliveryNote.value?.items.toList() ?? [];
-    currentItems.add(newItem);
-    
+    final serial = invoiceSerial ?? '0';
+
+    final existingItemIndex = currentItems.indexWhere((item) =>
+        item.itemCode == itemCode &&
+        item.batchNo == batchNo &&
+        item.rack == rack &&
+        item.customInvoiceSerialNumber == serial);
+
+    if (existingItemIndex != -1) {
+      final existingItem = currentItems[existingItemIndex];
+      final updatedItem = existingItem.copyWith(qty: existingItem.qty + qty);
+      currentItems[existingItemIndex] = updatedItem;
+      Get.snackbar('Success', 'Item quantity updated');
+    } else {
+      final newItem = DeliveryNoteItem(
+        itemCode: itemCode,
+        qty: qty,
+        rate: 0.0,
+        rack: rack,
+        batchNo: batchNo,
+        customInvoiceSerialNumber: serial,
+        itemName: currentItemName, // Pass the item name
+      );
+      currentItems.add(newItem);
+      Get.snackbar('Success', 'Item added');
+    }
+
     deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
-    Get.snackbar('Success', 'Item added');
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {

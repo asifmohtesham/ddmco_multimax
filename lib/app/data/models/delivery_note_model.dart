@@ -99,4 +99,28 @@ class DeliveryNoteItem {
       batchNo: json['batch_no'],
     );
   }
+
+  DeliveryNoteItem copyWith({
+    String? itemCode,
+    double? qty,
+    double? rate,
+    String? itemName,
+    String? countryOfOrigin,
+    String? uom,
+    String? customInvoiceSerialNumber,
+    String? rack,
+    String? batchNo,
+  }) {
+    return DeliveryNoteItem(
+      itemCode: itemCode ?? this.itemCode,
+      qty: qty ?? this.qty,
+      rate: rate ?? this.rate,
+      itemName: itemName ?? this.itemName,
+      countryOfOrigin: countryOfOrigin ?? this.countryOfOrigin,
+      uom: uom ?? this.uom,
+      customInvoiceSerialNumber: customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
+      rack: rack ?? this.rack,
+      batchNo: batchNo ?? this.batchNo,
+    );
+  }
 }
