@@ -307,7 +307,25 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     ),
                   ),
 
-                Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${controller.currentItemCode}: ${controller.currentItemName}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Get.back(),
+                      icon: const Icon(Icons.close),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 
                 DropdownButtonFormField<String>(
