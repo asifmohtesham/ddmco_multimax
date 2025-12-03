@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:percent_indicator/linear_percent_indicator.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   const PackingSlipFormScreen({super.key});
@@ -108,7 +109,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             ),
             const SizedBox(height: 16),
             _buildDetailRow('Delivery Note', slip.deliveryNote),
-            _buildDetailRow('Created', _getRelativeTime(slip.creation)), // Use relative time
+            _buildDetailRow('Created', _getRelativeTime(slip.creation)), 
           ],
         ),
       ),
@@ -157,6 +158,20 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final item = items[index];
+        // Fetch required qty from controller (which looks up linked DN)
+        final requiredQty = controller.getRequiredQty(item.dnDetail) ?? 0.0;
+        // Packed qty is what's on this slip. Wait, isn't DN qty the *total* packed?
+        // Usually: Sales Order -> Delivery Note -> Packing Slip?
+        // Or Sales Order -> Packing Slip -> Delivery Note?
+        // ERPNext standard: Delivery Note -> Packing Slip.
+        // So DN has the total item qty to be delivered.
+        // Packing Slip breaks it down.
+        // So required = DN Item Qty. 
+        // But multiple packing slips can exist for one DN.
+        // Ideally, we show "Packed in this slip / Total in DN".
+        
+        final percent = (requiredQty > 0) ? (item.qty / requiredQty).clamp(0.0, 1.0) : 0.0;
+        
         return Card(
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -177,7 +192,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                           style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 12),
                         ),
                       ),
-                    Text('${item.qty} ${item.uom}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    // Text('${item.qty} ${item.uom}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -186,6 +201,32 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   Text(item.itemName, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
                 
                 const SizedBox(height: 12),
+                
+                // Progress Bar
+                if (requiredQty > 0)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Packed: ${item.qty} / ${requiredQty}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          Text('${(percent * 100).toStringAsFixed(0)}%', style: TextStyle(fontSize: 12, color: percent >= 1 ? Colors.green : Colors.orange)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      LinearPercentIndicator(
+                        lineHeight: 8.0,
+                        percent: percent,
+                        backgroundColor: Colors.grey.shade200,
+                        progressColor: percent >= 1 ? Colors.green : Colors.orange,
+                        barRadius: const Radius.circular(4),
+                        padding: EdgeInsets.zero,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+
                 const Divider(height: 1),
                 const SizedBox(height: 8),
                 

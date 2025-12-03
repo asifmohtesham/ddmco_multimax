@@ -9,7 +9,6 @@ class PackingSlip {
   final int? fromCaseNo;
   final int? toCaseNo;
   final String? owner;
-  // Added customer field if available on parent
   final String? customer; 
   final List<PackingSlipItem> items;
 
@@ -43,13 +42,15 @@ class PackingSlip {
       fromCaseNo: json['from_case_no'] as int?,
       toCaseNo: json['to_case_no'] as int?,
       owner: json['owner'],
-      customer: json['customer_name'] ?? json['customer'], // Try both common field names
+      customer: json['customer_name'] ?? json['customer'], 
       items: items,
     );
   }
 }
 
 class PackingSlipItem {
+  final String name; // Unique ID
+  final String dnDetail; // Link to Delivery Note Item
   final String itemCode;
   final String itemName;
   final double qty;
@@ -57,12 +58,13 @@ class PackingSlipItem {
   final String batchNo;
   final double netWeight;
   final double weightUom;
-  // New fields
   final String? customInvoiceSerialNumber;
   final String? customVariantOf;
   final String? customCountryOfOrigin;
 
   PackingSlipItem({
+    required this.name,
+    required this.dnDetail,
     required this.itemCode,
     required this.itemName,
     required this.qty,
@@ -77,6 +79,8 @@ class PackingSlipItem {
 
   factory PackingSlipItem.fromJson(Map<String, dynamic> json) {
     return PackingSlipItem(
+      name: json['name'] ?? '',
+      dnDetail: json['dn_detail'] ?? '',
       itemCode: json['item_code'] ?? '',
       itemName: json['item_name'] ?? '',
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
