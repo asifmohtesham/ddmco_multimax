@@ -53,14 +53,37 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(slip.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty)
+                        Text(
+                          slip.customPoNo!,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                        ),
+                      if (slip.customPoNo == null || slip.customPoNo != slip.name)
+                        Text(slip.name, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                ),
                 StatusPill(status: slip.status),
               ],
             ),
+            const SizedBox(height: 16),
+            if (slip.customer != null && slip.customer!.isNotEmpty)
+              _buildDetailRow('Customer', slip.customer!),
             const Divider(height: 24),
+            Row(
+              children: [
+                Expanded(child: _buildDetailBox('From Package No', '${slip.fromCaseNo ?? "-"}')),
+                const SizedBox(width: 16),
+                Expanded(child: _buildDetailBox('To Package No', '${slip.toCaseNo ?? "-"}')),
+              ],
+            ),
+            const SizedBox(height: 16),
             _buildDetailRow('Delivery Note', slip.deliveryNote),
             _buildDetailRow('Created', slip.creation),
-            _buildDetailRow('Modified', slip.modified),
           ],
         ),
       ),
@@ -75,6 +98,25 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         children: [
           Text(label, style: const TextStyle(color: Colors.grey)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailBox(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, textBaseline: TextBaseline.alphabetic)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -98,17 +140,38 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold)),
-                if (item.itemName.isNotEmpty)
-                  Text(item.itemName, style: TextStyle(color: Colors.grey[700], fontSize: 12)),
-                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildItemStat('Qty', '${item.qty} ${item.uom}'),
-                    _buildItemStat('Net Weight', '${item.netWeight} kg'), 
-                    if (item.batchNo.isNotEmpty)
-                      _buildItemStat('Batch', item.batchNo),
+                    if (item.customInvoiceSerialNumber != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
+                        child: Text(
+                          '#${item.customInvoiceSerialNumber}',
+                          style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    Text('${item.qty} ${item.uom}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                if (item.itemName.isNotEmpty)
+                  Text(item.itemName, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: [
+                    if (item.batchNo.isNotEmpty) _buildItemStat('Batch', item.batchNo),
+                    if (item.customVariantOf != null) _buildItemStat('Variant Of', item.customVariantOf!),
+                    if (item.customCountryOfOrigin != null) _buildItemStat('Origin', item.customCountryOfOrigin!),
+                    _buildItemStat('Net Weight', '${item.netWeight} kg'),
                   ],
                 ),
               ],
@@ -124,7 +187,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
       ],
     );
   }

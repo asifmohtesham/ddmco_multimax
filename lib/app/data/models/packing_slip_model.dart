@@ -5,11 +5,12 @@ class PackingSlip {
   final String creation;
   final int docstatus;
   final String status;
-  // New fields
   final String? customPoNo;
   final int? fromCaseNo;
   final int? toCaseNo;
   final String? owner;
+  // Added customer field if available on parent
+  final String? customer; 
   final List<PackingSlipItem> items;
 
   PackingSlip({
@@ -23,7 +24,8 @@ class PackingSlip {
     this.fromCaseNo,
     this.toCaseNo,
     this.owner,
-    this.items = const [],
+    this.customer,
+    required this.items,
   });
 
   factory PackingSlip.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,7 @@ class PackingSlip {
       fromCaseNo: json['from_case_no'] as int?,
       toCaseNo: json['to_case_no'] as int?,
       owner: json['owner'],
+      customer: json['customer_name'] ?? json['customer'], // Try both common field names
       items: items,
     );
   }
@@ -54,6 +57,10 @@ class PackingSlipItem {
   final String batchNo;
   final double netWeight;
   final double weightUom;
+  // New fields
+  final String? customInvoiceSerialNumber;
+  final String? customVariantOf;
+  final String? customCountryOfOrigin;
 
   PackingSlipItem({
     required this.itemCode,
@@ -63,6 +70,9 @@ class PackingSlipItem {
     required this.batchNo,
     required this.netWeight,
     required this.weightUom,
+    this.customInvoiceSerialNumber,
+    this.customVariantOf,
+    this.customCountryOfOrigin,
   });
 
   factory PackingSlipItem.fromJson(Map<String, dynamic> json) {
@@ -74,6 +84,9 @@ class PackingSlipItem {
       batchNo: json['batch_no'] ?? '',
       netWeight: (json['net_weight'] as num?)?.toDouble() ?? 0.0,
       weightUom: (json['weight_uom'] as num?)?.toDouble() ?? 0.0,
+      customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      customVariantOf: json['custom_variant_of'],
+      customCountryOfOrigin: json['custom_country_of_origin'],
     );
   }
 }
