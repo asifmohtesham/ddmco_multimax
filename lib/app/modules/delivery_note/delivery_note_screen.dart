@@ -326,9 +326,9 @@ class DeliveryNoteCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (note.poNo != null && note.poNo.isNotEmpty)
-                    Text('PO: ${note.poNo}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(
-                      '${note.customer} - ${_getCurrencySymbol(note.currency)}${note.grandTotal.toStringAsFixed(2)}'),
+                    Text('${note.poNo}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${note.customer}'),
+                  Text('${_getCurrencySymbol(note.currency)}${note.grandTotal.toStringAsFixed(2)}'),
                   const SizedBox(height: 4),
                   StatusPill(status: note.status),
                 ],
