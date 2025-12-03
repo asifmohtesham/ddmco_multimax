@@ -23,7 +23,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               children: [
                 Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
                 if (poNo != null && poNo.isNotEmpty)
-                  Text(poNo, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  Text(poNo),
               ],
             );
           }),
