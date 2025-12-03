@@ -265,7 +265,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 }
 
 class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
-  const AddItemBottomSheet({super.key});
+  final ScrollController? scrollController;
+
+  const AddItemBottomSheet({super.key, this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -291,6 +293,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                               (!isEditing || controller.isFormDirty.value);
 
             return ListView(
+              controller: scrollController, // Hook up the scroll controller
               shrinkWrap: true,
               children: [
                 // Header: Owner and Created

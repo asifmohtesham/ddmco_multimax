@@ -168,6 +168,7 @@ class DeliveryNoteFormController extends GetxController {
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
+        .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
         .map((item) => item.idx.toString())
         .toList();
   }
@@ -388,7 +389,14 @@ class DeliveryNoteFormController extends GetxController {
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
 
     Get.bottomSheet(
-      const AddItemBottomSheet(),
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return AddItemBottomSheet(scrollController: scrollController);
+        },
+      ),
       isScrollControlled: true,
     ).then((_) {
       isAddingItem.value = false;
@@ -463,7 +471,14 @@ class DeliveryNoteFormController extends GetxController {
 
       // 3. Show Bottom Sheet
       await Get.bottomSheet(
-        const AddItemBottomSheet(),
+        DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return AddItemBottomSheet(scrollController: scrollController);
+          },
+        ),
         isScrollControlled: true,
       );
 
