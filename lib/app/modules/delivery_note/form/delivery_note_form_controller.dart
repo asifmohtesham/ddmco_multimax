@@ -56,6 +56,13 @@ class DeliveryNoteFormController extends GetxController {
   // New Field State
   var bsInvoiceSerialNo = RxnString();
   var editingItemName = RxnString(); // To track if we are editing an existing item (by name)
+  var isFormDirty = false.obs; // To track if changes were made
+
+  // Initial State for Dirty Check
+  String _initialBatch = '';
+  String _initialRack = '';
+  String _initialQty = '';
+  String? _initialSerial;
 
   // Extra Item Details for Bottom Sheet
   var bsItemOwner = RxnString();
@@ -181,6 +188,8 @@ class DeliveryNoteFormController extends GetxController {
     bsItemPackedQty.value = null;
     bsItemCompanyTotalStock.value = null;
 
+    isFormDirty.value = false;
+
     if (editingItem != null) {
       // Edit Mode
       editingItemName.value = editingItem.name;
@@ -189,6 +198,12 @@ class DeliveryNoteFormController extends GetxController {
       bsQtyController.text = editingItem.qty.toStringAsFixed(0);
       bsInvoiceSerialNo.value = editingItem.customInvoiceSerialNumber;
       
+      // Store Initial Values
+      _initialBatch = editingItem.batchNo ?? '';
+      _initialRack = editingItem.rack ?? '';
+      _initialQty = editingItem.qty.toStringAsFixed(0);
+      _initialSerial = editingItem.customInvoiceSerialNumber;
+
       // Populate extra details
       bsItemOwner.value = editingItem.owner;
       bsItemCreation.value = editingItem.creation;
@@ -214,6 +229,11 @@ class DeliveryNoteFormController extends GetxController {
       bsRackController.clear();
       bsQtyController.text = '6';
       
+      // Store Initial Values
+      _initialBatch = batchNo ?? '';
+      _initialRack = '';
+      _initialQty = '6';
+      
       bsMaxQty.value = maxQty;
       bsBatchError.value = null;
       
@@ -221,8 +241,10 @@ class DeliveryNoteFormController extends GetxController {
       final availableSerials = bsAvailableInvoiceSerialNos;
       if (availableSerials.isNotEmpty) {
         bsInvoiceSerialNo.value = availableSerials.first;
+        _initialSerial = availableSerials.first;
       } else {
         bsInvoiceSerialNo.value = null;
+        _initialSerial = null;
       }
       
       if (batchNo != null && maxQty > 0) {
@@ -239,6 +261,41 @@ class DeliveryNoteFormController extends GetxController {
     }
     
     bsIsLoadingBatch.value = false;
+  }
+
+  void checkForChanges() {
+    bool dirty = false;
+    if (bsBatchController.text != _initialBatch) dirty = true;
+    if (bsRackController.text != _initialRack) dirty = true;
+    // Basic double parsing to avoid "6" vs "6.0" issues if needed, but text compare is usually enough for UX
+    if (bsQtyController.text != _initialQty) dirty = true; 
+    if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
+    isFormDirty.value = dirty;
+  }
+
+  String getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'N/A';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 365) {
+        return '${(difference.inDays / 365).floor()}y ago';
+      } else if (difference.inDays > 30) {
+        return '${(difference.inDays / 30).floor()}mo ago';
+      } else if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return dateString.split(' ')[0]; // Fallback to date part
+    }
   }
 
   Future<void> validateAndFetchBatch(String batchNo) async {
@@ -303,6 +360,7 @@ class DeliveryNoteFormController extends GetxController {
     if (newQty > bsMaxQty.value && bsMaxQty.value > 0) newQty = bsMaxQty.value; 
 
     bsQtyController.text = newQty.toStringAsFixed(0);
+    checkForChanges(); // Check for changes
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {

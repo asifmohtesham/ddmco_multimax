@@ -282,6 +282,14 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
           key: formKey,
           child: Obx(() {
             final isEditing = controller.editingItemName.value != null;
+            // The logic: if editing, disable button if NOT dirty. If adding, disable if invalid.
+            // Also always disable if saving or loading batch.
+            final canSubmit = !controller.isSaving.value &&
+                              !controller.bsIsLoadingBatch.value &&
+                              controller.bsIsBatchValid.value &&
+                              controller.bsInvoiceSerialNo.value != null &&
+                              (!isEditing || controller.isFormDirty.value);
+
             return ListView(
               shrinkWrap: true,
               children: [
@@ -295,6 +303,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   }).toList(),
                   onChanged: (value) {
                     controller.bsInvoiceSerialNo.value = value;
+                    controller.checkForChanges();
                   },
                   decoration: const InputDecoration(
                     labelText: 'Invoice Serial No',
@@ -328,6 +337,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                             onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
                           )),
                   ),
+                  onChanged: (_) => controller.checkForChanges(),
                   onFieldSubmitted: (val) {
                     if (!controller.bsIsBatchReadOnly.value && !controller.bsIsLoadingBatch.value) {
                       controller.validateAndFetchBatch(val);
@@ -345,6 +355,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   controller: controller.bsRackController,
                   focusNode: controller.bsRackFocusNode,
                   decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
+                  onChanged: (_) => controller.checkForChanges(),
                   validator: (value) => value == null || value.isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
@@ -371,6 +382,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   ),
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
+                  onChanged: (_) => controller.checkForChanges(),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Required';
                     final qty = double.tryParse(value);
@@ -393,15 +405,15 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   _buildDetailRow('Image', controller.bsItemImage.value),
                   const Divider(),
                   _buildDetailRow('Owner', controller.bsItemOwner.value),
-                  _buildDetailRow('Created', controller.bsItemCreation.value),
+                  _buildDetailRow('Created', controller.getRelativeTime(controller.bsItemCreation.value)),
                   _buildDetailRow('Modified By', controller.bsItemModifiedBy.value),
-                  _buildDetailRow('Last Modified', controller.bsItemModified.value),
+                  _buildDetailRow('Last Modified', controller.getRelativeTime(controller.bsItemModified.value)),
                 ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (controller.bsIsBatchValid.value && controller.bsInvoiceSerialNo.value != null && !controller.bsIsLoadingBatch.value && !controller.isSaving.value) ? () {
+                    onPressed: canSubmit ? () {
                       if (formKey.currentState!.validate()) {
                         controller.submitSheet();
                       }
