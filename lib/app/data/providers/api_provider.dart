@@ -192,6 +192,20 @@ class ApiProvider {
     }
   }
 
+  Future<Response> createDocument(String doctype, Map<String, dynamic> data) async {
+    if (!_dioInitialized) await _initDio();
+    final String endpoint = '/api/resource/$doctype';
+    try {
+      return await _dio.post(endpoint, data: data);
+    } on DioException catch (e) {
+      Get.log("ApiProvider DioException during createDocument for $doctype: ${e.message} - ${e.response?.data}", isError: true);
+      rethrow;
+    } catch (e) {
+      Get.log("ApiProvider generic error during createDocument for $doctype: $e", isError: true);
+      rethrow;
+    }
+  }
+
   Future<Response> updateDocument(String doctype, String name, Map<String, dynamic> data) async {
     if (!_dioInitialized) await _initDio();
     final String endpoint = '/api/resource/$doctype/$name';

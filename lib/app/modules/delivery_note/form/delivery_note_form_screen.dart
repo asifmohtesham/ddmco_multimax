@@ -401,7 +401,7 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (controller.bsIsBatchValid.value && controller.bsInvoiceSerialNo.value != null && !controller.bsIsLoadingBatch.value) ? () {
+                    onPressed: (controller.bsIsBatchValid.value && controller.bsInvoiceSerialNo.value != null && !controller.bsIsLoadingBatch.value && !controller.isSaving.value) ? () {
                       if (formKey.currentState!.validate()) {
                         controller.submitSheet();
                       }
@@ -410,7 +410,9 @@ class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                     ),
-                    child: Text(isEditing ? 'Update Item' : 'Add Item'),
+                    child: controller.isSaving.value
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(isEditing ? 'Update Item' : 'Add Item'),
                   ),
                 ),
               ],

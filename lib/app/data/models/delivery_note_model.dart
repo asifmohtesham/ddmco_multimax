@@ -134,6 +134,25 @@ class DeliveryNoteItem {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'item_code': itemCode,
+      'qty': qty,
+      'rate': rate,
+      // 'item_name': itemName, // Usually not updated by client unless allowed
+      // 'country_of_origin': countryOfOrigin,
+      // 'uom': uom,
+      'custom_invoice_serial_number': customInvoiceSerialNumber,
+      'rack': rack,
+      'batch_no': batchNo,
+    };
+    // Include 'name' only if it exists (for updating existing rows)
+    if (name != null) {
+      data['name'] = name;
+    }
+    return data;
+  }
+
   DeliveryNoteItem copyWith({
     String? name,
     String? itemCode,

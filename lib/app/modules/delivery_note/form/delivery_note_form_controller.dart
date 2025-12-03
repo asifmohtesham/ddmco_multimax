@@ -25,6 +25,7 @@ class DeliveryNoteFormController extends GetxController {
   var isLoading = true.obs;
   var isScanning = false.obs;
   var isAddingItem = false.obs;
+  var isSaving = false.obs; // New state for API save
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload = Rx<PosUpload?>(null);
 
@@ -419,7 +420,7 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  void submitSheet() {
+  Future<void> submitSheet() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rack = bsRackController.text;
     final batch = bsBatchController.text;
@@ -427,24 +428,18 @@ class DeliveryNoteFormController extends GetxController {
     
     // Check if we are updating an existing item (known by its unique 'name')
     if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
-      _updateExistingItem(editingItemName.value!, qty, rack, batch, invoiceSerial);
+      await _updateExistingItem(editingItemName.value!, qty, rack, batch, invoiceSerial);
     } else {
-      _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
+      await _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
     }
-    Get.back();
   }
 
-  void _updateExistingItem(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+  Future<void> _updateExistingItem(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) async {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final index = currentItems.indexWhere((item) => item.name == itemNameID);
 
     if (index != -1) {
       final existingItem = currentItems[index];
-      // When updating via Edit, we typically replace the values.
-      // Assuming 'qty' from bottom sheet is the NEW total quantity if editing.
-      // But the previous "Add" logic was merging. 
-      // If the user edits, they see "6" and change to "10". They expect "10".
-      // So for update, we replace.
       
       final updatedItem = existingItem.copyWith(
         qty: qty,
@@ -454,17 +449,14 @@ class DeliveryNoteFormController extends GetxController {
       );
       currentItems[index] = updatedItem;
       
-      deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
-      Get.snackbar('Success', 'Item updated');
-      
-      // Trigger UX Feedback
-      _triggerItemFeedback(updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
+      // Perform API save
+      await _saveDocumentAndReflect(currentItems, updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
     } else {
       Get.snackbar('Error', 'Item to update not found');
     }
   }
 
-  void _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) {
+  Future<void> _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) async {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
@@ -479,7 +471,6 @@ class DeliveryNoteFormController extends GetxController {
       final existingItem = currentItems[existingItemIndex];
       final updatedItem = existingItem.copyWith(qty: existingItem.qty + qty);
       currentItems[existingItemIndex] = updatedItem;
-      Get.snackbar('Success', 'Item quantity updated');
     } else {
       final newItem = DeliveryNoteItem(
         itemCode: itemCode,
@@ -491,13 +482,54 @@ class DeliveryNoteFormController extends GetxController {
         itemName: currentItemName,
       );
       currentItems.add(newItem);
-      Get.snackbar('Success', 'Item added');
     }
 
-    deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
-    
-    // Trigger UX Feedback
-    _triggerItemFeedback(itemCode, serial);
+    // Perform API save
+    await _saveDocumentAndReflect(currentItems, itemCode, serial);
+  }
+
+  Future<void> _saveDocumentAndReflect(List<DeliveryNoteItem> updatedItems, String itemCode, String serial) async {
+    isSaving.value = true;
+    try {
+      final String docName = deliveryNote.value?.name ?? '';
+      final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
+      
+      final Map<String, dynamic> data = {
+        'items': updatedItems.map((e) => e.toJson()).toList(),
+      };
+
+      if (isNew) {
+         data['customer'] = deliveryNote.value!.customer;
+         data['posting_date'] = deliveryNote.value!.postingDate;
+         if (deliveryNote.value!.poNo != null) {
+           data['po_no'] = deliveryNote.value!.poNo;
+         }
+         // Add defaults if needed
+         data['docstatus'] = 0; 
+      }
+
+      final response = isNew 
+          ? await _apiProvider.createDocument('Delivery Note', data)
+          : await _apiProvider.updateDocument('Delivery Note', docName, data);
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        // Update local model with server response
+        deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
+        
+        Get.back(); // Close sheet only on success
+        Get.snackbar('Success', 'Document saved');
+        
+        // Trigger UX Feedback
+        _triggerItemFeedback(itemCode, serial);
+      } else {
+        throw Exception('Failed to save document. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to save: $e');
+      log('Save error: $e');
+    } finally {
+      isSaving.value = false;
+    }
   }
   
   void _triggerItemFeedback(String itemCode, String serial) {
