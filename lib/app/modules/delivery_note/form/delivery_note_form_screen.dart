@@ -87,39 +87,46 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-          child: TextFormField(
-            controller: controller.barcodeController,
-            autofocus: true,
-            readOnly: controller.isScanning.value,
-            decoration: InputDecoration(
-              labelText: 'Scan or enter barcode',
-              border: const OutlineInputBorder(),
-              prefixIcon: Icon(Icons.qr_code_scanner),
-              suffixIcon: controller.isScanning.value
-                  ? const Padding(
+          child: Obx(() {
+            String labelText = 'Scan or enter barcode';
+            Widget? suffixIcon;
+
+            if (controller.isScanning.value) {
+              labelText = 'Scanning...';
+              suffixIcon = const Padding(
                 padding: EdgeInsets.all(12.0),
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              )
-                  : IconButton(
+                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+              );
+            } else if (controller.isAddingItem.value) {
+              labelText = 'Item Validated';
+              suffixIcon = const Icon(Icons.check_circle, color: Colors.green);
+            } else {
+              suffixIcon = IconButton(
                 icon: const Icon(Icons.camera_alt),
-                onPressed: () { // TODO: Implement camera scanning
+                onPressed: () {
                   final text = controller.barcodeController.text;
-                  if (text.isNotEmpty) {
-                    controller.addItemFromBarcode(text);
-                  }
+                  if (text.isNotEmpty) controller.addItemFromBarcode(text);
                 },
+              );
+            }
+
+            return TextFormField(
+              controller: controller.barcodeController,
+              autofocus: true,
+              readOnly: controller.isScanning.value || controller.isAddingItem.value,
+              decoration: InputDecoration(
+                labelText: labelText,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.qr_code_scanner),
+                suffixIcon: suffixIcon,
               ),
-            ),
-            onFieldSubmitted: (value) {
-              if (value.isNotEmpty) {
-                controller.addItemFromBarcode(value);
-              }
-            },
-          ),
+              onFieldSubmitted: (value) {
+                if (value.isNotEmpty && !controller.isScanning.value && !controller.isAddingItem.value) {
+                  controller.addItemFromBarcode(value);
+                }
+              },
+            );
+          }),
         ),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,

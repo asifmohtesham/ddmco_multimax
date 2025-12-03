@@ -22,6 +22,7 @@ class DeliveryNoteFormController extends GetxController {
 
   var isLoading = true.obs;
   var isScanning = false.obs; // New state for barcode scanning UX
+  var isAddingItem = false.obs;
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload = Rx<PosUpload?>(null);
 
