@@ -127,10 +127,10 @@ class DeliveryNoteFormController extends GetxController {
           await fetchPosUpload(note.poNo!);
         }
       } else {
-        Get.snackbar('Error', 'Failed to fetch delivery note');
+        _showSnackbar('Error', 'Failed to fetch delivery note', isError: true);
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to load initial data: ${e.toString()}');
+      _showSnackbar('Error', 'Failed to load initial data: ${e.toString()}', isError: true);
       log('Error loading initial data: $e');
     } finally {
       isLoading.value = false;
@@ -144,7 +144,7 @@ class DeliveryNoteFormController extends GetxController {
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch linked POS Upload: $e');
+      _showSnackbar('Error', 'Failed to fetch linked POS Upload: $e', isError: true);
     }
   }
 
@@ -354,7 +354,7 @@ class DeliveryNoteFormController extends GetxController {
       itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
       batchNo = barcode;
     } else {
-      Get.snackbar('Error', 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)');
+      _showSnackbar('Error', 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)', isError: true);
       barcodeController.clear();
       return;
     }
@@ -411,7 +411,7 @@ class DeliveryNoteFormController extends GetxController {
 
     } catch (e, stackTrace) {
       final errorMessage = 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}';
-      Get.snackbar('Error', errorMessage);
+      _showSnackbar('Error', errorMessage, isError: true);
       log(errorMessage, error: e, stackTrace: stackTrace);
     } finally {
       isScanning.value = false;
@@ -452,7 +452,7 @@ class DeliveryNoteFormController extends GetxController {
       // Perform API save
       await _saveDocumentAndReflect(currentItems, updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
     } else {
-      Get.snackbar('Error', 'Item to update not found');
+      _showSnackbar('Error', 'Item to update not found', isError: true);
     }
   }
 
@@ -548,7 +548,7 @@ class DeliveryNoteFormController extends GetxController {
         deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
         
         if (Get.isBottomSheetOpen == true) Get.back(); // Close sheet only on success
-        Get.snackbar('Success', 'Document saved');
+        _showSnackbar('Success', 'Document saved');
         
         // Trigger UX Feedback
         _triggerItemFeedback(itemCode, serial);
@@ -556,7 +556,7 @@ class DeliveryNoteFormController extends GetxController {
         throw Exception('Failed to save document. Status: ${response.statusCode}');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to save: $e');
+      _showSnackbar('Error', 'Failed to save: $e', isError: true);
       log('Save error: $e');
     } finally {
       isSaving.value = false;
@@ -625,5 +625,39 @@ class DeliveryNoteFormController extends GetxController {
 
   void setFilter(String filter) {
     itemFilter.value = filter;
+  }
+
+  void _showSnackbar(String title, String message, {bool isError = false}) {
+    Get.snackbar(
+      title,
+      message,
+      backgroundColor: Colors.white,
+      colorText: Colors.black87,
+      borderWidth: 1,
+      borderColor: Colors.grey.shade300,
+      icon: Icon(
+        isError ? Icons.error_outline : Icons.check_circle_outline,
+        color: isError ? Colors.red : Colors.green,
+      ),
+      shouldIconPulse: true,
+      barBlur: 20,
+      isDismissible: true,
+      duration: const Duration(seconds: 4), // Give user enough time to read
+      mainButton: TextButton(
+        onPressed: () {
+          if (Get.isSnackbarOpen) Get.back();
+        },
+        child: Text(
+          'DISMISS',
+          style: TextStyle(
+            color: isError ? Colors.red : Colors.green,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      margin: const EdgeInsets.all(16),
+      borderRadius: 12,
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 }
