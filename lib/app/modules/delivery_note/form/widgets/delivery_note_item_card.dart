@@ -12,11 +12,31 @@ class DeliveryNoteItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      child: Obx(() {
-        final isExpanded = controller.expandedItemCode.value == item.itemCode;
-        return Column(
+    return Obx(() {
+      final isExpanded = controller.expandedItemCode.value == item.itemCode;
+      
+      // Check if this item was recently added/updated to highlight it
+      final isRecentlyAdded = controller.recentlyAddedItemCode.value == item.itemCode &&
+          (controller.recentlyAddedSerial.value == (item.customInvoiceSerialNumber ?? '0') || 
+           controller.recentlyAddedSerial.value.isEmpty);
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        decoration: BoxDecoration(
+          color: isRecentlyAdded ? Colors.yellow.shade100 : Colors.white,
+          borderRadius: BorderRadius.circular(4.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              spreadRadius: 1,
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
           children: [
             ListTile(
               title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -66,9 +86,9 @@ class DeliveryNoteItemCard extends StatelessWidget {
               ),
             ),
           ],
-        );
-      }),
-    );
+        ),
+      );
+    });
   }
 
   Widget _buildInfoColumn(String title, String value) {

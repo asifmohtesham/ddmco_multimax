@@ -34,6 +34,12 @@ class DeliveryNoteFormController extends GetxController {
 
   var itemFilter = 'All'.obs;
 
+  // New State for UX Feedback
+  var recentlyAddedItemCode = ''.obs;
+  var recentlyAddedSerial = ''.obs;
+  final ScrollController scrollController = ScrollController();
+  final Map<String, GlobalKey> itemKeys = {}; // Keys for scrolling
+
   // Bottom Sheet State
   final bsBatchController = TextEditingController();
   final bsRackController = TextEditingController();
@@ -69,6 +75,7 @@ class DeliveryNoteFormController extends GetxController {
     bsRackController.dispose();
     bsQtyController.dispose();
     bsRackFocusNode.dispose();
+    scrollController.dispose();
     super.onClose();
   }
 
@@ -365,6 +372,57 @@ class DeliveryNoteFormController extends GetxController {
     }
 
     deliveryNote.value = deliveryNote.value?.copyWith(items: currentItems);
+    
+    // UX Feedback Logic
+    recentlyAddedItemCode.value = itemCode;
+    recentlyAddedSerial.value = serial;
+    
+    // Find the expansion key for this item to expand the correct group
+    // Assuming grouped by invoice serial, but item_card groups by serial number logic
+    // The view uses 'serialNumber_index' as expansion key logic but groups by itemCode or something else
+    // Let's look at the view logic: ItemGroupCard key is just an index in list
+    // Wait, the view uses expansionKey = '${serialNumber}_$index'
+    // But we need to expand based on serial number.
+    // Let's set the expanded invoice to this serial number to open the group.
+    
+    // We need to find the correct key that corresponds to this serial number in the view.
+    // In the view, the expansion key is based on the POS Item index.
+    // If we have the serial number, we can construct the key if we know the POS item index.
+    // But since the view iterates, let's just use the serial number itself if possible, 
+    // or rely on the fact that serial = index + 1.
+    
+    // Let's try to match the logic:
+    // If serial is '1', it corresponds to pos item at index 0.
+    // The key in view is '${serialNumber}_$index'.
+    // So if serial is '1', index is 0 => key is '1_0'.
+    
+    if (posUpload.value != null) {
+      final posItems = posUpload.value!.items;
+      final int index = posItems.indexWhere((item) => item.idx.toString() == serial);
+      if (index != -1) {
+        final key = '${serial}_$index';
+        expandedInvoice.value = key;
+        
+        // Scroll to this item
+        Future.delayed(const Duration(milliseconds: 300), () {
+          final contextKey = itemKeys[key];
+          if (contextKey?.currentContext != null) {
+            Scrollable.ensureVisible(
+              contextKey!.currentContext!, 
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              alignment: 0.1, // Scroll to near top
+            );
+          }
+        });
+      }
+    }
+    
+    // Clear highlight after 2 seconds
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemCode.value = '';
+      recentlyAddedSerial.value = '';
+    });
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {

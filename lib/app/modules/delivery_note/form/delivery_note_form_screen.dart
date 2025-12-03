@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:collection/collection.dart';
 import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
+import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
+import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
+import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});
@@ -187,6 +191,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }
 
             return ListView.builder(
+              controller: controller.scrollController,
               padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 0.0, bottom: 80.0),
               itemCount: filteredItems.length,
               itemBuilder: (context, index) {
@@ -195,49 +200,31 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
                 final expansionKey = '${serialNumber}_$index';
 
+                // Register Key
+                if (!controller.itemKeys.containsKey(expansionKey)) {
+                  controller.itemKeys[expansionKey] = GlobalKey();
+                }
+
                 final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
-                final isCompleted = cumulativeQty >= posItem.quantity;
-                final bgColor = isCompleted ? const Color(0xFFE8F5E9) : null;
+                // final isCompleted = cumulativeQty >= posItem.quantity;
+                // final bgColor = isCompleted ? const Color(0xFFE8F5E9) : null;
 
                 return Container(
+                  key: controller.itemKeys[expansionKey], // Attach Key
                   margin: const EdgeInsets.symmetric(vertical: 4.0),
                   decoration: BoxDecoration(
-                    color: bgColor,
                     border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(4.0),
+                    borderRadius: BorderRadius.circular(14.0),
                   ),
-                  child: ExpansionTile(
-                    key: PageStorageKey(expansionKey),
-                    backgroundColor: Colors.transparent,
-                    collapsedBackgroundColor: Colors.transparent,
-                    shape: const Border(),
-                    title: Text('${posItem.idx}. ${posItem.itemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildInfoColumn('Quantity', '${cumulativeQty.toStringAsFixed(2)} / ${posItem.quantity.toStringAsFixed(2)}', width: 120),
-                          _buildInfoColumn('Rate', posItem.rate.toStringAsFixed(2)),
-                          _buildInfoColumn('Scanned', dnItemsForThisPosItem.length.toString()),
-                        ],
-                      ),
-                    ),
-                    onExpansionChanged: (isExpanded) {
-                      controller.toggleInvoiceExpand(expansionKey);
-                    },
-                    initiallyExpanded: controller.expandedInvoice.value == expansionKey,
-                    children: [
-                      const Divider(height: 1),
-                      if (dnItemsForThisPosItem.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Center(child: Text('No items scanned for this entry yet.')),
-                        )
-                      else
-                        ...dnItemsForThisPosItem.map((item) => DeliveryNoteItemCard(item: item)).toList(),
-                    ],
+                  child: ItemGroupCard(
+                    isExpanded: controller.expandedInvoice.value == expansionKey,
+                    serialNo: posItem.idx,
+                    itemName: posItem.itemName,
+                    rate: posItem.rate,
+                    totalQty: posItem.quantity,
+                    scannedQty: cumulativeQty,
+                    onToggle: () => controller.toggleInvoiceExpand(expansionKey),
+                    children: dnItemsForThisPosItem.map((item) => DeliveryNoteItemCard(item: item)).toList(),
                   ),
                 );
               },

@@ -43,6 +43,7 @@ dependencies:
   collection:
   uuid:
   intl: ^0.19.0
+  percent_indicator:
 
 dev_dependencies:
   flutter_test:
