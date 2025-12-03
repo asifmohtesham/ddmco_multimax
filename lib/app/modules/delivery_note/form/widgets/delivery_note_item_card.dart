@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class DeliveryNoteItemCard extends StatelessWidget {
   final DeliveryNoteItem item;
@@ -29,7 +30,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(4.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withValues(alpha: .2),
               spreadRadius: 1,
               blurRadius: 2,
               offset: const Offset(0, 1),
@@ -41,11 +42,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
             ListTile(
               title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(item.batchNo ?? ''),
-              trailing: AnimatedRotation(
-                turns: isExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
-              ),
+              trailing: AnimatedExpandIcon(isExpanded: isExpanded),
               onTap: () => controller.toggleExpand(item.itemCode),
             ),
             AnimatedSize(

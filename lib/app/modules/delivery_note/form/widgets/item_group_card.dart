@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class ItemGroupCard extends StatelessWidget {
   final bool isExpanded;
@@ -28,14 +29,14 @@ class ItemGroupCard extends StatelessWidget {
     final percent = (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12.0),
-        side: BorderSide(
-          color: isCompleted ? Colors.green.shade400 : Colors.transparent,
-          width: 1.5,
+        border: Border.all(
+          color: isCompleted ? Colors.green.shade400 : Colors.grey.shade300,
+          width: 1,
         ),
       ),
       child: ExpansionTile(
@@ -55,16 +56,23 @@ class ItemGroupCard extends StatelessWidget {
                 ),
             ),
         ),
-        trailing: CircularPercentIndicator(
-            radius: 22.0,
-            lineWidth: 4.0,
-            percent: percent,
-            center: Text(
-            '${(percent * 100).toInt()}%',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularPercentIndicator(
+                radius: 22.0,
+                lineWidth: 4.0,
+                percent: percent,
+                center: Text(
+                '${(percent * 100).toInt()}%',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+                progressColor: isCompleted ? Colors.green : Colors.orange,
+                backgroundColor: Colors.grey.shade300,
             ),
-            progressColor: isCompleted ? Colors.green : Colors.orange,
-            backgroundColor: Colors.grey.shade300,
+            const SizedBox(width: 8),
+            AnimatedExpandIcon(isExpanded: isExpanded),
+          ],
         ),
         children: <Widget>[
           const Divider(height: 1, indent: 16, endIndent: 16),
