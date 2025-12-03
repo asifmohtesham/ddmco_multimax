@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 
 class PosUploadScreen extends StatefulWidget {
   const PosUploadScreen({super.key});
@@ -79,6 +78,27 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
       ),
     );
   }
+  
+  String _getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,22 +121,79 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           return const Center(child: Text('No POS uploads found.'));
         }
 
-        return Scrollbar(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.posUploads.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.posUploads.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
+        return RefreshIndicator(
+          onRefresh: () async {
+            await controller.fetchPosUploads(clear: true);
+          },
+          child: Scrollbar(
+            child: ListView.separated(
+              controller: _scrollController,
+              itemCount: controller.posUploads.length + (controller.hasMore.value ? 1 : 0),
+              separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+              itemBuilder: (context, index) {
+                if (index >= controller.posUploads.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                final upload = controller.posUploads[index];
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  title: Text(
+                    upload.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                   ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              upload.customer,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8, height: 8,
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(upload.status),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(upload.status, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          const Spacer(),
+                          Text(
+                            _getRelativeTime(upload.modified),
+                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () {
+                    Get.toNamed(
+                      AppRoutes.POS_UPLOAD_FORM, 
+                      arguments: {'name': upload.name, 'mode': upload.status == 'Pending' ? 'edit' : 'view'}
+                    );
+                  },
                 );
-              }
-              final upload = controller.posUploads[index];
-              return PosUploadCard(upload: upload);
-            },
+              },
+            ),
           ),
         );
       }),
@@ -128,124 +205,14 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
       ),
     );
   }
-}
-
-class PosUploadCard extends StatelessWidget {
-  final dynamic upload;
-  final PosUploadController controller = Get.find();
-
-  PosUploadCard({super.key, required this.upload});
-
-  Widget _getRelativeTimeWidget(String isoString) {
-    try {
-      final dateTime = DateTime.parse(isoString);
-      final difference = DateTime.now().difference(dateTime);
-
-      if (difference.inSeconds < 60) {
-        return Text('${difference.inSeconds}s ago');
-      } else if (difference.inMinutes < 60) {
-        return Text('${difference.inMinutes}m ago');
-      } else if (difference.inHours < 24) {
-        return Text('${difference.inHours}h ago');
-      } else {
-        return Text(DateFormat.yMMMd().format(dateTime));
-      }
-    } catch (e) {
-      return const Text('Invalid date');
+  
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending': return Colors.orange;
+      case 'completed': return Colors.green;
+      case 'failed': return Colors.red;
+      case 'processed': return Colors.blue;
+      default: return Colors.grey;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(8.0),
-      clipBehavior: Clip.antiAlias,
-      child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedUploadName.value == upload.name;
-        return Column(
-          children: [
-            ListTile(
-              title: Text(upload.name),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _getRelativeTimeWidget(upload.modified),
-                  const SizedBox(height: 4),
-                  StatusPill(status: upload.status),
-                ],
-              ),
-              trailing: AnimatedRotation(
-                turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
-              ),
-              onTap: () => controller.toggleExpand(upload.name),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isCurrentlyExpanded
-                    ? const SizedBox.shrink()
-                    : Obx(() {
-                        final detailed = controller.detailedUpload;
-                        if (controller.isLoadingDetails.value && detailed?.name != upload.name) {
-                          return const LinearProgressIndicator();
-                        }
-
-                        if (detailed != null && detailed.name == upload.name) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Modified On: ${DateFormat.yMMMd().add_jms().format(DateTime.parse(detailed.modified))}'),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (detailed.status == 'Draft') ...[
-                                      TextButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                                        child: const Text('Submit'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'edit'}),
-                                        child: const Text('Edit'),
-                                      ),
-                                    ] else if (detailed.status == 'Submitted') ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                                        child: const Text('Cancel'),
-                                      ),
-                                    ] else ...[
-                                      ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM, arguments: {'name': upload.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                    ]
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }),
-              ),
-            ),
-          ],
-        );
-      }),
-    );
   }
 }
