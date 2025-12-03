@@ -21,7 +21,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name),
+                Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
                 if (poNo != null && poNo.isNotEmpty)
                   Text(poNo, style: const TextStyle(fontSize: 14, color: Colors.white70)),
               ],
