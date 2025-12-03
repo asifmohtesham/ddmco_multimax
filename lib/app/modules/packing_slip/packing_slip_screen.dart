@@ -141,13 +141,13 @@ class PackingSlipCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Row 1: Name + Status
+              // Row 1: PO Number (or Name) + Status
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Text(
-                      slip.name,
+                      slip.customPoNo != null && slip.customPoNo.isNotEmpty ? slip.customPoNo : slip.name,
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -158,15 +158,21 @@ class PackingSlipCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               
-              // Row 2: Delivery Note + Time
+              // Row 2: Owner + Time
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Text(
-                      slip.deliveryNote.isNotEmpty ? slip.deliveryNote : 'No Delivery Note',
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          slip.owner ?? 'Unknown',
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                   Text(
@@ -175,9 +181,35 @@ class PackingSlipCard extends StatelessWidget {
                   ),
                 ],
               ),
-              
               const SizedBox(height: 8),
-              // Simplified expansion just to show we can expand, but keeping it minimal as details might be sparse
+              
+              // Row 3: Case Range (if available)
+              if (slip.fromCaseNo != null && slip.toCaseNo != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.shade100),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 14, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Packages: ${slip.fromCaseNo} - ${slip.toCaseNo}',
+                        style: TextStyle(
+                          color: Colors.blue.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // Expansion Content
               Obx(() {
                 final isCurrentlyExpanded = controller.expandedSlipName.value == slip.name;
                 return AnimatedSize(
@@ -189,14 +221,27 @@ class PackingSlipCard extends StatelessWidget {
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              const SizedBox(height: 12),
                               const Divider(height: 1),
                               const SizedBox(height: 12),
+                              // Expanded details (can add more here if needed, keeping it simple for now)
+                              if (slip.customPoNo != null && slip.customPoNo != slip.name)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: Text('Document: ${slip.name}', style: const TextStyle(color: Colors.grey)),
+                                ),
+                              if (slip.deliveryNote.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: Text('Linked DN: ${slip.deliveryNote}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                                ),
+                              
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   TextButton(
                                     onPressed: () => Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {'name': slip.name, 'mode': 'view'}),
-                                    child: const Text('View'),
+                                    child: const Text('View Full Details'),
                                   ),
                                 ],
                               )

@@ -17,7 +17,8 @@ class PackingSlipProvider {
       limitStart: limitStart, 
       filters: filters,
       orderBy: orderBy,
-      fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus'],
+      // Updated fields list based on requirement
+      fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner'],
     );
   }
 

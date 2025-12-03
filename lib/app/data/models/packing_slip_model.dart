@@ -5,6 +5,11 @@ class PackingSlip {
   final String creation;
   final int docstatus;
   final String status;
+  // New fields
+  final String? customPoNo;
+  final int? fromCaseNo;
+  final int? toCaseNo;
+  final String? owner;
   final List<PackingSlipItem> items;
 
   PackingSlip({
@@ -14,7 +19,11 @@ class PackingSlip {
     required this.creation,
     required this.docstatus,
     required this.status,
-    required this.items,
+    this.customPoNo,
+    this.fromCaseNo,
+    this.toCaseNo,
+    this.owner,
+    this.items = const [],
   });
 
   factory PackingSlip.fromJson(Map<String, dynamic> json) {
@@ -28,6 +37,10 @@ class PackingSlip {
       creation: json['creation'] ?? DateTime.now().toString(),
       docstatus: json['docstatus'] as int? ?? 0,
       status: json['status'] ?? (json['docstatus'] == 1 ? 'Submitted' : (json['docstatus'] == 2 ? 'Cancelled' : 'Draft')),
+      customPoNo: json['custom_po_no'],
+      fromCaseNo: json['from_case_no'] as int?,
+      toCaseNo: json['to_case_no'] as int?,
+      owner: json['owner'],
       items: items,
     );
   }
