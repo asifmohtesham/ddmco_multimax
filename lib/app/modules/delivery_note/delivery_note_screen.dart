@@ -92,6 +92,54 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     );
   }
 
+  Widget _getRelativeTimeWidget(String? modified) {
+    if (modified == null || modified.isEmpty) return const SizedBox.shrink();
+
+    try {
+      final date = DateTime.parse(modified);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      String text;
+      if (difference.inDays > 0) {
+        text = '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        text = '${difference.inHours}h ago';
+      } else {
+        text = '${difference.inMinutes}m ago';
+      }
+
+      Color color;
+      Color bgColor;
+
+      if (difference.inHours < 6) {
+        color = const Color(0xFF8A6D3B); 
+        bgColor = const Color(0xFFFCF8E3); 
+      } else if (difference.inHours < 48) {
+        color = const Color(0xFFE65100);
+        bgColor = const Color(0xFFFFF3E0);
+      } else {
+        color = const Color(0xFFA94442);
+        bgColor = const Color(0xFFF2DEDE);
+      }
+
+      return Container(
+        margin: const EdgeInsets.only(top: 4.0),
+        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(4.0),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        ),
+      );
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -212,7 +260,13 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                                 children: [
                                   Text('${posUpload.customer} • ${posUpload.date}'),
                                   const SizedBox(height: 4),
-                                  StatusPill(status: posUpload.status),
+                                  Row(
+                                    children: [
+                                      StatusPill(status: posUpload.status),
+                                      const SizedBox(width: 8),
+                                      _getRelativeTimeWidget(posUpload.modified),
+                                    ],
+                                  ),
                                 ],
                               ),
                               trailing: const Icon(Icons.chevron_right),
@@ -357,11 +411,21 @@ class DeliveryNoteCard extends StatelessWidget {
               Row(
                 children: [
                   _buildStatItem(Icons.inventory_2_outlined, '${note.totalQty.toStringAsFixed(0)} Items'),
-                  // Assuming 'assigned' logic exists or is planned, omitting for now as per model
-                  // If 'assigned' refers to 'Assigned To', it's not in the model yet.
                   const Spacer(),
                   if (note.docstatus == 1) // Submitted
-                    _buildStatItem(Icons.timer_outlined, _getTimeTaken(note.creation, note.modified), color: Colors.green),
+                    Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: _buildStatItem(Icons.timer_outlined, _getTimeTaken(note.creation, note.modified), color: Colors.green),
+                    ),
+                  // Animated Arrow
+                  Obx(() {
+                    final isCurrentlyExpanded = controller.expandedNoteName.value == note.name;
+                    return AnimatedRotation(
+                        turns: isCurrentlyExpanded ? 0.5 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
+                    );
+                  }),
                 ],
               ),
 
