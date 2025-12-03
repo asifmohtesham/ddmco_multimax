@@ -107,7 +107,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         title: const Text('Delivery Notes'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list), // Changed icon to list/sort/filter
+            icon: const Icon(Icons.filter_list), 
             onPressed: () => _showFilterBottomSheet(context),
           ),
         ],
@@ -158,7 +158,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     Get.bottomSheet(
       SafeArea(
         child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
+          initialChildSize: 0.8,
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
@@ -167,33 +167,42 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
-              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Select POS Upload',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: controller.filterPosUploads,
-                    decoration: const InputDecoration(
-                      labelText: 'Search POS Uploads',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Select POS Upload',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    child: TextField(
+                      onChanged: controller.filterPosUploads,
+                      decoration: InputDecoration(
+                        hintText: 'Search POS Uploads',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: Obx(() {
                       if (controller.isFetchingPosUploads.value) {
@@ -201,57 +210,91 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                       }
 
                       if (controller.posUploadsForSelection.isEmpty) {
-                        return const Center(child: Text('No POS Uploads found.'));
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+                              const SizedBox(height: 16),
+                              const Text('No POS Uploads found.', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        );
                       }
 
-                      return ListView.builder(
+                      return ListView.separated(
                         controller: scrollController,
                         itemCount: controller.posUploadsForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final posUpload = controller.posUploadsForSelection[index];
-                          return Card(
-                            elevation: 0,
-                            color: Colors.grey[50],
-                            margin: const EdgeInsets.symmetric(vertical: 4.0),
-                            child: ListTile(
-                              title: Text(posUpload.name),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${posUpload.customer} • ${posUpload.date}'),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      StatusPill(status: posUpload.status),
-                                      const SizedBox(width: 8),
-                                      _getRelativeTimeWidget(posUpload.modified),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () {
-                                Get.back();
-                                controller.createNewDeliveryNote(posUpload);
-                              },
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            title: Text(posUpload.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.person_outline, size: 14, color: Colors.grey),
+                                    const SizedBox(width: 4),
+                                    Expanded(child: Text(posUpload.customer, overflow: TextOverflow.ellipsis)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8, height: 8,
+                                      decoration: BoxDecoration(
+                                        color: posUpload.status == 'Pending' ? Colors.orange : Colors.blue,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(posUpload.status, style: const TextStyle(fontSize: 12)),
+                                    const Spacer(),
+                                    _getRelativeTimeWidget(posUpload.modified),
+                                  ],
+                                ),
+                              ],
                             ),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                            onTap: () {
+                              Get.back();
+                              controller.createNewDeliveryNote(posUpload);
+                            },
                           );
                         },
                       );
                     }),
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Get.back();
-                        controller.createNewDeliveryNote(null);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Get.back();
+                          controller.createNewDeliveryNote(null);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: BorderSide(color: Theme.of(context).primaryColor),
+                        ),
+                        child: const Text('Skip & Create Blank Note'),
                       ),
-                      child: const Text('Skip & Create Blank'),
                     ),
                   ),
                 ],
