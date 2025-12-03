@@ -120,7 +120,7 @@ class DeliveryNoteFormController extends GetxController {
       itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
       batchNo = barcode;
     } else {
-      Get.snackbar('Error', 'Invalid barcode format. Expected EAN (7-13 digits) or EAN-BATCH (3-6 chars)');
+      Get.snackbar('Error', 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)');
       barcodeController.clear();
       return;
     }
