@@ -160,7 +160,6 @@ class DeliveryNoteFormController extends GetxController {
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
-        .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
         .map((item) => item.idx.toString())
         .toList();
   }
