@@ -4,9 +4,12 @@ class DeliveryNote {
   final double grandTotal;
   final String postingDate;
   final String modified;
+  final String creation;
   final String status;
   final String currency;
   final String? poNo;
+  final double totalQty;
+  final int docstatus;
   final List<DeliveryNoteItem> items;
 
   DeliveryNote({
@@ -15,9 +18,12 @@ class DeliveryNote {
     required this.grandTotal,
     required this.postingDate,
     required this.modified,
+    required this.creation,
     required this.status,
     required this.currency,
     this.poNo,
+    required this.totalQty,
+    required this.docstatus,
     required this.items,
   });
 
@@ -26,14 +32,20 @@ class DeliveryNote {
     List<DeliveryNoteItem> items = itemsList.map((i) => DeliveryNoteItem.fromJson(i)).toList();
 
     return DeliveryNote(
-      name: json['name'],
-      customer: json['customer'],
-      grandTotal: (json['grand_total'] as num).toDouble(),
-      postingDate: json['posting_date'],
-      modified: json['modified'],
-      status: json['status'],
-      currency: json['currency'],
+      name: json['name'] ?? '',
+      customer: json['customer'] ?? '',
+      grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
+      postingDate: json['posting_date'] ?? '',
+      modified: json['modified'] ?? '',
+      // Default to current time if creation is null
+      creation: json['creation'] ?? DateTime.now().toString(), 
+      // Default to 'Not Saved' to indicate local/unsynced state
+      status: json['status'] ?? 'Not Saved', 
+      currency: json['currency'] ?? 'AED',
       poNo: json['po_no'],
+      totalQty: (json['total_qty'] as num?)?.toDouble() ?? 0.0,
+      // Default to 0 (Draft) which allows editing
+      docstatus: json['docstatus'] as int? ?? 0, 
       items: items,
     );
   }
@@ -44,9 +56,12 @@ class DeliveryNote {
     double? grandTotal,
     String? postingDate,
     String? modified,
+    String? creation,
     String? status,
     String? currency,
     String? poNo,
+    double? totalQty,
+    int? docstatus,
     List<DeliveryNoteItem>? items,
   }) {
     return DeliveryNote(
@@ -55,9 +70,12 @@ class DeliveryNote {
       grandTotal: grandTotal ?? this.grandTotal,
       postingDate: postingDate ?? this.postingDate,
       modified: modified ?? this.modified,
+      creation: creation ?? this.creation,
       status: status ?? this.status,
       currency: currency ?? this.currency,
       poNo: poNo ?? this.poNo,
+      totalQty: totalQty ?? this.totalQty,
+      docstatus: docstatus ?? this.docstatus,
       items: items ?? this.items,
     );
   }

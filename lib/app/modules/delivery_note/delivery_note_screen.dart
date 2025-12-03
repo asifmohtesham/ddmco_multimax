@@ -92,54 +92,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     );
   }
 
-  Widget _getRelativeTimeWidget(String? modified) {
-    if (modified == null || modified.isEmpty) return const SizedBox.shrink();
-
-    try {
-      final date = DateTime.parse(modified);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      String text;
-      if (difference.inDays > 0) {
-        text = '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        text = '${difference.inHours}h ago';
-      } else {
-        text = '${difference.inMinutes}m ago';
-      }
-
-      Color color;
-      Color bgColor;
-
-      if (difference.inHours < 6) {
-        color = const Color(0xFF8A6D3B); 
-        bgColor = const Color(0xFFFCF8E3); 
-      } else if (difference.inHours < 48) {
-        color = const Color(0xFFE65100);
-        bgColor = const Color(0xFFFFF3E0);
-      } else {
-        color = const Color(0xFFA94442);
-        bgColor = const Color(0xFFF2DEDE);
-      }
-
-      return Container(
-        margin: const EdgeInsets.only(top: 4.0),
-        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(4.0),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-      );
-    } catch (e) {
-      return const SizedBox.shrink();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -260,13 +212,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                                 children: [
                                   Text('${posUpload.customer} • ${posUpload.date}'),
                                   const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      StatusPill(status: posUpload.status),
-                                      const SizedBox(width: 8),
-                                      _getRelativeTimeWidget(posUpload.modified),
-                                    ],
-                                  ),
+                                  StatusPill(status: posUpload.status),
                                 ],
                               ),
                               trailing: const Icon(Icons.chevron_right),
@@ -316,97 +262,202 @@ class DeliveryNoteCard extends StatelessWidget {
     return format.currencySymbol;
   }
 
+  String _getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String _getTimeTaken(String creation, String modified) {
+    try {
+      final start = DateTime.parse(creation);
+      final end = DateTime.parse(modified);
+      final difference = end.difference(start);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ${difference.inHours % 24}h';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ${difference.inMinutes % 60}m';
+      } else {
+        return '${difference.inMinutes}m';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.all(8.0),
+      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
-      child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedNoteName.value == note.name;
-        return Column(
-          children: [
-            ListTile(
-              title: Text(note.name),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () => controller.toggleExpand(note.name),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Row 1: PO No (Left) + Status (Right)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (note.poNo != null && note.poNo.isNotEmpty)
-                    Text('${note.poNo}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('${note.customer}'),
-                  Text('${_getCurrencySymbol(note.currency)}${note.grandTotal.toStringAsFixed(2)}'),
-                  const SizedBox(height: 4),
+                  Expanded(
+                    child: Text(
+                      note.poNo != null && note.poNo.isNotEmpty ? note.poNo! : note.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   StatusPill(status: note.status),
                 ],
               ),
-              trailing: AnimatedRotation(
-                turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
+              const SizedBox(height: 6),
+              
+              // Row 2: Customer (Left) + Relative Time (Right)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      note.customer,
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    _getRelativeTime(note.creation),
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  ),
+                ],
               ),
-              onTap: () => controller.toggleExpand(note.name),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isCurrentlyExpanded
-                    ? const SizedBox.shrink()
-                    : Obx(() {
-                        final detailed = controller.detailedNote;
-                        if (controller.isLoadingDetails.value && detailed?.name != note.name) {
-                          return const LinearProgressIndicator();
-                        }
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
 
-                        if (detailed != null && detailed.name == note.name) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Posting Date: ${detailed.postingDate}'),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (detailed.status == 'Draft') ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
-                                        child: const Text('Edit'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                                        child: const Text('Submit'),
-                                      ),
-                                    ] else ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                      if (detailed.status == 'Submitted') ...[
-                                        const SizedBox(width: 8),
-                                        TextButton(
-                                          onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                                          child: const Text('Cancel'),
-                                        ),
-                                      ]
-                                    ]
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }),
+              // Row 3: Stats (Total Qty, Assigned, Time Taken)
+              Row(
+                children: [
+                  _buildStatItem(Icons.inventory_2_outlined, '${note.totalQty.toStringAsFixed(0)} Items'),
+                  // Assuming 'assigned' logic exists or is planned, omitting for now as per model
+                  // If 'assigned' refers to 'Assigned To', it's not in the model yet.
+                  const Spacer(),
+                  if (note.docstatus == 1) // Submitted
+                    _buildStatItem(Icons.timer_outlined, _getTimeTaken(note.creation, note.modified), color: Colors.green),
+                ],
               ),
-            ),
-          ],
-        );
-      }),
+
+              // Expansion Content
+              Obx(() {
+                final isCurrentlyExpanded = controller.expandedNoteName.value == note.name;
+                return AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    child: !isCurrentlyExpanded
+                        ? const SizedBox.shrink()
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 12),
+                              const Divider(height: 1),
+                              _buildExpandedDetails(note),
+                            ],
+                          ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
     );
+  }
+
+  Widget _buildStatItem(IconData icon, String text, {Color? color}) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color ?? Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandedDetails(dynamic note) {
+    return Obx(() {
+      final detailed = controller.detailedNote;
+      if (controller.isLoadingDetails.value && detailed?.name != note.name) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16.0),
+          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+        );
+      }
+
+      if (detailed != null && detailed.name == note.name) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Grand Total: ${_getCurrencySymbol(detailed.currency)}${detailed.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (detailed.status == 'Draft') ...[
+                    TextButton(
+                      onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
+                      child: const Text('Edit'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => Get.snackbar('TODO', 'Submit document'),
+                      child: const Text('Submit'),
+                    ),
+                  ] else ...[
+                    TextButton(
+                      onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
+                      child: const Text('View'),
+                    ),
+                    if (detailed.status == 'Submitted') ...[
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => Get.snackbar('TODO', 'Cancel document'),
+                        child: const Text('Cancel'),
+                      ),
+                    ]
+                  ]
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    });
   }
 }

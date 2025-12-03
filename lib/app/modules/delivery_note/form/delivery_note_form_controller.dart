@@ -108,10 +108,13 @@ class DeliveryNoteFormController extends GetxController {
       grandTotal: 0.0,
       postingDate: DateTime.now().toString().split(' ')[0],
       modified: '',
-      status: 'Draft',
+      creation: DateTime.now().toString(),
+      status: 'Not Saved',
       currency: 'USD',
       items: [],
       poNo: posUploadNameArg,
+      totalQty: 0.0,
+      docstatus: 0,
     );
     log('[CONTROLLER] New DN created with poNo: ${deliveryNote.value?.poNo}');
 
@@ -168,6 +171,7 @@ class DeliveryNoteFormController extends GetxController {
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
+        .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
         .map((item) => item.idx.toString())
         .toList();
   }
