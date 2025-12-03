@@ -8,6 +8,7 @@ abstract class AppRoutes {
   static const DELIVERY_NOTE = _Paths.DELIVERY_NOTE;
   static const DELIVERY_NOTE_FORM = _Paths.DELIVERY_NOTE_FORM;
   static const PACKING_SLIP = _Paths.PACKING_SLIP;
+  static const PACKING_SLIP_FORM = _Paths.PACKING_SLIP_FORM;
   static const POS_UPLOAD = _Paths.POS_UPLOAD;
   static const POS_UPLOAD_FORM = _Paths.POS_UPLOAD_FORM;
   static const TODO = _Paths.TODO;
@@ -22,6 +23,7 @@ abstract class _Paths {
   static const DELIVERY_NOTE = '/delivery-note';
   static const DELIVERY_NOTE_FORM = '/delivery-note/form';
   static const PACKING_SLIP = '/packing-slip';
+  static const PACKING_SLIP_FORM = '/packing-slip/form';
   static const POS_UPLOAD = '/pos-upload';
   static const POS_UPLOAD_FORM = '/pos-upload/form';
   static const TODO = '/todo';

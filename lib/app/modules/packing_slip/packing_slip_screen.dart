@@ -4,6 +4,7 @@ import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_controller.
 import 'package:ddmco_multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:intl/intl.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipScreen extends StatefulWidget {
   const PackingSlipScreen({super.key});
@@ -194,7 +195,7 @@ class PackingSlipCard extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   TextButton(
-                                    onPressed: () => Get.snackbar('TODO', 'View Packing Slip details'),
+                                    onPressed: () => Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {'name': slip.name, 'mode': 'view'}),
                                     child: const Text('View'),
                                   ),
                                 ],

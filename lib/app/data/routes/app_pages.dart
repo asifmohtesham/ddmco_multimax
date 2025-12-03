@@ -17,6 +17,8 @@ import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form
 import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_screen.dart';
 import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_binding.dart';
 import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_screen.dart';
+import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_binding.dart';
+import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_screen.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_binding.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_screen.dart';
 import 'package:ddmco_multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
@@ -80,6 +82,12 @@ class AppPages {
       name: AppRoutes.PACKING_SLIP,
       page: () => const PackingSlipScreen(),
       binding: PackingSlipBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.PACKING_SLIP_FORM,
+      page: () => const PackingSlipFormScreen(),
+      binding: PackingSlipFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.POS_UPLOAD,
