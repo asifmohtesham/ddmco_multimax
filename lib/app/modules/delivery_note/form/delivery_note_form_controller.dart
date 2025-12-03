@@ -1,3 +1,5 @@
+
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
@@ -19,6 +21,7 @@ class DeliveryNoteFormController extends GetxController {
   final String? posUploadNameArg = Get.arguments['posUploadName'];
 
   var isLoading = true.obs;
+  var isScanning = false.obs; // New state for barcode scanning UX
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload = Rx<PosUpload?>(null);
 
@@ -122,8 +125,7 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    // Show loading immediately
-    isLoading.value = true; 
+    isScanning.value = true;
 
     try {
       // 1. Validate Item and get details (Name)
@@ -163,8 +165,6 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
 
-      isLoading.value = false; // Hide global loading
-
       // 3. Show Bottom Sheet
       // If batchNo was null, the BottomSheet will handle entry and validation
       Get.bottomSheet(
@@ -181,11 +181,11 @@ class DeliveryNoteFormController extends GetxController {
       );
 
     } catch (e, stackTrace) {
-      isLoading.value = false;
       final errorMessage = 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}';
       Get.snackbar('Error', errorMessage);
       log(errorMessage, error: e, stackTrace: stackTrace);
     } finally {
+      isScanning.value = false;
       barcodeController.clear();
     }
   }
@@ -324,7 +324,7 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
          final result = balanceResponse.data['message']['result'];
          if (result is List && result.isNotEmpty) {
             final row = result.first;
-            log(row);
+            log(jsonEncode(row));
             fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
          }
       }

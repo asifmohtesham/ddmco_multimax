@@ -87,15 +87,34 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-          child: TextField(
+          child: TextFormField(
             controller: controller.barcodeController,
-            decoration: const InputDecoration(
+            autofocus: true,
+            readOnly: controller.isScanning.value,
+            decoration: InputDecoration(
               labelText: 'Scan or enter barcode',
+              border: const OutlineInputBorder(),
               prefixIcon: Icon(Icons.qr_code_scanner),
-              border: OutlineInputBorder(),
-              isDense: true,
+              suffixIcon: controller.isScanning.value
+                  ? const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              )
+                  : IconButton(
+                icon: const Icon(Icons.camera_alt),
+                onPressed: () { // TODO: Implement camera scanning
+                  final text = controller.barcodeController.text;
+                  if (text.isNotEmpty) {
+                    controller.addItemFromBarcode(text);
+                  }
+                },
+              ),
             ),
-            onSubmitted: (value) {
+            onFieldSubmitted: (value) {
               if (value.isNotEmpty) {
                 controller.addItemFromBarcode(value);
               }
