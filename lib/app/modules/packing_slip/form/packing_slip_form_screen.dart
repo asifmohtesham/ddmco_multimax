@@ -108,10 +108,10 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty)
                         Text(
                           slip.customPoNo!,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, fontFamily: 'monospace'),
                         ),
                       if (slip.customPoNo == null || slip.customPoNo != slip.name)
-                        Text(slip.name, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(slip.name, style: const TextStyle(color: Colors.grey, fontSize: 12, fontFamily: 'monospace')),
                     ],
                   ),
                 ),
@@ -130,7 +130,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildDetailRow('Delivery Note', slip.deliveryNote),
+            _buildDetailRow('Delivery Note', slip.deliveryNote, isMono: true),
             _buildDetailRow('Created', _getRelativeTime(slip.creation)), 
           ],
         ),
@@ -138,14 +138,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {bool isMono = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w500, fontFamily: isMono ? 'monospace' : null)),
         ],
       ),
     );
@@ -164,7 +164,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         children: [
           Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, textBaseline: TextBaseline.alphabetic)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
         ],
       ),
     );
@@ -204,7 +204,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                         decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
                         child: Text(
                           '#${item.customInvoiceSerialNumber}',
-                          style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'monospace'),
                         ),
                       ),
                       if (creationDelay.isNotEmpty)
@@ -226,7 +226,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'monospace')),
                 if (item.itemName.isNotEmpty)
                   Text(item.itemName, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
                 
@@ -279,11 +279,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildItemStat(String label, String value) {
+    final bool isMono = label == 'Batch';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, fontFamily: isMono ? 'monospace' : null)),
       ],
     );
   }

@@ -40,8 +40,22 @@ class DeliveryNoteItemCard extends StatelessWidget {
         child: Column(
           children: [
             ListTile(
-              title: Text('${item.itemCode}: ${item.itemName ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(item.batchNo ?? ''),
+              title: RichText(
+                text: TextSpan(
+                  style: DefaultTextStyle.of(context).style,
+                  children: [
+                    TextSpan(
+                      text: item.itemCode,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                    ),
+                    TextSpan(
+                      text: ': ${item.itemName ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              subtitle: Text(item.batchNo ?? '', style: const TextStyle(fontFamily: 'monospace')),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -96,15 +110,17 @@ class DeliveryNoteItemCard extends StatelessWidget {
   }
 
   Widget _buildInfoColumn(String title, String value) {
+    // Apply monospace to Rack code
+    final bool isMono = title == 'Rack'; 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
-            fontFamily: 'monospace', // Applied monospace
+            fontFamily: isMono ? 'monospace' : null, // Conditionally apply monospace
           ),
         ),
       ],
