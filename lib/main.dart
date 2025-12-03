@@ -12,7 +12,8 @@ Future<void> main() async {
   // --- Initialize Services & Global Controllers ---
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
-  Get.put<HomeController>(HomeController(), permanent: true);
+  // Removed explicit put of HomeController to avoid dependency issues. 
+  // It will be initialized via HomeBinding when needed.
 
   // --- Determine Initial Route ---
   final authController = Get.find<AuthenticationController>();
@@ -114,8 +115,11 @@ Future<void> main() async {
       defaultTransition: Transition.fadeIn,
       routingCallback: (routing) {
         if (routing?.current != null) {
-          final homeController = Get.find<HomeController>();
-          homeController.updateActiveScreen(routing!.current);
+          // Safely access HomeController only if registered
+          if (Get.isRegistered<HomeController>()) {
+            final homeController = Get.find<HomeController>();
+            homeController.updateActiveScreen(routing!.current);
+          }
         }
       },
     ),
