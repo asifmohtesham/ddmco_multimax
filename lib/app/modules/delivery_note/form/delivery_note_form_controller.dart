@@ -360,16 +360,15 @@ class _AddItemBottomSheetState extends State<AddItemBottomSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: Form(
           key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: ListView(
+            shrinkWrap: true,
             children: [
               Text('${widget.itemCode}: ${widget.itemName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
