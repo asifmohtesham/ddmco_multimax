@@ -95,9 +95,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
                 final groupKey = groupKeys[index];
                 final slips = grouped[groupKey]!;
-                final isExpanded = controller.expandedGroup.value == groupKey; // Use a separate expansion state for groups if needed, or just always show
+                final isExpanded = controller.expandedGroup.value == groupKey; 
 
-                // Using a custom card for the group header + items
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -149,7 +148,6 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   }
 }
 
-// Renamed and simplified for use inside the group
 class PackingSlipListTile extends StatelessWidget {
   final dynamic slip;
   final PackingSlipController controller = Get.find();
@@ -171,6 +169,24 @@ class PackingSlipListTile extends StatelessWidget {
         return '${difference.inMinutes}m ago';
       } else {
         return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String _getTimeTaken(String creation, String modified) {
+    try {
+      final start = DateTime.parse(creation);
+      final end = DateTime.parse(modified);
+      final difference = end.difference(start);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ${difference.inHours % 24}h';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ${difference.inMinutes % 60}m';
+      } else {
+        return '${difference.inMinutes}m';
       }
     } catch (e) {
       return '';
@@ -211,6 +227,21 @@ class PackingSlipListTile extends StatelessWidget {
                 ),
               ],
             ),
+            if (slip.docstatus == 1) // Submitted
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Icon(Icons.timer_outlined, size: 12, color: Colors.green),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Draft to Submit: ${_getTimeTaken(slip.creation, slip.modified)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
             if (slip.owner != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4.0),

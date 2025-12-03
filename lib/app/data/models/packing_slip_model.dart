@@ -31,6 +31,13 @@ class PackingSlip {
     var itemsList = json['items'] as List? ?? [];
     List<PackingSlipItem> items = itemsList.map((i) => PackingSlipItem.fromJson(i)).toList();
 
+    // Sort items by custom_invoice_serial_number
+    items.sort((a, b) {
+      int aSerial = int.tryParse(a.customInvoiceSerialNumber ?? '0') ?? 0;
+      int bSerial = int.tryParse(b.customInvoiceSerialNumber ?? '0') ?? 0;
+      return aSerial.compareTo(bSerial);
+    });
+
     return PackingSlip(
       name: json['name'] ?? '',
       deliveryNote: json['delivery_note'] ?? '',
@@ -61,6 +68,7 @@ class PackingSlipItem {
   final String? customInvoiceSerialNumber;
   final String? customVariantOf;
   final String? customCountryOfOrigin;
+  final String? creation; // Added
 
   PackingSlipItem({
     required this.name,
@@ -75,6 +83,7 @@ class PackingSlipItem {
     this.customInvoiceSerialNumber,
     this.customVariantOf,
     this.customCountryOfOrigin,
+    this.creation,
   });
 
   factory PackingSlipItem.fromJson(Map<String, dynamic> json) {
@@ -91,6 +100,7 @@ class PackingSlipItem {
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
       customVariantOf: json['custom_variant_of'],
       customCountryOfOrigin: json['custom_country_of_origin'],
+      creation: json['creation'],
     );
   }
 }

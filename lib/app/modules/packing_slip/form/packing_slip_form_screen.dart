@@ -33,6 +33,28 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     }
   }
 
+  String _getItemCreationDelay(String docCreation, String? itemCreation) {
+    if (itemCreation == null || itemCreation.isEmpty) return '';
+    try {
+      final start = DateTime.parse(docCreation);
+      final end = DateTime.parse(itemCreation);
+      final difference = end.difference(start);
+      
+      // If difference is negative or very small, just return nothing or "Immediate"
+      if (difference.inSeconds < 60) return ''; 
+
+      if (difference.inDays > 0) {
+        return '+${difference.inDays}d ${difference.inHours % 24}h';
+      } else if (difference.inHours > 0) {
+        return '+${difference.inHours}h ${difference.inMinutes % 60}m';
+      } else {
+        return '+${difference.inMinutes}m';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,7 +80,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               const SizedBox(height: 24),
               const Text('Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              _buildItemsList(slip.items),
+              _buildItemsList(slip),
             ],
           ),
         );
@@ -148,7 +170,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  Widget _buildItemsList(List<PackingSlipItem> items) {
+  Widget _buildItemsList(PackingSlip slip) {
+    final items = slip.items;
     if (items.isEmpty) return const Text('No items found.');
     
     return ListView.separated(
@@ -160,17 +183,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         final item = items[index];
         // Fetch required qty from controller (which looks up linked DN)
         final requiredQty = controller.getRequiredQty(item.dnDetail) ?? 0.0;
-        // Packed qty is what's on this slip. Wait, isn't DN qty the *total* packed?
-        // Usually: Sales Order -> Delivery Note -> Packing Slip?
-        // Or Sales Order -> Packing Slip -> Delivery Note?
-        // ERPNext standard: Delivery Note -> Packing Slip.
-        // So DN has the total item qty to be delivered.
-        // Packing Slip breaks it down.
-        // So required = DN Item Qty. 
-        // But multiple packing slips can exist for one DN.
-        // Ideally, we show "Packed in this slip / Total in DN".
         
         final percent = (requiredQty > 0) ? (item.qty / requiredQty).clamp(0.0, 1.0) : 0.0;
+        final creationDelay = _getItemCreationDelay(slip.creation, item.creation);
         
         return Card(
           elevation: 2,
@@ -192,6 +207,21 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                           style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 12),
                         ),
                       ),
+                      if (creationDelay.isNotEmpty)
+                         Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(4)),
+                            child: Row(
+                              children: [
+                                Icon(Icons.access_time, size: 12, color: Colors.orange.shade800),
+                                const SizedBox(width: 4),
+                                Text(
+                                  creationDelay,
+                                  style: TextStyle(color: Colors.orange.shade900, fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                         ),
                     // Text('${item.qty} ${item.uom}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
