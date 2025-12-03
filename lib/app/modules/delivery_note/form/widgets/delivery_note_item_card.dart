@@ -24,10 +24,10 @@ class DeliveryNoteItemCard extends StatelessWidget {
       return AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
-        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        // margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
         decoration: BoxDecoration(
           color: isRecentlyAdded ? Colors.yellow.shade100 : Colors.white,
-          borderRadius: BorderRadius.circular(4.0),
+          // borderRadius: BorderRadius.circular(4.0),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withValues(alpha: .2),
