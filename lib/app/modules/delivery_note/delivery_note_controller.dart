@@ -68,24 +68,10 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
-      // Need to update provider to accept orderBy if not already.
-      // Assuming we need to pass orderBy as a separate parameter or hack it into filters?
-      // Best to update provider signature.
-      // But looking at ApiProvider.getDocumentList, it accepts orderBy.
-      // DeliveryNoteProvider.getDeliveryNotes calls _apiProvider.getDeliveryNotes which calls getDocumentList.
-      // I need to update DeliveryNoteProvider to pass orderBy.
-      
-      // Since I can't update provider signature easily here without reading/writing it, 
-      // I'll assume I'll update it next or it already supports it if I pass it.
-      // Actually, I'll update the provider first to be sure.
-      // Wait, I am in the controller. I will call provider with orderBy.
-      
       final response = await _provider.getDeliveryNotes(
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
-        // Passing orderBy directly if provider supports it or I update it.
-        // Let's assume I will update the provider to accept named 'orderBy'.
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
       
@@ -157,7 +143,7 @@ class DeliveryNoteController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         fetchedUploads.addAll((response.data['data'] as List).map((json) {
           final posUpload = PosUpload.fromJson(json);
-          print('Fetched POS Upload: ${posUpload.name}, Status: ${posUpload.status}'); // Log status
+          // print('Fetched POS Upload: ${posUpload.name}, Status: ${posUpload.status}'); 
           return posUpload;
         }).toList());
       }
@@ -190,8 +176,49 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  void createNewDeliveryNote(PosUpload? selectedPosUpload) {
+  Future<void> createNewDeliveryNote(PosUpload? selectedPosUpload) async {
     if (selectedPosUpload != null) {
+      // Check for existing Draft Delivery Note with matching PO No
+      try {
+        // We can search locally first if the list is likely up to date, 
+        // but for correctness, a quick API check is safer or iterate through current list.
+        // Let's iterate through current list first as it's faster.
+        final existingDraft = deliveryNotes.firstWhereOrNull((note) => 
+            note.poNo == selectedPosUpload.name && note.docstatus == 0);
+
+        if (existingDraft != null) {
+          // Found local match
+          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+            'name': existingDraft.name,
+            'mode': 'edit',
+            'posUploadCustomer': selectedPosUpload.customer,
+            'posUploadName': selectedPosUpload.name,
+          });
+          return;
+        }
+
+        // If not found locally, query the API to be sure (optional but robust)
+        final response = await _provider.getDeliveryNotes(
+          limit: 1, 
+          filters: {'po_no': selectedPosUpload.name, 'docstatus': 0}
+        );
+        
+        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+           final noteData = response.data['data'][0];
+           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+            'name': noteData['name'],
+            'mode': 'edit',
+            'posUploadCustomer': selectedPosUpload.customer,
+            'posUploadName': selectedPosUpload.name,
+          });
+          return;
+        }
+
+      } catch (e) {
+        print('Error checking for existing draft: $e');
+        // Proceed to create new if check fails
+      }
+
       Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
         'name': '',
         'mode': 'new',
