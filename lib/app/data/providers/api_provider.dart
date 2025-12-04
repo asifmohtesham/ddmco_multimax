@@ -268,7 +268,7 @@ class ApiProvider {
   // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
 
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    return getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'supplier', 'grand_total', 'posting_date', 'modified', 'status', 'currency']);
+    return getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'supplier', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'creation']);
   }
 
   Future<Response> getPurchaseReceipt(String name) async {
