@@ -13,8 +13,9 @@ class StockEntryFormController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
 
-  final String name = Get.arguments['name'];
-  final String mode = Get.arguments['mode'];
+  // name is not final because we update it after creation
+  String name = Get.arguments['name'];
+  String mode = Get.arguments['mode'];
 
   var isLoading = true.obs;
   var isScanning = false.obs;
@@ -37,16 +38,18 @@ class StockEntryFormController extends GetxController {
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
-  final bsSourceRackController = TextEditingController(); // Added for rack
-  final bsTargetRackController = TextEditingController(); // Added for rack
-  
-  final sourceRackFocusNode = FocusNode(); // Focus Node
-  final targetRackFocusNode = FocusNode(); // Focus Node
+  final bsSourceRackController = TextEditingController();
+  final bsTargetRackController = TextEditingController();
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs; 
-  var isValidatingBatch = false.obs; // Loading state
+  var isValidatingBatch = false.obs;
   
+  var isSourceRackValid = false.obs;
+  var isTargetRackValid = false.obs;
+  var isValidatingSourceRack = false.obs;
+  var isValidatingTargetRack = false.obs;
+
   var currentItemCode = '';
   var currentItemName = '';
   var currentUom = '';
@@ -86,6 +89,9 @@ class StockEntryFormController extends GetxController {
     customReferenceNoController.dispose();
     super.onClose();
   }
+
+  final sourceRackFocusNode = FocusNode();
+  final targetRackFocusNode = FocusNode();
 
   void _onReferenceNoChanged() {
     final ref = customReferenceNoController.text;
@@ -192,8 +198,32 @@ class StockEntryFormController extends GetxController {
       if (mode == 'new') {
         final response = await _provider.createStockEntry(data);
         if (response.statusCode == 200) {
-          Get.back();
-          Get.snackbar('Success', 'Stock Entry created');
+          final createdDoc = response.data['data'];
+          name = createdDoc['name']; // Update name
+          mode = 'edit'; // Switch to edit mode
+          
+          // Update local model with real name
+          final old = stockEntry.value!;
+          stockEntry.value = StockEntry(
+            name: name,
+            purpose: old.purpose,
+            totalAmount: old.totalAmount,
+            postingDate: old.postingDate,
+            modified: old.modified,
+            creation: old.creation,
+            status: old.status,
+            docstatus: old.docstatus,
+            owner: old.owner,
+            stockEntryType: old.stockEntryType,
+            postingTime: old.postingTime,
+            fromWarehouse: old.fromWarehouse,
+            toWarehouse: old.toWarehouse,
+            customTotalQty: old.customTotalQty,
+            customReferenceNo: old.customReferenceNo,
+            items: old.items,
+          );
+          
+          Get.snackbar('Success', 'Stock Entry created: $name');
         } else {
           Get.snackbar('Error', 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
         }
@@ -256,20 +286,23 @@ class StockEntryFormController extends GetxController {
     bsBatchController.clear();
     bsSourceRackController.clear();
     bsTargetRackController.clear();
+    
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
     isValidatingBatch.value = false;
+    
+    isSourceRackValid.value = false;
+    isTargetRackValid.value = false;
+    
     selectedSerial.value = null;
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
-      // Auto validate if scanned? Yes, usually implied.
-      // Or we call the API to confirm it exists.
-      validateBatch(scannedBatch); 
+      validateBatch(scannedBatch);
     }
 
     Get.bottomSheet(
-      const StockEntryItemQtySheet(),
+      const StockEntryItemFormSheet(),
       isScrollControlled: true,
     );
   }
@@ -278,10 +311,7 @@ class StockEntryFormController extends GetxController {
     if (batch.isEmpty) return;
     
     isValidatingBatch.value = true;
-    
-    // Simple check first: if batch is provided, verify with API
     try {
-      // Assuming standard filter: batch_id or name.
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch 
@@ -291,8 +321,6 @@ class StockEntryFormController extends GetxController {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true; 
         Get.snackbar('Success', 'Batch validated', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
-        
-        // Determine which rack field to focus
         _focusNextField();
       } else {
         bsIsBatchValid.value = false;
@@ -303,6 +331,32 @@ class StockEntryFormController extends GetxController {
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
+    }
+  }
+
+  Future<void> validateRack(String rack, bool isSource) async {
+    if (rack.isEmpty) return;
+
+    if (isSource) isValidatingSourceRack.value = true;
+    else isValidatingTargetRack.value = true;
+
+    try {
+      // Fetching Rack by name (ID)
+      final response = await _apiProvider.getDocument('Rack', rack);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        if (isSource) isSourceRackValid.value = true;
+        else isTargetRackValid.value = true;
+      } else {
+        if (isSource) isSourceRackValid.value = false;
+        else isTargetRackValid.value = false;
+        Get.snackbar('Error', 'Rack not found');
+      }
+    } catch (e) {
+      if (isSource) isSourceRackValid.value = false;
+      else isTargetRackValid.value = false;
+    } finally {
+      if (isSource) isValidatingSourceRack.value = false;
+      else isValidatingTargetRack.value = false;
     }
   }
 
@@ -321,10 +375,10 @@ class StockEntryFormController extends GetxController {
 
   void addItem() {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
-    // if (qty <= 0) return; // Allow 0? Probably not.
+    if (qty <= 0) return;
     
     final batch = bsBatchController.text;
-    // if (!bsIsBatchValid.value) return; // Enforced by button state in UI
+    // if (!bsIsBatchValid.value && batch.isNotEmpty) return; 
 
     final currentItems = stockEntry.value?.items.toList() ?? [];
     
@@ -380,6 +434,12 @@ class StockEntryFormController extends GetxController {
     );
     
     Get.back();
-    Get.snackbar('Success', 'Item added');
+    
+    // Auto-Save logic for new draft
+    if (mode == 'new') {
+      saveStockEntry();
+    } else {
+      Get.snackbar('Success', 'Item added to list');
+    }
   }
 }

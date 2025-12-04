@@ -175,21 +175,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                  _buildReadOnlyRow('Total Amount', entry.totalAmount.toStringAsFixed(2)),
                  if (entry.owner != null) _buildReadOnlyRow('Owner', entry.owner!),
               ],
-
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    DefaultTabController.of(context).animateTo(1);
-                  },
-                  icon: const Icon(Icons.arrow_forward),
-                  label: const Text('Next: Add Items'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-              ),
             ],
           );
         }),
@@ -232,6 +217,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Header: Code + Name
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -249,6 +235,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               ],
                             ),
                             const Divider(height: 20),
+                            
+                            // Details Grid
                             Wrap(
                               spacing: 16,
                               runSpacing: 8,
@@ -259,6 +247,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               ],
                             ),
                             const SizedBox(height: 12),
+                            
+                            // Warehouse/Rack Flow (Requirement 6)
                             Obx(() {
                               final type = controller.selectedStockEntryType.value;
                               final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -343,62 +333,121 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 }
 
-class StockEntryItemQtySheet extends GetView<StockEntryFormController> {
-  const StockEntryItemQtySheet({super.key});
+class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
+  const StockEntryItemFormSheet({super.key});
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Add Item', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
-            Obx(() => TextFormField(
-              controller: controller.bsBatchController,
-              readOnly: controller.bsIsBatchReadOnly.value,
-              autofocus: !controller.bsIsBatchReadOnly.value,
-              decoration: InputDecoration(
-                labelText: 'Batch No',
-                border: const OutlineInputBorder(),
-                filled: controller.bsIsBatchReadOnly.value,
-                fillColor: controller.bsIsBatchReadOnly.value ? Colors.grey.shade100 : null,
-                suffixIcon: !controller.bsIsBatchReadOnly.value
-                    ? IconButton(
-                        icon: const Icon(Icons.check_circle_outline),
-                        onPressed: () => controller.validateBatch(controller.bsBatchController.text),
-                      )
-                    : const Icon(Icons.check_circle, color: Colors.green),
+      child: SingleChildScrollView( // Fix overflow
+        child: Container(
+          padding: EdgeInsets.only(
+            left: 16.0,
+            right: 16.0,
+            top: 16.0,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16.0, // Handle keyboard
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Add Item', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
+              
+              // Batch No
+              Obx(() => TextFormField(
+                controller: controller.bsBatchController,
+                readOnly: controller.bsIsBatchReadOnly.value,
+                autofocus: !controller.bsIsBatchReadOnly.value,
+                decoration: InputDecoration(
+                  labelText: 'Batch No',
+                  border: const OutlineInputBorder(),
+                  filled: controller.bsIsBatchReadOnly.value,
+                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.grey.shade100 : null,
+                  suffixIcon: !controller.bsIsBatchReadOnly.value
+                      ? IconButton(
+                          icon: const Icon(Icons.check_circle_outline),
+                          onPressed: () => controller.validateBatch(controller.bsBatchController.text),
+                        )
+                      : const Icon(Icons.check_circle, color: Colors.green),
+                ),
+                onFieldSubmitted: (value) => controller.validateBatch(value),
+              )),
+              const SizedBox(height: 16),
+              
+              // Rack Fields
+              Obx(() {
+                final type = controller.selectedStockEntryType.value;
+                final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+                final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+                return Column(
+                  children: [
+                    if (showSource) ...[
+                      TextFormField(
+                        controller: controller.bsSourceRackController,
+                        focusNode: controller.sourceRackFocusNode,
+                        decoration: InputDecoration(
+                          labelText: 'Source Rack',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: controller.isSourceRackValid.value 
+                              ? const Icon(Icons.check_circle, color: Colors.green)
+                              : IconButton(
+                                  icon: const Icon(Icons.check),
+                                  onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
+                                ),
+                        ),
+                        onFieldSubmitted: (val) => controller.validateRack(val, true),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (showTarget) ...[
+                      TextFormField(
+                        controller: controller.bsTargetRackController,
+                        focusNode: controller.targetRackFocusNode,
+                        decoration: InputDecoration(
+                          labelText: 'Target Rack',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: controller.isTargetRackValid.value 
+                              ? const Icon(Icons.check_circle, color: Colors.green)
+                              : IconButton(
+                                  icon: const Icon(Icons.check),
+                                  onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
+                                ),
+                        ),
+                        onFieldSubmitted: (val) => controller.validateRack(val, false),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ],
+                );
+              }),
+
+              // Quantity
+              TextFormField(
+                controller: controller.bsQtyController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              onFieldSubmitted: (value) => controller.validateBatch(value),
-            )),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: controller.bsQtyController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Quantity',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 24),
+              
+              SizedBox(
+                width: double.infinity,
+                child: Obx(() => ElevatedButton(
+                  onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
+                  child: const Text('Add Item'),
+                )),
               ),
-              enabled: controller.bsIsBatchValid.value,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
-                child: const Text('Add Item'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
