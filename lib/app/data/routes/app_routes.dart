@@ -13,6 +13,7 @@ abstract class AppRoutes {
   static const POS_UPLOAD_FORM = _Paths.POS_UPLOAD_FORM;
   static const TODO = _Paths.TODO;
   static const TODO_FORM = _Paths.TODO_FORM;
+  static const ITEM = _Paths.ITEM;
 }
 
 abstract class _Paths {
@@ -28,4 +29,5 @@ abstract class _Paths {
   static const POS_UPLOAD_FORM = '/pos-upload/form';
   static const TODO = '/todo';
   static const TODO_FORM = '/todo/form';
+  static const ITEM = '/item';
 }

@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
@@ -6,7 +7,7 @@ import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/todo_provider.dart';
 
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo }
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
 class HomeController extends GetxController {
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
@@ -23,14 +24,12 @@ class HomeController extends GetxController {
   var pendingPosUploadsCount = 0.obs;
   var openTodosCount = 0.obs;
 
-  // Bottom bar config...
   List<BottomNavigationBarItem> get homeBottomBarItems => [
     const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
     const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
   ];
 
   List<BottomNavigationBarItem> get currentBottomBarItems {
-    // Simplified for brevity, logic same as before
     return homeBottomBarItems; 
   }
 
@@ -44,7 +43,6 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      // Fetch counts concurrently
       final results = await Future.wait([
         _dnProvider.getDeliveryNotes(limit: 100, filters: {'status': 'Draft'}),
         _psProvider.getPackingSlips(limit: 100, filters: {'status': 'Draft'}),
@@ -117,6 +115,10 @@ class HomeController extends GetxController {
         activeScreen.value = ActiveScreen.todo;
         selectedDrawerIndex.value = 6;
         break;
+      case AppRoutes.ITEM:
+        activeScreen.value = ActiveScreen.item;
+        selectedDrawerIndex.value = 7; // New index
+        break;
     }
   }
 
@@ -128,4 +130,5 @@ class HomeController extends GetxController {
   void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
   void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
   void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
+  void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
 }

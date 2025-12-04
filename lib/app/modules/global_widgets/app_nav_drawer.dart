@@ -81,6 +81,13 @@ class AppNavDrawer extends StatelessWidget {
             onTap: homeController.goToPosUpload,
           )),
           const Divider(),
+          Obx(() => ListTile(
+            leading: const Icon(Icons.category_outlined),
+            title: const Text('Items'),
+            selected: homeController.selectedDrawerIndex.value == 7,
+            onTap: homeController.goToItem,
+          )),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Logout'),
