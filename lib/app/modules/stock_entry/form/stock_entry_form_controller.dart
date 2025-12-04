@@ -4,10 +4,11 @@ import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
 import 'package:ddmco_multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_screen.dart'; // For bottom sheet
+import 'package:intl/intl.dart';
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>(); // For Item validation
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
@@ -16,25 +17,85 @@ class StockEntryFormController extends GetxController {
   var isScanning = false.obs;
   var stockEntry = Rx<StockEntry?>(null);
 
+  // Form Fields
+  var selectedFromWarehouse = RxnString();
+  var selectedToWarehouse = RxnString();
+  final customReferenceNoController = TextEditingController();
+  var selectedStockEntryType = 'Material Transfer'.obs; 
+
   final TextEditingController barcodeController = TextEditingController();
   
+  // Data Sources
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
   var currentItemCode = '';
   var currentItemName = '';
   var currentStock = 0.0;
 
+  final List<String> stockEntryTypes = [
+    'Material Issue',
+    'Material Receipt',
+    'Material Transfer',
+    'Material Transfer for Manufacture'
+  ];
+
   @override
   void onInit() {
     super.onInit();
-    fetchStockEntry();
+    fetchWarehouses();
+    if (mode == 'new') {
+      _initNewStockEntry();
+    } else {
+      fetchStockEntry();
+    }
   }
 
   @override
   void onClose() {
     barcodeController.dispose();
     bsQtyController.dispose();
+    customReferenceNoController.dispose();
     super.onClose();
+  }
+
+  Future<void> fetchWarehouses() async {
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+      }
+    } catch (e) {
+      print('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
+  }
+
+  void _initNewStockEntry() {
+    isLoading.value = true;
+    final now = DateTime.now();
+    stockEntry.value = StockEntry(
+      name: 'New Stock Entry',
+      purpose: 'Material Transfer',
+      totalAmount: 0.0,
+      postingDate: DateFormat('yyyy-MM-dd').format(now),
+      postingTime: DateFormat('HH:mm:ss').format(now),
+      modified: '',
+      creation: now.toString(),
+      status: 'Draft',
+      docstatus: 0,
+      items: [],
+      stockEntryType: 'Material Transfer',
+      fromWarehouse: '',
+      toWarehouse: '',
+      customReferenceNo: '',
+    );
+    selectedStockEntryType.value = 'Material Transfer';
+    isLoading.value = false;
   }
 
   Future<void> fetchStockEntry() async {
@@ -42,7 +103,14 @@ class StockEntryFormController extends GetxController {
     try {
       final response = await _provider.getStockEntry(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        stockEntry.value = StockEntry.fromJson(response.data['data']);
+        final entry = StockEntry.fromJson(response.data['data']);
+        stockEntry.value = entry;
+        
+        // Populate form state
+        selectedFromWarehouse.value = entry.fromWarehouse;
+        selectedToWarehouse.value = entry.toWarehouse;
+        customReferenceNoController.text = entry.customReferenceNo ?? '';
+        selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
       } else {
         Get.snackbar('Error', 'Failed to fetch stock entry');
       }
@@ -58,19 +126,12 @@ class StockEntryFormController extends GetxController {
     isScanning.value = true;
     
     try {
-      // 1. Validate Item
-      // Assuming barcode is item_code or we search for it.
-      // Simple check: get Item document
       final response = await _apiProvider.getDocument('Item', barcode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
         currentItemCode = itemData['item_code'];
         currentItemName = itemData['item_name'];
-        
-        // 2. Fetch Stock (Optional but good UX)
-        // We can fetch stock balance for a default warehouse if needed.
-        // For now, just open sheet.
-        currentStock = 0.0; // Placeholder
+        currentStock = 0.0; 
         
         _openQtySheet();
       } else {
@@ -98,30 +159,49 @@ class StockEntryFormController extends GetxController {
 
     final currentItems = stockEntry.value?.items.toList() ?? [];
     
-    // Check if exists
     final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode);
     if (index != -1) {
       final existing = currentItems[index];
-      // Need copyWith on StockEntryItem. Assuming it exists or I'll recreate it.
-      // I'll check model later, for now constructing new.
       currentItems[index] = StockEntryItem(
         itemCode: existing.itemCode,
         qty: existing.qty + qty,
         basicRate: existing.basicRate,
+        itemGroup: existing.itemGroup,
+        customVariantOf: existing.customVariantOf,
+        batchNo: existing.batchNo,
+        itemName: existing.itemName,
+        rack: existing.rack,
+        toRack: existing.toRack,
+        sWarehouse: existing.sWarehouse,
+        tWarehouse: existing.tWarehouse,
       );
     } else {
       currentItems.add(StockEntryItem(
         itemCode: currentItemCode,
         qty: qty,
-        basicRate: 0.0, // Default
+        basicRate: 0.0,
       ));
     }
     
-    // Need copyWith on StockEntry
-    // stockEntry.value = stockEntry.value?.copyWith(items: currentItems);
-    // I'll need to update the model to support copyWith if not present.
-    // For now I'll use a manual reconstruction if copyWith is missing, 
-    // but I should update the model.
+    final old = stockEntry.value!;
+    stockEntry.value = StockEntry(
+      name: old.name,
+      purpose: old.purpose,
+      totalAmount: old.totalAmount,
+      postingDate: old.postingDate,
+      modified: old.modified,
+      creation: old.creation,
+      status: old.status,
+      docstatus: old.docstatus,
+      owner: old.owner,
+      stockEntryType: selectedStockEntryType.value,
+      postingTime: old.postingTime,
+      fromWarehouse: selectedFromWarehouse.value,
+      toWarehouse: selectedToWarehouse.value,
+      customTotalQty: old.customTotalQty,
+      customReferenceNo: customReferenceNoController.text,
+      items: currentItems,
+    );
     
     Get.back();
     Get.snackbar('Success', 'Item added');

@@ -7,13 +7,13 @@ class StockEntry {
   final String creation;
   final String status;
   final int docstatus;
-  // New fields
   final String? owner;
   final String? stockEntryType;
   final String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
   final double? customTotalQty;
+  final String? customReferenceNo; // Added
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -31,6 +31,7 @@ class StockEntry {
     this.fromWarehouse,
     this.toWarehouse,
     this.customTotalQty,
+    this.customReferenceNo,
     required this.items,
   });
 
@@ -53,6 +54,7 @@ class StockEntry {
       fromWarehouse: json['from_warehouse'],
       toWarehouse: json['to_warehouse'],
       customTotalQty: (json['custom_total_qty'] as num?)?.toDouble(),
+      customReferenceNo: json['custom_reference_no'],
       items: items,
     );
   }
@@ -75,7 +77,6 @@ class StockEntryItem {
   final String itemCode;
   final double qty;
   final double basicRate;
-  // New fields
   final String? itemGroup;
   final String? customVariantOf;
   final String? batchNo;

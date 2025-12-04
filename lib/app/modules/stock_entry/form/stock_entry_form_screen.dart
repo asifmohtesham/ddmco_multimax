@@ -46,82 +46,135 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   Widget _buildDetailsView(StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Card
-          Card(
-            elevation: 0,
-            color: Colors.blue.shade50,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(entry.stockEntryType ?? 'Stock Entry', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
-                      StatusPill(status: entry.status),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(entry.name, style: const TextStyle(fontSize: 14, color: Colors.black54)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+      child: Form(
+        child: Obx(() {
+          final type = controller.selectedStockEntryType.value;
+          // Determine visibility based on type
+          // Material Issue: Show Reference No, Hide To Warehouse
+          // Material Receipt: Hide From Warehouse, Show To Warehouse (Assumed, typically Receipt is To)
+          // Material Transfer: Show From & To
+          // Material Transfer for Manufacture: Show From & To (Same as Transfer)
           
-          // Warehouse Info
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  if (entry.fromWarehouse != null) _buildDetailRow('From Warehouse', entry.fromWarehouse!),
-                  if (entry.toWarehouse != null) _buildDetailRow('To Warehouse', entry.toWarehouse!),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+          final isMaterialIssue = type == 'Material Issue';
+          final isMaterialReceipt = type == 'Material Receipt';
+          final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
 
-          // General Info
-          const Text('General Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
+          final showReferenceNo = isMaterialIssue;
+          final showFromWarehouse = isMaterialIssue || isMaterialTransfer;
+          final showToWarehouse = isMaterialReceipt || isMaterialTransfer;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String>(
+                value: controller.selectedStockEntryType.value,
+                decoration: const InputDecoration(
+                  labelText: 'Stock Entry Type',
+                  border: OutlineInputBorder(),
+                ),
+                items: controller.stockEntryTypes.map((type) {
+                  return DropdownMenuItem(value: type, child: Text(type));
+                }).toList(),
+                onChanged: (value) => controller.selectedStockEntryType.value = value!,
+              ),
+              const SizedBox(height: 16),
+              Row(
                 children: [
-                  _buildDetailRow('Purpose', entry.purpose),
-                  _buildDetailRow('Posting Date', entry.postingDate),
-                  if (entry.postingTime != null) _buildDetailRow('Posting Time', entry.postingTime!),
-                  if (entry.owner != null) _buildDetailRow('Created By', entry.owner!),
-                  if (entry.customTotalQty != null) _buildDetailRow('Total Qty', entry.customTotalQty.toString()),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: entry.postingDate,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Posting Date',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.calendar_today),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: entry.postingTime,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Posting Time',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.access_time),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
-        ],
+              const SizedBox(height: 16),
+              const Text('Warehouses', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              
+              if (showFromWarehouse) ...[
+                DropdownButtonFormField<String>(
+                  value: controller.selectedFromWarehouse.value,
+                  decoration: const InputDecoration(
+                    labelText: 'From Warehouse',
+                    border: OutlineInputBorder(),
+                    helperText: 'Source Warehouse',
+                  ),
+                  items: controller.warehouses.map((wh) {
+                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
+                  }).toList(),
+                  onChanged: (value) => controller.selectedFromWarehouse.value = value,
+                  isExpanded: true,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (showToWarehouse) ...[
+                DropdownButtonFormField<String>(
+                  value: controller.selectedToWarehouse.value,
+                  decoration: const InputDecoration(
+                    labelText: 'To Warehouse',
+                    border: OutlineInputBorder(),
+                    helperText: 'Target Warehouse',
+                  ),
+                  items: controller.warehouses.map((wh) {
+                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
+                  }).toList(),
+                  onChanged: (value) => controller.selectedToWarehouse.value = value,
+                  isExpanded: true,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (showReferenceNo) ...[
+                TextFormField(
+                  controller: controller.customReferenceNoController,
+                  decoration: const InputDecoration(
+                    labelText: 'Reference No',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (entry.name != 'New Stock Entry') ...[
+                 const Divider(),
+                 _buildReadOnlyRow('Status', entry.status),
+                 _buildReadOnlyRow('Total Amount', entry.totalAmount.toStringAsFixed(2)),
+                 if (entry.owner != null) _buildReadOnlyRow('Owner', entry.owner!),
+              ],
+            ],
+          );
+        }),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildReadOnlyRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), textAlign: TextAlign.right),
-          ),
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
