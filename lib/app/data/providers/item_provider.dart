@@ -22,19 +22,7 @@ class ItemProvider {
     );
   }
 
-  // This method likely needs a custom API endpoint (e.g., a whitelisted script)
-  // to get stock levels, as it's often in a different doctype (Stock Ledger Entry or Bin).
-  // For now, I'll create a placeholder that assumes a method exists in ApiProvider.
   Future<Response> getStockLevels(String itemCode) async {
-    // Assuming a method like this exists or will be created in ApiProvider:
-    // return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
-    
-    // For now, returning a dummy response. I'll need to update ApiProvider for real data.
-    return Future.value(Response(data: {
-      'message': {
-        'result': [
-        ]
-      }
-    }, statusCode: 200, requestOptions: RequestOptions(path: '')));
+    return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
   }
 }

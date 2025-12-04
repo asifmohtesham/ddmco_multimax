@@ -131,7 +131,8 @@ class ItemCard extends GetView<ItemController> {
               AspectRatio(
                 aspectRatio: 16 / 9,
                 child: item.image != null
-                    ? Image.network('https://erp.multimax.cloud${item.image}', fit: BoxFit.contain)
+                    ? Image.network('https://erp.multimax.cloud${item.image}', fit: BoxFit.contain, 
+                        errorBuilder: (c, o, s) => Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported, color: Colors.grey)))
                     : Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported, color: Colors.grey)),
               ),
               Padding(
@@ -157,22 +158,29 @@ class ItemCard extends GetView<ItemController> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Divider(),
-                          if (item.countryOfOrigin != null) ...[Text('Origin: ${item.countryOfOrigin}')],
-                          if (item.variantOf != null) ...[Text('Variant of: ${item.variantOf}')],
-                          if (item.description != null) ...[Text(item.description!)],
+                          if (item.countryOfOrigin != null) ...[_buildDetailRow('Origin', item.countryOfOrigin!)],
+                          if (item.variantOf != null) ...[_buildDetailRow('Variant of', item.variantOf!)],
+                          if (item.description != null) ...[Text(item.description!, style: const TextStyle(fontSize: 12, color: Colors.grey))] ,
                           const SizedBox(height: 8),
                           const Text('Stock Levels:', style: TextStyle(fontWeight: FontWeight.bold)),
                           controller.isLoadingStock.value
                             ? const LinearProgressIndicator()
                             : stockList == null || stockList.isEmpty
-                              ? const Text('No stock data')
+                              ? const Padding(padding: EdgeInsets.all(8.0), child: Text('No stock data'))
                               : SizedBox(
-                                  height: 60, // Constrained height to prevent overflow
-                                  child: ListView(
+                                  height: 80, // Constrained height to prevent overflow
+                                  child: ListView.separated(
                                     shrinkWrap: true,
-                                    children: stockList.map((stock) => 
-                                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(stock.warehouse), Text(stock.quantity.toString())])
-                                    ).toList(),
+                                    itemCount: stockList.length,
+                                    separatorBuilder: (c, i) => const Divider(height: 1),
+                                    itemBuilder: (context, index) {
+                                      final stock = stockList[index];
+                                      return ListTile(
+                                        dense: true,
+                                        title: Text(stock.warehouse, style: const TextStyle(fontSize: 12)),
+                                        trailing: Text(stock.quantity.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
+                                      );
+                                    },
                                   ),
                                 ),
                         ],
@@ -184,5 +192,18 @@ class ItemCard extends GetView<ItemController> {
         ),
       );
     });
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
+        ],
+      ),
+    );
   }
 }

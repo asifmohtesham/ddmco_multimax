@@ -220,31 +220,47 @@ class ApiProvider {
     }
   }
 
-  // New method for report fetching - UPDATED to GET
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {
+  Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialized) await _initDio();
     
+    Map<String, dynamic> allFilters = {};
+
+    if (reportName == 'Stock Balance') {
+      allFilters = {
+        "valuation_field_type": "Currency",
+        "rack": [],
+        "show_variant_attributes": 1,
+        "show_dimension_wise_stock": 1,
+        ...filters ?? {},
+      };
+    } else {
+      allFilters = filters ?? {};
+    }
+
     try {
-      final response = await _dio.get(
+      return await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Batch-Wise Balance History',
-          'filters': json.encode({
-            'company': 'Multimax',
-            'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-            'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-            'item_code': itemCode,
-            'batch_no': batchNo,
-            'warehouse': 'WH-DXB1 - KA'
-          }),
+          'report_name': reportName,
+          'filters': json.encode(allFilters),
           'ignore_prepared_report': 'true',
         },
       );
-      return response;
     } on DioException catch (e) {
-      Get.log("ApiProvider DioException fetching Batch Balance: ${e.message}", isError: true);
+      Get.log("ApiProvider DioException fetching Report '$reportName': ${e.message}", isError: true);
       rethrow;
     }
+  }
+
+  Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {
+    return getReport('Batch-Wise Balance History', filters: {
+      'company': 'Multimax',
+      'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'item_code': itemCode,
+      'batch_no': batchNo,
+      'warehouse': 'WH-DXB1 - KA'
+    });
   }
 
   // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
