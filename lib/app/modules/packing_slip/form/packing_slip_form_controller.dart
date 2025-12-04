@@ -1,4 +1,6 @@
 
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
@@ -142,8 +144,8 @@ class PackingSlipFormController extends GetxController {
        final parts = barcode.split('-');
        // Assuming last part is batch, rest is item code? Or defined structure?
        // Let's assume ItemCode-BatchNo
-       itemCode = parts[0];
-       batchNo = parts.sublist(1).join('-');
+       itemCode = parts[0].substring(0,7);
+       batchNo = parts.join('-');
        match = _findItemInDN(itemCode, batchNo);
     }
 
@@ -162,7 +164,7 @@ class PackingSlipFormController extends GetxController {
     return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
       bool codeMatch = item.itemCode == code || (item.name != null && item.name == code); // Check item_code or ID? Usually item_code.
       // Or check barcode field if available (not in model currently, assuming scan item_code directly)
-      
+
       bool batchMatch = true;
       if (batch != null && batch.isNotEmpty) {
         batchMatch = item.batchNo == batch;
