@@ -15,6 +15,14 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
+          actions: [
+            Obx(() => controller.isSaving.value 
+              ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
+              : IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: controller.saveStockEntry,
+                )),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Details'),
@@ -34,7 +42,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
           return TabBarView(
             children: [
-              _buildDetailsView(entry),
+              _buildDetailsView(context, entry),
               _buildItemsView(context, entry),
             ],
           );
@@ -43,18 +51,12 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildDetailsView(StockEntry entry) {
+  Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
         child: Obx(() {
           final type = controller.selectedStockEntryType.value;
-          // Determine visibility based on type
-          // Material Issue: Show Reference No, Hide To Warehouse
-          // Material Receipt: Hide From Warehouse, Show To Warehouse (Assumed, typically Receipt is To)
-          // Material Transfer: Show From & To
-          // Material Transfer for Manufacture: Show From & To (Same as Transfer)
-          
           final isMaterialIssue = type == 'Material Issue';
           final isMaterialReceipt = type == 'Material Receipt';
           final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -152,6 +154,19 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (controller.posUploadSerialOptions.isNotEmpty)
+                  DropdownButtonFormField<String>(
+                    value: controller.selectedSerial.value,
+                    decoration: const InputDecoration(
+                      labelText: 'Invoice Serial Number',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: controller.posUploadSerialOptions.map((s) {
+                      return DropdownMenuItem(value: s, child: Text(s));
+                    }).toList(),
+                    onChanged: (value) => controller.selectedSerial.value = value,
+                  ),
+                if (controller.posUploadSerialOptions.isNotEmpty) const SizedBox(height: 16),
               ],
 
               if (entry.name != 'New Stock Entry') ...[
@@ -160,6 +175,21 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                  _buildReadOnlyRow('Total Amount', entry.totalAmount.toStringAsFixed(2)),
                  if (entry.owner != null) _buildReadOnlyRow('Owner', entry.owner!),
               ],
+
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    DefaultTabController.of(context).animateTo(1);
+                  },
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Next: Add Items'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
             ],
           );
         }),
@@ -202,7 +232,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Header: Code + Name
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -220,8 +249,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               ],
                             ),
                             const Divider(height: 20),
-                            
-                            // Details Grid
                             Wrap(
                               spacing: 16,
                               runSpacing: 8,
@@ -232,19 +259,23 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            
-                            // Warehouse/Rack Flow
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                              child: Row(
-                                children: [
-                                  Expanded(child: _buildLocationInfo('Source', item.sWarehouse, item.rack)),
-                                  const Icon(Icons.arrow_forward, color: Colors.grey, size: 16),
-                                  Expanded(child: _buildLocationInfo('Target', item.tWarehouse, item.toRack)),
-                                ],
-                              ),
-                            ),
+                            Obx(() {
+                              final type = controller.selectedStockEntryType.value;
+                              final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+                              final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+                              
+                              return Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                child: Row(
+                                  children: [
+                                    if (showSource) Expanded(child: _buildLocationInfo('Source', item.sWarehouse, item.rack)),
+                                    if (showSource && showTarget) const Icon(Icons.arrow_forward, color: Colors.grey, size: 16),
+                                    if (showTarget) Expanded(child: _buildLocationInfo('Target', item.tWarehouse, item.toRack)),
+                                  ],
+                                ),
+                              );
+                            }),
                           ],
                         ),
                       ),
@@ -278,7 +309,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 
   Widget _buildBottomScanField(BuildContext context) {
-    // Only show if editable? Assuming yes for now.
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -332,20 +362,39 @@ class StockEntryItemQtySheet extends GetView<StockEntryFormController> {
             const SizedBox(height: 16),
             Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
+            Obx(() => TextFormField(
+              controller: controller.bsBatchController,
+              readOnly: controller.bsIsBatchReadOnly.value,
+              autofocus: !controller.bsIsBatchReadOnly.value,
+              decoration: InputDecoration(
+                labelText: 'Batch No',
+                border: const OutlineInputBorder(),
+                filled: controller.bsIsBatchReadOnly.value,
+                fillColor: controller.bsIsBatchReadOnly.value ? Colors.grey.shade100 : null,
+                suffixIcon: !controller.bsIsBatchReadOnly.value
+                    ? IconButton(
+                        icon: const Icon(Icons.check_circle_outline),
+                        onPressed: () => controller.validateBatch(controller.bsBatchController.text),
+                      )
+                    : const Icon(Icons.check_circle, color: Colors.green),
+              ),
+              onFieldSubmitted: (value) => controller.validateBatch(value),
+            )),
+            const SizedBox(height: 16),
             TextFormField(
               controller: controller.bsQtyController,
               keyboardType: TextInputType.number,
-              autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Quantity',
                 border: OutlineInputBorder(),
               ),
+              enabled: controller.bsIsBatchValid.value,
             ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: controller.addItem,
+                onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
                 child: const Text('Add Item'),
               ),
             ),

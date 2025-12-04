@@ -12,4 +12,12 @@ class StockEntryProvider {
   Future<Response> getStockEntry(String name) async {
     return _apiProvider.getStockEntry(name);
   }
+
+  Future<Response> createStockEntry(Map<String, dynamic> data) async {
+    return _apiProvider.createDocument('Stock Entry', data);
+  }
+
+  Future<Response> updateStockEntry(String name, Map<String, dynamic> data) async {
+    return _apiProvider.updateDocument('Stock Entry', name, data);
+  }
 }

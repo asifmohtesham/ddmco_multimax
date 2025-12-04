@@ -13,7 +13,7 @@ class StockEntry {
   final String? fromWarehouse;
   final String? toWarehouse;
   final double? customTotalQty;
-  final String? customReferenceNo; // Added
+  final String? customReferenceNo; 
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -57,6 +57,20 @@ class StockEntry {
       customReferenceNo: json['custom_reference_no'],
       items: items,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'stock_entry_type': stockEntryType,
+      'posting_date': postingDate,
+      'posting_time': postingTime,
+      'from_warehouse': fromWarehouse,
+      'to_warehouse': toWarehouse,
+      'custom_reference_no': customReferenceNo,
+      'items': items.map((i) => i.toJson()).toList(),
+      // 'purpose': purpose, // Read-only or auto-set? Usually derived from type or set.
+      // Assuming simple fields for now.
+    };
   }
 
   static String _getStatusFromDocstatus(int docstatus) {
@@ -114,5 +128,16 @@ class StockEntryItem {
       sWarehouse: json['s_warehouse'],
       tWarehouse: json['t_warehouse'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'item_code': itemCode,
+      'qty': qty,
+      'basic_rate': basicRate, // Might not need to send back if 0
+      'batch_no': batchNo,
+      's_warehouse': sWarehouse,
+      't_warehouse': tWarehouse,
+    };
   }
 }
