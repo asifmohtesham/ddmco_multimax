@@ -4,6 +4,7 @@ class PurchaseReceipt {
   final double grandTotal;
   final String postingDate;
   final String modified;
+  final String creation; // Added
   final String status;
   final String currency;
   final List<PurchaseReceiptItem> items;
@@ -14,6 +15,7 @@ class PurchaseReceipt {
     required this.grandTotal,
     required this.postingDate,
     required this.modified,
+    required this.creation,
     required this.status,
     required this.currency,
     required this.items,
@@ -24,13 +26,14 @@ class PurchaseReceipt {
     List<PurchaseReceiptItem> items = itemsList.map((i) => PurchaseReceiptItem.fromJson(i)).toList();
 
     return PurchaseReceipt(
-      name: json['name'],
-      supplier: json['supplier'],
-      grandTotal: (json['grand_total'] as num).toDouble(),
-      postingDate: json['posting_date'],
-      modified: json['modified'],
-      status: json['status'],
-      currency: json['currency'],
+      name: json['name'] ?? '',
+      creation: json['creation'] ?? DateTime.now().toString(), // Added
+      supplier: json['supplier'] ?? '',
+      grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
+      postingDate: json['posting_date'] ?? '',
+      modified: json['modified'] ?? '',
+      status: json['status'] ?? 'Draft',
+      currency: json['currency'] ?? 'USD',
       items: items,
     );
   }
@@ -55,10 +58,10 @@ class PurchaseReceiptItem {
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
     return PurchaseReceiptItem(
-      itemCode: json['item_code'],
+      itemCode: json['item_code'] ?? '',
       itemName: json['item_name'],
-      qty: (json['qty'] as num).toDouble(),
-      rate: (json['rate'] as num).toDouble(),
+      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       batchNo: json['batch_no'],
       rack: json['rack'],
     );

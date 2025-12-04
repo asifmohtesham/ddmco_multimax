@@ -109,25 +109,42 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         }
 
         if (controller.purchaseReceipts.isEmpty) {
-          return const Center(child: Text('No purchase receipts found.'));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('No purchase receipts found.'),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => controller.fetchPurchaseReceipts(clear: true),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reload'),
+                ),
+              ],
+            ),
+          );
         }
 
-        return Scrollbar(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.purchaseReceipts.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.purchaseReceipts.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-              final receipt = controller.purchaseReceipts[index];
-              return PurchaseReceiptCard(receipt: receipt);
-            },
+        return RefreshIndicator(
+          onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
+          child: Scrollbar(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: controller.purchaseReceipts.length + (controller.hasMore.value ? 1 : 0),
+              // separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+              itemBuilder: (context, index) {
+                if (index >= controller.purchaseReceipts.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                final receipt = controller.purchaseReceipts[index];
+                return PurchaseReceiptCard(receipt: receipt);
+              },
+            ),
           ),
         );
       }),
@@ -152,95 +169,149 @@ class PurchaseReceiptCard extends StatelessWidget {
     return format.currencySymbol;
   }
 
+  String _getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.all(8.0),
+      // margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
-      child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedReceiptName.value == receipt.name;
-        return Column(
-          children: [
-            ListTile(
-              title: Text(receipt.name),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () => controller.toggleExpand(receipt.name),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Row 1: Name + Status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                      '${receipt.supplier} - ${_getCurrencySymbol(receipt.currency)}${receipt.grandTotal.toStringAsFixed(2)}'),
-                  const SizedBox(height: 4),
+                  Expanded(
+                    child: Text(
+                      receipt.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   StatusPill(status: receipt.status),
                 ],
               ),
-              trailing: AnimatedRotation(
-                turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
+              const SizedBox(height: 6),
+              
+              // Row 2: Supplier + Time
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      receipt.supplier,
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    _getRelativeTime(receipt.creation), // Using creation for consistency if available, or modified
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  ),
+                ],
               ),
-              onTap: () => controller.toggleExpand(receipt.name),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isCurrentlyExpanded
-                    ? const SizedBox.shrink()
-                    : Obx(() {
-                        final detailed = controller.detailedReceipt;
-                        if (controller.isLoadingDetails.value && detailed?.name != receipt.name) {
-                          return const LinearProgressIndicator();
-                        }
+              const SizedBox(height: 8),
+              
+              // Row 3: Total
+              Text(
+                '${_getCurrencySymbol(receipt.currency)}${receipt.grandTotal.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
 
-                        if (detailed != null && detailed.name == receipt.name) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Posting Date: ${detailed.postingDate}'),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
+              // Expansion Content
+              Obx(() {
+                final isCurrentlyExpanded = controller.expandedReceiptName.value == receipt.name;
+                return AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    child: !isCurrentlyExpanded
+                        ? const SizedBox.shrink()
+                        : Obx(() {
+                            final detailed = controller.detailedReceipt;
+                            if (controller.isLoadingDetails.value && detailed?.name != receipt.name) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                                  child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                                );
+                            }
+
+                            if (detailed != null && detailed.name == receipt.name) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (detailed.status == 'Draft') ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'edit'}),
-                                        child: const Text('Edit'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                                        child: const Text('Submit'),
-                                      ),
-                                    ] else ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                      if (detailed.status == 'Submitted') ...[
-                                        const SizedBox(width: 8),
-                                        TextButton(
-                                          onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                                          child: const Text('Cancel'),
-                                        ),
-                                      ]
-                                    ]
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        if (detailed.status == 'Draft') ...[
+                                          OutlinedButton.icon(
+                                            onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'edit'}),
+                                            icon: const Icon(Icons.edit, size: 18),
+                                            label: const Text('Edit'),
+                                            style: OutlinedButton.styleFrom(
+                                              visualDensity: VisualDensity.compact,
+                                              side: const BorderSide(color: Colors.blue),
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          TextButton(
+                                            onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'view'}),
+                                            child: const Text('View'),
+                                          ),
+                                        ]
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }),
-              ),
-            ),
-          ],
-        );
-      }),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
