@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:intl/intl.dart';
 
 class StockEntryFormScreen extends GetView<StockEntryFormController> {
   const StockEntryFormScreen({super.key});
@@ -40,40 +43,183 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildDetailsView(dynamic entry) {
-    return Padding(
+  Widget _buildDetailsView(StockEntry entry) {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Purpose: ${entry.purpose}'),
-          Text('Posting Date: ${entry.postingDate}'),
+          // Header Card
+          Card(
+            elevation: 0,
+            color: Colors.blue.shade50,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(entry.stockEntryType ?? 'Stock Entry', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
+                      StatusPill(status: entry.status),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(entry.name, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Warehouse Info
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  if (entry.fromWarehouse != null) _buildDetailRow('From Warehouse', entry.fromWarehouse!),
+                  if (entry.toWarehouse != null) _buildDetailRow('To Warehouse', entry.toWarehouse!),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // General Info
+          const Text('General Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildDetailRow('Purpose', entry.purpose),
+                  _buildDetailRow('Posting Date', entry.postingDate),
+                  if (entry.postingTime != null) _buildDetailRow('Posting Time', entry.postingTime!),
+                  if (entry.owner != null) _buildDetailRow('Created By', entry.owner!),
+                  if (entry.customTotalQty != null) _buildDetailRow('Total Qty', entry.customTotalQty.toString()),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildItemsView(BuildContext context, dynamic entry) {
-    final items = entry.items as List<dynamic>? ?? [];
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), textAlign: TextAlign.right),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemsView(BuildContext context, StockEntry entry) {
+    final items = entry.items;
 
     return Column(
       children: [
         Expanded(
           child: items.isEmpty
               ? const Center(child: Text('No items in this entry.'))
-              : ListView.builder(
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
                   itemCount: items.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    return ListTile(
-                      title: Text(item.itemCode),
-                      subtitle: Text('Quantity: ${item.qty}'),
-                      trailing: Text('Rate: ${item.basicRate}'),
+                    return Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header: Code + Name
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 15)),
+                                      if (item.itemName != null)
+                                        Text(item.itemName!, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                    ],
+                                  ),
+                                ),
+                                Text('${item.qty} qty', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              ],
+                            ),
+                            const Divider(height: 20),
+                            
+                            // Details Grid
+                            Wrap(
+                              spacing: 16,
+                              runSpacing: 8,
+                              children: [
+                                if (item.batchNo != null) _buildItemStat('Batch', item.batchNo!, isMono: true),
+                                if (item.itemGroup != null) _buildItemStat('Group', item.itemGroup!),
+                                if (item.customVariantOf != null) _buildItemStat('Variant Of', item.customVariantOf!),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            // Warehouse/Rack Flow
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildLocationInfo('Source', item.sWarehouse, item.rack)),
+                                  const Icon(Icons.arrow_forward, color: Colors.grey, size: 16),
+                                  Expanded(child: _buildLocationInfo('Target', item.tWarehouse, item.toRack)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 ),
         ),
         _buildBottomScanField(context),
+      ],
+    );
+  }
+
+  Widget _buildItemStat(String label, String value, {bool isMono = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, fontFamily: isMono ? 'monospace' : null)),
+      ],
+    );
+  }
+
+  Widget _buildLocationInfo(String label, String? warehouse, String? rack) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        if (warehouse != null) Text(warehouse, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+        if (rack != null) Text('Rack: $rack', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, fontFamily: 'monospace')),
       ],
     );
   }

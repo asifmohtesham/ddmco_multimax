@@ -4,8 +4,16 @@ class StockEntry {
   final double totalAmount;
   final String postingDate;
   final String modified;
-  final String creation; // Added
+  final String creation;
   final String status;
+  final int docstatus;
+  // New fields
+  final String? owner;
+  final String? stockEntryType;
+  final String? postingTime;
+  final String? fromWarehouse;
+  final String? toWarehouse;
+  final double? customTotalQty;
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -16,6 +24,13 @@ class StockEntry {
     required this.modified,
     required this.creation,
     required this.status,
+    required this.docstatus,
+    this.owner,
+    this.stockEntryType,
+    this.postingTime,
+    this.fromWarehouse,
+    this.toWarehouse,
+    this.customTotalQty,
     required this.items,
   });
 
@@ -29,8 +44,15 @@ class StockEntry {
       totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
       postingDate: json['posting_date'] ?? '',
       modified: json['modified'] ?? '',
-      creation: json['creation'] ?? DateTime.now().toString(), // Added
+      creation: json['creation'] ?? DateTime.now().toString(),
+      docstatus: json['docstatus'] as int? ?? 0,
       status: _getStatusFromDocstatus(json['docstatus'] as int? ?? 0),
+      owner: json['owner'],
+      stockEntryType: json['stock_entry_type'],
+      postingTime: json['posting_time'],
+      fromWarehouse: json['from_warehouse'],
+      toWarehouse: json['to_warehouse'],
+      customTotalQty: (json['custom_total_qty'] as num?)?.toDouble(),
       items: items,
     );
   }
@@ -53,11 +75,28 @@ class StockEntryItem {
   final String itemCode;
   final double qty;
   final double basicRate;
+  // New fields
+  final String? itemGroup;
+  final String? customVariantOf;
+  final String? batchNo;
+  final String? itemName;
+  final String? rack;
+  final String? toRack;
+  final String? sWarehouse;
+  final String? tWarehouse;
 
   StockEntryItem({
     required this.itemCode,
     required this.qty,
     required this.basicRate,
+    this.itemGroup,
+    this.customVariantOf,
+    this.batchNo,
+    this.itemName,
+    this.rack,
+    this.toRack,
+    this.sWarehouse,
+    this.tWarehouse,
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
@@ -65,6 +104,14 @@ class StockEntryItem {
       itemCode: json['item_code'] ?? '',
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       basicRate: (json['basic_rate'] as num?)?.toDouble() ?? 0.0,
+      itemGroup: json['item_group'],
+      customVariantOf: json['custom_variant_of'],
+      batchNo: json['batch_no'],
+      itemName: json['item_name'],
+      rack: json['rack'],
+      toRack: json['to_rack'],
+      sWarehouse: json['s_warehouse'],
+      tWarehouse: json['t_warehouse'],
     );
   }
 }
