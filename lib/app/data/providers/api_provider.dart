@@ -231,6 +231,8 @@ class ApiProvider {
         "rack": [],
         "show_variant_attributes": 1,
         "show_dimension_wise_stock": 1,
+        "from_date": DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        "to_date": DateFormat('yyyy-MM-dd').format(DateTime.now()),
         ...filters ?? {},
       };
     } else {
