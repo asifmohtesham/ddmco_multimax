@@ -29,6 +29,7 @@ class PackingSlipController extends GetxController {
   // For DN Selection
   var isFetchingDNs = false.obs;
   var deliveryNotesForSelection = <DeliveryNote>[].obs;
+  List<DeliveryNote> _allFetchedDNs = [];
 
   @override
   void onInit() {
@@ -139,23 +140,36 @@ class PackingSlipController extends GetxController {
   Future<void> fetchDeliveryNotesForSelection() async {
     isFetchingDNs.value = true;
     try {
-      // Fetch DNs that are Draft or Submitted (can create PS for submitted DNs usually)
+      // Fetch only Draft (docstatus=0) Delivery Notes
       final response = await _dnProvider.getDeliveryNotes(
-        limit: 50,
+        limit: 100, // Fetch more to allow local search
         orderBy: 'modified desc',
-        // filters: {'docstatus': 1} // Typically Packing Slips are made for Submitted DNs? Or Draft?
-        // Assuming Submitted (docstatus=1) based on standard flow, but keeping it open.
-        // Let's fetch all relevant ones.
+        filters: {'docstatus': 0} 
       );
       
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        deliveryNotesForSelection.value = data.map((json) => DeliveryNote.fromJson(json)).toList();
+        _allFetchedDNs = data.map((json) => DeliveryNote.fromJson(json)).toList();
+        deliveryNotesForSelection.value = _allFetchedDNs;
       }
     } catch (e) {
       Get.snackbar('Error', 'Failed to fetch Delivery Notes');
     } finally {
       isFetchingDNs.value = false;
+    }
+  }
+
+  void filterDeliveryNotes(String query) {
+    if (query.isEmpty) {
+      deliveryNotesForSelection.value = _allFetchedDNs;
+    } else {
+      final q = query.toLowerCase();
+      deliveryNotesForSelection.value = _allFetchedDNs.where((dn) {
+        final poNo = dn.poNo?.toLowerCase() ?? '';
+        final name = dn.name.toLowerCase();
+        final customer = dn.customer.toLowerCase();
+        return poNo.contains(q) || name.contains(q) || customer.contains(q);
+      }).toList();
     }
   }
 

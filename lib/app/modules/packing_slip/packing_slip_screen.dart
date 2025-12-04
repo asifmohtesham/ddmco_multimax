@@ -84,6 +84,15 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  TextField(
+                    onChanged: controller.filterDeliveryNotes,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Delivery Notes',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Expanded(
                     child: Obx(() {
                       if (controller.isFetchingDNs.value) {
@@ -100,9 +109,16 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                         separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final dn = controller.deliveryNotesForSelection[index];
+                          // Check if PO exists
+                          final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
+                          final title = hasPO ? dn.poNo! : dn.name;
+                          final subtitle = hasPO 
+                              ? '${dn.name} • ${dn.customer}' 
+                              : dn.customer;
+
                           return ListTile(
-                            title: Text(dn.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${dn.customer} • ${dn.poNo ?? "No PO"}'),
+                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();
@@ -281,7 +297,7 @@ class PackingSlipListTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    slip.name, 
+                    slip.customPoNo != null && slip.customPoNo.isNotEmpty ? slip.customPoNo : slip.name, 
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
