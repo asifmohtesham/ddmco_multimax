@@ -33,8 +33,6 @@ class ItemProvider {
     return Future.value(Response(data: {
       'message': {
         'result': [
-          {'warehouse': 'WH-DXB1 - KA', 'qty': 100.0},
-          {'warehouse': 'WH-SHJ1 - SM', 'qty': 50.0},
         ]
       }
     }, statusCode: 200, requestOptions: RequestOptions(path: '')));

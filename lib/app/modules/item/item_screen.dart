@@ -131,7 +131,7 @@ class ItemCard extends GetView<ItemController> {
               AspectRatio(
                 aspectRatio: 16 / 9,
                 child: item.image != null
-                    ? Image.network('https://erp.multimax.cloud${item.image}', fit: BoxFit.cover)
+                    ? Image.network('https://erp.multimax.cloud${item.image}', fit: BoxFit.contain)
                     : Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported, color: Colors.grey)),
               ),
               Padding(
