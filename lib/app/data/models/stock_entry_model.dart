@@ -4,6 +4,7 @@ class StockEntry {
   final double totalAmount;
   final String postingDate;
   final String modified;
+  final String creation; // Added
   final String status;
   final List<StockEntryItem> items;
 
@@ -13,6 +14,7 @@ class StockEntry {
     required this.totalAmount,
     required this.postingDate,
     required this.modified,
+    required this.creation,
     required this.status,
     required this.items,
   });
@@ -27,6 +29,7 @@ class StockEntry {
       totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
       postingDate: json['posting_date'] ?? '',
       modified: json['modified'] ?? '',
+      creation: json['creation'] ?? DateTime.now().toString(), // Added
       status: _getStatusFromDocstatus(json['docstatus'] as int? ?? 0),
       items: items,
     );

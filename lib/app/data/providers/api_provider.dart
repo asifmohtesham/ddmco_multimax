@@ -284,7 +284,7 @@ class ApiProvider {
   }
 
   Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    return getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'modified', 'docstatus']);
+    return getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'modified', 'docstatus', 'creation']);
   }
 
   Future<Response> getStockEntry(String name) async {

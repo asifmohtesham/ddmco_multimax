@@ -127,22 +127,25 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           );
         }
 
-        return Scrollbar(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.stockEntries.length) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-              final entry = controller.stockEntries[index];
-              return StockEntryCard(entry: entry);
-            },
+        return RefreshIndicator(
+          onRefresh: () => controller.fetchStockEntries(clear: true),
+          child: Scrollbar(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= controller.stockEntries.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                final entry = controller.stockEntries[index];
+                return StockEntryCard(entry: entry);
+              },
+            ),
           ),
         );
       }),
@@ -162,98 +165,140 @@ class StockEntryCard extends StatelessWidget {
 
   StockEntryCard({super.key, required this.entry});
 
+  String _getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.all(8.0),
+      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
-      child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
-        return Column(
-          children: [
-            ListTile(
-              title: Text(entry.name ?? 'No Name'),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () => controller.toggleExpand(entry.name),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Row 1: Purpose + Status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                      '${entry.purpose ?? 'No Purpose'} - \$${entry.totalAmount.toStringAsFixed(2)}'),
-                  const SizedBox(height: 4),
+                  Expanded(
+                    child: Text(
+                      entry.purpose,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   StatusPill(status: entry.status),
                 ],
               ),
-              trailing: AnimatedRotation(
-                turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
+              const SizedBox(height: 6),
+              
+              // Row 2: Name + Time
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      entry.name,
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    _getRelativeTime(entry.creation),
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  ),
+                ],
               ),
-              onTap: () => controller.toggleExpand(entry.name),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isCurrentlyExpanded
-                    ? const SizedBox.shrink()
-                    : Obx(() {
-                        final detailed = controller.detailedEntry;
-                        if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
-                          return const LinearProgressIndicator();
-                        }
 
-                        if (detailed != null && detailed.name == entry.name) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Posting Date: ${detailed.postingDate}'),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
+              // Expansion Content
+              Obx(() {
+                final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
+                return AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    child: !isCurrentlyExpanded
+                        ? const SizedBox.shrink()
+                        : Obx(() {
+                            final detailed = controller.detailedEntry;
+                            if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                                  child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                                );
+                            }
+
+                            if (detailed != null && detailed.name == entry.name) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (detailed.status == 'Draft') ...[
-                                      TextButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Submit document'),
-                                        child: const Text('Submit'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
-                                        child: const Text('Edit'),
-                                      ),
-                                    ] else if (detailed.status == 'Submitted') ...[
-                                      TextButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                                        child: const Text('Cancel'),
-                                      ),
-                                    ] else ...[
-                                      ElevatedButton(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
-                                        child: const Text('View'),
-                                      ),
-                                    ]
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Text('Total Amount: \$${detailed.totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 4),
+                                    Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        if (detailed.status == 'Draft') ...[
+                                          OutlinedButton.icon(
+                                            onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
+                                            icon: const Icon(Icons.edit, size: 18),
+                                            label: const Text('Edit'),
+                                            style: OutlinedButton.styleFrom(
+                                              visualDensity: VisualDensity.compact,
+                                              side: const BorderSide(color: Colors.blue),
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          TextButton(
+                                            onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
+                                            child: const Text('View'),
+                                          ),
+                                        ]
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }),
-              ),
-            ),
-          ],
-        );
-      }),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
