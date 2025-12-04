@@ -53,6 +53,36 @@ class PackingSlip {
       items: items,
     );
   }
+
+  PackingSlip copyWith({
+    String? name,
+    String? deliveryNote,
+    String? modified,
+    String? creation,
+    int? docstatus,
+    String? status,
+    String? customPoNo,
+    int? fromCaseNo,
+    int? toCaseNo,
+    String? owner,
+    String? customer,
+    List<PackingSlipItem>? items,
+  }) {
+    return PackingSlip(
+      name: name ?? this.name,
+      deliveryNote: deliveryNote ?? this.deliveryNote,
+      modified: modified ?? this.modified,
+      creation: creation ?? this.creation,
+      docstatus: docstatus ?? this.docstatus,
+      status: status ?? this.status,
+      customPoNo: customPoNo ?? this.customPoNo,
+      fromCaseNo: fromCaseNo ?? this.fromCaseNo,
+      toCaseNo: toCaseNo ?? this.toCaseNo,
+      owner: owner ?? this.owner,
+      customer: customer ?? this.customer,
+      items: items ?? this.items,
+    );
+  }
 }
 
 class PackingSlipItem {

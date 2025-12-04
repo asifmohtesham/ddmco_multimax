@@ -116,62 +116,109 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               final isLast = itemIndex == items.length - 1;
               final timeDelay = _getItemDelay(slip.creation, item.creation);
 
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Time Column
-                  SizedBox(
-                    width: 60,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16.0, right: 8.0),
-                      child: Text(
-                        timeDelay ?? '',
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                  
-                  // Line Column
-                  Column(
-                    children: [
-                      Container(
-                        width: 2,
-                        height: 16,
-                        color: itemIndex == 0 ? Colors.transparent : Colors.grey.shade300,
-                      ),
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(color: Theme.of(context).primaryColor, width: 2),
-                          shape: BoxShape.circle,
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch, 
+                  children: [
+                    // Time Column
+                    SizedBox(
+                      width: 60,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16.0, right: 8.0),
+                        child: Text(
+                          timeDelay ?? '',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
                         ),
                       ),
-                      Container(
-                        width: 2,
-                        height: 80, 
-                        color: isLast ? Colors.transparent : Colors.grey.shade300,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  
-                  // Card Column
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 16.0),
-                      child: _buildItemCard(item),
                     ),
-                  ),
-                ],
+                    
+                    // Line Column
+                    Column(
+                      children: [
+                        Container(
+                          width: 2,
+                          height: 16,
+                          color: itemIndex == 0 ? Colors.transparent : Colors.grey.shade300,
+                        ),
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: Theme.of(context).primaryColor, width: 2),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Container(
+                            width: 2,
+                            color: isLast ? Colors.transparent : Colors.grey.shade300,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    
+                    // Card Column
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: _buildItemCard(item),
+                      ),
+                    ),
+                  ],
+                ),
               );
             }
           },
         );
       }),
+      // Add the scan field if in 'new' or 'draft' mode, similar to Delivery Note
+      bottomNavigationBar: _buildBottomScanField(),
     );
+  }
+
+  Widget _buildBottomScanField() {
+    // Only show if editable (Draft or New)
+    // Assuming controller.packingSlip.value?.status == 'Draft'
+    return Obx(() {
+      if (controller.packingSlip.value?.status != 'Draft' && controller.mode != 'new') {
+        return const SizedBox.shrink();
+      }
+      
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: TextFormField(
+            controller: controller.barcodeController,
+            decoration: InputDecoration(
+              hintText: 'Scan Item / Batch',
+              prefixIcon: const Icon(Icons.qr_code_scanner),
+              suffixIcon: controller.isScanning.value
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: () => controller.scanBarcode(controller.barcodeController.text),
+                  ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+            ),
+            onFieldSubmitted: (value) => controller.scanBarcode(value),
+          ),
+        ),
+      );
+    });
   }
 
   Widget _buildHeader(PackingSlip slip) {
@@ -306,7 +353,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   ),
                   const SizedBox(height: 6),
                   LinearPercentIndicator(
-                    lineHeight: 6.0,
+                    lineHeight: 8.0,
                     percent: percent,
                     backgroundColor: Colors.grey.shade200,
                     progressColor: percent >= 1 ? Colors.green : Colors.orange,
@@ -344,6 +391,52 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
         Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, fontFamily: isMono ? 'monospace' : null)),
       ],
+    );
+  }
+}
+
+class PackingItemQtySheet extends GetView<PackingSlipFormController> {
+  const PackingItemQtySheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Add Item to Packing Slip', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 16),
+            Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (controller.currentBatchNo != null && controller.currentBatchNo!.isNotEmpty)
+              Text('Batch: ${controller.currentBatchNo}'),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: controller.bsQtyController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Quantity',
+                helperText: 'Max: ${controller.bsMaxQty.value}',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: controller.addItemToSlip,
+                child: const Text('Add to Slip'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

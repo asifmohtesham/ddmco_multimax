@@ -308,7 +308,7 @@ class PackingSlipListTile extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'Cases: ${slip.fromCaseNo ?? "?"} - ${slip.toCaseNo ?? "?"}',
+                  'Packages: ${slip.fromCaseNo ?? "?"} - ${slip.toCaseNo ?? "?"}',
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13),
                 ),
                 const Spacer(),
