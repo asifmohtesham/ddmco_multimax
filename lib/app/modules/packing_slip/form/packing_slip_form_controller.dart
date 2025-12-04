@@ -1,6 +1,3 @@
-
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
@@ -122,38 +119,26 @@ class PackingSlipFormController extends GetxController {
 
     isScanning.value = true;
     
-    // Parse barcode
-    // Format: EAN or EAN-BATCH
-    // Assuming simple split by '-' if batch is appended, or regex match
-    String itemCode = barcode;
+    String itemCode;
     String? batchNo;
-    
-    final RegExp batchRegex = RegExp(r'^(\d+)-([a-zA-Z0-9]+)$'); // Example pattern
+
     if (barcode.contains('-')) {
-        // Simple logic for now, adjust based on actual barcode format
-        // If strict EAN is 13 digits, check length?
-        // Let's assume standard behavior: try to match whole barcode to item_code first.
-        // If not found, try split.
+      final parts = barcode.split('-');
+      final ean = parts.first;
+      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
+      batchNo = parts.join('-');
+    } else {
+      final ean = barcode;
+      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
+      batchNo = null;
     }
-    
-    // 1. Try direct match on item_code in DN items
-    var match = _findItemInDN(barcode, null);
-    
-    if (match == null && barcode.contains('-')) {
-       // 2. Try parsing batch
-       final parts = barcode.split('-');
-       // Assuming last part is batch, rest is item code? Or defined structure?
-       // Let's assume ItemCode-BatchNo
-       itemCode = parts[0].substring(0,7);
-       batchNo = parts.join('-');
-       match = _findItemInDN(itemCode, batchNo);
-    }
+
+    final match = _findItemInDN(itemCode, batchNo);
 
     isScanning.value = false;
     barcodeController.clear();
 
     if (match != null) {
-      // Found valid item in DN
       _openQtySheet(match);
     } else {
       Get.snackbar('Error', 'Item not found in Delivery Note or Batch mismatch');
@@ -162,13 +147,8 @@ class PackingSlipFormController extends GetxController {
 
   DeliveryNoteItem? _findItemInDN(String code, String? batch) {
     return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
-      bool codeMatch = item.itemCode == code || (item.name != null && item.name == code); // Check item_code or ID? Usually item_code.
-      // Or check barcode field if available (not in model currently, assuming scan item_code directly)
-
-      bool batchMatch = true;
-      if (batch != null && batch.isNotEmpty) {
-        batchMatch = item.batchNo == batch;
-      }
+      bool codeMatch = item.itemCode == code;
+      bool batchMatch = (batch == null) || (item.batchNo == batch);
       return codeMatch && batchMatch;
     });
   }
@@ -181,16 +161,6 @@ class PackingSlipFormController extends GetxController {
     currentUom = item.uom;
     currentSerial = item.customInvoiceSerialNumber;
 
-    // Calculate remaining qty
-    // Total in DN - Already Packed in THIS slip (and ideally others, but let's stick to this one first or calculate globally if we fetched all slips)
-    // For simplicity, default to remaining unpacked in *this* slip logic? 
-    // Or just default to 1 or item.qty.
-    // The requirement says "populating".
-    
-    // Check if we already have this item in the packing slip to update it?
-    // Usually packing slip items are unique per package or accumulated.
-    // If we pack into the *same* package (this document), we might merge.
-    
     double existingPacked = 0;
     final currentSlipItems = packingSlip.value?.items ?? [];
     for (var i in currentSlipItems) {
@@ -203,7 +173,7 @@ class PackingSlipFormController extends GetxController {
     if (remaining < 0) remaining = 0;
 
     bsMaxQty.value = remaining;
-    bsQtyController.text = remaining > 0 ? remaining.toStringAsFixed(0) : '0'; // Default to max possible
+    bsQtyController.text = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
 
     Get.bottomSheet(
       const PackingItemQtySheet(),
@@ -218,27 +188,21 @@ class PackingSlipFormController extends GetxController {
       return;
     }
 
-    // Add to list
     final currentItems = packingSlip.value?.items.toList() ?? [];
-    
-    // Check if item with same dnDetail exists in this slip to merge?
-    // Packing Slip Item usually distinct rows or merged? 
-    // Let's merge if same item/batch/etc.
     
     final existingIndex = currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
     
     if (existingIndex != -1) {
-       // Merge
        final existing = currentItems[existingIndex];
        final updated = PackingSlipItem(
-         name: existing.name, // Keep ID if exists
+         name: existing.name,
          dnDetail: existing.dnDetail,
          itemCode: existing.itemCode,
          itemName: existing.itemName,
          qty: existing.qty + qtyToAdd,
          uom: existing.uom,
          batchNo: existing.batchNo,
-         netWeight: existing.netWeight, // Should recalc weight
+         netWeight: existing.netWeight, 
          weightUom: existing.weightUom,
          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
          customVariantOf: existing.customVariantOf,
@@ -247,21 +211,17 @@ class PackingSlipFormController extends GetxController {
        );
        currentItems[existingIndex] = updated;
     } else {
-       // Add new
        final newItem = PackingSlipItem(
-         name: '', // New, no ID yet
+         name: '', 
          dnDetail: currentItemDnDetail!,
          itemCode: currentItemCode!,
          itemName: currentItemName ?? '',
          qty: qtyToAdd,
          uom: currentUom ?? '',
          batchNo: currentBatchNo ?? '',
-         netWeight: 0.0, // Needs logic
+         netWeight: 0.0, 
          weightUom: 0.0,
          customInvoiceSerialNumber: currentSerial,
-         // Mapping other fields from DN item? 
-         // Model doesn't store them all on item, but we can if needed. 
-         // For now fill basics.
          customVariantOf: null, 
          customCountryOfOrigin: null, 
          creation: DateTime.now().toString()
@@ -269,11 +229,8 @@ class PackingSlipFormController extends GetxController {
        currentItems.add(newItem);
     }
 
-    packingSlip.value = packingSlip.value?.copyWith(items: currentItems); // Need copyWith on PackingSlip
+    packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
     Get.back();
     Get.snackbar('Success', 'Item added to Packing Slip');
-    
-    // TODO: Save to API if in edit mode, or just local state if 'new'.
-    // User flow implies building it locally first?
   }
 }
