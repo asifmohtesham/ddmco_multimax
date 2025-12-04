@@ -46,7 +46,7 @@ class WarehouseStock {
   factory WarehouseStock.fromJson(Map<String, dynamic> json) {
     return WarehouseStock(
       warehouse: json['warehouse'] ?? '',
-      quantity: (json['qty'] as num?)?.toDouble() ?? 0.0,
+      quantity: (json['bal_qty'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

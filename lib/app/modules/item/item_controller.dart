@@ -1,4 +1,6 @@
 
+import 'dart:developer';
+
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/item_model.dart';
 import 'package:ddmco_multimax/app/data/providers/item_provider.dart';
@@ -107,7 +109,9 @@ class ItemController extends GetxController {
       final response = await _provider.getStockLevels(itemCode);
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        _stockLevelsCache[itemCode] = data.map((json) => WarehouseStock.fromJson(json)).toList();
+        _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
+      } else {
+        Get.snackbar('Error', 'Failed to fetch stock levels');
       }
     } catch (e) {
       print('Failed to fetch stock levels: $e');
