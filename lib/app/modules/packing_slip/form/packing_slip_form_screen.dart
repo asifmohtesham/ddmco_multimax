@@ -80,108 +80,115 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       appBar: AppBar(
         title: Obx(() => Text(controller.packingSlip.value?.name ?? 'Packing Slip')),
       ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
+      // The body is now a Column to manage layout better
+      body: Column(
+        children: [
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-        final slip = controller.packingSlip.value;
-        if (slip == null) {
-          return const Center(child: Text('Document not found'));
-        }
+              final slip = controller.packingSlip.value;
+              if (slip == null) {
+                return const Center(child: Text('Document not found'));
+              }
 
-        final items = slip.items;
+              final items = slip.items;
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16.0),
-          itemCount: 2 + (items.isEmpty ? 1 : items.length), 
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return Column(
-                children: [
-                  _buildHeader(slip),
-                  const SizedBox(height: 24),
-                ],
-              );
-            } else if (index == 1) {
-              return const Padding(
-                padding: EdgeInsets.only(bottom: 16.0),
-                child: Text('Timeline', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              );
-            } else {
-              if (items.isEmpty) return const Text('No items found.');
-              
-              final itemIndex = index - 2;
-              final item = items[itemIndex];
-              final isLast = itemIndex == items.length - 1;
-              final timeDelay = _getItemDelay(slip.creation, item.creation);
-
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch, 
-                  children: [
-                    // Time Column
-                    SizedBox(
-                      width: 60,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 16.0, right: 8.0),
-                        child: Text(
-                          timeDelay ?? '',
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                    
-                    // Line Column
-                    Column(
+              // ListView now scrolls within the Expanded section
+              return ListView.builder(
+                padding: const EdgeInsets.all(16.0),
+                itemCount: 2 + (items.isEmpty ? 1 : items.length), 
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 2,
-                          height: 16,
-                          color: itemIndex == 0 ? Colors.transparent : Colors.grey.shade300,
-                        ),
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(color: Theme.of(context).primaryColor, width: 2),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Expanded(
-                          child: Container(
-                            width: 2,
-                            color: isLast ? Colors.transparent : Colors.grey.shade300,
-                          ),
-                        ),
+                        _buildHeader(slip),
+                        const SizedBox(height: 24),
                       ],
-                    ),
-                    const SizedBox(width: 12),
+                    );
+                  } else if (index == 1) {
+                    return const Padding(
+                      padding: EdgeInsets.only(bottom: 16.0),
+                      child: Text('Timeline', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    );
+                  } else {
+                    if (items.isEmpty) return const Text('No items found.');
                     
-                    // Card Column
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: _buildItemCard(item),
+                    final itemIndex = index - 2;
+                    final item = items[itemIndex];
+                    final isLast = itemIndex == items.length - 1;
+                    final timeDelay = _getItemDelay(slip.creation, item.creation);
+
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Time Column
+                          SizedBox(
+                            width: 60,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 16.0, right: 8.0),
+                              child: Text(
+                                timeDelay ?? '',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          
+                          // Line Column
+                          Column(
+                            children: [
+                              Container(
+                                width: 2,
+                                height: 16,
+                                color: itemIndex == 0 ? Colors.transparent : Colors.grey.shade300,
+                              ),
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(color: Theme.of(context).primaryColor, width: 2),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              Expanded(
+                                child: Container(
+                                  width: 2,
+                                  color: isLast ? Colors.transparent : Colors.grey.shade300,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          
+                          // Card Column
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: _buildItemCard(item),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
+                    );
+                  }
+                },
               );
-            }
-          },
-        );
-      }),
-      // Add the scan field if in 'new' or 'draft' mode, similar to Delivery Note
-      bottomNavigationBar: _buildBottomScanField(),
+            }),
+          ),
+          // The scan field is now the last item in the Column
+          _buildBottomScanField(),
+        ],
+      ),
     );
   }
 
   Widget _buildBottomScanField() {
-    // Only show if editable (Draft or New)
-    // Assuming controller.packingSlip.value?.status == 'Draft'
     return Obx(() {
       if (controller.packingSlip.value?.status != 'Draft' && controller.mode != 'new') {
         return const SizedBox.shrink();
@@ -353,7 +360,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   ),
                   const SizedBox(height: 6),
                   LinearPercentIndicator(
-                    lineHeight: 8.0,
+                    lineHeight: 6.0,
                     percent: percent,
                     backgroundColor: Colors.grey.shade200,
                     progressColor: percent >= 1 ? Colors.green : Colors.orange,
