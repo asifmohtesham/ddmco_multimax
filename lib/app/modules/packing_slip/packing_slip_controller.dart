@@ -3,9 +3,13 @@ import 'package:collection/collection.dart';
 import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
 import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
+import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
+  final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>(); // Ensure this is available
   final HomeController _homeController = Get.find<HomeController>();
 
   var isLoading = true.obs;
@@ -16,17 +20,20 @@ class PackingSlipController extends GetxController {
   int _currentPage = 0;
 
   var expandedSlipName = ''.obs;
-  var expandedGroup = ''.obs; // To track expanded groups
+  var expandedGroup = ''.obs; 
   
   final activeFilters = <String, dynamic>{}.obs;
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
+  // For DN Selection
+  var isFetchingDNs = false.obs;
+  var deliveryNotesForSelection = <DeliveryNote>[].obs;
+
   @override
   void onInit() {
     super.onInit();
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
-    // _homeController.selectedDrawerIndex.value = ...; 
     fetchPackingSlips();
   }
 
@@ -112,7 +119,6 @@ class PackingSlipController extends GetxController {
   }
 
   Map<String, List<PackingSlip>> get groupedPackingSlips {
-    // Group by customPoNo, or fallback to deliveryNote, or "Unknown"
     final grouped = groupBy(packingSlips, (PackingSlip slip) {
       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
         return slip.customPoNo!;
@@ -123,11 +129,65 @@ class PackingSlipController extends GetxController {
       return 'Other';
     });
 
-    // Sort items within each group by fromCaseNo
     grouped.forEach((key, list) {
       list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
     });
 
     return grouped;
+  }
+
+  Future<void> fetchDeliveryNotesForSelection() async {
+    isFetchingDNs.value = true;
+    try {
+      // Fetch DNs that are Draft or Submitted (can create PS for submitted DNs usually)
+      final response = await _dnProvider.getDeliveryNotes(
+        limit: 50,
+        orderBy: 'modified desc',
+        // filters: {'docstatus': 1} // Typically Packing Slips are made for Submitted DNs? Or Draft?
+        // Assuming Submitted (docstatus=1) based on standard flow, but keeping it open.
+        // Let's fetch all relevant ones.
+      );
+      
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        deliveryNotesForSelection.value = data.map((json) => DeliveryNote.fromJson(json)).toList();
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch Delivery Notes');
+    } finally {
+      isFetchingDNs.value = false;
+    }
+  }
+
+  Future<void> initiatePackingSlipCreation(DeliveryNote dn) async {
+    // Determine next case number
+    int nextCaseNo = 1;
+    try {
+      final response = await _provider.getPackingSlips(
+        limit: 1,
+        filters: {'delivery_note': dn.name},
+        orderBy: 'to_case_no desc'
+      );
+      
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        if (data.isNotEmpty) {
+          final lastSlip = PackingSlip.fromJson(data[0]);
+          if (lastSlip.toCaseNo != null) {
+            nextCaseNo = lastSlip.toCaseNo! + 1;
+          }
+        }
+      }
+    } catch (e) {
+      print('Error determining next case no: $e');
+    }
+
+    Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'deliveryNote': dn.name,
+      'customPoNo': dn.poNo,
+      'nextCaseNo': nextCaseNo
+    });
   }
 }

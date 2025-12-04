@@ -51,6 +51,78 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     );
   }
 
+  void _showDNSelectionBottomSheet(BuildContext context) {
+    controller.fetchDeliveryNotesForSelection();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select Delivery Note',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingDNs.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (controller.deliveryNotesForSelection.isEmpty) {
+                        return const Center(child: Text('No Delivery Notes found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: controller.deliveryNotesForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final dn = controller.deliveryNotesForSelection[index];
+                          return ListTile(
+                            title: Text(dn.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${dn.customer} • ${dn.poNo ?? "No PO"}'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              controller.initiatePackingSlipCreation(dn);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,8 +167,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
                 final groupKey = groupKeys[index];
                 final slips = grouped[groupKey]!;
-                final isExpanded = controller.expandedGroup.value == groupKey; 
-
+                
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -144,6 +215,10 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           ),
         );
       }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showDNSelectionBottomSheet(context),
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }

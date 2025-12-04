@@ -18,7 +18,36 @@ class PackingSlipFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchPackingSlip();
+    if (mode == 'new') {
+      _initNewPackingSlip();
+    } else {
+      fetchPackingSlip();
+    }
+  }
+
+  void _initNewPackingSlip() {
+    isLoading.value = true;
+    final String dnName = Get.arguments['deliveryNote'] ?? '';
+    final String? customPoNo = Get.arguments['customPoNo'];
+    final int nextCaseNo = Get.arguments['nextCaseNo'] ?? 1;
+
+    packingSlip.value = PackingSlip(
+      name: 'New Packing Slip',
+      deliveryNote: dnName,
+      modified: '',
+      creation: DateTime.now().toString(),
+      docstatus: 0,
+      status: 'Draft',
+      customPoNo: customPoNo,
+      fromCaseNo: nextCaseNo,
+      toCaseNo: nextCaseNo, // Default to single case
+      items: [],
+    );
+
+    if (dnName.isNotEmpty) {
+      fetchLinkedDeliveryNote(dnName);
+    }
+    isLoading.value = false;
   }
 
   Future<void> fetchPackingSlip() async {
@@ -56,6 +85,9 @@ class PackingSlipFormController extends GetxController {
 
   double? getRequiredQty(String dnDetail) {
     if (linkedDeliveryNote.value == null) return null;
+    // Assuming dnDetail links to name field of item
+    // If dnDetail is not available in item (new items?), we might need logic.
+    // But typically packing slip items link back to DN detail.
     final item = linkedDeliveryNote.value!.items.firstWhereOrNull((element) => element.name == dnDetail);
     return item?.qty;
   }
