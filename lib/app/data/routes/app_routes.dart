@@ -14,6 +14,7 @@ abstract class AppRoutes {
   static const TODO = _Paths.TODO;
   static const TODO_FORM = _Paths.TODO_FORM;
   static const ITEM = _Paths.ITEM;
+  static const ITEM_FORM = _Paths.ITEM_FORM;
 }
 
 abstract class _Paths {
@@ -30,4 +31,5 @@ abstract class _Paths {
   static const TODO = '/todo';
   static const TODO_FORM = '/todo/form';
   static const ITEM = '/item';
+  static const ITEM_FORM = '/item/form';
 }

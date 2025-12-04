@@ -28,6 +28,8 @@ import 'package:ddmco_multimax/app/modules/todo/todo_screen.dart';
 import 'package:ddmco_multimax/app/modules/todo/form/todo_form_screen.dart';
 import 'package:ddmco_multimax/app/modules/item/item_binding.dart';
 import 'package:ddmco_multimax/app/modules/item/item_screen.dart';
+import 'package:ddmco_multimax/app/modules/item/form/item_form_binding.dart';
+import 'package:ddmco_multimax/app/modules/item/form/item_form_screen.dart';
 
 import 'app_routes.dart';
 
@@ -117,6 +119,12 @@ class AppPages {
       name: AppRoutes.ITEM,
       page: () => const ItemScreen(),
       binding: ItemBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_FORM,
+      page: () => const ItemFormScreen(),
+      binding: ItemFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
   ];
 }

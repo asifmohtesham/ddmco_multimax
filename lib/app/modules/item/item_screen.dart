@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/item/item_controller.dart';
 import 'package:ddmco_multimax/app/data/models/item_model.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -160,7 +161,7 @@ class ItemCard extends GetView<ItemController> {
                           const Divider(),
                           if (item.countryOfOrigin != null) ...[_buildDetailRow('Origin', item.countryOfOrigin!)],
                           if (item.variantOf != null) ...[_buildDetailRow('Variant of', item.variantOf!)],
-                          if (item.description != null) ...[Text(item.description!, style: const TextStyle(fontSize: 12, color: Colors.grey))] ,
+                          if (item.description != null) ...[Text(item.description!, style: const TextStyle(fontSize: 12, color: Colors.grey))],
                           const SizedBox(height: 8),
                           const Text('Stock Levels:', style: TextStyle(fontWeight: FontWeight.bold)),
                           controller.isLoadingStock.value
@@ -183,6 +184,16 @@ class ItemCard extends GetView<ItemController> {
                                     },
                                   ),
                                 ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode});
+                              },
+                              child: const Text('View Full Details'),
+                            ),
+                          ),
                         ],
                       ),
                     ),
