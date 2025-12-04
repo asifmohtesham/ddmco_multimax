@@ -112,7 +112,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   } else if (index == 1) {
                     return const Padding(
                       padding: EdgeInsets.only(bottom: 16.0),
-                      child: Text('Timeline', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text('Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     );
                   } else {
                     if (items.isEmpty) return const Text('No items found.');
