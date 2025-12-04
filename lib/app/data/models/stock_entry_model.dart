@@ -68,8 +68,6 @@ class StockEntry {
       'to_warehouse': toWarehouse,
       'custom_reference_no': customReferenceNo,
       'items': items.map((i) => i.toJson()).toList(),
-      // 'purpose': purpose, // Read-only or auto-set? Usually derived from type or set.
-      // Assuming simple fields for now.
     };
   }
 
@@ -88,6 +86,7 @@ class StockEntry {
 }
 
 class StockEntryItem {
+  final String? name; // Unique Row ID
   final String itemCode;
   final double qty;
   final double basicRate;
@@ -101,6 +100,7 @@ class StockEntryItem {
   final String? tWarehouse;
 
   StockEntryItem({
+    this.name,
     required this.itemCode,
     required this.qty,
     required this.basicRate,
@@ -116,6 +116,7 @@ class StockEntryItem {
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
+      name: json['name'],
       itemCode: json['item_code'] ?? '',
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       basicRate: (json['basic_rate'] as num?)?.toDouble() ?? 0.0,
@@ -131,13 +132,19 @@ class StockEntryItem {
   }
 
   Map<String, dynamic> toJson() {
-    return {
+    final Map<String, dynamic> data = {
       'item_code': itemCode,
       'qty': qty,
-      'basic_rate': basicRate, // Might not need to send back if 0
+      'basic_rate': basicRate,
       'batch_no': batchNo,
       's_warehouse': sWarehouse,
       't_warehouse': tWarehouse,
+      'rack': rack,
+      'to_rack': toRack,
     };
+    if (name != null) {
+      data['name'] = name;
+    }
+    return data;
   }
 }
