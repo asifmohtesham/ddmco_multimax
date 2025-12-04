@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
+import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -41,21 +42,67 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  Widget _buildDetailsView(dynamic receipt) {
-    return Padding(
+  Widget _buildDetailsView(PurchaseReceipt receipt) {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Supplier: ${receipt.supplier}'),
-          Text('Posting Date: ${receipt.postingDate}'),
-        ],
+      child: Form(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: controller.supplierController,
+              decoration: const InputDecoration(
+                labelText: 'Supplier',
+                border: OutlineInputBorder(),
+              ),
+              readOnly: true, // Usually comes from PO
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: controller.postingDateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Posting Date',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: controller.postingTimeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Posting Time',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.access_time),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Obx(() => DropdownButtonFormField<String>(
+              value: controller.setWarehouse.value,
+              decoration: const InputDecoration(
+                labelText: 'Set Accepted Warehouse',
+                border: OutlineInputBorder(),
+              ),
+              items: controller.warehouses.map((wh) {
+                return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
+              }).toList(),
+              onChanged: (value) => controller.setWarehouse.value = value,
+            )),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildItemsView(dynamic receipt) {
-    final items = receipt.items as List<dynamic>? ?? [];
+  Widget _buildItemsView(PurchaseReceipt receipt) {
+    final items = receipt.items;
 
     if (items.isEmpty) {
       return const Center(child: Text('No items in this receipt.'));
@@ -73,17 +120,28 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    Text(
-                      '${(++index)}. ${item.itemCode}: ${item.itemName}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    Text(item.batchNo ?? 'N/A'),
+                     CircleAvatar(
+                        radius: 12, 
+                        backgroundColor: Colors.grey.shade200,
+                        child: Text('${index + 1}', style: const TextStyle(fontSize: 10, color: Colors.black)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${item.itemCode}: ${item.itemName ?? ''}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const Divider(height: 20),
+                if (item.batchNo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text('Batch: ${item.batchNo}', style: const TextStyle(fontFamily: 'monospace')),
+                  ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

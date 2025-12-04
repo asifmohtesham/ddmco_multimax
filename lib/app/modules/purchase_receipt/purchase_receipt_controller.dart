@@ -2,9 +2,13 @@ import 'package:dio/dio.dart' hide Response;
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:ddmco_multimax/app/data/providers/purchase_receipt_provider.dart';
+import 'package:ddmco_multimax/app/data/providers/purchase_order_provider.dart';
+import 'package:ddmco_multimax/app/data/models/purchase_order_model.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class PurchaseReceiptController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
+  final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -18,6 +22,11 @@ class PurchaseReceiptController extends GetxController {
   final _detailedReceiptsCache = <String, PurchaseReceipt>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
+
+  // For PO Selection
+  var isFetchingPOs = false.obs;
+  var purchaseOrdersForSelection = <PurchaseOrder>[].obs;
+  List<PurchaseOrder> _allFetchedPOs = [];
 
   PurchaseReceipt? get detailedReceipt => _detailedReceiptsCache[expandedReceiptName.value];
 
@@ -112,5 +121,42 @@ class PurchaseReceiptController extends GetxController {
       expandedReceiptName.value = name;
       _fetchAndCacheReceiptDetails(name);
     }
+  }
+
+  Future<void> fetchPurchaseOrdersForSelection() async {
+    isFetchingPOs.value = true;
+    try {
+      final response = await _poProvider.getPurchaseOrders(limit: 50);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        _allFetchedPOs = data.map((json) => PurchaseOrder.fromJson(json)).toList();
+        purchaseOrdersForSelection.value = _allFetchedPOs;
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch Purchase Orders');
+    } finally {
+      isFetchingPOs.value = false;
+    }
+  }
+
+  void filterPurchaseOrders(String query) {
+    if (query.isEmpty) {
+      purchaseOrdersForSelection.value = _allFetchedPOs;
+    } else {
+      final q = query.toLowerCase();
+      purchaseOrdersForSelection.value = _allFetchedPOs.where((po) {
+        return po.name.toLowerCase().contains(q) || 
+               po.supplier.toLowerCase().contains(q);
+      }).toList();
+    }
+  }
+
+  void initiatePurchaseReceiptCreation(PurchaseOrder po) {
+    Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'purchaseOrder': po.name,
+      'supplier': po.supplier,
+    });
   }
 }

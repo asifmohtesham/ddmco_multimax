@@ -91,6 +91,87 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
     );
   }
 
+  void _showPOSelectionBottomSheet(BuildContext context) {
+    controller.fetchPurchaseOrdersForSelection();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select Purchase Order',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: controller.filterPurchaseOrders,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Purchase Orders',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingPOs.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (controller.purchaseOrdersForSelection.isEmpty) {
+                        return const Center(child: Text('No Purchase Orders found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: controller.purchaseOrdersForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final po = controller.purchaseOrdersForSelection[index];
+                          return ListTile(
+                            title: Text(po.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${po.supplier} • ${po.transactionDate}'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              controller.initiatePurchaseReceiptCreation(po);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -128,10 +209,10 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         return RefreshIndicator(
           onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
           child: Scrollbar(
-            child: ListView.builder(
+            child: ListView.separated(
               controller: _scrollController,
               itemCount: controller.purchaseReceipts.length + (controller.hasMore.value ? 1 : 0),
-              // separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+              separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
               itemBuilder: (context, index) {
                 if (index >= controller.purchaseReceipts.length) {
                   return const Center(
@@ -149,9 +230,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': '', 'mode': 'new'});
-        },
+        onPressed: () => _showPOSelectionBottomSheet(context),
         child: const Icon(Icons.add),
       ),
     );
