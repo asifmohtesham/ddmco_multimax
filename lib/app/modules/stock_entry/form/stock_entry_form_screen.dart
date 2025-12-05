@@ -356,7 +356,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             children: [
               Text('Add Item', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
-              Text('${controller.currentItemCode}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 24),
               
               // Batch No

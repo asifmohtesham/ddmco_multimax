@@ -269,6 +269,7 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
         currentItemCode = itemData['item_code'];
+        currentVariantOf = itemData['variant_of'];
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
         
