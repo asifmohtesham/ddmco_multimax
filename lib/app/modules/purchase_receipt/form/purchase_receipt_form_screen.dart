@@ -33,8 +33,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
           return TabBarView(
             children: [
-              _buildDetailsView(receipt),
-              _buildItemsView(receipt),
+              _buildDetailsView(context, receipt),
+              _buildItemsView(context, receipt),
             ],
           );
         }),
@@ -42,7 +42,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  Widget _buildDetailsView(PurchaseReceipt receipt) {
+  Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
@@ -101,59 +101,64 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  Widget _buildItemsView(PurchaseReceipt receipt) {
+  Widget _buildItemsView(BuildContext context, PurchaseReceipt receipt) {
     final items = receipt.items;
 
-    if (items.isEmpty) {
-      return const Center(child: Text('No items in this receipt.'));
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                     CircleAvatar(
-                        radius: 12, 
-                        backgroundColor: Colors.grey.shade200,
-                        child: Text('${index + 1}', style: const TextStyle(fontSize: 10, color: Colors.black)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '${item.itemCode}: ${item.itemName ?? ''}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+    return Column(
+      children: [
+        Expanded(
+          child: items.isEmpty ?
+            const Center(child: Text('No items in this receipt.')) :
+            ListView.builder(
+              padding: const EdgeInsets.all(8.0),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                             CircleAvatar(
+                                radius: 12,
+                                backgroundColor: Colors.grey.shade200,
+                                child: Text('${index + 1}', style: const TextStyle(fontSize: 10, color: Colors.black)),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${item.itemCode}: ${item.itemName ?? ''}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                              ),
+                          ],
                         ),
-                      ),
-                  ],
-                ),
-                const Divider(height: 20),
-                if (item.batchNo != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Text('Batch: ${item.batchNo}', style: const TextStyle(fontFamily: 'monospace')),
+                        const Divider(height: 20),
+                        if (item.batchNo != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Text('Batch: ${item.batchNo}', style: const TextStyle(fontFamily: 'monospace')),
+                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildInfoColumn('Rack', item.rack ?? 'N/A'),
+                            _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildInfoColumn('Rack', item.rack ?? 'N/A'),
-                    _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
-                  ],
-                ),
-              ],
+                );
+              },
             ),
-          ),
-        );
-      },
+        ),
+        _buildBottomScanField(context),
+      ],
     );
   }
 
@@ -171,6 +176,43 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBottomScanField(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: TextFormField(
+          controller: controller.barcodeController,
+          decoration: InputDecoration(
+            hintText: 'Scan or enter barcode',
+            prefixIcon: const Icon(Icons.qr_code_scanner),
+            suffixIcon: Obx(() => controller.isScanning.value
+                ? Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                )
+                : IconButton(
+              icon: const Icon(Icons.send),
+              onPressed: () => controller.scanBarcode(controller.barcodeController.text),
+            )),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+          ),
+          onFieldSubmitted: (value) => controller.scanBarcode(value),
+        ),
+      ),
     );
   }
 }
