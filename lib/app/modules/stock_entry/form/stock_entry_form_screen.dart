@@ -213,7 +213,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                       elevation: 2,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: Padding(
-                        padding: const EdgeInsets.all(12.0),
+                        padding: const EdgeInsets.all(6.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
