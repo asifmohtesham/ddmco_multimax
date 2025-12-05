@@ -290,10 +290,11 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   Widget _buildLocationInfo(String label, String? warehouse, String? rack) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
         if (warehouse != null) Text(warehouse, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-        if (rack != null) Text('Rack: $rack', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, fontFamily: 'monospace')),
+        if (rack != null) Text('$rack', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, fontFamily: 'monospace')),
       ],
     );
   }
