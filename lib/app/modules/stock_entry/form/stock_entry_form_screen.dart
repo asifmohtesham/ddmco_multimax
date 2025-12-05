@@ -362,7 +362,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Add Item', style: Theme.of(context).textTheme.titleLarge),
+              // Dynamic Title
+              Text(controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 24),
@@ -451,7 +452,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
                   onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
-                  child: const Text('Add Item'),
+                  // Dynamic Button Text
+                  child: Text(controller.currentItemNameKey != null ? 'Save' : 'Add Item'),
                 )),
               ),
             ],

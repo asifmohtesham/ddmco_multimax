@@ -382,7 +382,7 @@ class StockEntryFormController extends GetxController {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
-    currentItemNameKey = null; // 'name' field is not in StockEntryItem currently, assuming we don't have unique ID or 'batchNo' + 'itemCode' is unique enough for local list.
+    currentItemNameKey = item.name; // 'name' field is not in StockEntryItem currently, assuming we don't have unique ID or 'batchNo' + 'itemCode' is unique enough for local list.
     // Wait, StockEntryItem model DOES NOT have 'name' (the child row name). I should check if I need to add it.
     // If not, I can't uniquely identify rows if duplicates exist.
     // But standard ERPNext child tables have 'name'. I probably missed adding it to model.
