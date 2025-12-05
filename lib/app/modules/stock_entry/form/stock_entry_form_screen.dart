@@ -206,7 +206,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               : ListView.separated(
                   padding: const EdgeInsets.all(2),
                   itemCount: items.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  separatorBuilder: (context, index) => const SizedBox(height: 2),
                   itemBuilder: (context, index) {
                     final item = items[index];
                     return Card(
@@ -226,8 +226,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 15)),
-                                      if (item.itemName != null)
-                                        Text(item.itemName!, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                      if (item.customVariantOf != null)
+                                        Text(item.customVariantOf!, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -243,17 +243,17 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               children: [
                                 if (item.batchNo != null) _buildItemStat('Batch', item.batchNo!, isMono: true),
                                 if (item.itemGroup != null) _buildItemStat('Group', item.itemGroup!),
-                                if (item.customVariantOf != null) _buildItemStat('Variant Of', item.customVariantOf!),
+                                if (item.itemName != null) _buildItemStat('Item Name', item.itemName!),
                               ],
                             ),
                             const SizedBox(height: 12),
-                            
+
                             // Warehouse/Rack Flow (Requirement 6)
                             Obx(() {
                               final type = controller.selectedStockEntryType.value;
                               final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
                               final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-                              
+
                               return Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
