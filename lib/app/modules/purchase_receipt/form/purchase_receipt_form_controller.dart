@@ -138,7 +138,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  Future<void> saveStockEntry() async {
+  Future<void> savePurchaseReceipt() async {
     if (isSaving.value) return;
     isSaving.value = true;
 
@@ -361,7 +361,7 @@ class PurchaseReceiptFormController extends GetxController {
     if (qty <= 0) return;
 
     final batch = bsBatchController.text;
-    // if (!bsIsBatchValid.value && batch.isNotEmpty) return;
+    if (!bsIsBatchValid.value && batch.isNotEmpty) return;
 
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
 
@@ -423,7 +423,7 @@ class PurchaseReceiptFormController extends GetxController {
 
     // Auto-Save logic for new draft
     if (mode == 'new') {
-      saveStockEntry();
+      savePurchaseReceipt();
     } else {
       Get.snackbar('Success', 'Item added to list');
     }
