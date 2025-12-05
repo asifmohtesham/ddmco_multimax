@@ -171,7 +171,6 @@ class DeliveryNoteFormController extends GetxController {
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
-        .where((item) => item.itemName == currentItemName) // Using itemName as a proxy for itemCode
         .map((item) => item.idx.toString())
         .toList();
   }
@@ -397,7 +396,7 @@ class DeliveryNoteFormController extends GetxController {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
-          return AddItemBottomSheet(scrollController: scrollController);
+          return DeliveryNoteItemBottomSheet(scrollController: scrollController);
         },
       ),
       isScrollControlled: true,
@@ -479,7 +478,7 @@ class DeliveryNoteFormController extends GetxController {
           minChildSize: 0.4,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
-            return AddItemBottomSheet(scrollController: scrollController);
+            return DeliveryNoteItemBottomSheet(scrollController: scrollController);
           },
         ),
         isScrollControlled: true,

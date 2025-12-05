@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
@@ -264,10 +266,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 }
 
-class AddItemBottomSheet extends GetView<DeliveryNoteFormController> {
+class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   final ScrollController? scrollController;
 
-  const AddItemBottomSheet({super.key, this.scrollController});
+  const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
 
   @override
   Widget build(BuildContext context) {
