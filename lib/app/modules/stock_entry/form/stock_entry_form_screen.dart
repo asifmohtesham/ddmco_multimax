@@ -232,6 +232,13 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                                   ),
                                 ),
                                 Text('${item.qty} qty', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                // Edit Button
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => controller.editItem(item),
+                                ),
                               ],
                             ),
                             const Divider(height: 20),
