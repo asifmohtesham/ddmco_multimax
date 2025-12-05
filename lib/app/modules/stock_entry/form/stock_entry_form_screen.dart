@@ -259,9 +259,9 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                                 decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
                                 child: Row(
                                   children: [
-                                    if (showSource) Expanded(child: _buildLocationInfo('Source', item.sWarehouse, item.rack)),
+                                    if (showSource) Expanded(child: Container(color: Colors.deepOrange.shade50, child: _buildLocationInfo('Source', item.sWarehouse, item.rack))),
                                     if (showSource && showTarget) const Icon(Icons.arrow_forward, color: Colors.grey, size: 16),
-                                    if (showTarget) Expanded(child: _buildLocationInfo('Target', item.tWarehouse, item.toRack)),
+                                    if (showTarget) Expanded(child: Container(color: Colors.lightGreen.shade50, child: _buildLocationInfo('Target', item.tWarehouse, item.toRack))),
                                   ],
                                 ),
                               );
