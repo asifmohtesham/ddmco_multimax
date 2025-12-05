@@ -204,7 +204,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           child: items.isEmpty
               ? const Center(child: Text('No items in this entry.'))
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(2),
                   itemCount: items.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
