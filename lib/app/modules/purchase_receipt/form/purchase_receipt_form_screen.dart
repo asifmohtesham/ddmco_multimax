@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -211,6 +213,105 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
           ),
           onFieldSubmitted: (value) => controller.scanBarcode(value),
+        ),
+      ),
+    );
+  }
+}
+
+class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController> {
+  const PurchaseReceiptItemFormSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView( // Fix overflow
+        child: Container(
+          padding: EdgeInsets.only(
+            left: 16.0,
+            right: 16.0,
+            top: 16.0,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16.0, // Handle keyboard
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Dynamic Title
+              Text(controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
+
+              // Batch No
+              Obx(() => TextFormField(
+                controller: controller.bsBatchController,
+                readOnly: controller.bsIsBatchReadOnly.value,
+                autofocus: !controller.bsIsBatchReadOnly.value,
+                decoration: InputDecoration(
+                  labelText: 'Batch No',
+                  border: const OutlineInputBorder(),
+                  filled: controller.bsIsBatchReadOnly.value,
+                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.grey.shade100 : null,
+                  suffixIcon: !controller.bsIsBatchReadOnly.value
+                      ? IconButton(
+                    icon: const Icon(Icons.check_circle_outline),
+                    onPressed: () => controller.validateBatch(controller.bsBatchController.text),
+                  )
+                      : const Icon(Icons.check_circle, color: Colors.green),
+                ),
+                onFieldSubmitted: (value) => controller.validateBatch(value),
+              )),
+              const SizedBox(height: 16),
+
+              // Rack Fields
+              Obx(() {
+                return Column(
+                  children: [
+                    TextFormField(
+                      controller: controller.bsRackController,
+                      focusNode: controller.targetRackFocusNode,
+                      decoration: InputDecoration(
+                        labelText: 'Target Rack',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: controller.isTargetRackValid.value
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : IconButton(
+                          icon: const Icon(Icons.check),
+                          onPressed: () => controller.validateRack(controller.bsRackController.text, false),
+                        ),
+                      ),
+                      onFieldSubmitted: (val) => controller.validateRack(val, false),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              }),
+
+              // Quantity
+              TextFormField(
+                controller: controller.bsQtyController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: Obx(() => ElevatedButton(
+                  onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
+                  // Dynamic Button Text
+                  child: Text(controller.currentItemNameKey != null ? 'Save' : 'Add Item'),
+                )),
+              ),
+            ],
+          ),
         ),
       ),
     );

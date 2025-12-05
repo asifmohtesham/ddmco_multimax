@@ -12,4 +12,12 @@ class PurchaseReceiptProvider {
   Future<Response> getPurchaseReceipt(String name) async {
     return _apiProvider.getPurchaseReceipt(name);
   }
+
+  Future<Response> createPurchaseReceipt(Map<String, dynamic> data) async {
+    return _apiProvider.createDocument('Purchase Receipt', data);
+  }
+
+  Future<Response> updatePurchaseReceipt(String name, Map<String, dynamic> data) async {
+    return _apiProvider.updateDocument('Purchase Receipt', name, data);
+  }
 }

@@ -86,4 +86,19 @@ class PurchaseReceiptItem {
       warehouse: json['warehouse'],
     );
   }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'item_code': itemCode,
+      'qty': qty,
+      // 'basic_rate': basicRate,
+      'batch_no': batchNo,
+      'warehouse': warehouse,
+      'rack': rack,
+    };
+    if (name != null) {
+      data['name'] = name;
+    }
+    return data;
+  }
 }

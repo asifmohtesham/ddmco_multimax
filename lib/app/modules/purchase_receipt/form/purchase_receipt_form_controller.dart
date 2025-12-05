@@ -1,7 +1,10 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:ddmco_multimax/app/data/providers/purchase_receipt_provider.dart';
+import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 import 'package:intl/intl.dart';
 
@@ -9,8 +12,8 @@ class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  final String name = Get.arguments['name'];
-  final String mode = Get.arguments['mode'];
+  String name = Get.arguments['name'];
+  String mode = Get.arguments['mode'];
 
   var isLoading = true.obs;
   var isScanning = false.obs;
@@ -135,6 +138,64 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
+  Future<void> saveStockEntry() async {
+    if (isSaving.value) return;
+    isSaving.value = true;
+
+    final Map<String, dynamic> data = {
+      'posting_date': purchaseReceipt.value?.postingDate,
+      'posting_time': purchaseReceipt.value?.postingTime,
+      'warehouse': warehouse.value,
+    };
+
+    final itemsJson = purchaseReceipt.value?.items.map((i) => i.toJson()).toList() ?? [];
+    data['items'] = itemsJson;
+
+    try {
+      if (mode == 'new') {
+        final response = await _provider.createPurchaseReceipt(data);
+        if (response.statusCode == 200) {
+          final createdDoc = response.data['data'];
+          name = createdDoc['name'];
+          mode = 'edit';
+
+          final old = purchaseReceipt.value!;
+          purchaseReceipt.value = PurchaseReceipt(
+            name: name,
+            supplier: old.supplier,
+            postingDate: old.postingDate,
+            modified: old.modified,
+            creation: old.creation,
+            status: old.status,
+            docstatus: old.docstatus,
+            owner: old.owner,
+            postingTime: old.postingTime,
+            setWarehouse: old.setWarehouse,
+            currency: old.currency,
+            grandTotal: old.grandTotal,
+            items: old.items,
+          );
+
+          Get.snackbar('Success', 'Stock Entry created: $name');
+        } else {
+          Get.snackbar('Error', 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
+        }
+      } else {
+        final response = await _provider.updatePurchaseReceipt(name, data);
+        if (response.statusCode == 200) {
+          Get.snackbar('Success', 'Stock Entry updated');
+          fetchPurchaseReceipt();
+        } else {
+          Get.snackbar('Error', 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+        }
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Save failed: $e');
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
     isScanning.value = true;
@@ -162,7 +223,7 @@ class PurchaseReceiptFormController extends GetxController {
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
 
-        _openQtySheet(scannedBatch: batchNo);
+        _openBottomSheet(scannedBatch: batchNo);
       } else {
         Get.snackbar('Error', 'Item not found');
       }
@@ -174,7 +235,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  void _openQtySheet({String? scannedBatch}) {
+  void _openBottomSheet({String? scannedBatch}) {
     bsQtyController.clear();
     bsBatchController.clear();
     bsRackController.clear();
@@ -192,10 +253,10 @@ class PurchaseReceiptFormController extends GetxController {
       // validateBatch(scannedBatch);
     }
 
-    // Get.bottomSheet(
-    //   const StockEntryItemFormSheet(),
-    //   isScrollControlled: true,
-    // );
+    Get.bottomSheet(
+      const PurchaseReceiptItemFormSheet(),
+      isScrollControlled: true,
+    );
   }
 
   Future<void> validateBatch(String batch) async {
@@ -288,10 +349,11 @@ class PurchaseReceiptFormController extends GetxController {
     // Validate racks visually
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
 
-    // Get.bottomSheet(
-    //   const PurchaseReceiptItemFormSheet(),
-    //   isScrollControlled: true,
-    // );
+    log('Editing item: $item');
+    Get.bottomSheet(
+      const PurchaseReceiptItemFormSheet(),
+      isScrollControlled: true,
+    );
   }
 
   void addItem() {
@@ -361,7 +423,7 @@ class PurchaseReceiptFormController extends GetxController {
 
     // Auto-Save logic for new draft
     if (mode == 'new') {
-      // saveStockEntry();
+      saveStockEntry();
     } else {
       Get.snackbar('Success', 'Item added to list');
     }
