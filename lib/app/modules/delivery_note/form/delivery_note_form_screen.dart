@@ -467,15 +467,16 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8.0),
                           child: Stack(
-                            alignment: Alignment.center,
+                            alignment: Alignment.topLeft,
                             children: [
                               Image.network(
                                 'https://erp.multimax.cloud${controller.bsItemImage.value}', 
-                                height: 150,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                                // height: MediaQuery.of(context).size.height * 0.5,
+                                width: MediaQuery.of(context).size.width * 0.5,
+                                fit: BoxFit.scaleDown,
                                 errorBuilder: (context, error, stackTrace) => Container(
-                                  height: 150,
+                                  // height: MediaQuery.of(context).size.height * 0.5,
+                                  width: MediaQuery.of(context).size.width * 0.5,
                                   color: Colors.grey.shade200,
                                   alignment: Alignment.center,
                                   child: const Text('Image load failed', style: TextStyle(color: Colors.grey)),
