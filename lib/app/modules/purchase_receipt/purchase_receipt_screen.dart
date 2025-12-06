@@ -261,6 +261,8 @@ class PurchaseReceiptCard extends StatelessWidget {
         return '${difference.inHours}h ago';
       } else if (difference.inMinutes > 0) {
         return '${difference.inMinutes}m ago';
+      } else if (difference.inSeconds > 0) {
+        return '${difference.inSeconds}s ago';
       } else {
         return 'Just now';
       }
@@ -279,8 +281,10 @@ class PurchaseReceiptCard extends StatelessWidget {
         return '${difference.inDays}d ${difference.inHours % 24}h';
       } else if (difference.inHours > 0) {
         return '${difference.inHours}h ${difference.inMinutes % 60}m';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ${difference.inSeconds % 60}s';
       } else {
-        return '${difference.inMinutes}m';
+        return '${difference.inSeconds}s';
       }
     } catch (e) {
       return '';

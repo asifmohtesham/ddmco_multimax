@@ -45,6 +45,8 @@ class PurchaseReceiptFormController extends GetxController {
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
+  var currentOwner = ''.obs;
+  var currentCreation = ''.obs;
   var currentItemCode = '';
   var currentVariantOf = '';
   var currentItemName = '';
@@ -222,6 +224,8 @@ class PurchaseReceiptFormController extends GetxController {
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
+        currentItemNameKey = itemData['name'];
+        currentOwner = itemData['owner'];
         currentItemCode = itemData['item_code'];
         currentVariantOf = itemData['variant_of'];
         currentItemName = itemData['item_name'];
@@ -236,6 +240,31 @@ class PurchaseReceiptFormController extends GetxController {
     } finally {
       isScanning.value = false;
       barcodeController.clear();
+    }
+  }
+
+  String getRelativeTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'N/A';
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 365) {
+        return '${(difference.inDays / 365).floor()}y ago';
+      } else if (difference.inDays > 30) {
+        return '${(difference.inDays / 30).floor()}mo ago';
+      } else if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return dateString.split(' ')[0]; // Fallback to date part
     }
   }
 
@@ -255,7 +284,7 @@ class PurchaseReceiptFormController extends GetxController {
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
-      // validateBatch(scannedBatch);
+      validateBatch(scannedBatch);
     }
 
     Get.bottomSheet(
@@ -346,7 +375,7 @@ class PurchaseReceiptFormController extends GetxController {
   // New method to edit existing item
   void editItem(PurchaseReceiptItem item) {
     currentItemCode = item.itemCode;
-    // currentVariantOf = item.variantOf ?? '';
+    currentVariantOf = item.variantOf ?? '';
     currentItemName = item.itemName ?? '';
     currentItemNameKey = item.name; 
 
@@ -385,8 +414,10 @@ class PurchaseReceiptFormController extends GetxController {
     if (index != -1) {
       final existing = currentItems[index];
       currentItems[index] = PurchaseReceiptItem(
+        owner: existing.owner,
+        creation: existing.creation,
         itemCode: existing.itemCode,
-        qty: existing.qty + qty, 
+        qty: existing.qty + qty,
         rate: existing.rate,
         batchNo: batch,
         itemName: existing.itemName,
@@ -395,6 +426,8 @@ class PurchaseReceiptFormController extends GetxController {
       );
     } else {
       currentItems.add(PurchaseReceiptItem(
+        owner: currentOwner.value,
+        creation: DateTime.now().toString(),
         itemCode: currentItemCode,
         qty: qty,
         itemName: currentItemName,

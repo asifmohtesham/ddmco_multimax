@@ -269,6 +269,18 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             children: [
               Text(controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Row(
+                  children: [
+                    Text(
+                      '${controller.currentOwner.value} • ${controller.getRelativeTime(controller.currentCreation.value)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+
               Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 24),
 

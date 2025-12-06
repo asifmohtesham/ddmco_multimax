@@ -55,8 +55,11 @@ class PurchaseReceipt {
 }
 
 class PurchaseReceiptItem {
+  final String owner;
+  final String creation;
   final String? name;
   final String itemCode;
+  final String? variantOf;
   final String? itemName;
   final double qty;
   final double? rate;
@@ -66,8 +69,11 @@ class PurchaseReceiptItem {
   final String? purchaseOrderItem; // Link to PO Item
 
   PurchaseReceiptItem({
+    required this.owner,
+    required this.creation,
     this.name,
     required this.itemCode,
+    this.variantOf,
     this.itemName,
     required this.qty,
     this.rate,
@@ -79,13 +85,16 @@ class PurchaseReceiptItem {
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
     return PurchaseReceiptItem(
+      owner: json['owner'] ?? '',
+      creation: json['creation'] ?? '',
       itemCode: json['item_code'] ?? '',
+      variantOf: json['variant_of'] ?? '',
       itemName: json['item_name'],
-      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
-      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       batchNo: json['batch_no'],
       rack: json['rack'],
       warehouse: json['warehouse'],
+      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       purchaseOrderItem: json['purchase_order_item'],
     );
   }
