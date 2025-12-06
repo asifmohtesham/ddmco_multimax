@@ -45,8 +45,10 @@ class PurchaseReceiptFormController extends GetxController {
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
-  var currentOwner = ''.obs;
-  var currentCreation = ''.obs;
+  var currentOwner = '';
+  var currentCreation = '';
+  var currentModifiedBy = '';
+  var currentModified = '';
   var currentItemCode = '';
   var currentVariantOf = '';
   var currentItemName = '';
@@ -374,10 +376,13 @@ class PurchaseReceiptFormController extends GetxController {
 
   // New method to edit existing item
   void editItem(PurchaseReceiptItem item) {
+    currentItemNameKey = item.name;
+    currentOwner = item.owner;
+    currentCreation = item.creation;
+    currentModified = item.modified ?? '';
+    currentModifiedBy = item.modifiedBy ?? '';
     currentItemCode = item.itemCode;
-    currentVariantOf = item.variantOf ?? '';
     currentItemName = item.itemName ?? '';
-    currentItemNameKey = item.name; 
 
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
@@ -393,7 +398,6 @@ class PurchaseReceiptFormController extends GetxController {
 
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
 
-    log('Editing item: $item');
     Get.bottomSheet(
       const PurchaseReceiptItemFormSheet(),
       isScrollControlled: true,
@@ -426,7 +430,7 @@ class PurchaseReceiptFormController extends GetxController {
       );
     } else {
       currentItems.add(PurchaseReceiptItem(
-        owner: currentOwner.value,
+        owner: currentOwner,
         creation: DateTime.now().toString(),
         itemCode: currentItemCode,
         qty: qty,

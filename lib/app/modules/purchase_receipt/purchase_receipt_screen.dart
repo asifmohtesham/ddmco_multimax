@@ -417,11 +417,15 @@ class PurchaseReceiptCard extends StatelessWidget {
                                         if (detailed.status == 'Draft') ...[
                                           OutlinedButton.icon(
                                             onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'edit'}),
-                                            icon: const Icon(Icons.edit, size: 18),
-                                            label: const Text('Edit'),
+                                            icon: Icon(detailed.docstatus == 0 ? Icons.edit : Icons.file_open, size: 18),
+                                            label: Text(detailed.docstatus == 0 ? 'Edit': 'Open'),
                                             style: OutlinedButton.styleFrom(
                                               visualDensity: VisualDensity.compact,
-                                              side: const BorderSide(color: Colors.blue),
+                                              // The `shape` property defines the border radius
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(4.0), // Your desired radius
+                                              ),
+                                              side: BorderSide(color: Theme.of(context).primaryColor),
                                             ),
                                           ),
                                         ] else ...[

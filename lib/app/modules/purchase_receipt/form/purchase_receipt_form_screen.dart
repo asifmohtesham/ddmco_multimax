@@ -274,15 +274,41 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                 child: Row(
                   children: [
                     Text(
-                      '${controller.currentOwner.value} • ${controller.getRelativeTime(controller.currentCreation.value)}',
+                      '${controller.currentOwner} • ${controller.getRelativeTime(controller.currentCreation)}',
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
 
-              Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 24),
+              // Item Code
+              TextFormField(
+                readOnly: true,
+                initialValue: '${controller.currentItemCode}',
+                decoration: InputDecoration(
+                  labelText: 'Item Code',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  suffixIcon: const Icon(Icons.check_circle, color: Colors.green),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Item Name
+              TextFormField(
+                readOnly: true,
+                initialValue: '${controller.currentItemName}',
+                decoration: InputDecoration(
+                  labelText: 'Item Name',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  suffixIcon: const Icon(Icons.check_circle, color: Colors.green),
+                ),
+              ),
+              const SizedBox(height: 16),
 
               // Batch No
               Obx(() => TextFormField(
@@ -340,6 +366,16 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
               ),
               const SizedBox(height: 24),
 
+              if (controller.currentModifiedBy.isNotEmpty) const SizedBox(height: 16),
+              if (controller.currentModifiedBy.isNotEmpty) const Divider(),
+              // Footer: Modified info
+              if (controller.currentModifiedBy.isNotEmpty) Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Last modified by ${controller.currentModifiedBy} • ${controller.getRelativeTime(controller.currentModified)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                ),
+              ),
               SizedBox(
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
