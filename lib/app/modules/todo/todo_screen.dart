@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/todo/todo_controller.dart';
 import 'package:intl/intl.dart';
@@ -175,7 +176,7 @@ class ToDoCard extends StatelessWidget {
         return Column(
           children: [
             ListTile(
-              title: Text(todo.description.isNotEmpty ? todo.description.split('\n')[0] : todo.name),
+              title: todo.description.isNotEmpty ? Html(data: todo.description.split('\n')[0]) : Text(todo.name),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -217,7 +218,7 @@ class ToDoCard extends StatelessWidget {
                                 if (detailed.description.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 8.0),
-                                    child: Text('Description: ${detailed.description}'),
+                                    child: Html(data: 'Description: ${detailed.description}'),
                                   ),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
