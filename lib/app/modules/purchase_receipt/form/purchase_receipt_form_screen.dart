@@ -15,12 +15,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
         appBar: AppBar(
           title: Obx(() => Text(controller.purchaseReceipt.value?.name ?? 'Loading...')),
           actions: [
-            Obx(() => controller.isSaving.value 
-              ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
-              : IconButton(
-                  icon: const Icon(Icons.save),
-                  onPressed: controller.savePurchaseReceipt,
-                )),
+            if (controller.purchaseReceipt.value?.docstatus == 0)
+              Obx(() => controller.isSaving.value
+                ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
+                : IconButton(
+                    icon: const Icon(Icons.save),
+                    onPressed: controller.savePurchaseReceipt,
+                  )),
           ],
           bottom: const TabBar(
             tabs: [

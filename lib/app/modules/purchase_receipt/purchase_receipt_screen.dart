@@ -209,10 +209,10 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         return RefreshIndicator(
           onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
           child: Scrollbar(
-            child: ListView.separated(
+            child: ListView.builder(
               controller: _scrollController,
               itemCount: controller.purchaseReceipts.length + (controller.hasMore.value ? 1 : 0),
-              separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+              // separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
               itemBuilder: (context, index) {
                 if (index >= controller.purchaseReceipts.length) {
                   return const Center(
@@ -244,7 +244,7 @@ class PurchaseReceiptCard extends StatelessWidget {
   PurchaseReceiptCard({super.key, required this.receipt});
 
   String _getCurrencySymbol(String currency) {
-    final format = NumberFormat.simpleCurrency(name: currency);
+    final format = NumberFormat.currency(name: currency);
     return format.currencySymbol;
   }
 
@@ -263,6 +263,24 @@ class PurchaseReceiptCard extends StatelessWidget {
         return '${difference.inMinutes}m ago';
       } else {
         return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String _getTimeTaken(String creation, String modified) {
+    try {
+      final start = DateTime.parse(creation);
+      final end = DateTime.parse(modified);
+      final difference = end.difference(start);
+
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ${difference.inHours % 24}h';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ${difference.inMinutes % 60}m';
+      } else {
+        return '${difference.inMinutes}m';
       }
     } catch (e) {
       return '';
@@ -318,15 +336,38 @@ class PurchaseReceiptCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              
-              // Row 3: Total
-              Text(
-                '${_getCurrencySymbol(receipt.currency)}${receipt.grandTotal.toStringAsFixed(2)}',
-                style: TextStyle(
-                  color: Theme.of(context).primaryColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+
+              // Row 3: Stats (Total Qty, Assigned, Time Taken)
+              Row(
+                children: [
+                  _buildStatItem(Icons.inventory_2_outlined, '${NumberFormat.decimalPattern('en_AE').format(receipt.totalQty)} Items'),
+                  // Row 3: Total
+                  Text(
+                    ' | ${_getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: Theme.of(context).primaryColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (receipt.docstatus == 1) // Submitted
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: _buildStatItem(Icons.timer_outlined, _getTimeTaken(receipt.creation, receipt.modified), color: Colors.green),
+                    ),
+                  // Animated Arrow
+                  Obx(() {
+                    final isCurrentlyExpanded = controller.expandedReceiptName.value == receipt.name;
+                    return AnimatedRotation(
+                      turns: isCurrentlyExpanded ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
+                    );
+                  }),
+                ],
               ),
 
               // Expansion Content
@@ -391,6 +432,19 @@ class PurchaseReceiptCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String text, {Color? color}) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color ?? Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 }

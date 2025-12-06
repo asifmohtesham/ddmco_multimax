@@ -97,16 +97,18 @@ class PurchaseReceiptFormController extends GetxController {
 
     purchaseReceipt.value = PurchaseReceipt(
       name: 'New Purchase Receipt',
+      owner: '',
+      creation: now.toString(),
+      modified: '',
+      docstatus: 0,
+      status: 'Draft',
       supplier: supplier,
-      grandTotal: 0.0,
       postingDate: DateFormat('yyyy-MM-dd').format(now),
       postingTime: DateFormat('HH:mm:ss').format(now),
-      modified: '',
-      creation: now.toString(),
-      owner: '',
-      status: 'Draft',
-      docstatus: 0,
-      currency: 'USD', // Default or from settings
+      setWarehouse: '',
+      currency: 'AED', // Default or from settings
+      totalQty: 0,
+      grandTotal: 0.0,
       items: [],
     );
 
@@ -173,6 +175,7 @@ class PurchaseReceiptFormController extends GetxController {
             postingTime: old.postingTime,
             setWarehouse: old.setWarehouse,
             currency: old.currency,
+            totalQty: old.totalQty,
             grandTotal: old.grandTotal,
             items: old.items,
           );
@@ -413,8 +416,9 @@ class PurchaseReceiptFormController extends GetxController {
       postingTime: old.postingTime,
       setWarehouse: old.setWarehouse,
       supplier: old.supplier,
-      grandTotal: old.grandTotal,
       currency: old.currency,
+      totalQty: old.totalQty,
+      grandTotal: old.grandTotal,
       items: currentItems,
     );
 
