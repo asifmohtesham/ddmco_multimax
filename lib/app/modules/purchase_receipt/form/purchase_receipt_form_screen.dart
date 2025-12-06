@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +14,14 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.purchaseReceipt.value?.name ?? 'Loading...')),
+          actions: [
+            Obx(() => controller.isSaving.value 
+              ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
+              : IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: controller.savePurchaseReceipt,
+                )),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Details'),
@@ -57,7 +63,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 labelText: 'Supplier',
                 border: OutlineInputBorder(),
               ),
-              readOnly: true, // Usually comes from PO
+              readOnly: true, 
             ),
             const SizedBox(height: 16),
             Row(
@@ -97,6 +103,20 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
               }).toList(),
               onChanged: (value) => controller.setWarehouse.value = value,
             )),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  DefaultTabController.of(context).animateTo(1);
+                },
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Next: Add Items'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -126,7 +146,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                         Row(
                           children: [
                              CircleAvatar(
-                                radius: 12,
+                                radius: 12, 
                                 backgroundColor: Colors.grey.shade200,
                                 child: Text('${index + 1}', style: const TextStyle(fontSize: 10, color: Colors.black)),
                               ),
@@ -136,6 +156,12 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                                   '${item.itemCode}: ${item.itemName ?? ''}',
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => controller.editItem(item),
                               ),
                           ],
                         ),
@@ -225,13 +251,13 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: SingleChildScrollView( // Fix overflow
+      child: SingleChildScrollView( 
         child: Container(
           padding: EdgeInsets.only(
             left: 16.0,
             right: 16.0,
             top: 16.0,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16.0, // Handle keyboard
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16.0, 
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -240,7 +266,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Dynamic Title
               Text(controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -306,7 +331,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
                   onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
-                  // Dynamic Button Text
                   child: Text(controller.currentItemNameKey != null ? 'Save' : 'Add Item'),
                 )),
               ),

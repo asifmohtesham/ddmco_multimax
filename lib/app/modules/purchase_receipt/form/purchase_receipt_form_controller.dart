@@ -50,9 +50,9 @@ class PurchaseReceiptFormController extends GetxController {
   var currentItemName = '';
   var currentUom = '';
 
-  // Add this to store the unique row ID (name field in Stock Entry Item)
+  // Add this to store the unique row ID (name field in Purchase Receipt Item)
   String? currentItemNameKey;
-  var warehouse = RxnString();
+  var warehouse = RxnString(); // Stores item-level warehouse
 
   @override
   void onInit() {
@@ -143,9 +143,10 @@ class PurchaseReceiptFormController extends GetxController {
     isSaving.value = true;
 
     final Map<String, dynamic> data = {
+      'supplier': supplierController.text, // Added supplier
       'posting_date': purchaseReceipt.value?.postingDate,
       'posting_time': purchaseReceipt.value?.postingTime,
-      'warehouse': warehouse.value,
+      'set_warehouse': setWarehouse.value,
     };
 
     final itemsJson = purchaseReceipt.value?.items.map((i) => i.toJson()).toList() ?? [];
@@ -176,14 +177,14 @@ class PurchaseReceiptFormController extends GetxController {
             items: old.items,
           );
 
-          Get.snackbar('Success', 'Stock Entry created: $name');
+          Get.snackbar('Success', 'Purchase Receipt created: $name');
         } else {
           Get.snackbar('Error', 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
         final response = await _provider.updatePurchaseReceipt(name, data);
         if (response.statusCode == 200) {
-          Get.snackbar('Success', 'Stock Entry updated');
+          Get.snackbar('Success', 'Purchase Receipt updated');
           fetchPurchaseReceipt();
         } else {
           Get.snackbar('Error', 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
@@ -247,6 +248,7 @@ class PurchaseReceiptFormController extends GetxController {
     isTargetRackValid.value = false;
 
     currentItemNameKey = null; // Reset key for new item
+    warehouse.value = null; // Reset item warehouse
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -269,17 +271,22 @@ class PurchaseReceiptFormController extends GetxController {
         'name': batch
       });
 
+      // For Purchase Receipt, accept any batch (existing or new)
+      // If it exists, good. If not, it's a new batch. Both are valid for receipt.
+      bsIsBatchValid.value = true;
+      bsIsBatchReadOnly.value = true;
+      
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-        bsIsBatchValid.value = true;
-        bsIsBatchReadOnly.value = true;
-        Get.snackbar('Success', 'Batch validated', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
-        _focusNextField();
+         Get.snackbar('Success', 'Existing Batch found', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
       } else {
-        bsIsBatchValid.value = false;
-        Get.snackbar('Error', 'Batch not found for this item');
+         Get.snackbar('Info', 'New Batch will be created', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
       }
+      _focusNextField();
     } catch (e) {
-      Get.snackbar('Error', 'Failed to validate batch: $e');
+      // If API fails, still allow? 
+      // If network error, maybe fail. If logic error, maybe fail.
+      // For safety, let's fail on error but allow "not found".
+      Get.snackbar('Error', 'Failed to check batch: $e');
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
@@ -288,6 +295,24 @@ class PurchaseReceiptFormController extends GetxController {
 
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
+    
+    // Auto-parse Warehouse from Rack Pattern
+    // Pattern: KA-WH-DXB1-1A => WH-DXB1 - KA
+    if (rack.contains('-')) {
+      final parts = rack.split('-');
+      if (parts.length >= 3) {
+        // Assuming structure: Location-WHPrefix-WHName-RackID
+        // Or simply look for known warehouses? 
+        // Based on prompt: KA-WH-DXB1-1A -> WH-DXB1 - KA
+        // KA (0), WH (1), DXB1 (2), 1A (3)
+        // Warehouse = parts[1] + '-' + parts[2] + ' - ' + parts[0]
+        if (parts.length >= 3) {
+          final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
+          warehouse.value = wh;
+          // print('Auto-detected warehouse: $wh');
+        }
+      }
+    }
 
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
@@ -318,35 +343,22 @@ class PurchaseReceiptFormController extends GetxController {
   // New method to edit existing item
   void editItem(PurchaseReceiptItem item) {
     currentItemCode = item.itemCode;
-    currentVariantOf = item.variantOf ?? '';
+    // currentVariantOf = item.variantOf ?? '';
     currentItemName = item.itemName ?? '';
-    currentItemNameKey = item.name; // 'name' field is not in StockEntryItem currently, assuming we don't have unique ID or 'batchNo' + 'itemCode' is unique enough for local list.
-    // Wait, StockEntryItem model DOES NOT have 'name' (the child row name). I should check if I need to add it.
-    // If not, I can't uniquely identify rows if duplicates exist.
-    // But standard ERPNext child tables have 'name'. I probably missed adding it to model.
-    // For now, I'll match by object reference or index? No, index is safer if I pass it.
-    // The prompt said: "Each Stock Entry Item has a unique key in the 'name' field".
-    // So I MUST have missed it in the model.
+    currentItemNameKey = item.name; 
 
-    // Assuming I can't change model right now, I'll use itemCode + batchNo as key, or rely on object identity?
-    // Wait, the prompt explicitly said: "Each Stock Entry Item has a unique key in the 'name' field".
-    // I should verify if StockEntryItem has 'name'.
-    // Let me check the model file content from previous turns.
-    // It DOES NOT have 'name'.
-    // I'll add 'name' to StockEntryItem model in next step.
-
-    // For now, I'll proceed with populating the sheet.
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
     bsRackController.text = item.rack ?? '';
+    
+    // Restore warehouse
+    if (item.warehouse.isNotEmpty) {
+      warehouse.value = item.warehouse;
+    }
 
-    // Assume valid if existing
     bsIsBatchValid.value = true;
-    bsIsBatchReadOnly.value = true; // Can't change batch in edit? usually yes, but let's allow edit if needed.
-    // Actually, if editing, maybe we want to change batch.
-    // But typically editing is for Qty.
+    bsIsBatchReadOnly.value = true; 
 
-    // Validate racks visually
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
 
     log('Editing item: $item');
@@ -365,31 +377,18 @@ class PurchaseReceiptFormController extends GetxController {
 
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
 
-    // If editing, we should replace the specific item.
-    // Since I don't have 'name' yet, I'll use itemCode + batch matching,
-    // but if duplicates exist, this is risky.
-    // I'll implemented a `editItem` that sets a `editingItemIndex` or similar if I can't use ID.
-    // But better to add `name` to model.
-
     final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode && i.batchNo == batch);
 
     if (index != -1) {
       final existing = currentItems[index];
       currentItems[index] = PurchaseReceiptItem(
         itemCode: existing.itemCode,
-        qty: existing.qty + qty, // Accumulate if adding new? Or replace if editing?
-        // If coming from 'editItem', we likely want to REPLACE the qty.
-        // But 'addItem' logic here was "Add to list".
-        // I should separate "Update" logic or handle it here.
-        // If I am in "Edit Mode" (sheet opened via edit button), I should replace.
-        // If "Add Mode" (scan), I accumulate.
-        // I need a flag `isEditing`.
-        itemGroup: existing.itemGroup,
-        variantOf: existing.variantOf,
+        qty: existing.qty + qty, 
+        rate: existing.rate,
         batchNo: batch,
         itemName: existing.itemName,
         rack: bsRackController.text.isNotEmpty ? bsRackController.text : existing.rack,
-        warehouse: warehouse.value!.isNotEmpty ? warehouse.value : existing.warehouse,
+        warehouse: warehouse.value!.isNotEmpty ? warehouse.value! : existing.warehouse,
       );
     } else {
       currentItems.add(PurchaseReceiptItem(
@@ -398,7 +397,7 @@ class PurchaseReceiptFormController extends GetxController {
         itemName: currentItemName,
         batchNo: batch,
         rack: bsRackController.text,
-        warehouse: warehouse.value,
+        warehouse: warehouse.value ?? '', // Use auto-detected or default
       ));
     }
 

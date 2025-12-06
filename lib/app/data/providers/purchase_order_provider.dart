@@ -10,13 +10,10 @@ class PurchaseOrderProvider {
     int limitStart = 0,
     Map<String, dynamic>? filters,
   }) async {
-    // Default filter: Submitted (docstatus=1)
     final effectiveFilters = filters ?? {};
     if (!effectiveFilters.containsKey('docstatus')) {
       effectiveFilters['docstatus'] = 1;
     }
-    // Exclude closed/cancelled? Usually status != 'Closed' etc. 
-    // Let's stick to docstatus=1 for now as "Submit state" was requested.
 
     return _apiProvider.getDocumentList(
       'Purchase Order',
@@ -26,5 +23,9 @@ class PurchaseOrderProvider {
       fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status'],
       orderBy: 'modified desc',
     );
+  }
+
+  Future<Response> getPurchaseOrder(String name) async {
+    return _apiProvider.getDocument('Purchase Order', name);
   }
 }

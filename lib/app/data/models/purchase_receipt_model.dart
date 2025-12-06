@@ -3,7 +3,7 @@ class PurchaseReceipt {
   final String supplier;
   final double grandTotal;
   final String postingDate;
-  final String? postingTime;
+  final String postingTime;
   final String modified;
   final String creation; // Added
   final String status;
@@ -53,52 +53,47 @@ class PurchaseReceipt {
 class PurchaseReceiptItem {
   final String? name;
   final String itemCode;
-  final String? variantOf;
-  final String? itemGroup;
   final String? itemName;
   final double qty;
+  final double? rate;
   final String? batchNo;
   final String? rack;
-  final String? warehouse;
+  final String warehouse;
+  final String? purchaseOrderItem; // Link to PO Item
 
   PurchaseReceiptItem({
     this.name,
     required this.itemCode,
-    this.variantOf,
-    this.itemGroup,
     this.itemName,
     required this.qty,
+    this.rate,
     this.batchNo,
     this.rack,
     required this.warehouse,
+    this.purchaseOrderItem,
   });
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
     return PurchaseReceiptItem(
-      name: json['name'] ?? '',
       itemCode: json['item_code'] ?? '',
-      variantOf: json['variant_of'] ?? '',
-      itemGroup: json['item_group'],
       itemName: json['item_name'],
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       batchNo: json['batch_no'],
       rack: json['rack'],
       warehouse: json['warehouse'],
+      purchaseOrderItem: json['purchase_order_item'],
     );
   }
 
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = {
+    return {
       'item_code': itemCode,
       'qty': qty,
-      // 'basic_rate': basicRate,
+      'rate': rate,
       'batch_no': batchNo,
-      'warehouse': warehouse,
       'rack': rack,
+      'purchase_order_item': purchaseOrderItem,
     };
-    if (name != null) {
-      data['name'] = name;
-    }
-    return data;
   }
 }
