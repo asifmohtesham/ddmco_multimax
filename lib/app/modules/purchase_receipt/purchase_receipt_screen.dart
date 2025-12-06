@@ -343,15 +343,6 @@ class PurchaseReceiptCard extends StatelessWidget {
               Row(
                 children: [
                   _buildStatItem(Icons.inventory_2_outlined, '${NumberFormat.decimalPattern('en_AE').format(receipt.totalQty)} Items'),
-                  // Row 3: Total
-                  Text(
-                    ' | ${_getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      color: Theme.of(context).primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
                   const Spacer(),
                   if (receipt.docstatus == 1) // Submitted
                     Padding(
@@ -396,6 +387,24 @@ class PurchaseReceiptCard extends StatelessWidget {
                                   children: [
                                     const Divider(height: 1),
                                     const SizedBox(height: 8),
+                                    Row(
+                                      spacing: 4,
+                                      children: [
+                                        Icon(
+                                          Icons.account_balance,
+                                          size: 16,
+                                          color: Theme.of(context).primaryColor,
+                                        ),
+                                        Text(
+                                          '${_getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            color: Theme.of(context).primaryColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                     Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
                                     const SizedBox(height: 12),
                                     Row(
