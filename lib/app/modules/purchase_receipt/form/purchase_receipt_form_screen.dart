@@ -159,8 +159,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                                 ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                // padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),
                                 onPressed: () => controller.editItem(item),
                               ),
@@ -376,6 +376,8 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                   style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
                 ),
               ),
+
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
