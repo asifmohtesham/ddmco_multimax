@@ -3,6 +3,8 @@ import 'package:ddmco_multimax/app/modules/auth/login_controller.dart';
 import 'package:ddmco_multimax/app/modules/auth/login_screen.dart';
 import 'package:ddmco_multimax/app/modules/home/home_binding.dart';
 import 'package:ddmco_multimax/app/modules/home/home_screen.dart';
+import 'package:ddmco_multimax/app/modules/profile/user_profile_binding.dart'; // Added
+import 'package:ddmco_multimax/app/modules/profile/user_profile_screen.dart'; // Added
 import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_binding.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_screen.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_binding.dart';
@@ -48,6 +50,13 @@ class AppPages {
       name: AppRoutes.HOME,
       page: () => const HomeScreen(),
       binding: HomeBinding(),
+    ),
+    // Added Profile Page
+    GetPage(
+      name: AppRoutes.PROFILE,
+      page: () => const UserProfileScreen(),
+      binding: UserProfileBinding(),
+      transition: Transition.rightToLeft,
     ),
     GetPage(
       name: AppRoutes.PURCHASE_RECEIPT,

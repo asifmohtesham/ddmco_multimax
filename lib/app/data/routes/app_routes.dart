@@ -1,6 +1,7 @@
 abstract class AppRoutes {
   static const LOGIN = '/login';
   static const HOME = '/home';
+  static const PROFILE = _Paths.PROFILE; // Added
   static const PURCHASE_RECEIPT = _Paths.PURCHASE_RECEIPT;
   static const PURCHASE_RECEIPT_FORM = _Paths.PURCHASE_RECEIPT_FORM;
   static const STOCK_ENTRY = _Paths.STOCK_ENTRY;
@@ -18,6 +19,7 @@ abstract class AppRoutes {
 }
 
 abstract class _Paths {
+  static const PROFILE = '/profile'; // Added
   static const PURCHASE_RECEIPT = '/purchase-receipt';
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
   static const STOCK_ENTRY = '/stock-entry';

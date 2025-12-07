@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
 import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
+import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 
 class AppNavDrawer extends StatelessWidget {
   const AppNavDrawer({super.key});
@@ -27,14 +28,26 @@ class AppNavDrawer extends StatelessWidget {
                   style: const TextStyle(fontSize: 40.0),
                 ),
               ),
+              onDetailsPressed: () {
+                Get.back(); // Close drawer
+                Get.toNamed(AppRoutes.PROFILE);
+              },
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
               otherAccountsPictures: [
                 if (user?.designation != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 8.0),
-                    child: Chip(label: Text(user!.designation!)),
+                    child: Chip(
+                      label: Text(
+                        user!.designation!,
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: Colors.white,
+                    ),
                   ),
-                if (user?.department != null)
-                  Chip(label: Text(user!.department!)),
               ],
             );
           }),
