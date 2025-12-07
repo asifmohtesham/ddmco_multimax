@@ -161,6 +161,19 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
     return Column(
       children: [
+        const Divider(),
+        Expanded(
+          child: items.isEmpty
+              ? const Center(child: Text('No items in this receipt.'))
+              : ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80.0),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return PurchaseReceiptItemCard(item: item, index: index);
+            },
+          ),
+        ),
         // Scan Field Moved to Top for Consistency with DeliveryNote
         Padding(
           padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
@@ -192,19 +205,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
               onFieldSubmitted: (value) => controller.scanBarcode(value),
             );
           }),
-        ),
-        const Divider(),
-        Expanded(
-          child: items.isEmpty
-              ? const Center(child: Text('No items in this receipt.'))
-              : ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80.0),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return PurchaseReceiptItemCard(item: item, index: index);
-            },
-          ),
         ),
       ],
     );
@@ -382,10 +382,10 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
       children: [
         SizedBox(
           width: 80,
-          child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          child: SelectableText(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         ),
         Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+          child: SelectableText(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ),
       ],
     );
