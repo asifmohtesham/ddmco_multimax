@@ -85,6 +85,40 @@ class AppNavDrawer extends StatelessWidget {
               ],
             ),
           ),
+          // Add this block inside the ListView children, before Logout
+          RoleGuard(
+            roles: const ['Manufacturing Manager', 'Production Manager', 'System Manager'],
+            child: ExpansionTile(
+              leading: const Icon(Icons.precision_manufacturing_outlined),
+              title: const Text('Manufacturing'),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.account_tree_outlined),
+                  title: const Text('Bill of Materials'),
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed(AppRoutes.BOM);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.assignment_outlined),
+                  title: const Text('Work Order'),
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed(AppRoutes.WORK_ORDER);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.assignment_ind_outlined),
+                  title: const Text('Job Card'),
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed(AppRoutes.JOB_CARD);
+                  },
+                ),
+              ],
+            ),
+          ),
 
           RoleGuard(
             roles: const ['Stock Manager', 'Stock User'],
@@ -138,40 +172,6 @@ class AppNavDrawer extends StatelessWidget {
             )),
           ),
 
-          // Add this block inside the ListView children, before Logout
-          RoleGuard(
-            roles: const ['Manufacturing Manager', 'Production Manager', 'System Manager'],
-            child: ExpansionTile(
-              leading: const Icon(Icons.precision_manufacturing_outlined),
-              title: const Text('Manufacturing'),
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.account_tree_outlined),
-                  title: const Text('Bill of Materials'),
-                  onTap: () {
-                    Get.back();
-                    Get.toNamed(AppRoutes.BOM);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.assignment_outlined),
-                  title: const Text('Work Order'),
-                  onTap: () {
-                    Get.back();
-                    Get.toNamed(AppRoutes.WORK_ORDER);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.assignment_ind_outlined),
-                  title: const Text('Job Card'),
-                  onTap: () {
-                    Get.back();
-                    Get.toNamed(AppRoutes.JOB_CARD);
-                  },
-                ),
-              ],
-            ),
-          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout),
