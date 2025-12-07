@@ -5,6 +5,7 @@ import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.da
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/role_guard.dart'; // Import RoleGuard
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -51,7 +52,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     );
   }
 
-  // --- NEW: Type Selection ---
   void _showCreateOptionsBottomSheet(BuildContext context) {
     Get.bottomSheet(
       Container(
@@ -74,7 +74,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 title: const Text('Material Issue'),
                 subtitle: const Text('Requires Reference No from POS Upload'),
                 onTap: () {
-                  Get.back(); // Close options sheet
+                  Get.back();
                   _showPosSelectionBottomSheet(context);
                 },
               ),
@@ -87,8 +87,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 title: const Text('Material Transfer'),
                 subtitle: const Text('Internal Transfer'),
                 onTap: () {
-                  Get.back(); // Close options sheet
-                  // Navigate with empty reference
+                  Get.back();
                   Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                     'name': '',
                     'mode': 'new',
@@ -104,7 +103,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     );
   }
 
-  // --- NEW: POS Selection for Material Issue ---
   void _showPosSelectionBottomSheet(BuildContext context) {
     controller.fetchPendingPosUploads();
 
@@ -171,7 +169,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();
-                              // Navigate with Reference No
                               Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                                 'name': '',
                                 'mode': 'new',
@@ -290,17 +287,20 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ),
         );
       }),
-      // --- UPDATED FAB ---
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateOptionsBottomSheet(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Create'),
+      // Only show Create button for Stock Managers
+      floatingActionButton: RoleGuard(
+        roles: const ['Stock Manager'],
+        child: FloatingActionButton.extended(
+          onPressed: () => _showCreateOptionsBottomSheet(context),
+          icon: const Icon(Icons.add),
+          label: const Text('Create'),
+        ),
       ),
     );
   }
 }
 
-// StockEntryCard class remains the same...
+// StockEntryCard and other private widgets remain the same
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();
@@ -363,7 +363,6 @@ class StockEntryCard extends StatelessWidget {
               // Row 3: Stats (Total Qty, Assigned, Time Taken)
               Row(
                 children: [
-                  // FIX: Safely format the double value to String
                   _buildStatItem(
                       Icons.inventory_2_outlined,
                       '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items'
@@ -413,7 +412,6 @@ class StockEntryCard extends StatelessWidget {
                               const Divider(height: 1),
                               const SizedBox(height: 12),
 
-                              // Warehouse Flow Visualization
                               if (detailed.fromWarehouse != null || detailed.toWarehouse != null) ...[
                                 Container(
                                   padding: const EdgeInsets.all(10),
@@ -441,7 +439,6 @@ class StockEntryCard extends StatelessWidget {
                                 const SizedBox(height: 16),
                               ],
 
-                              // Entry Details Grid
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -485,19 +482,22 @@ class StockEntryCard extends StatelessWidget {
 
                               const SizedBox(height: 16),
 
-                              // Action Buttons
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   if (detailed.status == 'Draft') ...[
-                                    OutlinedButton.icon(
-                                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
-                                      icon: const Icon(Icons.edit, size: 16),
-                                      label: const Text('Edit'),
-                                      style: OutlinedButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        side: BorderSide(color: Theme.of(context).primaryColor),
+                                    RoleGuard(
+                                      roles: const ['Stock Manager'], // Only Manager can edit
+                                      fallback: const SizedBox.shrink(),
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
+                                        icon: const Icon(Icons.edit, size: 16),
+                                        label: const Text('Edit'),
+                                        style: OutlinedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          side: BorderSide(color: Theme.of(context).primaryColor),
+                                        ),
                                       ),
                                     ),
                                   ] else ...[

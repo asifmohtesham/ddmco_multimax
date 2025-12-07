@@ -1,29 +1,22 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart'; // For UI elements like AlertDialog, SnackBar
+import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:ddmco_multimax/app/data/models/user_model.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-// Optional: If you use a storage service for user data persistence
 import 'package:ddmco_multimax/app/data/services/storage_service.dart';
 
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  // Optional: final StorageService _storageService = Get.find<StorageService>();
 
-  // Observable for the current user. Null if no user is logged in.
   var currentUser = Rx<User?>(null);
-  // Observable for the authentication status.
   var isAuthenticated = false.obs;
-  // Observable for loading state during auth operations (e.g., checking session)
   var isLoading = false.obs;
 
   @override
   void onInit() {
     super.onInit();
-    // Automatically check authentication status when the controller is initialized.
-    // This is useful for when the app starts.
     checkAuthenticationStatus();
   }
 
@@ -38,7 +31,6 @@ class AuthenticationController extends GetxController {
           final user = User.fromJson(userDetailsResponse.data['data']);
           currentUser.value = user;
           isAuthenticated.value = true;
-          printInfo(info: "User details loaded: ${user.name}");
         } else {
           await _clearSessionAndLocalData();
         }
@@ -46,7 +38,7 @@ class AuthenticationController extends GetxController {
         await _clearSessionAndLocalData();
       }
     } catch (e) {
-      printError(info: "Failed to fetch or process logged user details: $e");
+      printError(info: "Failed to fetch user details: $e");
       await _clearSessionAndLocalData();
     }
   }
@@ -58,27 +50,20 @@ class AuthenticationController extends GetxController {
       if (hasSession) {
         await fetchUserDetails();
       } else {
-        printInfo(info: "No active session found.");
         await _clearSessionAndLocalData();
       }
-    } catch (e) { // Catch errors from hasSessionCookies or other initial problems
-      printError(info: "Error checking authentication status: $e");
-      await _clearSessionAndLocalData(); // Ensure clean state on error
+    } catch (e) {
+      printError(info: "Error checking auth status: $e");
+      await _clearSessionAndLocalData();
     } finally {
       isLoading.value = false;
     }
   }
 
-  /// Handles successful login.
-  /// Sets the current user and updates authentication status.
   void processSuccessfulLogin(User user) {
     currentUser.value = user;
     isAuthenticated.value = true;
-    // Optional: Save user to local storage for persistence across app restarts
-    // if (Get.isRegistered<StorageService>()) {
-    //   Get.find<StorageService>().saveUser(user);
-    // }
-    Get.offAllNamed(AppRoutes.HOME); // Navigate to Home
+    Get.offAllNamed(AppRoutes.HOME);
     Get.snackbar(
       'Login Successful',
       'Welcome back, ${user.name}!',
@@ -88,7 +73,6 @@ class AuthenticationController extends GetxController {
     );
   }
 
-  /// Handles the logout process.
   Future<void> logoutUser() async {
     Get.dialog(
       AlertDialog(
@@ -102,54 +86,47 @@ class AuthenticationController extends GetxController {
           TextButton(
             child: const Text('Logout'),
             onPressed: () async {
-              Get.back(); // Dismiss confirmation dialog
-
+              Get.back();
               isLoading.value = true;
-
               try {
                 await _apiProvider.logoutApiCall();
-
                 await _clearSessionAndLocalData();
-
                 Get.offAllNamed(AppRoutes.LOGIN);
-                Get.snackbar(
-                  'Logged Out',
-                  'You have been successfully logged out.',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.orange,
-                  colorText: Colors.white,
-                );
               } catch (e) {
-                printError(info: "Logout failed: $e");
-                Get.snackbar(
-                  'Logout Error',
-                  'Could not log out. Please try again.',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
+                Get.snackbar('Logout Error', 'Could not log out.');
               } finally {
                 isLoading.value = false;
-                if (Get.isDialogOpen ?? false) {
-                  Get.back(); // Dismiss any stray loading dialog
-                }
               }
             },
           ),
         ],
       ),
-      barrierDismissible: true,
     );
   }
 
-  /// Private helper to clear session cookies and local user data.
   Future<void> _clearSessionAndLocalData() async {
     await _apiProvider.clearSessionCookies();
-    // Optional: Clear from local storage
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
     }
     currentUser.value = null;
     isAuthenticated.value = false;
+  }
+
+  // --- PERMISSION HELPERS ---
+
+  /// Returns true if the user has specific role
+  bool hasRole(String role) {
+    if (currentUser.value == null) return false;
+    // System Manager usually has all permissions
+    if (currentUser.value!.roles.contains('System Manager')) return true;
+    return currentUser.value!.roles.contains(role);
+  }
+
+  /// Returns true if the user has ANY of the provided roles
+  bool hasAnyRole(List<String> roles) {
+    if (currentUser.value == null) return false;
+    if (currentUser.value!.roles.contains('System Manager')) return true;
+    return currentUser.value!.roles.any((userRole) => roles.contains(userRole));
   }
 }
