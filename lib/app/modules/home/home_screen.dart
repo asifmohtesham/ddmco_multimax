@@ -3,12 +3,16 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/app_bottom_bar.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
+import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Access AuthenticationController to get user details
+    final AuthenticationController authController = Get.find<AuthenticationController>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard"),
@@ -28,7 +32,20 @@ class HomeScreen extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              // Dynamic Greeting
+              Obx(() {
+                final user = authController.currentUser.value;
+                final name = user?.name ?? 'User';
+                return Text(
+                    'Welcome back, $name!',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
+                );
+              }),
+              const SizedBox(height: 8),
+              const Text('Here is your daily overview', style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 24),
+
+              const Text('Overview', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Obx(() {
                 if (controller.isLoadingStats.value) {
@@ -78,7 +95,7 @@ class HomeScreen extends GetView<HomeController> {
                 );
               }),
               const SizedBox(height: 24),
-              const Text('Quick Actions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text('Quick Actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -86,7 +103,7 @@ class HomeScreen extends GetView<HomeController> {
                     child: ActionCard(
                       icon: Icons.add_circle_outline,
                       title: 'New Delivery Note',
-                      onTap: controller.goToDeliveryNote, // Goes to list, user can tap FAB. Or deep link? Sticking to list.
+                      onTap: controller.goToDeliveryNote,
                     ),
                   ),
                   const SizedBox(width: 16),

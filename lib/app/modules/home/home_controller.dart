@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
@@ -17,7 +16,7 @@ class HomeController extends GetxController {
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
-  
+
   var isLoadingStats = true.obs;
   var draftDeliveryNotesCount = 0.obs;
   var draftPackingSlipsCount = 0.obs;
@@ -30,7 +29,7 @@ class HomeController extends GetxController {
   ];
 
   List<BottomNavigationBarItem> get currentBottomBarItems {
-    return homeBottomBarItems; 
+    return homeBottomBarItems;
   }
 
   @override
@@ -43,11 +42,13 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
+      // Use docstatus: 0 for drafts to get accurate counts from API
+      // Increased limit to 500 to ensure we catch most open items
       final results = await Future.wait([
-        _dnProvider.getDeliveryNotes(limit: 100, filters: {'status': 'Draft'}),
-        _psProvider.getPackingSlips(limit: 100, filters: {'status': 'Draft'}),
-        _posProvider.getPosUploads(limit: 100, filters: {'status': 'Pending'}),
-        _todoProvider.getTodos(limit: 100, filters: {'status': 'Open'}),
+        _dnProvider.getDeliveryNotes(limit: 500, filters: {'docstatus': 0}),
+        _psProvider.getPackingSlips(limit: 500, filters: {'docstatus': 0}),
+        _posProvider.getPosUploads(limit: 500, filters: {'status': 'Pending'}),
+        _todoProvider.getTodos(limit: 500, filters: {'status': 'Open'}),
       ]);
 
       draftDeliveryNotesCount.value = _getCountFromResponse(results[0]);
@@ -80,7 +81,7 @@ class HomeController extends GetxController {
     }
     _updateActiveScreenForRoute(route);
   }
-  
+
   void updateActiveScreen(String route) {
     _updateActiveScreenForRoute(route);
   }
@@ -117,7 +118,7 @@ class HomeController extends GetxController {
         break;
       case AppRoutes.ITEM:
         activeScreen.value = ActiveScreen.item;
-        selectedDrawerIndex.value = 7; // New index
+        selectedDrawerIndex.value = 7;
         break;
     }
   }
