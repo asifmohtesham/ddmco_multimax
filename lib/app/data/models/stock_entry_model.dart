@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 class StockEntry {
   final String name;
   final String purpose;
@@ -53,7 +55,7 @@ class StockEntry {
       postingTime: json['posting_time'],
       fromWarehouse: json['from_warehouse'],
       toWarehouse: json['to_warehouse'],
-      customTotalQty: (json['custom_total_qty'] as num?)?.toDouble(),
+      customTotalQty: (json['custom_total_qty'] ?? 0 as num?)?.toDouble(),
       customReferenceNo: json['custom_reference_no'],
       items: items,
     );

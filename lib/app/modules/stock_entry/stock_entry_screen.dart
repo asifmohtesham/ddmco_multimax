@@ -1,3 +1,4 @@
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
@@ -165,27 +166,6 @@ class StockEntryCard extends StatelessWidget {
 
   StockEntryCard({super.key, required this.entry});
 
-  String _getRelativeTime(String? dateString) {
-    if (dateString == null || dateString.isEmpty) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -216,7 +196,7 @@ class StockEntryCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              
+
               // Row 2: Name + Time
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -229,9 +209,35 @@ class StockEntryCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    _getRelativeTime(entry.creation),
+                    FormattingHelper.getRelativeTime(entry.creation),
                     style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
                   ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+
+              // Row 3: Stats (Total Qty, Assigned, Time Taken)
+              Row(
+                children: [
+                  _buildStatItem(Icons.inventory_2_outlined, '${entry.customTotalQty.toStringAsFixed(2)} Items'),
+                  const Spacer(),
+                  if (entry.docstatus == 1) // Submitted
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: _buildStatItem(Icons.timer_outlined, FormattingHelper.getTimeTaken(entry.creation, entry.modified), color: Colors.green),
+                    ),
+                  // Animated Arrow
+                  Obx(() {
+                    final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
+                    return AnimatedRotation(
+                      turns: isCurrentlyExpanded ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
+                    );
+                  }),
                 ],
               ),
 
@@ -299,6 +305,19 @@ class StockEntryCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String text, {Color? color}) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color ?? Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 }
