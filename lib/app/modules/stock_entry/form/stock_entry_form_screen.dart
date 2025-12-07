@@ -20,7 +20,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
               : IconButton(
                   icon: const Icon(Icons.save),
-                  onPressed: controller.saveStockEntry,
+                  onPressed: controller.stockEntry.value?.docstatus == 0 ? () => controller.saveStockEntry : null,
                 )),
           ],
           bottom: const TabBar(
