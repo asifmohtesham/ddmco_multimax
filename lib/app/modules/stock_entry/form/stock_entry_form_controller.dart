@@ -17,7 +17,6 @@ class StockEntryFormController extends GetxController {
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // --- UPDATED: Capture optional arguments ---
   final String? argStockEntryType = Get.arguments['stockEntryType'];
   final String? argCustomReferenceNo = Get.arguments['customReferenceNo'];
 
@@ -138,7 +137,6 @@ class StockEntryFormController extends GetxController {
     isLoading.value = true;
     final now = DateTime.now();
 
-    // --- UPDATED LOGIC ---
     final initialType = argStockEntryType ?? 'Material Transfer';
     final initialRef = argCustomReferenceNo ?? '';
 
@@ -163,7 +161,6 @@ class StockEntryFormController extends GetxController {
     selectedStockEntryType.value = initialType;
     customReferenceNoController.text = initialRef;
 
-    // If reference is provided, trigger fetch
     if (initialRef.isNotEmpty) {
       _fetchPosUploadDetails(initialRef);
     }
@@ -171,7 +168,6 @@ class StockEntryFormController extends GetxController {
     isLoading.value = false;
   }
 
-  // ... fetchStockEntry, saveStockEntry, scanBarcode, etc. remain unchanged ...
   Future<void> fetchStockEntry() async {
     isLoading.value = true;
     try {
@@ -314,8 +310,8 @@ class StockEntryFormController extends GetxController {
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
 
-    selectedSerial.value = null;
-    currentItemNameKey = null; // Reset key for new item
+    selectedSerial.value = null; // Reset serial selection
+    currentItemNameKey = null;
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -403,6 +399,7 @@ class StockEntryFormController extends GetxController {
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
+    selectedSerial.value = item.customInvoiceSerialNumber; // Populate serial
 
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
@@ -424,7 +421,7 @@ class StockEntryFormController extends GetxController {
 
     final currentItems = stockEntry.value?.items.toList() ?? [];
 
-    final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode && i.batchNo == batch);
+    final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode && i.batchNo == batch && i.customInvoiceSerialNumber == selectedSerial.value);
 
     if (index != -1) {
       final existing = currentItems[index];
@@ -440,6 +437,7 @@ class StockEntryFormController extends GetxController {
         toRack: bsTargetRackController.text.isNotEmpty ? bsTargetRackController.text : existing.toRack,
         sWarehouse: selectedFromWarehouse.value,
         tWarehouse: selectedToWarehouse.value,
+        customInvoiceSerialNumber: selectedSerial.value, // Keep serial
       );
     } else {
       currentItems.add(StockEntryItem(
@@ -452,6 +450,7 @@ class StockEntryFormController extends GetxController {
         toRack: bsTargetRackController.text,
         sWarehouse: selectedFromWarehouse.value,
         tWarehouse: selectedToWarehouse.value,
+        customInvoiceSerialNumber: selectedSerial.value, // Save serial
       ));
     }
 

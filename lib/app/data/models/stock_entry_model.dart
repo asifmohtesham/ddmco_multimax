@@ -15,7 +15,7 @@ class StockEntry {
   final String? fromWarehouse;
   final String? toWarehouse;
   final String? customTotalQty;
-  final String? customReferenceNo; 
+  final String? customReferenceNo;
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -100,6 +100,7 @@ class StockEntryItem {
   final String? toRack;
   final String? sWarehouse;
   final String? tWarehouse;
+  final String? customInvoiceSerialNumber; // Added field
 
   StockEntryItem({
     this.name,
@@ -114,6 +115,7 @@ class StockEntryItem {
     this.toRack,
     this.sWarehouse,
     this.tWarehouse,
+    this.customInvoiceSerialNumber,
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
@@ -130,6 +132,7 @@ class StockEntryItem {
       toRack: json['to_rack'],
       sWarehouse: json['s_warehouse'],
       tWarehouse: json['t_warehouse'],
+      customInvoiceSerialNumber: json['custom_invoice_serial_number'],
     );
   }
 
@@ -143,6 +146,7 @@ class StockEntryItem {
       't_warehouse': tWarehouse,
       'rack': rack,
       'to_rack': toRack,
+      'custom_invoice_serial_number': customInvoiceSerialNumber,
     };
     if (name != null) {
       data['name'] = name;

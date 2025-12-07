@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
-// Import the new widget
 import 'package:ddmco_multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
 import 'package:intl/intl.dart';
 
@@ -52,7 +51,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  // ... _buildDetailsView remains unchanged ...
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -155,20 +153,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                // REMOVED: Invoice Serial Number Dropdown from here
                 const SizedBox(height: 16),
-                if (controller.posUploadSerialOptions.isNotEmpty)
-                  DropdownButtonFormField<String>(
-                    value: controller.selectedSerial.value,
-                    decoration: const InputDecoration(
-                      labelText: 'Invoice Serial Number',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: controller.posUploadSerialOptions.map((s) {
-                      return DropdownMenuItem(value: s, child: Text(s));
-                    }).toList(),
-                    onChanged: (value) => controller.selectedSerial.value = value,
-                  ),
-                if (controller.posUploadSerialOptions.isNotEmpty) const SizedBox(height: 16),
               ],
 
               if (entry.name != 'New Stock Entry') ...[
@@ -197,7 +183,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  // --- UPDATED buildItemsView ---
   Widget _buildItemsView(BuildContext context, StockEntry entry) {
     final items = entry.items;
 
@@ -207,12 +192,11 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           child: items.isEmpty
               ? const Center(child: Text('No items in this entry.'))
               : ListView.separated(
-            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0), // Padding for visual breathing room and scroll
+            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
             itemCount: items.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 0), // Card handles margin
+            separatorBuilder: (context, index) => const SizedBox(height: 0),
             itemBuilder: (context, index) {
               final item = items[index];
-              // Using the new modular widget
               return StockEntryItemCard(item: item, index: index);
             },
           ),
@@ -231,7 +215,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: .1),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),
@@ -259,7 +243,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 }
 
-// ... StockEntryItemFormSheet remains unchanged ...
 class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
   const StockEntryItemFormSheet({super.key});
 
@@ -281,7 +264,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Dynamic Title
               Text(controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               Text('${controller.currentItemCode}${controller.currentVariantOf != '' ? ' | ${controller.currentVariantOf}' : ''}: ${controller.currentItemName}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -307,6 +289,29 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                 onFieldSubmitted: (value) => controller.validateBatch(value),
               )),
               const SizedBox(height: 16),
+
+              // ADDED: Invoice Serial Number Dropdown
+              Obx(() {
+                if (controller.posUploadSerialOptions.isNotEmpty) {
+                  return Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: controller.selectedSerial.value,
+                        decoration: const InputDecoration(
+                          labelText: 'Invoice Serial Number',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: controller.posUploadSerialOptions.map((s) {
+                          return DropdownMenuItem(value: s, child: Text(s));
+                        }).toList(),
+                        onChanged: (value) => controller.selectedSerial.value = value,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
 
               // Rack Fields
               Obx(() {
@@ -371,7 +376,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
                   onPressed: controller.stockEntry.value?.docstatus == 0 ? controller.bsIsBatchValid.value ? controller.addItem : null : null,
-                  // Dynamic Button Text
                   child: Text(controller.currentItemNameKey != null ? 'Save' : 'Add Item'),
                 )),
               ),
