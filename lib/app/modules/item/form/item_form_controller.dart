@@ -18,15 +18,22 @@ class ItemFormController extends GetxController {
   var isLoading = true.obs;
 
   var attachments = <Map<String, dynamic>>[].obs;
+
+  // Dashboard Data
   var stockLevels = <WarehouseStock>[].obs;
+  var stockLedgerEntries = <Map<String, dynamic>>[].obs;
+  var batchHistory = <Map<String, dynamic>>[].obs;
+
   var isLoadingStock = false.obs;
+  var isLoadingLedger = false.obs;
+  var isLoadingBatches = false.obs;
 
   @override
   void onInit() {
     super.onInit();
     fetchItemDetails();
     fetchAttachments();
-    fetchStockLevels();
+    fetchDashboardData();
   }
 
   Future<void> fetchItemDetails() async {
@@ -60,19 +67,54 @@ class ItemFormController extends GetxController {
     }
   }
 
+  Future<void> fetchDashboardData() async {
+    fetchStockLevels();
+    fetchStockLedger();
+    fetchBatchHistory();
+  }
+
   Future<void> fetchStockLevels() async {
     isLoadingStock.value = true;
     try {
       final response = await _provider.getStockLevels(itemCode);
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        // Handle the map based JSON from report
-        stockLevels.value = data.map((json) => WarehouseStock.fromJson(json)).toList();
+        stockLevels.value = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
       }
     } catch (e) {
       print('Error fetching stock levels: $e');
     } finally {
       isLoadingStock.value = false;
+    }
+  }
+
+  Future<void> fetchStockLedger() async {
+    isLoadingLedger.value = true;
+    try {
+      final response = await _provider.getStockLedger(itemCode);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        stockLedgerEntries.value = List<Map<String, dynamic>>.from(response.data['data']);
+      }
+    } catch (e) {
+      print('Error fetching stock ledger: $e');
+    } finally {
+      isLoadingLedger.value = false;
+    }
+  }
+
+  Future<void> fetchBatchHistory() async {
+    isLoadingBatches.value = true;
+    try {
+      final response = await _provider.getBatchWiseHistory(itemCode);
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> data = response.data['message']['result'];
+        // Filter out rows that might be headers or empty if the report structure varies
+        batchHistory.value = data.whereType<Map<String, dynamic>>().toList();
+      }
+    } catch (e) {
+      print('Error fetching batch history: $e');
+    } finally {
+      isLoadingBatches.value = false;
     }
   }
 
@@ -93,39 +135,21 @@ class ItemFormController extends GetxController {
     if (relativeUrl == null || fileName == null) return;
     final fullUrl = 'https://erp.multimax.cloud$relativeUrl';
 
-    // Show loading overlay
     Get.dialog(
       const Center(child: CircularProgressIndicator()),
       barrierDismissible: false,
     );
 
     try {
-      // 1. Get Temporary Directory
       final tempDir = await getTemporaryDirectory();
       final savePath = '${tempDir.path}/$fileName';
-
-      // 2. Download File
-      // Note: If files are private, we might need to attach cookies from ApiProvider.
-      // For now, using basic Dio download.
       await Dio().download(fullUrl, savePath);
-
-      // Close loading overlay
       if (Get.isDialogOpen == true) Get.back();
-
-      // 3. Share File
       await Share.shareXFiles([XFile(savePath)], text: 'Shared via Multimax ERP');
-
     } catch (e) {
       if (Get.isDialogOpen == true) Get.back();
-
-      // Fallback: Copy Link if download fails or Share plugin missing
       Clipboard.setData(ClipboardData(text: fullUrl));
-      Get.snackbar(
-          'Share Info',
-          'Could not download file directly. Link copied to clipboard.',
-          duration: const Duration(seconds: 3)
-      );
-      print('Share Error: $e');
+      Get.snackbar('Share Info', 'Could not download file. Link copied.', duration: const Duration(seconds: 3));
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -34,7 +35,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             children: [
               _buildDetailsTab(context, item),
               _buildAttachmentsTab(),
-              _buildDashboardTab(),
+              _buildDashboardTab(context),
             ],
           );
         }),
@@ -51,7 +52,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
           if (item.image != null)
             GestureDetector(
               onTap: () {
-                // Show full screen image
                 Get.dialog(
                   Dialog(
                     backgroundColor: Colors.transparent,
@@ -200,6 +200,168 @@ class ItemFormScreen extends GetView<ItemFormController> {
     });
   }
 
+  Widget _buildDashboardTab(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Stock Balance Section
+          const Text('Stock Balance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Obx(() {
+            if (controller.isLoadingStock.value) return const LinearProgressIndicator();
+            if (controller.stockLevels.isEmpty) return const Text('No stock data.', style: TextStyle(color: Colors.grey));
+
+            return Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: controller.stockLevels.length,
+                separatorBuilder: (c, i) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final stock = controller.stockLevels[index];
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                    title: Text(stock.warehouse, style: const TextStyle(fontSize: 14)),
+                    trailing: Text(
+                      stock.quantity.toStringAsFixed(2),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: stock.quantity > 0 ? Colors.green[700] : Colors.red[700],
+                          fontFamily: 'monospace'
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
+
+          const SizedBox(height: 24),
+
+          // 2. Batch-Wise Balance Section
+          const Text('Batch-Wise Balance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Obx(() {
+            if (controller.isLoadingBatches.value) return const LinearProgressIndicator();
+            if (controller.batchHistory.isEmpty) return const Text('No batch data available.', style: TextStyle(color: Colors.grey));
+
+            return Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: controller.batchHistory.length,
+                  separatorBuilder: (c, i) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final batchRow = controller.batchHistory[index];
+                    final batchNo = batchRow['batch_no'] ?? '-';
+                    final warehouse = batchRow['warehouse'] ?? '';
+                    final qty = (batchRow['balance_qty'] as num?)?.toDouble() ?? 0.0;
+
+                    // Only show if there is a balance or recent activity
+                    if (qty == 0) return const SizedBox.shrink();
+
+                    return ListTile(
+                      dense: true,
+                      title: Text(batchNo, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                      subtitle: Text(warehouse, style: const TextStyle(fontSize: 12)),
+                      trailing: Text(
+                        qty.toStringAsFixed(2),
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          }),
+
+          const SizedBox(height: 24),
+
+          // 3. Stock Ledger Section
+          const Text('Recent Ledger Entries', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Obx(() {
+            if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
+            if (controller.stockLedgerEntries.isEmpty) return const Text('No recent transactions.', style: TextStyle(color: Colors.grey));
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: controller.stockLedgerEntries.length,
+              itemBuilder: (context, index) {
+                final entry = controller.stockLedgerEntries[index];
+                final qtyChange = (entry['actual_qty'] as num?)?.toDouble() ?? 0.0;
+                final isPositive = qtyChange >= 0;
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isPositive ? Colors.green.shade50 : Colors.red.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+                        color: isPositive ? Colors.green : Colors.red,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      entry['voucher_type'] ?? 'Transaction',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${entry['warehouse']} • ${entry['voucher_no']}', style: const TextStyle(fontSize: 12)),
+                        Text(
+                          '${entry['posting_date']} ${entry['posting_time']}',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          (isPositive ? '+' : '') + qtyChange.toStringAsFixed(2),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isPositive ? Colors.green : Colors.red,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (entry['batch_no'] != null)
+                          Text(
+                            entry['batch_no'],
+                            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildImageCard(BuildContext context, Map<String, dynamic> file) {
     final url = 'https://erp.multimax.cloud${file['file_url']}';
     return Card(
@@ -217,7 +379,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               child: const Icon(Icons.broken_image, color: Colors.grey),
             ),
           ),
-          // Gradient Overlay
           Positioned(
             bottom: 0,
             left: 0,
@@ -239,7 +400,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ),
             ),
           ),
-          // InkWell for Tap
           Positioned.fill(
             child: Material(
               color: Colors.transparent,
@@ -248,7 +408,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ),
             ),
           ),
-          // Share Button
           Positioned(
             top: 4,
             right: 4,
@@ -295,7 +454,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               bottom: 40,
               child: ElevatedButton.icon(
                   onPressed: () {
-                    // Close dialog before sharing to avoid context issues
                     Get.back();
                     controller.shareFile(file['file_url'], file['file_name']);
                   },
@@ -314,33 +472,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
     if (url.endsWith('.pdf')) return const Icon(Icons.picture_as_pdf, color: Colors.red);
     if (url.endsWith('.csv') || url.endsWith('.xlsx')) return const Icon(Icons.table_chart, color: Colors.green);
     return const Icon(Icons.insert_drive_file, color: Colors.blueGrey);
-  }
-
-  Widget _buildDashboardTab() {
-    return Obx(() {
-      if (controller.isLoadingStock.value) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      if (controller.stockLevels.isEmpty) {
-        return const Center(child: Text('No stock data available.'));
-      }
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.stockLevels.length,
-        itemBuilder: (context, index) {
-          final stock = controller.stockLevels[index];
-          return Card(
-            child: ListTile(
-              title: Text(stock.warehouse),
-              trailing: Text(
-                stock.quantity.toStringAsFixed(2),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ),
-          );
-        },
-      );
-    });
   }
 
   Widget _buildDetailRow(String label, String value) {
