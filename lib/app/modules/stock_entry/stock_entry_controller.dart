@@ -1,9 +1,12 @@
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
 import 'package:ddmco_multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart'; // Added
+import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart'; // Added
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>(); // Added
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -18,9 +21,13 @@ class StockEntryController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
-  // --- ADDED SORTING STATE ---
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
+
+  // --- NEW: For POS Selection (Material Issue) ---
+  var isFetchingPosUploads = false.obs;
+  var posUploadsForSelection = <PosUpload>[].obs;
+  List<PosUpload> _allFetchedPosUploads = [];
 
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
@@ -40,7 +47,6 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  // --- ADDED SET SORT METHOD ---
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
@@ -60,27 +66,11 @@ class StockEntryController extends GetxController {
     }
 
     try {
-      // --- UPDATED PROVIDER CALL TO INCLUDE SORTING ---
-      // Note: You may need to update the Provider signature to accept orderBy if it doesn't already,
-      // but ApiProvider's generic getDocumentList supports it.
-      // Based on provided files, StockEntryProvider.getStockEntries needs to pass orderBy to ApiProvider.
-
-      // Assuming StockEntryProvider forwards specific args or we might need to update Provider too.
-      // Checking StockEntryProvider file... it wraps _apiProvider.getStockEntries.
-      // ApiProvider.getStockEntries hardcodes orderBy 'modified desc' in the specific method,
-      // BUT StockEntryProvider calls the generic `getDocumentList`.
-
-      // Since StockEntryProvider.getStockEntries signature in uploaded files is:
-      // getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters})
-      // We cannot pass orderBy without updating the provider (see step below).
-      // For now, assuming Provider update:
-
       final response = await _provider.getStockEntries(
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
-        // We need to update Provider to accept this, see Step 3
-        // orderBy: '${sortField.value} ${sortOrder.value}',
+        orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -111,7 +101,6 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // ... (Rest of _fetchAndCacheEntryDetails and toggleExpand remains the same)
   Future<void> _fetchAndCacheEntryDetails(String name) async {
     if (_detailedEntriesCache.containsKey(name)) {
       return;
@@ -139,6 +128,42 @@ class StockEntryController extends GetxController {
     } else {
       expandedEntryName.value = name;
       _fetchAndCacheEntryDetails(name);
+    }
+  }
+
+  // --- NEW METHODS FOR POS SELECTION ---
+
+  Future<void> fetchPendingPosUploads() async {
+    isFetchingPosUploads.value = true;
+    try {
+      // Fetch only 'Pending' POS Uploads
+      final response = await _posUploadProvider.getPosUploads(
+          limit: 50,
+          filters: {'status': 'Pending'},
+          orderBy: 'modified desc'
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        _allFetchedPosUploads = data.map((json) => PosUpload.fromJson(json)).toList();
+        posUploadsForSelection.value = _allFetchedPosUploads;
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
+    } finally {
+      isFetchingPosUploads.value = false;
+    }
+  }
+
+  void filterPosUploads(String query) {
+    if (query.isEmpty) {
+      posUploadsForSelection.value = _allFetchedPosUploads;
+    } else {
+      final q = query.toLowerCase();
+      posUploadsForSelection.value = _allFetchedPosUploads.where((upload) {
+        return upload.name.toLowerCase().contains(q) ||
+            upload.customer.toLowerCase().contains(q);
+      }).toList();
     }
   }
 }

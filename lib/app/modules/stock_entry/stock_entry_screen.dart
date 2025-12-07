@@ -51,6 +51,149 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     );
   }
 
+  // --- NEW: Type Selection ---
+  void _showCreateOptionsBottomSheet(BuildContext context) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Create Stock Entry', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.outbond, color: Colors.white),
+                ),
+                title: const Text('Material Issue'),
+                subtitle: const Text('Requires Reference No from POS Upload'),
+                onTap: () {
+                  Get.back(); // Close options sheet
+                  _showPosSelectionBottomSheet(context);
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.transform, color: Colors.white),
+                ),
+                title: const Text('Material Transfer'),
+                subtitle: const Text('Internal Transfer'),
+                onTap: () {
+                  Get.back(); // Close options sheet
+                  // Navigate with empty reference
+                  Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                    'name': '',
+                    'mode': 'new',
+                    'stockEntryType': 'Material Transfer',
+                    'customReferenceNo': ''
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- NEW: POS Selection for Material Issue ---
+  void _showPosSelectionBottomSheet(BuildContext context) {
+    controller.fetchPendingPosUploads();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select POS Upload',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: controller.filterPosUploads,
+                    decoration: InputDecoration(
+                      labelText: 'Search Pending Uploads',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingPosUploads.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (controller.posUploadsForSelection.isEmpty) {
+                        return const Center(child: Text('No Pending POS Uploads found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: controller.posUploadsForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final pos = controller.posUploadsForSelection[index];
+                          return ListTile(
+                            title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${pos.customer} • ${pos.date}'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              // Navigate with Reference No
+                              Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                                'name': '',
+                                'mode': 'new',
+                                'stockEntryType': 'Material Issue',
+                                'customReferenceNo': pos.name
+                              });
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,7 +211,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        // --- IMPROVED EMPTY STATE LOGIC ---
         if (controller.stockEntries.isEmpty) {
           final bool hasFilters = controller.activeFilters.isNotEmpty;
           return Center(
@@ -125,7 +267,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             ),
           );
         }
-        // --------------------------------
 
         return RefreshIndicator(
           onRefresh: () => controller.fetchStockEntries(clear: true),
@@ -149,16 +290,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ),
         );
       }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': '', 'mode': 'new'});
-        },
-        child: const Icon(Icons.add),
+      // --- UPDATED FAB ---
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateOptionsBottomSheet(context),
+        icon: const Icon(Icons.add),
+        label: const Text('Create'),
       ),
     );
   }
 }
 
+// StockEntryCard class remains the same...
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();
