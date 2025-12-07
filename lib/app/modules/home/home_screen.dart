@@ -10,7 +10,6 @@ class HomeScreen extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
-    // Access AuthenticationController to get user details
     final AuthenticationController authController = Get.find<AuthenticationController>();
 
     return Scaffold(
@@ -36,13 +35,20 @@ class HomeScreen extends GetView<HomeController> {
               Obx(() {
                 final user = authController.currentUser.value;
                 final name = user?.name ?? 'User';
-                return Text(
-                    'Welcome back, $name!',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        'Welcome back,',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600])
+                    ),
+                    Text(
+                        name,
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
+                    ),
+                  ],
                 );
               }),
-              const SizedBox(height: 8),
-              const Text('Here is your daily overview', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 24),
 
               const Text('Overview', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -57,7 +63,8 @@ class HomeScreen extends GetView<HomeController> {
                   mainAxisSpacing: 16,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.4,
+                  // Fixed: Lowered aspect ratio to 1.0 (Square) to prevent vertical overflow
+                  childAspectRatio: 1.0,
                   children: [
                     DashboardStatCard(
                       title: 'Delivery Notes',
@@ -146,40 +153,107 @@ class DashboardStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
+      elevation: 4,
+      shadowColor: color.withOpacity(0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white,
+                color.withOpacity(0.05),
+              ],
+            ),
+          ),
+          child: Stack(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Text(
-                    '$count',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                ],
+              // 1. Watermark Icon (Large & Faded in corner)
+              Positioned(
+                right: -12,
+                top: -12,
+                child: Opacity(
+                  opacity: 0.1,
+                  child: Icon(icon, size: 90, color: color),
+                ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  Text('$label Items', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                ],
+
+              // 2. Content
+              Padding(
+                // Fixed: Reduced padding from 16 to 12 to provide more internal space
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header: Icon Circle
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, color: color, size: 20),
+                    ),
+                    const Spacer(),
+
+                    // Main Count with Animation
+                    TweenAnimationBuilder<int>(
+                      tween: IntTween(begin: 0, end: count),
+                      duration: const Duration(seconds: 1),
+                      curve: Curves.easeOutExpo,
+                      builder: (context, value, child) {
+                        return Text(
+                          '$value',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            height: 1.0,
+                            color: Colors.black87,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 4),
+
+                    // Title
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+
+                    // Status Badge
+                    Row(
+                      children: [
+                        Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(color: color, shape: BoxShape.circle)
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$label Items',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -201,17 +275,22 @@ class ActionCard extends StatelessWidget {
     return Card(
       elevation: 0,
       color: Colors.grey[100],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24.0),
+          padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: 32, color: Colors.grey[800]),
-              const SizedBox(height: 8),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),
