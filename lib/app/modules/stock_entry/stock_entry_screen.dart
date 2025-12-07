@@ -1,11 +1,9 @@
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-// Import the new widget
 import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 
 class StockEntryScreen extends StatefulWidget {
@@ -19,7 +17,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   final StockEntryController controller = Get.find();
   final _scrollController = ScrollController();
 
-  // ... (initState, dispose, _onScroll, _isBottom remain the same) ...
   @override
   void initState() {
     super.initState();
@@ -46,7 +43,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  // --- REPLACED _showFilterDialog WITH THIS ---
   void _showFilterBottomSheet(BuildContext context) {
     Get.bottomSheet(
       const StockEntryFilterBottomSheet(),
@@ -62,33 +58,74 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         title: const Text('Stock Entries'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list), // Changed icon to filter_list to match other screens
+            icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterBottomSheet(context),
           ),
         ],
       ),
-      // ... (body and floatingActionButton remain exactly the same) ...
       body: Obx(() {
         if (controller.isLoading.value && controller.stockEntries.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
+        // --- IMPROVED EMPTY STATE LOGIC ---
         if (controller.stockEntries.isEmpty) {
+          final bool hasFilters = controller.activeFilters.isNotEmpty;
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('No stock entries found.'),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () => controller.fetchStockEntries(clear: true),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reload'),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
+                    size: 64,
+                    color: Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    hasFilters ? 'No Matching Entries' : 'No Stock Entries',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    hasFilters
+                        ? 'We couldn\'t find any stock entries matching your current filters. Try adjusting or clearing them.'
+                        : 'There are no stock entries to display at the moment. Pull to refresh or create a new one.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  if (hasFilters)
+                    ElevatedButton.icon(
+                      onPressed: () => controller.clearFilters(),
+                      icon: const Icon(Icons.clear_all),
+                      label: const Text('Clear Filters'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        backgroundColor: Colors.grey[100],
+                        foregroundColor: Colors.black87,
+                        elevation: 0,
+                      ),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: () => controller.fetchStockEntries(clear: true),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reload'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        backgroundColor: Colors.grey[100],
+                        foregroundColor: Colors.black87,
+                        elevation: 0,
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
         }
+        // --------------------------------
 
         return RefreshIndicator(
           onRefresh: () => controller.fetchStockEntries(clear: true),
@@ -122,7 +159,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   }
 }
 
-// ... (StockEntryCard class remains the same) ...
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();
