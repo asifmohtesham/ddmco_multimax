@@ -307,37 +307,39 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 
   Widget _buildBottomScanField(BuildContext context) {
+    if (controller.stockEntry.value?.docstatus != 0) return Container();
+
     return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: TextFormField(
-          controller: controller.barcodeController,
-          decoration: InputDecoration(
-            hintText: 'Scan or enter barcode',
-            prefixIcon: const Icon(Icons.qr_code_scanner),
-            suffixIcon: Obx(() => controller.isScanning.value
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: () => controller.scanBarcode(controller.barcodeController.text),
-                )),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-          ),
-          onFieldSubmitted: (value) => controller.scanBarcode(value),
+    padding: const EdgeInsets.all(16.0),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: .1),
+          blurRadius: 4,
+          offset: const Offset(0, -2),
         ),
+      ],
+    ),
+    child: SafeArea(
+      child: TextFormField(
+        controller: controller.barcodeController,
+        decoration: InputDecoration(
+          hintText: 'Scan or enter barcode',
+          prefixIcon: const Icon(Icons.qr_code_scanner),
+          suffixIcon: Obx(() => controller.isScanning.value
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: () => controller.scanBarcode(controller.barcodeController.text),
+              )),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+        ),
+        onFieldSubmitted: (value) => controller.scanBarcode(value),
       ),
-    );
+    ),
+);
   }
 }
 
