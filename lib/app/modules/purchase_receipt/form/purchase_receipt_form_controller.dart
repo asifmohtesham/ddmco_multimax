@@ -25,7 +25,7 @@ class PurchaseReceiptFormController extends GetxController {
   final postingDateController = TextEditingController();
   final postingTimeController = TextEditingController();
   var setWarehouse = RxnString();
-  
+
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
@@ -53,6 +53,14 @@ class PurchaseReceiptFormController extends GetxController {
   var currentVariantOf = '';
   var currentItemName = '';
   var currentUom = '';
+  var currentItemIdx = 0.obs;
+  var currentPurchaseOrderQty = 0.0.obs;
+
+  // Dirty Check State
+  var isFormDirty = false.obs;
+  String _initialBatch = '';
+  String _initialRack = '';
+  String _initialQty = '';
 
   // Add this to store the unique row ID (name field in Purchase Receipt Item)
   String? currentItemNameKey;
@@ -74,6 +82,9 @@ class PurchaseReceiptFormController extends GetxController {
     supplierController.dispose();
     postingDateController.dispose();
     postingTimeController.dispose();
+    bsQtyController.dispose();
+    bsBatchController.dispose();
+    bsRackController.dispose();
     super.onClose();
   }
 
@@ -119,7 +130,7 @@ class PurchaseReceiptFormController extends GetxController {
     supplierController.text = supplier;
     postingDateController.text = DateFormat('yyyy-MM-dd').format(now);
     postingTimeController.text = DateFormat('HH:mm:ss').format(now);
-    
+
     isLoading.value = false;
   }
 
@@ -130,7 +141,7 @@ class PurchaseReceiptFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
         purchaseReceipt.value = receipt;
-        
+
         supplierController.text = receipt.supplier;
         postingDateController.text = receipt.postingDate;
         // time?
@@ -226,12 +237,14 @@ class PurchaseReceiptFormController extends GetxController {
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
-        currentItemNameKey = itemData['name'];
+        currentItemNameKey = null; // New Item
         currentOwner = itemData['owner'];
         currentItemCode = itemData['item_code'];
-        currentVariantOf = itemData['variant_of'];
+        currentVariantOf = itemData['variant_of'] ?? '';
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
+        currentItemIdx.value = 0;
+        currentPurchaseOrderQty.value = 0.0;
 
         _openBottomSheet(scannedBatch: batchNo);
       } else {
@@ -283,6 +296,11 @@ class PurchaseReceiptFormController extends GetxController {
 
     currentItemNameKey = null; // Reset key for new item
     warehouse.value = null; // Reset item warehouse
+    isFormDirty.value = false;
+
+    _initialBatch = '';
+    _initialRack = '';
+    _initialQty = '';
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -293,6 +311,18 @@ class PurchaseReceiptFormController extends GetxController {
       const PurchaseReceiptItemFormSheet(),
       isScrollControlled: true,
     );
+  }
+
+  void checkForChanges() {
+    bool dirty = false;
+    if (bsBatchController.text != _initialBatch) dirty = true;
+    if (bsRackController.text != _initialRack) dirty = true;
+    if (bsQtyController.text != _initialQty) dirty = true;
+
+    // If adding new item, form is valid if fields are filled (dirty logic mainly for update)
+    if (currentItemNameKey == null) dirty = true;
+
+    isFormDirty.value = dirty;
   }
 
   Future<void> validateBatch(String batch) async {
@@ -306,20 +336,17 @@ class PurchaseReceiptFormController extends GetxController {
       });
 
       // For Purchase Receipt, accept any batch (existing or new)
-      // If it exists, good. If not, it's a new batch. Both are valid for receipt.
       bsIsBatchValid.value = true;
       bsIsBatchReadOnly.value = true;
-      
+
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-         Get.snackbar('Success', 'Existing Batch found', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
+        Get.snackbar('Success', 'Existing Batch found', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
       } else {
-         Get.snackbar('Info', 'New Batch will be created', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
+        Get.snackbar('Info', 'New Batch will be created', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
       }
+      checkForChanges();
       _focusNextField();
     } catch (e) {
-      // If API fails, still allow? 
-      // If network error, maybe fail. If logic error, maybe fail.
-      // For safety, let's fail on error but allow "not found".
       Get.snackbar('Error', 'Failed to check batch: $e');
       bsIsBatchValid.value = false;
     } finally {
@@ -329,21 +356,14 @@ class PurchaseReceiptFormController extends GetxController {
 
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
-    
+
     // Auto-parse Warehouse from Rack Pattern
-    // Pattern: KA-WH-DXB1-1A => WH-DXB1 - KA
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        // Assuming structure: Location-WHPrefix-WHName-RackID
-        // Or simply look for known warehouses? 
-        // Based on prompt: KA-WH-DXB1-1A -> WH-DXB1 - KA
-        // KA (0), WH (1), DXB1 (2), 1A (3)
-        // Warehouse = parts[1] + '-' + parts[2] + ' - ' + parts[0]
         if (parts.length >= 3) {
           final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
           warehouse.value = wh;
-          // print('Auto-detected warehouse: $wh');
         }
       }
     }
@@ -367,6 +387,7 @@ class PurchaseReceiptFormController extends GetxController {
     } finally {
       if (isSource) isValidatingSourceRack.value = false;
       else isValidatingTargetRack.value = false;
+      checkForChanges();
     }
   }
 
@@ -383,20 +404,30 @@ class PurchaseReceiptFormController extends GetxController {
     currentModifiedBy = item.modifiedBy ?? '';
     currentItemCode = item.itemCode;
     currentItemName = item.itemName ?? '';
+    currentVariantOf = item.customVariantOf ?? '';
+    currentItemIdx.value = item.idx;
+    currentPurchaseOrderQty.value = item.purchaseOrderQty ?? 0.0;
 
-    bsQtyController.text = item.qty.toString();
-    bsBatchController.text = item.batchNo ?? '';
-    bsRackController.text = item.rack ?? '';
-    
+    _initialQty = item.qty.toString();
+    _initialBatch = item.batchNo ?? '';
+    _initialRack = item.rack ?? '';
+
+    bsQtyController.text = _initialQty;
+    bsBatchController.text = _initialBatch;
+    bsRackController.text = _initialRack;
+
     // Restore warehouse
     if (item.warehouse.isNotEmpty) {
       warehouse.value = item.warehouse;
     }
 
     bsIsBatchValid.value = true;
-    bsIsBatchReadOnly.value = true; 
+    bsIsBatchReadOnly.value = true;
+    isFormDirty.value = false;
 
-    if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
+    // Fix: Update Target Rack valid state instead of Source
+    if (item.rack != null && item.rack!.isNotEmpty) isTargetRackValid.value = true;
+    else isTargetRackValid.value = false;
 
     Get.bottomSheet(
       const PurchaseReceiptItemFormSheet(),
@@ -415,20 +446,28 @@ class PurchaseReceiptFormController extends GetxController {
 
     final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode && i.batchNo == batch);
 
-    if (index != -1) {
+    if (index != -1 && currentItemNameKey == null) {
+      // Merging existing item if adding new
       final existing = currentItems[index];
-      currentItems[index] = PurchaseReceiptItem(
-        owner: existing.owner,
-        creation: existing.creation,
-        itemCode: existing.itemCode,
+      currentItems[index] = existing.copyWith(
         qty: existing.qty + qty,
-        rate: existing.rate,
-        batchNo: batch,
-        itemName: existing.itemName,
         rack: bsRackController.text.isNotEmpty ? bsRackController.text : existing.rack,
         warehouse: warehouse.value!.isNotEmpty ? warehouse.value! : existing.warehouse,
       );
+    } else if (currentItemNameKey != null) {
+      // Updating specific item
+      final editIndex = currentItems.indexWhere((i) => i.name == currentItemNameKey);
+      if (editIndex != -1) {
+        final existing = currentItems[editIndex];
+        currentItems[editIndex] = existing.copyWith(
+          qty: qty,
+          batchNo: batch,
+          rack: bsRackController.text,
+          warehouse: warehouse.value!.isNotEmpty ? warehouse.value! : existing.warehouse,
+        );
+      }
     } else {
+      // Add New
       currentItems.add(PurchaseReceiptItem(
         owner: currentOwner,
         creation: DateTime.now().toString(),
@@ -437,7 +476,10 @@ class PurchaseReceiptFormController extends GetxController {
         itemName: currentItemName,
         batchNo: batch,
         rack: bsRackController.text,
-        warehouse: warehouse.value ?? '', // Use auto-detected or default
+        warehouse: warehouse.value ?? '',
+        customVariantOf: currentVariantOf,
+        purchaseOrderQty: currentPurchaseOrderQty.value,
+        idx: currentItems.length + 1,
       ));
     }
 
@@ -465,7 +507,7 @@ class PurchaseReceiptFormController extends GetxController {
     if (mode == 'new') {
       savePurchaseReceipt();
     } else {
-      Get.snackbar('Success', 'Item added to list');
+      Get.snackbar('Success', 'Item list updated');
     }
   }
 }

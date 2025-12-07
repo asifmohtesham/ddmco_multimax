@@ -23,7 +23,7 @@ class PurchaseReceiptItemCard extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.2),
+            color: Colors.grey.withOpacity(0.2),
             spreadRadius: 1,
             blurRadius: 2,
             offset: const Offset(0, 1),
@@ -58,15 +58,36 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                 ],
               ),
             ),
-            subtitle: item.batchNo != null && item.batchNo!.isNotEmpty
-                ? Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                'Batch: ${item.batchNo}',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              ),
-            )
-                : null,
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (item.batchNo != null && item.batchNo!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'Batch: ${item.batchNo}',
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                    ),
+                  ),
+                if (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0) ...[
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: (item.qty / item.purchaseOrderQty!).clamp(0.0, 1.0),
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        item.qty > item.purchaseOrderQty! ? Colors.red : Colors.green
+                    ),
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${item.qty} / ${item.purchaseOrderQty} Received',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ]
+              ],
+            ),
             trailing: IconButton(
               icon: const Icon(Icons.edit, color: Colors.blue),
               constraints: const BoxConstraints(),
@@ -84,7 +105,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                   children: [
                     _buildInfoColumn('Rack', item.rack?.toString() ?? 'N/A'),
                     _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
-                    // You can add UoM here if available in the model
                   ],
                 ),
               ],

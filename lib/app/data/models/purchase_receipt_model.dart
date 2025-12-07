@@ -1,7 +1,7 @@
 class PurchaseReceipt {
   final String name;
   final String? owner;
-  final String creation; // Added
+  final String creation;
   final String modified;
   final String status;
   final int docstatus;
@@ -38,7 +38,7 @@ class PurchaseReceipt {
     return PurchaseReceipt(
       name: json['name'] ?? '',
       owner: json['owner'] ?? '',
-      creation: json['creation'] ?? DateTime.now().toString(), // Added
+      creation: json['creation'] ?? DateTime.now().toString(),
       modified: json['modified'] ?? '',
       docstatus: json['docstatus'] as int? ?? 0,
       status: json['status'] ?? 'Draft',
@@ -67,7 +67,12 @@ class PurchaseReceiptItem {
   final String? batchNo;
   final String? rack;
   final String warehouse;
-  final String? purchaseOrderItem; // Link to PO Item
+  final String? purchaseOrderItem;
+
+  // New Fields
+  final int idx;
+  final String? customVariantOf;
+  final double? purchaseOrderQty;
 
   PurchaseReceiptItem({
     this.name,
@@ -83,6 +88,9 @@ class PurchaseReceiptItem {
     this.rack,
     required this.warehouse,
     this.purchaseOrderItem,
+    this.idx = 0,
+    this.customVariantOf,
+    this.purchaseOrderQty,
   });
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
@@ -100,6 +108,48 @@ class PurchaseReceiptItem {
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       purchaseOrderItem: json['purchase_order_item'],
+      idx: json['idx'] as int? ?? 0,
+      customVariantOf: json['custom_variant_of'],
+      purchaseOrderQty: (json['purchase_order_qty'] as num?)?.toDouble(),
+    );
+  }
+
+  // --- ADDED copyWith METHOD ---
+  PurchaseReceiptItem copyWith({
+    String? name,
+    String? owner,
+    String? creation,
+    String? modified,
+    String? modifiedBy,
+    String? itemCode,
+    String? itemName,
+    double? qty,
+    double? rate,
+    String? batchNo,
+    String? rack,
+    String? warehouse,
+    String? purchaseOrderItem,
+    int? idx,
+    String? customVariantOf,
+    double? purchaseOrderQty,
+  }) {
+    return PurchaseReceiptItem(
+      name: name ?? this.name,
+      owner: owner ?? this.owner,
+      creation: creation ?? this.creation,
+      modified: modified ?? this.modified,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
+      itemCode: itemCode ?? this.itemCode,
+      itemName: itemName ?? this.itemName,
+      qty: qty ?? this.qty,
+      rate: rate ?? this.rate,
+      batchNo: batchNo ?? this.batchNo,
+      rack: rack ?? this.rack,
+      warehouse: warehouse ?? this.warehouse,
+      purchaseOrderItem: purchaseOrderItem ?? this.purchaseOrderItem,
+      idx: idx ?? this.idx,
+      customVariantOf: customVariantOf ?? this.customVariantOf,
+      purchaseOrderQty: purchaseOrderQty ?? this.purchaseOrderQty,
     );
   }
 
@@ -116,6 +166,7 @@ class PurchaseReceiptItem {
       'batch_no': batchNo,
       'rack': rack,
       'purchase_order_item': purchaseOrderItem,
+      'idx': idx,
     };
   }
 }
