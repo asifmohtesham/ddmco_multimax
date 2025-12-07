@@ -375,8 +375,16 @@ class StockEntryFormController extends GetxController {
       validateBatch(scannedBatch);
     }
 
+    // UPDATED: Using DraggableScrollableSheet for better keyboard handling
     Get.bottomSheet(
-      const StockEntryItemFormSheet(),
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return StockEntryItemFormSheet(scrollController: scrollController);
+        },
+      ),
       isScrollControlled: true,
     );
   }
@@ -468,8 +476,16 @@ class StockEntryFormController extends GetxController {
 
     validateSheet();
 
+    // UPDATED: Using DraggableScrollableSheet
     Get.bottomSheet(
-      const StockEntryItemFormSheet(),
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return StockEntryItemFormSheet(scrollController: scrollController);
+        },
+      ),
       isScrollControlled: true,
     );
   }
