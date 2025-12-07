@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:ddmco_multimax/app/modules/item/form/widgets/stock_balance_chart.dart'; // Added Import
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -213,31 +214,43 @@ class ItemFormScreen extends GetView<ItemFormController> {
             if (controller.isLoadingStock.value) return const LinearProgressIndicator();
             if (controller.stockLevels.isEmpty) return const Text('No stock data.', style: TextStyle(color: Colors.grey));
 
-            return Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: controller.stockLevels.length,
-                separatorBuilder: (c, i) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final stock = controller.stockLevels[index];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    title: Text(stock.warehouse, style: const TextStyle(fontSize: 14)),
-                    trailing: Text(
-                      stock.quantity.toStringAsFixed(2),
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: stock.quantity > 0 ? Colors.green[700] : Colors.red[700],
-                          fontFamily: 'monospace'
-                      ),
-                    ),
-                  );
-                },
-              ),
+            return Column(
+              children: [
+                // Insert Graph Here
+                StockBalanceChart(stockLevels: controller.stockLevels),
+                const SizedBox(height: 12),
+
+                // Detailed List
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: controller.stockLevels.length,
+                    separatorBuilder: (c, i) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final stock = controller.stockLevels[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                        title: Text(stock.warehouse, style: const TextStyle(fontSize: 14)),
+                        subtitle: stock.rack != null && stock.rack!.isNotEmpty
+                            ? Text('Rack: ${stock.rack}', style: TextStyle(fontSize: 12, color: Colors.blueGrey[400], fontFamily: 'monospace'))
+                            : null,
+                        trailing: Text(
+                          stock.quantity.toStringAsFixed(2),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: stock.quantity > 0 ? Colors.green[700] : Colors.red[700],
+                              fontFamily: 'monospace'
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             );
           }),
 
@@ -301,55 +314,128 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 final qtyChange = (entry['actual_qty'] as num?)?.toDouble() ?? 0.0;
                 final isPositive = qtyChange >= 0;
 
+                final type = entry['voucher_type'] ?? 'Transaction';
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   elevation: 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isPositive ? Colors.green.shade50 : Colors.red.shade50,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-                        color: isPositive ? Colors.green : Colors.red,
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      entry['voucher_type'] ?? 'Transaction',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Column(
                       children: [
-                        Text('${entry['warehouse']} • ${entry['voucher_no']}', style: const TextStyle(fontSize: 12)),
-                        Text(
-                          '${entry['posting_date']} ${entry['posting_time']}',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        // Row 1: Icon, Type, Qty
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: isPositive ? Colors.green.shade50 : Colors.red.shade50,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+                                color: isPositive ? Colors.green : Colors.red,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(type, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text(entry['voucher_no'] ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey, fontFamily: 'monospace')),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              (isPositive ? '+' : '') + qtyChange.toStringAsFixed(2),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isPositive ? Colors.green : Colors.red,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          (isPositive ? '+' : '') + qtyChange.toStringAsFixed(2),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isPositive ? Colors.green : Colors.red,
-                            fontSize: 14,
+
+                        // Row 2: Details Context (Customer, PO, Ref)
+                        if (type == 'Delivery Note' && (entry['customer'] != null || entry['po_no'] != null)) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (entry['customer'] != null)
+                                  _buildContextRow(Icons.person_outline, entry['customer']),
+                                if (entry['po_no'] != null)
+                                  _buildContextRow(Icons.receipt_long, 'PO: ${entry['po_no']}'),
+                              ],
+                            ),
                           ),
+                        ] else if (type == 'Stock Entry' && (entry['stock_entry_type'] == 'Material Issue' || entry['custom_reference_no'] != null)) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (entry['stock_entry_type'] != null)
+                                  _buildContextRow(Icons.category_outlined, entry['stock_entry_type']),
+                                if (entry['custom_reference_no'] != null)
+                                  _buildContextRow(Icons.link, 'Ref: ${entry['custom_reference_no']}'),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Row 3: Warehouse & Batch
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${entry['posting_date']} ${entry['posting_time']}',
+                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                            Row(
+                              children: [
+                                if (entry['warehouse'] != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(entry['warehouse'], style: TextStyle(fontSize: 10, color: Colors.blue.shade900)),
+                                  ),
+                                if (entry['batch_no'] != null) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(entry['batch_no'], style: TextStyle(fontSize: 10, color: Colors.orange.shade900, fontFamily: 'monospace')),
+                                  ),
+                                ]
+                              ],
+                            ),
+                          ],
                         ),
-                        if (entry['batch_no'] != null)
-                          Text(
-                            entry['batch_no'],
-                            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey),
-                          ),
                       ],
                     ),
                   ),
@@ -357,6 +443,19 @@ class ItemFormScreen extends GetView<ItemFormController> {
               },
             );
           }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContextRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: Colors.grey),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
         ],
       ),
     );

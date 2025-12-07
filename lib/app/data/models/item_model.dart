@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 class Item {
@@ -40,13 +39,19 @@ class Item {
 class WarehouseStock {
   final String warehouse;
   final double quantity;
+  final String? rack; // Added Rack field
 
-  WarehouseStock({required this.warehouse, required this.quantity});
+  WarehouseStock({
+    required this.warehouse,
+    required this.quantity,
+    this.rack,
+  });
 
   factory WarehouseStock.fromJson(Map<String, dynamic> json) {
     return WarehouseStock(
       warehouse: json['warehouse'] ?? '',
       quantity: (json['bal_qty'] as num?)?.toDouble() ?? 0.0,
+      rack: json['rack']?.toString(), // Parse rack
     );
   }
 }

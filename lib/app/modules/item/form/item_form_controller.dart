@@ -93,7 +93,61 @@ class ItemFormController extends GetxController {
     try {
       final response = await _provider.getStockLedger(itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        stockLedgerEntries.value = List<Map<String, dynamic>>.from(response.data['data']);
+        List<Map<String, dynamic>> entries = List<Map<String, dynamic>>.from(response.data['data']);
+
+        // --- Enrichment Logic ---
+        final List<String> dnNames = [];
+        final List<String> seNames = [];
+
+        for (var entry in entries) {
+          final type = entry['voucher_type'];
+          final no = entry['voucher_no'];
+          if (type == 'Delivery Note' && no != null) dnNames.add(no);
+          if (type == 'Stock Entry' && no != null) seNames.add(no);
+        }
+
+        Map<String, Map<String, dynamic>> extraDetails = {};
+
+        if (dnNames.isNotEmpty) {
+          try {
+            final dnResponse = await _apiProvider.getDocumentList(
+                'Delivery Note',
+                filters: {'name': ['in', dnNames]},
+                fields: ['name', 'customer', 'po_no']
+            );
+            if (dnResponse.statusCode == 200 && dnResponse.data['data'] != null) {
+              for (var d in dnResponse.data['data']) {
+                extraDetails[d['name']] = d;
+              }
+            }
+          } catch (e) { print('Error fetching DN details: $e'); }
+        }
+
+        if (seNames.isNotEmpty) {
+          try {
+            final seResponse = await _apiProvider.getDocumentList(
+                'Stock Entry',
+                filters: {'name': ['in', seNames]},
+                fields: ['name', 'stock_entry_type', 'custom_reference_no']
+            );
+            if (seResponse.statusCode == 200 && seResponse.data['data'] != null) {
+              for (var d in seResponse.data['data']) {
+                extraDetails[d['name']] = d;
+              }
+            }
+          } catch (e) { print('Error fetching SE details: $e'); }
+        }
+
+        // Merge details back into entries
+        for (var i = 0; i < entries.length; i++) {
+          final voucherNo = entries[i]['voucher_no'];
+          if (extraDetails.containsKey(voucherNo)) {
+            entries[i].addAll(extraDetails[voucherNo]!);
+          }
+        }
+        // ------------------------
+
+        stockLedgerEntries.value = entries;
       }
     } catch (e) {
       print('Error fetching stock ledger: $e');
