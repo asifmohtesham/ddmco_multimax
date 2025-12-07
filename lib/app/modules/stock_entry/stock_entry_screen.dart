@@ -1,10 +1,12 @@
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
-import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+// Import the new widget
+import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -17,6 +19,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   final StockEntryController controller = Get.find();
   final _scrollController = ScrollController();
 
+  // ... (initState, dispose, _onScroll, _isBottom remain the same) ...
   @override
   void initState() {
     super.initState();
@@ -43,54 +46,12 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterDialog(BuildContext context) {
-    final purposeController = TextEditingController(text: controller.activeFilters['purpose']);
-    int? selectedDocstatus = controller.activeFilters['docstatus'];
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter Stock Entries'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: purposeController,
-              decoration: const InputDecoration(labelText: 'Purpose'),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              value: selectedDocstatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: const [
-                DropdownMenuItem(value: 0, child: Text('Draft')),
-                DropdownMenuItem(value: 1, child: Text('Submitted')),
-                DropdownMenuItem(value: 2, child: Text('Cancelled')),
-              ],
-              onChanged: (value) => selectedDocstatus = value,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.clearFilters();
-              Get.back();
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final filters = {
-                if (purposeController.text.isNotEmpty) 'purpose': purposeController.text,
-                if (selectedDocstatus != null) 'docstatus': selectedDocstatus,
-              };
-              controller.applyFilters(filters);
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
+  // --- REPLACED _showFilterDialog WITH THIS ---
+  void _showFilterBottomSheet(BuildContext context) {
+    Get.bottomSheet(
+      const StockEntryFilterBottomSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 
@@ -101,11 +62,12 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         title: const Text('Stock Entries'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _showFilterDialog(context),
+            icon: const Icon(Icons.filter_list), // Changed icon to filter_list to match other screens
+            onPressed: () => _showFilterBottomSheet(context),
           ),
         ],
       ),
+      // ... (body and floatingActionButton remain exactly the same) ...
       body: Obx(() {
         if (controller.isLoading.value && controller.stockEntries.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -160,6 +122,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   }
 }
 
+// ... (StockEntryCard class remains the same) ...
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();
@@ -330,7 +293,7 @@ class StockEntryCard extends StatelessWidget {
                                         Text('Total Value', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                                         const SizedBox(height: 2),
                                         Text(
-                                            '${detailed.totalAmount.toStringAsFixed(2)}',
+                                            '\$${detailed.totalAmount.toStringAsFixed(2)}',
                                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)
                                         ),
                                       ],
