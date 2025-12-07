@@ -14,7 +14,7 @@ class StockEntry {
   final String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
-  final String? customTotalQty;
+  final double? customTotalQty; // Kept as double for calculation safety
   final String? customReferenceNo;
   final List<StockEntryItem> items;
 
@@ -42,21 +42,27 @@ class StockEntry {
     List<StockEntryItem> items = itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
 
     return StockEntry(
-      name: json['name'] ?? 'No Name',
-      purpose: json['purpose'] ?? 'No Purpose',
-      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
-      postingDate: json['posting_date'] ?? '',
-      modified: json['modified'] ?? '',
-      creation: json['creation'] ?? DateTime.now().toString(),
-      docstatus: json['docstatus'] as int? ?? 0,
-      status: _getStatusFromDocstatus(json['docstatus'] as int? ?? 0),
-      owner: json['owner'],
-      stockEntryType: json['stock_entry_type'],
-      postingTime: json['posting_time'],
-      fromWarehouse: json['from_warehouse'],
-      toWarehouse: json['to_warehouse'],
-      customTotalQty: json['custom_total_qty'].toString(),
-      customReferenceNo: json['custom_reference_no'],
+      name: json['name']?.toString() ?? 'No Name',
+      purpose: json['purpose']?.toString() ?? 'No Purpose',
+      // Safe Double Parsing
+      totalAmount: _parseDouble(json['total_amount']),
+      postingDate: json['posting_date']?.toString() ?? '',
+      modified: json['modified']?.toString() ?? '',
+      creation: json['creation']?.toString() ?? DateTime.now().toString(),
+      // Safe Int Parsing
+      docstatus: _parseInt(json['docstatus']),
+      status: _getStatusFromDocstatus(_parseInt(json['docstatus'])),
+      owner: json['owner']?.toString(),
+      stockEntryType: json['stock_entry_type']?.toString(),
+      postingTime: json['posting_time']?.toString(),
+      fromWarehouse: json['from_warehouse']?.toString(),
+      toWarehouse: json['to_warehouse']?.toString(),
+
+      // Safe Nullable Double Parsing
+      customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
+
+      customReferenceNo: json['custom_reference_no']?.toString(),
+
       items: items,
     );
   }
@@ -85,10 +91,37 @@ class StockEntry {
         return 'Unknown';
     }
   }
+
+  // --- Safe Parsing Helpers ---
+
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  static double? _parseDoubleNullable(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      if (value.isEmpty) return null;
+      return double.tryParse(value);
+    }
+    return null;
+  }
+
+  static int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
 }
 
 class StockEntryItem {
-  final String? name; // Unique Row ID
+  final String? name;
   final String itemCode;
   final double qty;
   final double basicRate;
@@ -100,7 +133,7 @@ class StockEntryItem {
   final String? toRack;
   final String? sWarehouse;
   final String? tWarehouse;
-  final String? customInvoiceSerialNumber; // Added field
+  final String? customInvoiceSerialNumber;
 
   StockEntryItem({
     this.name,
@@ -120,19 +153,21 @@ class StockEntryItem {
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
-      name: json['name'],
-      itemCode: json['item_code'] ?? '',
-      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
-      basicRate: (json['basic_rate'] as num?)?.toDouble() ?? 0.0,
-      itemGroup: json['item_group'],
-      customVariantOf: json['custom_variant_of'],
-      batchNo: json['batch_no'],
-      itemName: json['item_name'],
-      rack: json['rack'],
-      toRack: json['to_rack'],
-      sWarehouse: json['s_warehouse'],
-      tWarehouse: json['t_warehouse'],
-      customInvoiceSerialNumber: json['custom_invoice_serial_number'],
+      name: json['name']?.toString(),
+      itemCode: json['item_code']?.toString() ?? '',
+      // Safe Double Parsing for Item fields
+      qty: StockEntry._parseDouble(json['qty']),
+      basicRate: StockEntry._parseDouble(json['basic_rate']),
+
+      itemGroup: json['item_group']?.toString(),
+      customVariantOf: json['custom_variant_of']?.toString(),
+      batchNo: json['batch_no']?.toString(),
+      itemName: json['item_name']?.toString(),
+      rack: json['rack']?.toString(),
+      toRack: json['to_rack']?.toString(),
+      sWarehouse: json['s_warehouse']?.toString(),
+      tWarehouse: json['t_warehouse']?.toString(),
+      customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
     );
   }
 

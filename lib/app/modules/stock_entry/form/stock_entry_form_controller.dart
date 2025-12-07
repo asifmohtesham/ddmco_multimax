@@ -199,7 +199,7 @@ class StockEntryFormController extends GetxController {
       name: 'New Stock Entry',
       purpose: initialType,
       totalAmount: 0.0,
-      customTotalQty: '',
+      customTotalQty: 0.0, // FIX: Initialize as double
       postingDate: DateFormat('yyyy-MM-dd').format(now),
       postingTime: DateFormat('HH:mm:ss').format(now),
       modified: '',

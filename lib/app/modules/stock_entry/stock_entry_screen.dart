@@ -363,7 +363,11 @@ class StockEntryCard extends StatelessWidget {
               // Row 3: Stats (Total Qty, Assigned, Time Taken)
               Row(
                 children: [
-                  _buildStatItem(Icons.inventory_2_outlined, '${entry.customTotalQty} Items'),
+                  // FIX: Safely format the double value to String
+                  _buildStatItem(
+                      Icons.inventory_2_outlined,
+                      '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items'
+                  ),
                   const Spacer(),
                   if (entry.docstatus == 1) // Submitted
                     Padding(
