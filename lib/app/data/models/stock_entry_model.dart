@@ -14,7 +14,7 @@ class StockEntry {
   final String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
-  final double? customTotalQty;
+  final String? customTotalQty;
   final String? customReferenceNo; 
   final List<StockEntryItem> items;
 
@@ -55,7 +55,7 @@ class StockEntry {
       postingTime: json['posting_time'],
       fromWarehouse: json['from_warehouse'],
       toWarehouse: json['to_warehouse'],
-      customTotalQty: (json['custom_total_qty'] ?? 0 as num?)?.toDouble(),
+      customTotalQty: json['custom_total_qty'].toString(),
       customReferenceNo: json['custom_reference_no'],
       items: items,
     );

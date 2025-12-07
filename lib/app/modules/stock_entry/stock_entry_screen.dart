@@ -222,7 +222,7 @@ class StockEntryCard extends StatelessWidget {
               // Row 3: Stats (Total Qty, Assigned, Time Taken)
               Row(
                 children: [
-                  _buildStatItem(Icons.inventory_2_outlined, '${entry.customTotalQty.toStringAsFixed(2)} Items'),
+                  _buildStatItem(Icons.inventory_2_outlined, '${entry.customTotalQty} Items'),
                   const Spacer(),
                   if (entry.docstatus == 1) // Submitted
                     Padding(
@@ -251,53 +251,129 @@ class StockEntryCard extends StatelessWidget {
                     child: !isCurrentlyExpanded
                         ? const SizedBox.shrink()
                         : Obx(() {
-                            final detailed = controller.detailedEntry;
-                            if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16.0),
-                                  child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                                );
-                            }
+                      final detailed = controller.detailedEntry;
+                      if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                        );
+                      }
 
-                            if (detailed != null && detailed.name == entry.name) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Divider(height: 1),
-                                    const SizedBox(height: 8),
-                                    Text('Total Amount: \$${detailed.totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                                    const SizedBox(height: 4),
-                                    Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
+                      if (detailed != null && detailed.name == entry.name) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Divider(height: 1),
+                              const SizedBox(height: 12),
+
+                              // Warehouse Flow Visualization
+                              if (detailed.fromWarehouse != null || detailed.toWarehouse != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey.shade200),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (detailed.fromWarehouse != null)
+                                        Expanded(child: _buildWarehouseInfo('From', detailed.fromWarehouse!)),
+
+                                      if (detailed.fromWarehouse != null && detailed.toWarehouse != null)
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                          child: Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+                                        ),
+
+                                      if (detailed.toWarehouse != null)
+                                        Expanded(child: _buildWarehouseInfo('To', detailed.toWarehouse!)),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
+                              // Entry Details Grid
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        if (detailed.status == 'Draft') ...[
-                                          OutlinedButton.icon(
-                                            onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
-                                            icon: const Icon(Icons.edit, size: 18),
-                                            label: const Text('Edit'),
-                                            style: OutlinedButton.styleFrom(
-                                              visualDensity: VisualDensity.compact,
-                                              side: const BorderSide(color: Colors.blue),
-                                            ),
-                                          ),
-                                        ] else ...[
-                                          TextButton(
-                                            onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
-                                            child: const Text('View'),
-                                          ),
-                                        ]
+                                        Text('Type', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                                        const SizedBox(height: 2),
+                                        Text(detailed.stockEntryType ?? '-', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                                       ],
                                     ),
-                                  ],
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          }),
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Posting Date', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                            '${detailed.postingDate} ${detailed.postingTime ?? ''}',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (detailed.totalAmount > 0)
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text('Total Value', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                            '${detailed.totalAmount.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Action Buttons
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  if (detailed.status == 'Draft') ...[
+                                    OutlinedButton.icon(
+                                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
+                                      icon: const Icon(Icons.edit, size: 16),
+                                      label: const Text('Edit'),
+                                      style: OutlinedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        side: BorderSide(color: Theme.of(context).primaryColor),
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    OutlinedButton.icon(
+                                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
+                                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                                      label: const Text('View Details'),
+                                      style: OutlinedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ]
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
                   ),
                 );
               }),
@@ -316,6 +392,22 @@ class StockEntryCard extends StatelessWidget {
         Text(
           text,
           style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWarehouseInfo(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(
+            value,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis
         ),
       ],
     );
