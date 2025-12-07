@@ -8,6 +8,8 @@ import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/delivery_n
 import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
 import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart'; // Added
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart'; // Added for currency
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});
@@ -20,16 +22,15 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         appBar: AppBar(
           title: Obx(() {
             final note = controller.deliveryNote.value;
-            // Ensure we handle potential nulls gracefully and trigger updates
             final name = note?.name ?? 'Loading...';
             final poNo = note?.poNo;
-            
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
                 if (poNo != null && poNo.isNotEmpty)
-                  Text(poNo),
+                  Text(poNo, style: const TextStyle(fontSize: 16)),
               ],
             );
           }),
@@ -63,26 +64,144 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     );
   }
 
-  Widget _buildDetailsView(dynamic note) {
-    // Re-applying the monospace style as requested previously
-    const valueStyle = TextStyle(fontSize: 16, fontFamily: 'monospace');
-    const labelStyle = TextStyle(fontSize: 14, color: Colors.grey);
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
+  Widget _buildDetailsView(DeliveryNote note) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (note.poNo != null && note.poNo.isNotEmpty) ...[
-            Text('PO No:', style: labelStyle),
-            Text(note.poNo!, style: valueStyle),
-            const SizedBox(height: 12),
+          // 1. General Information Card
+          _buildSectionCard(
+            title: 'General Information',
+            children: [
+              if (note.name != 'New Delivery Note') ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Delivery Note ID', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(note.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                    ),
+                    StatusPill(status: note.status),
+                  ],
+                ),
+                const Divider(height: 24),
+              ],
+              TextFormField(
+                initialValue: note.customer,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Customer',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person_outline),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // 2. References Card
+          if (note.poNo != null && note.poNo!.isNotEmpty)
+            _buildSectionCard(
+              title: 'References',
+              children: [
+                TextFormField(
+                  initialValue: note.poNo,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Purchase Order (PO)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.receipt_long_outlined, color: Colors.blueGrey),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  ),
+                ),
+              ],
+            ),
+
+          if (note.poNo != null && note.poNo!.isNotEmpty) const SizedBox(height: 16),
+
+          // 3. Schedule Card
+          _buildSectionCard(
+            title: 'Schedule',
+            children: [
+              TextFormField(
+                initialValue: note.postingDate,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Posting Date',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today_outlined),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // 4. Summary Card
+          _buildSectionCard(
+            title: 'Summary',
+            children: [
+              _buildSummaryRow('Total Quantity', '${note.totalQty.toStringAsFixed(2)} Items'),
+              const Divider(),
+              _buildSummaryRow(
+                  'Grand Total',
+                  '${FormattingHelper.getCurrencySymbol(note.currency)} ${note.grandTotal.toStringAsFixed(2)}',
+                  isBold: true
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 16),
+            ...children,
           ],
-          Text('Customer:', style: labelStyle),
-          Text(note.customer, style: valueStyle),
-          const SizedBox(height: 12),
-          Text('Posting Date:', style: labelStyle),
-          Text(note.postingDate, style: valueStyle),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(
+              value,
+              style: TextStyle(
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                  fontSize: isBold ? 16 : 14,
+                  color: isBold ? Colors.black87 : Colors.black54
+              )
+          ),
         ],
       ),
     );
@@ -138,14 +257,14 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Obx(() => Row(
-                children: [
-                  _buildFilterChip('All', controller.allCount),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('Pending', controller.pendingCount),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('Completed', controller.completedCount),
-                ],
-              )),
+            children: [
+              _buildFilterChip('All', controller.allCount),
+              const SizedBox(width: 8),
+              _buildFilterChip('Pending', controller.pendingCount),
+              const SizedBox(width: 8),
+              _buildFilterChip('Completed', controller.completedCount),
+            ],
+          )),
         ),
         const Divider(),
         Expanded(
@@ -182,7 +301,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
               final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
               final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
-              
+
               if (controller.itemFilter.value == 'Completed') {
                 return cumulativeQty >= posItem.quantity;
               } else if (controller.itemFilter.value == 'Pending') {
@@ -244,26 +363,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       },
     );
   }
-
-  Widget _buildInfoColumn(String title, String value, {double? width}) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
@@ -289,10 +388,10 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             // The logic: if editing, disable button if NOT dirty. If adding, disable if invalid.
             // Also always disable if saving or loading batch.
             final canSubmit = !controller.isSaving.value &&
-                              !controller.bsIsLoadingBatch.value &&
-                              controller.bsIsBatchValid.value &&
-                              controller.bsInvoiceSerialNo.value != null &&
-                              (!isEditing || controller.isFormDirty.value);
+                !controller.bsIsLoadingBatch.value &&
+                controller.bsIsBatchValid.value &&
+                controller.bsInvoiceSerialNo.value != null &&
+                (!isEditing || controller.isFormDirty.value);
 
             return ListView(
               controller: scrollController, // Hook up the scroll controller
@@ -332,7 +431,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                
+
                 DropdownButtonFormField<String>(
                   value: controller.bsInvoiceSerialNo.value,
                   items: controller.bsAvailableInvoiceSerialNos.map((serial) {
@@ -349,7 +448,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   validator: (value) => value == null ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
-                
+
                 TextFormField(
                   controller: controller.bsBatchController,
                   readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
@@ -359,20 +458,20 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     border: const OutlineInputBorder(),
                     errorText: controller.bsBatchError.value,
                     suffixIcon: controller.bsIsLoadingBatch.value
-                      ? const Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.5),
-                          ),
-                        )
-                      : (controller.bsIsBatchReadOnly.value
+                        ? const Padding(
+                      padding: EdgeInsets.all(12.0),
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                        : (controller.bsIsBatchReadOnly.value
                         ? const Icon(Icons.check_circle, color: Colors.green)
                         : IconButton(
-                            icon: const Icon(Icons.check),
-                            onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
-                          )),
+                      icon: const Icon(Icons.check),
+                      onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
+                    )),
                   ),
                   onChanged: (_) => controller.checkForChanges(),
                   onFieldSubmitted: (val) {
@@ -387,7 +486,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   },
                 ),
                 const SizedBox(height: 16),
-                
+
                 TextFormField(
                   controller: controller.bsRackController,
                   focusNode: controller.bsRackFocusNode,
@@ -396,7 +495,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   validator: (value) => value == null || value.isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
-                
+
                 TextFormField(
                   controller: controller.bsQtyController,
                   decoration: InputDecoration(
@@ -430,12 +529,12 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     return null;
                   },
                 ),
-                
+
                 if (isEditing) ...[
                   const SizedBox(height: 24),
                   const Text('Additional Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
-                  
+
                   // Image Tile with Full Screen View
                   if (controller.bsItemImage.value != null && controller.bsItemImage.value!.isNotEmpty)
                     Padding(
@@ -470,7 +569,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                             alignment: Alignment.topLeft,
                             children: [
                               Image.network(
-                                'https://erp.multimax.cloud${controller.bsItemImage.value}', 
+                                'https://erp.multimax.cloud${controller.bsItemImage.value}',
                                 // height: MediaQuery.of(context).size.height * 0.5,
                                 width: MediaQuery.of(context).size.width * 0.5,
                                 fit: BoxFit.scaleDown,
@@ -503,7 +602,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       _buildCompactDetailItem('Packed Qty', controller.bsItemPackedQty.value?.toStringAsFixed(2)),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
                   const Divider(),
                   // Footer: Modified info
@@ -526,8 +625,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       }
                     } : null,
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                     ),
                     child: controller.isSaving.value
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -552,7 +651,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
           const SizedBox(height: 2),
           Text(
-            value, 
+            value,
             style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
