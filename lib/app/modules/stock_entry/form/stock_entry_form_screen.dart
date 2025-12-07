@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart'; // Added Import
 import 'package:intl/intl.dart';
 
 class StockEntryFormScreen extends GetView<StockEntryFormController> {
@@ -53,7 +54,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(12.0),
       child: Form(
         child: Obx(() {
           final type = controller.selectedStockEntryType.value;
@@ -64,104 +65,165 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           final showReferenceNo = isMaterialIssue;
           final showFromWarehouse = isMaterialIssue || isMaterialTransfer;
           final showToWarehouse = isMaterialReceipt || isMaterialTransfer;
+          final isEditable = entry.docstatus == 0;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DropdownButtonFormField<String>(
-                value: controller.selectedStockEntryType.value,
-                decoration: const InputDecoration(
-                  labelText: 'Stock Entry Type',
-                  border: OutlineInputBorder(),
-                ),
-                items: controller.stockEntryTypes.map((type) {
-                  return DropdownMenuItem(value: type, child: Text(type));
-                }).toList(),
-                onChanged: (value) => controller.selectedStockEntryType.value = value!,
-              ),
-              const SizedBox(height: 16),
-              Row(
+              // 1. General Info Card
+              _buildSectionCard(
+                title: 'General Information',
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: entry.postingDate,
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Posting Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
+                  if (entry.name != 'New Stock Entry') ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Entry ID', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text(entry.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
+                        ),
+                        StatusPill(status: entry.status),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: entry.postingTime,
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Posting Time',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.access_time),
-                      ),
+                    const Divider(height: 24),
+                  ],
+                  DropdownButtonFormField<String>(
+                    value: controller.selectedStockEntryType.value,
+                    decoration: const InputDecoration(
+                      labelText: 'Stock Entry Type',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.category_outlined),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
+                    items: controller.stockEntryTypes.map((type) {
+                      return DropdownMenuItem(value: type, child: Text(type, style: const TextStyle(fontSize: 14)));
+                    }).toList(),
+                    onChanged: isEditable ? (value) => controller.selectedStockEntryType.value = value! : null,
                   ),
                 ],
               ),
+
               const SizedBox(height: 16),
-              const Text('Warehouses', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
 
-              if (showFromWarehouse) ...[
-                DropdownButtonFormField<String>(
-                  value: controller.selectedFromWarehouse.value,
-                  decoration: const InputDecoration(
-                    labelText: 'From Warehouse',
-                    border: OutlineInputBorder(),
-                    helperText: 'Source Warehouse',
-                  ),
-                  items: controller.warehouses.map((wh) {
-                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
-                  }).toList(),
-                  onChanged: (value) => controller.selectedFromWarehouse.value = value,
-                  isExpanded: true,
+              // 2. Warehouses Card
+              if (showFromWarehouse || showToWarehouse)
+                _buildSectionCard(
+                  title: 'Logistics',
+                  children: [
+                    if (showFromWarehouse)
+                      DropdownButtonFormField<String>(
+                        value: controller.selectedFromWarehouse.value,
+                        decoration: const InputDecoration(
+                          labelText: 'Source Warehouse',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.outbond_outlined, color: Colors.orange),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                        items: controller.warehouses.map((wh) {
+                          return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)));
+                        }).toList(),
+                        onChanged: isEditable ? (value) => controller.selectedFromWarehouse.value = value : null,
+                        isExpanded: true,
+                      ),
+
+                    if (showFromWarehouse && showToWarehouse)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Center(child: Icon(Icons.arrow_downward, color: Colors.grey, size: 20)),
+                      ),
+
+                    if (showToWarehouse)
+                      DropdownButtonFormField<String>(
+                        value: controller.selectedToWarehouse.value,
+                        decoration: const InputDecoration(
+                          labelText: 'Target Warehouse',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.move_to_inbox_outlined, color: Colors.green),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                        items: controller.warehouses.map((wh) {
+                          return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)));
+                        }).toList(),
+                        onChanged: isEditable ? (value) => controller.selectedToWarehouse.value = value : null,
+                        isExpanded: true,
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-              ],
 
-              if (showToWarehouse) ...[
-                DropdownButtonFormField<String>(
-                  value: controller.selectedToWarehouse.value,
-                  decoration: const InputDecoration(
-                    labelText: 'To Warehouse',
-                    border: OutlineInputBorder(),
-                    helperText: 'Target Warehouse',
+              const SizedBox(height: 16),
+
+              // 3. Schedule & References
+              _buildSectionCard(
+                title: 'Schedule & Reference',
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: entry.postingDate,
+                          readOnly: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Date',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: entry.postingTime,
+                          readOnly: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Time',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.access_time, size: 18),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  items: controller.warehouses.map((wh) {
-                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
-                  }).toList(),
-                  onChanged: (value) => controller.selectedToWarehouse.value = value,
-                  isExpanded: true,
-                ),
-                const SizedBox(height: 16),
-              ],
+                  if (showReferenceNo) ...[
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: controller.customReferenceNoController,
+                      readOnly: !isEditable,
+                      decoration: const InputDecoration(
+                        labelText: 'Reference No',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.link),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
 
-              if (showReferenceNo) ...[
-                TextFormField(
-                  controller: controller.customReferenceNoController,
-                  decoration: const InputDecoration(
-                    labelText: 'Reference No',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
+              const SizedBox(height: 16),
 
-              if (entry.name != 'New Stock Entry') ...[
-                const Divider(),
-                _buildReadOnlyRow('Status', entry.status),
-                _buildReadOnlyRow('Total Amount', entry.totalAmount.toStringAsFixed(2)),
-                if (entry.owner != null) _buildReadOnlyRow('Owner', entry.owner!),
-              ],
+              // 4. Summary
+              if (entry.name != 'New Stock Entry')
+                _buildSectionCard(
+                  title: 'Summary',
+                  children: [
+                    _buildSummaryRow('Total Quantity', '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
+                    const Divider(),
+                    _buildSummaryRow('Total Amount', '\$${entry.totalAmount.toStringAsFixed(2)}', isBold: true),
+                    if (entry.owner != null) ...[
+                      const Divider(),
+                      _buildSummaryRow('Created By', entry.owner!),
+                    ]
+                  ],
+                ),
+
+              const SizedBox(height: 80),
             ],
           );
         }),
@@ -169,14 +231,40 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildReadOnlyRow(String label, String value) {
+  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(
+              value,
+              style: TextStyle(
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                  fontSize: isBold ? 16 : 14,
+                  color: isBold ? Colors.black87 : Colors.black54
+              )
+          ),
         ],
       ),
     );
@@ -236,282 +324,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
           ),
           onFieldSubmitted: (value) => controller.scanBarcode(value),
-        ),
-      ),
-    );
-  }
-}
-
-class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
-  final ScrollController? scrollController;
-
-  const StockEntryItemFormSheet({super.key, this.scrollController});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
-        ),
-        child: ListView(
-          controller: scrollController,
-          shrinkWrap: true,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${controller.currentItemCode}${controller.currentVariantOf != '' ? ' • ${controller.currentVariantOf}' : ''}',
-                        style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
-                      ),
-                      Text(
-                        controller.currentItemName,
-                        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Get.back(),
-                  icon: const Icon(Icons.close),
-                  style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-
-            // Batch Field with styling
-            Obx(() => _buildInputGroup(
-              label: 'Batch No',
-              color: Colors.purple,
-              child: TextFormField(
-                controller: controller.bsBatchController,
-                readOnly: controller.bsIsBatchReadOnly.value,
-                autofocus: !controller.bsIsBatchReadOnly.value,
-                decoration: InputDecoration(
-                  hintText: 'Enter or scan batch',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.purple),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.purple.shade200),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.purple, width: 2),
-                  ),
-                  filled: controller.bsIsBatchReadOnly.value,
-                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : null,
-                  suffixIcon: !controller.bsIsBatchReadOnly.value
-                      ? IconButton(
-                    icon: const Icon(Icons.check_circle_outline, color: Colors.purple),
-                    onPressed: () => controller.validateBatch(controller.bsBatchController.text),
-                  )
-                      : const Icon(Icons.check_circle, color: Colors.purple),
-                ),
-                onFieldSubmitted: (value) => controller.validateBatch(value),
-              ),
-            )),
-
-            const SizedBox(height: 16),
-
-            // Invoice Serial Dropdown (if available)
-            Obx(() {
-              if (controller.posUploadSerialOptions.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: _buildInputGroup(
-                  label: 'Invoice Serial No',
-                  color: Colors.blueGrey,
-                  child: DropdownButtonFormField<String>(
-                    value: controller.selectedSerial.value,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    ),
-                    items: controller.posUploadSerialOptions.map((s) {
-                      return DropdownMenuItem(value: s, child: Text(s));
-                    }).toList(),
-                    onChanged: (value) => controller.selectedSerial.value = value,
-                  ),
-                ),
-              );
-            }),
-
-            // Rack Fields Row
-            Obx(() {
-              final type = controller.selectedStockEntryType.value;
-              final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-              final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
-              return Row(
-                children: [
-                  if (showSource)
-                    Expanded(
-                      child: _buildInputGroup(
-                        label: 'Source Rack',
-                        color: Colors.orange,
-                        child: TextFormField(
-                          controller: controller.bsSourceRackController,
-                          focusNode: controller.sourceRackFocusNode,
-                          decoration: InputDecoration(
-                            hintText: 'Rack',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Colors.orange.shade200),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: Colors.orange, width: 2),
-                            ),
-                            suffixIcon: controller.isSourceRackValid.value
-                                ? const Icon(Icons.check_circle, color: Colors.orange, size: 20)
-                                : null,
-                          ),
-                          onFieldSubmitted: (val) => controller.validateRack(val, true),
-                        ),
-                      ),
-                    ),
-
-                  if (showSource && showTarget) const SizedBox(width: 12),
-
-                  if (showTarget)
-                    Expanded(
-                      child: _buildInputGroup(
-                        label: 'Target Rack',
-                        color: Colors.green,
-                        child: TextFormField(
-                          controller: controller.bsTargetRackController,
-                          focusNode: controller.targetRackFocusNode,
-                          decoration: InputDecoration(
-                            hintText: 'Rack',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Colors.green.shade200),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: Colors.green, width: 2),
-                            ),
-                            suffixIcon: controller.isTargetRackValid.value
-                                ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-                                : null,
-                          ),
-                          onFieldSubmitted: (val) => controller.validateRack(val, false),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            }),
-
-            const SizedBox(height: 16),
-
-            // Quantity Field with Controls
-            _buildInputGroup(
-              label: 'Quantity',
-              color: Colors.black87,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.bsQtyController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
-                  _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Submit Button
-            Obx(() {
-              // Determine if button should be active
-              final isValid = controller.isSheetValid.value;
-              return ElevatedButton(
-                onPressed: isValid && controller.stockEntry.value?.docstatus == 0
-                    ? controller.addItem
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: isValid ? Theme.of(context).primaryColor : Colors.grey.shade300,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: isValid ? 2 : 0,
-                ),
-                child: Text(
-                  controller.currentItemNameKey != null ? 'Update Item' : 'Add Item',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputGroup({required String label, required Color color, required Widget child}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
-          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.05), // Very light background tint
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: child,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQtyButton(IconData icon, VoidCallback onPressed) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Icon(icon, size: 20),
         ),
       ),
     );

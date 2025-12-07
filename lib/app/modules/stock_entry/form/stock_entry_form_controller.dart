@@ -5,7 +5,8 @@ import 'package:ddmco_multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_screen.dart';
+// Import the new widget file:
+import 'package:ddmco_multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
 
 class StockEntryFormController extends GetxController {
