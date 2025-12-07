@@ -1,3 +1,4 @@
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_controller.dart';
@@ -313,7 +314,7 @@ class PackingSlipListTile extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  _getRelativeTime(slip.creation),
+                  FormattingHelper.getRelativeTime(slip.creation),
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
                 ),
               ],
@@ -327,7 +328,7 @@ class PackingSlipListTile extends StatelessWidget {
                     const Icon(Icons.timer_outlined, size: 12, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
-                      'Draft to Submit: ${_getTimeTaken(slip.creation, slip.modified)}',
+                      'Draft to Submit: ${FormattingHelper.getTimeTaken(slip.creation, slip.modified)}',
                       style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
                     ),
                   ],

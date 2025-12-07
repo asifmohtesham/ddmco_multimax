@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_card.dart';
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -259,7 +260,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                     child: Row(
                       children: [
                         Text(
-                          '${controller.currentOwner} • ${controller.getRelativeTime(controller.currentCreation)}',
+                          '${controller.currentOwner} • ${FormattingHelper.getRelativeTime(controller.currentCreation)}',
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],
@@ -352,7 +353,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'Last modified by ${controller.currentModifiedBy} • ${controller.getRelativeTime(controller.currentModified)}',
+                      'Last modified by ${controller.currentModifiedBy} • ${FormattingHelper.getRelativeTime(controller.currentModified)}',
                       style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
                     ),
                   ),

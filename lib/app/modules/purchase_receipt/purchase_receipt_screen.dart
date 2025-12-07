@@ -1,3 +1,4 @@
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
@@ -334,7 +335,7 @@ class PurchaseReceiptCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    _getRelativeTime(receipt.creation), // Using creation for consistency if available, or modified
+                    FormattingHelper.getRelativeTime(receipt.creation), // Using creation for consistency if available, or modified
                     style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
                   ),
                 ],

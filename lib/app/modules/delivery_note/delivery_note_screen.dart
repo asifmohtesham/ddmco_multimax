@@ -1,3 +1,4 @@
+import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_controller.dart';
@@ -319,45 +320,6 @@ class DeliveryNoteCard extends StatelessWidget {
     return format.currencySymbol;
   }
 
-  String _getRelativeTime(String? dateString) {
-    if (dateString == null || dateString.isEmpty) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
-  String _getTimeTaken(String creation, String modified) {
-    try {
-      final start = DateTime.parse(creation);
-      final end = DateTime.parse(modified);
-      final difference = end.difference(start);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ${difference.inHours % 24}h';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ${difference.inMinutes % 60}m';
-      } else {
-        return '${difference.inMinutes}m';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -401,7 +363,7 @@ class DeliveryNoteCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    _getRelativeTime(note.creation),
+                    FormattingHelper.getRelativeTime(note.creation),
                     style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
                   ),
                 ],
@@ -418,7 +380,7 @@ class DeliveryNoteCard extends StatelessWidget {
                   if (note.docstatus == 1) // Submitted
                     Padding(
                         padding: const EdgeInsets.only(right: 8.0),
-                        child: _buildStatItem(Icons.timer_outlined, _getTimeTaken(note.creation, note.modified), color: Colors.green),
+                        child: _buildStatItem(Icons.timer_outlined, FormattingHelper.getTimeTaken(note.creation, note.modified), color: Colors.green),
                     ),
                   // Animated Arrow
                   Obx(() {
@@ -488,7 +450,7 @@ class DeliveryNoteCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Grand Total: ${_getCurrencySymbol(detailed.currency)}${detailed.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('Grand Total: ${FormattingHelper.getCurrencySymbol(detailed.currency)}${detailed.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
               const SizedBox(height: 12),
