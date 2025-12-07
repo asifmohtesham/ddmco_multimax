@@ -451,7 +451,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               SizedBox(
                 width: double.infinity,
                 child: Obx(() => ElevatedButton(
-                  onPressed: controller.bsIsBatchValid.value ? controller.addItem : null,
+                  onPressed: controller.stockEntry.value?.docstatus == 0 ? controller.bsIsBatchValid.value ? controller.addItem : null : null,
                   // Dynamic Button Text
                   child: Text(controller.currentItemNameKey != null ? 'Save' : 'Add Item'),
                 )),
