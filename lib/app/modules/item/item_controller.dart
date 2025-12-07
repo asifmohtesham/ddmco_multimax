@@ -1,4 +1,3 @@
-
 import 'dart:developer';
 
 import 'package:get/get.dart';
@@ -23,6 +22,9 @@ class ItemController extends GetxController {
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
+  // Default to true as per requirements: "display only those items that have an image set"
+  var showImagesOnly = true.obs;
+
   // Layout state
   var isGridView = false.obs;
 
@@ -36,6 +38,10 @@ class ItemController extends GetxController {
     isGridView.value = !isGridView.value;
   }
 
+  void setImagesOnly(bool value) {
+    showImagesOnly.value = value;
+  }
+
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchItems(clear: true);
@@ -43,6 +49,9 @@ class ItemController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    // Reset image filter to default requirement? Or keep user preference?
+    // User probably expects "Clear" to reset to the default state defined by the screen logic.
+    showImagesOnly.value = true;
     fetchItems(clear: true);
   }
 
@@ -65,10 +74,17 @@ class ItemController extends GetxController {
     }
 
     try {
+      // Construct effective filters
+      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+
+      if (showImagesOnly.value) {
+        queryFilters['image'] = ['!=', ''];
+      }
+
       final response = await _provider.getItems(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -111,7 +127,8 @@ class ItemController extends GetxController {
         final List<dynamic> data = response.data['message']['result'];
         _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
       } else {
-        Get.snackbar('Error', 'Failed to fetch stock levels');
+        // Silent fail or low priority snackbar
+        print('Failed to fetch stock levels');
       }
     } catch (e) {
       print('Failed to fetch stock levels: $e');
