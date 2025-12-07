@@ -13,7 +13,6 @@ class StockEntryFormController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
 
-  // name is not final because we update it after creation
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
@@ -53,6 +52,9 @@ class StockEntryFormController extends GetxController {
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
+  // UX State
+  var isSheetValid = false.obs;
+
   var currentItemCode = '';
   var currentVariantOf = '';
   var currentItemName = '';
@@ -68,11 +70,20 @@ class StockEntryFormController extends GetxController {
     'Material Transfer for Manufacture'
   ];
 
+  final sourceRackFocusNode = FocusNode();
+  final targetRackFocusNode = FocusNode();
+
   @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
     customReferenceNoController.addListener(_onReferenceNoChanged);
+
+    // Listen to changes for validation
+    bsQtyController.addListener(validateSheet);
+    bsBatchController.addListener(validateSheet);
+    bsSourceRackController.addListener(validateSheet);
+    bsTargetRackController.addListener(validateSheet);
 
     if (mode == 'new') {
       _initNewStockEntry();
@@ -94,8 +105,52 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
-  final sourceRackFocusNode = FocusNode();
-  final targetRackFocusNode = FocusNode();
+  // --- Validation Logic ---
+
+  void validateSheet() {
+    // 1. Qty Check
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    if (qty <= 0) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // 2. Batch Check (if entered)
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // 3. Rack Checks based on Type
+    final type = selectedStockEntryType.value;
+    final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+    if (requiresSource) {
+      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+
+    if (requiresTarget) {
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+
+    isSheetValid.value = true;
+  }
+
+  void adjustSheetQty(double delta) {
+    final current = double.tryParse(bsQtyController.text) ?? 0;
+    final newVal = (current + delta).clamp(0.0, 999999.0); // Prevent negative
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0); // Assuming integer qtys for convenience
+    validateSheet();
+  }
+
+  // --- Existing Methods ---
 
   void _onReferenceNoChanged() {
     final ref = customReferenceNoController.text;
@@ -310,6 +365,8 @@ class StockEntryFormController extends GetxController {
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
 
+    isSheetValid.value = false; // Reset valid state
+
     selectedSerial.value = null; // Reset serial selection
     currentItemNameKey = null;
 
@@ -348,6 +405,7 @@ class StockEntryFormController extends GetxController {
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
+      validateSheet(); // Re-evaluate sheet
     }
   }
 
@@ -373,6 +431,7 @@ class StockEntryFormController extends GetxController {
     } finally {
       if (isSource) isValidatingSourceRack.value = false;
       else isValidatingTargetRack.value = false;
+      validateSheet(); // Re-evaluate sheet
     }
   }
 
@@ -407,6 +466,8 @@ class StockEntryFormController extends GetxController {
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
     if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
 
+    validateSheet();
+
     Get.bottomSheet(
       const StockEntryItemFormSheet(),
       isScrollControlled: true,
@@ -437,7 +498,7 @@ class StockEntryFormController extends GetxController {
         toRack: bsTargetRackController.text.isNotEmpty ? bsTargetRackController.text : existing.toRack,
         sWarehouse: selectedFromWarehouse.value,
         tWarehouse: selectedToWarehouse.value,
-        customInvoiceSerialNumber: selectedSerial.value, // Keep serial
+        customInvoiceSerialNumber: selectedSerial.value,
       );
     } else {
       currentItems.add(StockEntryItem(
@@ -450,7 +511,7 @@ class StockEntryFormController extends GetxController {
         toRack: bsTargetRackController.text,
         sWarehouse: selectedFromWarehouse.value,
         tWarehouse: selectedToWarehouse.value,
-        customInvoiceSerialNumber: selectedSerial.value, // Save serial
+        customInvoiceSerialNumber: selectedSerial.value,
       ));
     }
 
