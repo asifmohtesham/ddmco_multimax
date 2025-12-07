@@ -18,6 +18,9 @@ abstract class AppRoutes {
   static const TODO_FORM = _Paths.TODO_FORM;
   static const ITEM = _Paths.ITEM;
   static const ITEM_FORM = _Paths.ITEM_FORM;
+  static const BOM = _Paths.BOM;
+  static const WORK_ORDER = _Paths.WORK_ORDER;
+  static const JOB_CARD = _Paths.JOB_CARD;
 }
 
 abstract class _Paths {
@@ -38,4 +41,7 @@ abstract class _Paths {
   static const TODO_FORM = '/todo/form';
   static const ITEM = '/item';
   static const ITEM_FORM = '/item/form';
+  static const BOM = '/bom';
+  static const WORK_ORDER = '/work-order';
+  static const JOB_CARD = '/job-card';
 }

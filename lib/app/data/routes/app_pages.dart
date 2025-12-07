@@ -1,3 +1,9 @@
+import 'package:ddmco_multimax/app/modules/bom/bom_binding.dart';
+import 'package:ddmco_multimax/app/modules/bom/bom_screen.dart';
+import 'package:ddmco_multimax/app/modules/job_card/job_card_binding.dart';
+import 'package:ddmco_multimax/app/modules/job_card/job_card_screen.dart';
+import 'package:ddmco_multimax/app/modules/work_order/work_order_binding.dart';
+import 'package:ddmco_multimax/app/modules/work_order/work_order_screen.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/auth/login_controller.dart';
 import 'package:ddmco_multimax/app/modules/auth/login_screen.dart';
@@ -147,6 +153,21 @@ class AppPages {
       page: () => const ItemFormScreen(),
       binding: ItemFormBinding(),
       transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.BOM,
+      page: () => const BomScreen(),
+      binding: BomBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.WORK_ORDER,
+      page: () => const WorkOrderScreen(),
+      binding: WorkOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.JOB_CARD,
+      page: () => const JobCardScreen(),
+      binding: JobCardBinding(),
     ),
   ];
 }
