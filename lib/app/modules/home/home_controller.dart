@@ -5,6 +5,9 @@ import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:ddmco_multimax/app/data/providers/todo_provider.dart';
+import 'package:ddmco_multimax/app/data/providers/item_provider.dart';
+import 'package:ddmco_multimax/app/data/models/item_model.dart';
+import 'package:ddmco_multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
@@ -13,6 +16,7 @@ class HomeController extends GetxController {
   final PackingSlipProvider _psProvider = Get.find<PackingSlipProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final ToDoProvider _todoProvider = Get.find<ToDoProvider>();
+  final ItemProvider _itemProvider = Get.find<ItemProvider>();
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -42,8 +46,6 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      // Use docstatus: 0 for drafts to get accurate counts from API
-      // Increased limit to 500 to ensure we catch most open items
       final results = await Future.wait([
         _dnProvider.getDeliveryNotes(limit: 500, filters: {'docstatus': 0}),
         _psProvider.getPackingSlips(limit: 500, filters: {'docstatus': 0}),
@@ -70,7 +72,7 @@ class HomeController extends GetxController {
   }
 
   void onBottomBarItemTapped(int index) {
-    if (index == 0) fetchDashboardData(); // Refresh on tap
+    if (index == 0) fetchDashboardData();
   }
 
   void changeDrawerPage(int index, String route) {
@@ -120,6 +122,102 @@ class HomeController extends GetxController {
         activeScreen.value = ActiveScreen.item;
         selectedDrawerIndex.value = 7;
         break;
+    }
+  }
+
+  void scanItem() {
+    // Simulator Dialog for demonstration purposes
+    // In a real app, this would trigger camera scanning
+    final textController = TextEditingController();
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Scan Item'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter barcode or QR code content:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: textController,
+              decoration: const InputDecoration(
+                hintText: 'e.g., 2100003000001 or QR_CODE',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Get.back();
+              _processScanResult(textController.text);
+            },
+            child: const Text('Scan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processScanResult(String code) async {
+    if (code.isEmpty) return;
+
+    // Heuristic: EAN is usually numeric and length >= 12 (EAN-13, EAN-8 + checksum etc)
+    // Prompt Requirement: "Use first 7 chars of EAN"
+    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
+
+    Get.dialog(
+      const Center(child: CircularProgressIndicator()),
+      barrierDismissible: false,
+    );
+
+    try {
+      if (isEan) {
+        // --- 1. EAN Detected: Fetch Item ---
+        final itemCode = code.length > 7 ? code.substring(0, 7) : code;
+        final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
+
+        Get.back(); // Close loading
+
+        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+          final item = Item.fromJson(response.data['data'][0]);
+          Get.bottomSheet(
+            ItemDetailSheet(item: item),
+            isScrollControlled: true,
+          );
+        } else {
+          Get.snackbar('Not Found', 'Item with code $itemCode not found.');
+        }
+
+      } else {
+        // --- 2. QR Detected: Fetch Stock Balance ---
+        // Assuming QR code contains the Item Code
+        final itemCode = code;
+
+        final response = await _itemProvider.getStockLevels(itemCode);
+
+        Get.back(); // Close loading
+
+        if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+          final List<dynamic> data = response.data['message']['result'];
+          final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
+
+          Get.bottomSheet(
+            RackBalanceSheet(itemCode: itemCode, stockData: stockList),
+            isScrollControlled: true,
+          );
+        } else {
+          Get.snackbar('Error', 'Could not fetch stock report for $itemCode');
+        }
+      }
+    } catch (e) {
+      if (Get.isDialogOpen == true) Get.back();
+      Get.snackbar('Error', 'Scan processing failed: $e');
     }
   }
 

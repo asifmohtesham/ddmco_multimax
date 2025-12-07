@@ -63,7 +63,6 @@ class HomeScreen extends GetView<HomeController> {
                   mainAxisSpacing: 16,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  // Fixed: Lowered aspect ratio to 1.0 (Square) to prevent vertical overflow
                   childAspectRatio: 1.0,
                   children: [
                     DashboardStatCard(
@@ -118,7 +117,8 @@ class HomeScreen extends GetView<HomeController> {
                     child: ActionCard(
                       icon: Icons.qr_code_scanner,
                       title: 'Scan Item',
-                      onTap: () => Get.snackbar('Coming Soon', 'Global scanner not implemented'),
+                      // Updated to use the new scan logic
+                      onTap: controller.scanItem,
                     ),
                   ),
                 ],
@@ -173,7 +173,6 @@ class DashboardStatCard extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              // 1. Watermark Icon (Large & Faded in corner)
               Positioned(
                 right: -12,
                 top: -12,
@@ -182,15 +181,11 @@ class DashboardStatCard extends StatelessWidget {
                   child: Icon(icon, size: 90, color: color),
                 ),
               ),
-
-              // 2. Content
               Padding(
-                // Fixed: Reduced padding from 16 to 12 to provide more internal space
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header: Icon Circle
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -200,8 +195,6 @@ class DashboardStatCard extends StatelessWidget {
                       child: Icon(icon, color: color, size: 20),
                     ),
                     const Spacer(),
-
-                    // Main Count with Animation
                     TweenAnimationBuilder<int>(
                       tween: IntTween(begin: 0, end: count),
                       duration: const Duration(seconds: 1),
@@ -219,8 +212,6 @@ class DashboardStatCard extends StatelessWidget {
                       },
                     ),
                     const SizedBox(height: 4),
-
-                    // Title
                     Text(
                       title,
                       style: TextStyle(
@@ -232,8 +223,6 @@ class DashboardStatCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-
-                    // Status Badge
                     Row(
                       children: [
                         Container(
