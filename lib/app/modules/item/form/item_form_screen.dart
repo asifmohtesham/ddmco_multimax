@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/item/form/item_form_controller.dart';
@@ -56,8 +55,23 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 Get.dialog(
                   Dialog(
                     backgroundColor: Colors.transparent,
-                    child: InteractiveViewer(
-                      child: Image.network('https://erp.multimax.cloud${item.image}'),
+                    insetPadding: EdgeInsets.zero,
+                    child: Stack(
+                      children: [
+                        InteractiveViewer(
+                          child: Center(
+                            child: Image.network('https://erp.multimax.cloud${item.image}'),
+                          ),
+                        ),
+                        Positioned(
+                          top: 40,
+                          right: 20,
+                          child: IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                            onPressed: () => Get.back(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -93,25 +107,25 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
           const SizedBox(height: 24),
           if (item.description != null || item.countryOfOrigin != null) ...[
-             const Text('Specifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-             const SizedBox(height: 12),
-             Card(
-               child: Padding(
-                 padding: const EdgeInsets.all(16.0),
-                 child: Column(
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                      if (item.countryOfOrigin != null) _buildDetailRow('Country of Origin', item.countryOfOrigin!),
-                      if (item.description != null) ...[
-                        const SizedBox(height: 8),
-                        const Text('Description', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text(item.description!),
-                      ],
-                   ],
-                 ),
-               ),
-             ),
+            const Text('Specifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item.countryOfOrigin != null) _buildDetailRow('Country of Origin', item.countryOfOrigin!),
+                    if (item.description != null) ...[
+                      const SizedBox(height: 8),
+                      const Text('Description', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text(item.description!),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -121,31 +135,185 @@ class ItemFormScreen extends GetView<ItemFormController> {
   Widget _buildAttachmentsTab() {
     return Obx(() {
       if (controller.attachments.isEmpty) {
-        return const Center(child: Text('No attachments found.'));
+        return const Center(child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.attachment_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('No attachments found.'),
+          ],
+        ));
       }
-      return ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.attachments.length,
-        separatorBuilder: (c, i) => const Divider(),
-        itemBuilder: (context, index) {
-          final file = controller.attachments[index];
-          final url = 'https://erp.multimax.cloud${file['file_url']}';
-          final isImage = url.toLowerCase().endsWith('.png') || url.toLowerCase().endsWith('.jpg') || url.toLowerCase().endsWith('.jpeg');
 
-          return ListTile(
-            leading: Icon(isImage ? Icons.image : Icons.insert_drive_file),
-            title: Text(file['file_name'] ?? 'Unknown File'),
-            onTap: () {
-              if (isImage) {
-                 Get.dialog(Dialog(child: Image.network(url)));
-              } else {
-                Get.snackbar('Info', 'File download not implemented in this demo');
-              }
-            },
-          );
-        },
+      final images = controller.attachments.where((f) => controller.isImage(f['file_url'])).toList();
+      final docs = controller.attachments.where((f) => !controller.isImage(f['file_url'])).toList();
+
+      return ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          if (images.isNotEmpty) ...[
+            Text('Images (${images.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.85,
+              ),
+              itemCount: images.length,
+              itemBuilder: (context, index) {
+                return _buildImageCard(context, images[index]);
+              },
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          if (docs.isNotEmpty) ...[
+            Text('Documents (${docs.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            ...docs.map((doc) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              child: ListTile(
+                leading: _getFileIcon(doc['file_url']),
+                title: Text(doc['file_name'] ?? 'File', overflow: TextOverflow.ellipsis),
+                subtitle: Text(doc['file_url'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.share, size: 20),
+                      onPressed: () => controller.shareFile(doc['file_url'], doc['file_name']),
+                    ),
+                  ],
+                ),
+                onTap: () => controller.copyLink(doc['file_url']),
+              ),
+            )),
+          ],
+        ],
       );
     });
+  }
+
+  Widget _buildImageCard(BuildContext context, Map<String, dynamic> file) {
+    final url = 'https://erp.multimax.cloud${file['file_url']}';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (c, e, s) => Container(
+              color: Colors.grey.shade100,
+              child: const Icon(Icons.broken_image, color: Colors.grey),
+            ),
+          ),
+          // Gradient Overlay
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                ),
+              ),
+              child: Text(
+                file['file_name'] ?? 'Image',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          // InkWell for Tap
+          Positioned.fill(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _showImageDialog(context, url, file),
+              ),
+            ),
+          ),
+          // Share Button
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.4),
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.share, color: Colors.white, size: 16),
+                onPressed: () => controller.shareFile(file['file_url'], file['file_name']),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImageDialog(BuildContext context, String url, Map<String, dynamic> file) {
+    Get.dialog(
+      Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              minScale: 0.1,
+              maxScale: 4.0,
+              child: Image.network(url),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Get.back(),
+              ),
+            ),
+            Positioned(
+              bottom: 40,
+              child: ElevatedButton.icon(
+                  onPressed: () {
+                    // Close dialog before sharing to avoid context issues
+                    Get.back();
+                    controller.shareFile(file['file_url'], file['file_name']);
+                  },
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share Image')
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _getFileIcon(String? url) {
+    if (url == null) return const Icon(Icons.insert_drive_file);
+    if (url.endsWith('.pdf')) return const Icon(Icons.picture_as_pdf, color: Colors.red);
+    if (url.endsWith('.csv') || url.endsWith('.xlsx')) return const Icon(Icons.table_chart, color: Colors.green);
+    return const Icon(Icons.insert_drive_file, color: Colors.blueGrey);
   }
 
   Widget _buildDashboardTab() {
