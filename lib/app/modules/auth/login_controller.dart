@@ -27,8 +27,6 @@ class LoginController extends GetxController {
     if (value == null || value.isEmpty) {
       return 'Please enter your email';
     }
-    // Frappe username login might not be an email, so we allow non-email strings too if needed.
-    // Keeping simple empty check is often safer for generic usernames.
     return null;
   }
 
@@ -57,67 +55,53 @@ class LoginController extends GetxController {
 
         if (response.statusCode == 200 && response.data?['message'] == "Logged In") {
 
-          // 1. Fetch full details (including Roles) before proceeding
           await _authController.fetchUserDetails();
 
           if (_authController.currentUser.value != null) {
-            // 2. Use the fully fetched user (with roles)
             _authController.processSuccessfulLogin(_authController.currentUser.value!);
           } else {
-            // 3. Fallback: Create basic user with empty roles to satisfy compiler and allow entry
-            // (RoleGuards will simply block restricted areas)
             final String fullName = response.data?['full_name'] ?? "User";
             final user = User(
               id: emailController.text.trim(),
               name: fullName,
               email: emailController.text.trim(),
-              roles: [], // Empty roles list
+              roles: [],
             );
             _authController.processSuccessfulLogin(user);
           }
 
         } else if (response.statusCode == 401 || response.statusCode == 403) {
-          Get.snackbar(
-            'Login Failed',
-            response.data?['message'] ?? 'Invalid credentials.',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-          );
+          Get.snackbar('Login Failed', response.data?['message'] ?? 'Invalid credentials.', backgroundColor: Colors.red, colorText: Colors.white);
         } else {
-          Get.snackbar(
-            'Login Error',
-            response.data?['message'] ?? 'An unknown error occurred.',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-          );
+          Get.snackbar('Login Error', response.data?['message'] ?? 'An unknown error occurred.', backgroundColor: Colors.red, colorText: Colors.white);
         }
-      } on DioException catch (e) {
-        String errorMessage = 'An error occurred. Please try again.';
-        if (e.response != null && e.response!.data != null && e.response!.data is Map) {
-          errorMessage = e.response!.data['message'] ?? 'Login failed.';
-        } else if (e.type == DioExceptionType.connectionTimeout) {
-          errorMessage = 'Connection timeout.';
-        }
-        Get.snackbar(
-          'Login Error',
-          errorMessage,
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
       } catch (e) {
-        Get.snackbar(
-          'Login Error',
-          'An unexpected error occurred.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        Get.snackbar('Login Error', 'An unexpected error occurred.', backgroundColor: Colors.red, colorText: Colors.white);
       } finally {
         isLoading.value = false;
       }
+    }
+  }
+
+  Future<void> resetPassword() async {
+    if (emailController.text.isEmpty) {
+      Get.snackbar('Error', 'Please enter your email address first', backgroundColor: Colors.red, colorText: Colors.white);
+      return;
+    }
+
+    isLoading.value = true;
+    try {
+      final response = await _apiProvider.resetPassword(emailController.text.trim());
+      if (response.statusCode == 200) {
+        Get.back(); // Close dialog if open
+        Get.snackbar('Success', 'Password reset instructions sent to your email', backgroundColor: Colors.green, colorText: Colors.white);
+      } else {
+        Get.snackbar('Error', 'Failed to send reset link', backgroundColor: Colors.red, colorText: Colors.white);
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Reset failed: $e', backgroundColor: Colors.red, colorText: Colors.white);
+    } finally {
+      isLoading.value = false;
     }
   }
 }

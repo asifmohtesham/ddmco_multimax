@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:get/get.dart' hide Response, FormData; // For Get.find or dependency injection
+import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart'; // To get a persistent storage path for cookies
+import 'package:path_provider/path_provider.dart';
 
 class ApiProvider {
   bool _dioInitialized = false;
@@ -102,7 +102,6 @@ class ApiProvider {
     try {
       return await _dio.post('/api/method/logout');
     } on DioException catch (e) {
-      // It's okay if this fails, e.g. if the session was already expired.
       printError(info: "Logout API call failed, but this might be okay: ${e.message}");
       rethrow;
     }
@@ -132,9 +131,38 @@ class ApiProvider {
     }
   }
 
-  Future<List<Cookie>> loadCookiesForBaseUrl() async {
+  // --- Password Management ---
+
+  Future<Response> resetPassword(String email) async {
     if (!_dioInitialized) await _initDio();
-    return _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    try {
+      return await _dio.post(
+        '/api/method/frappe.core.doctype.user.user.reset_password',
+        data: {'user': email},
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+    } on DioException catch (e) {
+      Get.log("ApiProvider error resetting password: ${e.message}", isError: true);
+      rethrow;
+    }
+  }
+
+  Future<Response> changePassword(String oldPassword, String newPassword) async {
+    if (!_dioInitialized) await _initDio();
+    try {
+      return await _dio.post(
+        '/api/method/frappe.core.doctype.user.user.update_password',
+        data: {
+          'old_password': oldPassword,
+          'new_password': newPassword,
+          'logout_all_sessions': 0
+        },
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+    } on DioException catch (e) {
+      Get.log("ApiProvider error changing password: ${e.message}", isError: true);
+      rethrow;
+    }
   }
 
   // --- Generic Document Fetching Methods ---
@@ -222,7 +250,7 @@ class ApiProvider {
 
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialized) await _initDio();
-    
+
     Map<String, dynamic> allFilters = {};
 
     if (reportName == 'Stock Balance') {
@@ -265,7 +293,7 @@ class ApiProvider {
     });
   }
 
-  // --- Specific Document Methods (kept for compatibility, but can be refactored to use generic methods) ---
+  // --- Specific Document Methods ---
 
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     return getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
@@ -299,11 +327,10 @@ class ApiProvider {
     return getDocument('Delivery Note', name);
   }
 
-   Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
+  Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) {
-      filters.remove('docstatus'); 
+      filters.remove('docstatus');
     }
-    
     return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status']);
   }
 

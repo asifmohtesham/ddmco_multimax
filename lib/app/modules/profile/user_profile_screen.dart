@@ -76,6 +76,8 @@ class UserProfileScreen extends GetView<UserProfileController> {
                       _buildInfoRow('Designation', user.designation ?? 'Not Set', icon: Icons.badge_outlined),
                       const Divider(height: 24),
                       _buildInfoRow('Department', user.department ?? 'Not Set', icon: Icons.business_outlined),
+                      const Divider(height: 24),
+                      _buildEditableRow(context, 'Mobile', user.mobileNo ?? 'Not Set', Icons.phone_android, () => _showUpdateMobileDialog(context, user.mobileNo)),
                     ],
                   ),
                 ),
@@ -84,8 +86,28 @@ class UserProfileScreen extends GetView<UserProfileController> {
               const SizedBox(height: 32),
 
               // Actions Section
-              _buildSectionTitle('Actions'),
+              _buildSectionTitle('Account Settings'),
               const SizedBox(height: 12),
+              Card(
+                elevation: 0,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.lock_outline, color: Colors.blueGrey),
+                      title: const Text('Change Password'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _showChangePasswordDialog(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -103,6 +125,94 @@ class UserProfileScreen extends GetView<UserProfileController> {
           ),
         );
       }),
+    );
+  }
+
+  void _showUpdateMobileDialog(BuildContext context, String? currentMobile) {
+    final mobileController = TextEditingController(text: currentMobile);
+    final formKey = GlobalKey<FormState>();
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Update Mobile Number'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: mobileController,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile Number',
+                  hintText: '+971... or +91...',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.phone,
+                validator: controller.validateMobileNumber,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+          Obx(() => ElevatedButton(
+            onPressed: controller.isUpdating.value ? null : () {
+              if (formKey.currentState!.validate()) {
+                controller.updateMobileNumber(mobileController.text);
+              }
+            },
+            child: controller.isUpdating.value
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Update'),
+          )),
+        ],
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    final oldPassController = TextEditingController();
+    final newPassController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Change Password'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: oldPassController,
+                decoration: const InputDecoration(labelText: 'Old Password', border: OutlineInputBorder()),
+                obscureText: true,
+                validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: newPassController,
+                decoration: const InputDecoration(labelText: 'New Password', border: OutlineInputBorder()),
+                obscureText: true,
+                validator: (val) => val == null || val.length < 6 ? 'Min 6 chars' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+          Obx(() => ElevatedButton(
+            onPressed: controller.isUpdating.value ? null : () {
+              if (formKey.currentState!.validate()) {
+                controller.changePassword(oldPassController.text, newPassController.text);
+              }
+            },
+            child: controller.isUpdating.value
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Change'),
+          )),
+        ],
+      ),
     );
   }
 
@@ -136,6 +246,29 @@ class UserProfileScreen extends GetView<UserProfileController> {
               Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditableRow(BuildContext context, String label, String value, IconData icon, VoidCallback onEdit) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.grey),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+          onPressed: onEdit,
         ),
       ],
     );

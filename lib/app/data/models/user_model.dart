@@ -4,7 +4,8 @@ class User {
   final String email;
   final String? designation;
   final String? department;
-  final List<String> roles; // Added roles list
+  final String? mobileNo; // Added mobile number
+  final List<String> roles;
 
   User({
     required this.id,
@@ -12,11 +13,11 @@ class User {
     required this.email,
     this.designation,
     this.department,
+    this.mobileNo,
     required this.roles,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
-    // Parse roles from Frappe child table format: [{'role': 'System Manager'}, ...]
     var rolesList = <String>[];
     if (json['roles'] != null) {
       rolesList = (json['roles'] as List)
@@ -30,6 +31,7 @@ class User {
       email: json['email'],
       designation: json['designation'],
       department: json['department'],
+      mobileNo: json['mobile_no'], // Parse mobile_no
       roles: rolesList,
     );
   }
@@ -41,6 +43,7 @@ class User {
       'email': email,
       'designation': designation,
       'department': department,
+      'mobile_no': mobileNo,
       'roles': roles.map((r) => {'role': r}).toList(),
     };
   }
@@ -51,6 +54,7 @@ class User {
     String? email,
     String? designation,
     String? department,
+    String? mobileNo,
     List<String>? roles,
   }) {
     return User(
@@ -59,10 +63,10 @@ class User {
       email: email ?? this.email,
       designation: designation ?? this.designation,
       department: department ?? this.department,
+      mobileNo: mobileNo ?? this.mobileNo,
       roles: roles ?? this.roles,
     );
   }
 
-  // Helper to check for specific role
   bool hasRole(String role) => roles.contains(role);
 }
