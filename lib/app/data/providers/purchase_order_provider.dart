@@ -9,23 +9,27 @@ class PurchaseOrderProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
   }) async {
-    final effectiveFilters = filters ?? {};
-    if (!effectiveFilters.containsKey('docstatus')) {
-      effectiveFilters['docstatus'] = 1;
-    }
-
     return _apiProvider.getDocumentList(
       'Purchase Order',
       limit: limit,
       limitStart: limitStart,
-      filters: effectiveFilters,
-      fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status'],
-      orderBy: 'modified desc',
+      filters: filters,
+      fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation'],
+      orderBy: orderBy,
     );
   }
 
   Future<Response> getPurchaseOrder(String name) async {
     return _apiProvider.getDocument('Purchase Order', name);
+  }
+
+  Future<Response> createPurchaseOrder(Map<String, dynamic> data) async {
+    return _apiProvider.createDocument('Purchase Order', data);
+  }
+
+  Future<Response> updatePurchaseOrder(String name, Map<String, dynamic> data) async {
+    return _apiProvider.updateDocument('Purchase Order', name, data);
   }
 }

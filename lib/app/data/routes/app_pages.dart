@@ -3,12 +3,16 @@ import 'package:ddmco_multimax/app/modules/auth/login_controller.dart';
 import 'package:ddmco_multimax/app/modules/auth/login_screen.dart';
 import 'package:ddmco_multimax/app/modules/home/home_binding.dart';
 import 'package:ddmco_multimax/app/modules/home/home_screen.dart';
-import 'package:ddmco_multimax/app/modules/profile/user_profile_binding.dart'; // Added
-import 'package:ddmco_multimax/app/modules/profile/user_profile_screen.dart'; // Added
+import 'package:ddmco_multimax/app/modules/profile/user_profile_binding.dart';
+import 'package:ddmco_multimax/app/modules/profile/user_profile_screen.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_binding.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_screen.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_binding.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
+import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_binding.dart'; // Added
+import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_screen.dart'; // Added
+import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart'; // Added
+import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart'; // Added
 import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_binding.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_screen.dart';
 import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_binding.dart';
@@ -51,12 +55,22 @@ class AppPages {
       page: () => const HomeScreen(),
       binding: HomeBinding(),
     ),
-    // Added Profile Page
     GetPage(
       name: AppRoutes.PROFILE,
       page: () => const UserProfileScreen(),
       binding: UserProfileBinding(),
       transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: AppRoutes.PURCHASE_ORDER,
+      page: () => const PurchaseOrderScreen(),
+      binding: PurchaseOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.PURCHASE_ORDER_FORM,
+      page: () => const PurchaseOrderFormScreen(),
+      binding: PurchaseOrderFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.PURCHASE_RECEIPT,
@@ -121,7 +135,6 @@ class AppPages {
     GetPage(
       name: AppRoutes.TODO_FORM,
       page: () => const ToDoFormScreen(),
-      // Add binding if ToDoFormController is created later
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

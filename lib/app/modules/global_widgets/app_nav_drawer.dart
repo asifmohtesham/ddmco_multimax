@@ -62,12 +62,28 @@ class AppNavDrawer extends StatelessWidget {
 
           RoleGuard(
             roles: const ['Stock Manager', 'Purchase User'],
-            child: Obx(() => ListTile(
-              leading: const Icon(Icons.receipt_outlined),
-              title: const Text('Purchase Receipt'),
-              selected: homeController.selectedDrawerIndex.value == 4,
-              onTap: homeController.goToPurchaseReceipt,
-            )),
+            child: ExpansionTile(
+              leading: const Icon(Icons.shopping_bag_outlined),
+              title: const Text('Buying'),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Purchase Order'),
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed(AppRoutes.PURCHASE_ORDER);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.receipt_outlined),
+                  title: const Text('Purchase Receipt'),
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed(AppRoutes.PURCHASE_RECEIPT);
+                  },
+                ),
+              ],
+            ),
           ),
 
           RoleGuard(
