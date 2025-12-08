@@ -27,4 +27,23 @@ class WorkOrderController extends GetxController {
       isLoading.value = false;
     }
   }
+
+  // --- KPIs ---
+
+  int get totalCount => workOrders.length;
+
+  // Status Counts
+  int get countDraft => workOrders.where((w) => w.status == 'Draft').length;
+  int get countConfirmed => workOrders.where((w) => w.status == 'Submitted' || w.status == 'Not Started').length;
+  int get countInProgress => workOrders.where((w) => w.status == 'In Process').length;
+  int get countCompleted => workOrders.where((w) => w.status == 'Completed').length;
+
+  // Production Metrics
+  double get totalPlannedQty => workOrders.fold(0.0, (sum, w) => sum + w.qty);
+  double get totalProducedQty => workOrders.fold(0.0, (sum, w) => sum + w.producedQty);
+
+  double get overallProgress {
+    if (totalPlannedQty == 0) return 0.0;
+    return (totalProducedQty / totalPlannedQty).clamp(0.0, 1.0);
+  }
 }
