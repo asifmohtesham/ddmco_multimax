@@ -1,3 +1,4 @@
+import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -15,19 +16,16 @@ class DeliveryNoteItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final isExpanded = controller.expandedItemCode.value == item.itemCode;
-      
-      // Check if this item was recently added/updated to highlight it
+
       final isRecentlyAdded = controller.recentlyAddedItemCode.value == item.itemCode &&
-          (controller.recentlyAddedSerial.value == (item.customInvoiceSerialNumber ?? '0') || 
-           controller.recentlyAddedSerial.value.isEmpty);
+          (controller.recentlyAddedSerial.value == (item.customInvoiceSerialNumber ?? '0') ||
+              controller.recentlyAddedSerial.value.isEmpty);
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
-        // margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
         decoration: BoxDecoration(
           color: isRecentlyAdded ? Colors.yellow.shade100 : Colors.white,
-          // borderRadius: BorderRadius.circular(4.0),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withValues(alpha: .2),
@@ -46,7 +44,11 @@ class DeliveryNoteItemCard extends StatelessWidget {
                   children: [
                     TextSpan(
                       text: item.itemCode,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                        fontFeatures: [FontFeature.slashedZero()], // Added
+                      ),
                     ),
                     TextSpan(
                       text: ': ${item.itemName ?? ''}',
@@ -55,7 +57,13 @@ class DeliveryNoteItemCard extends StatelessWidget {
                   ],
                 ),
               ),
-              subtitle: Text(item.batchNo ?? '', style: const TextStyle(fontFamily: 'monospace')),
+              subtitle: Text(
+                item.batchNo ?? '',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontFeatures: [FontFeature.slashedZero()], // Added
+                ),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -75,32 +83,32 @@ class DeliveryNoteItemCard extends StatelessWidget {
                 child: !isExpanded
                     ? const SizedBox.shrink()
                     : Padding(
-                        padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                        child: Column(
-                          children: [
-                            const Divider(height: 1),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildInfoColumn('Rack', item.rack?.toString() ?? 'N/A'),
-                                _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
-                                _buildInfoColumn('UoM', item.uom ?? 'N/A'),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => controller.confirmAndDeleteItem(item),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                  padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
+                  child: Column(
+                    children: [
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildInfoColumn('Rack', item.rack?.toString() ?? 'N/A'),
+                          _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
+                          _buildInfoColumn('UOM', item.uom ?? 'N/A'),
+                        ],
                       ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => controller.confirmAndDeleteItem(item),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -110,8 +118,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
   }
 
   Widget _buildInfoColumn(String title, String value) {
-    // Apply monospace to Rack code
-    final bool isMono = title == 'Rack'; 
+    final bool isMono = title == 'Rack';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -120,7 +127,8 @@ class DeliveryNoteItemCard extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: 16,
-            fontFamily: isMono ? 'monospace' : null, // Conditionally apply monospace
+            fontFamily: isMono ? 'monospace' : null,
+            fontFeatures: isMono ? [const FontFeature.slashedZero()] : null, // Added
           ),
         ),
       ],

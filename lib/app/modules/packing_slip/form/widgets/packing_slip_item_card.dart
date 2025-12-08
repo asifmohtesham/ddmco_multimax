@@ -1,3 +1,4 @@
+import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -14,7 +15,6 @@ class PackingSlipItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate progress based on Linked Delivery Note Qty
     final requiredQty = controller.getRequiredQty(item.dnDetail) ?? 0.0;
     final percent = (requiredQty > 0) ? (item.qty / requiredQty).clamp(0.0, 1.0) : 0.0;
     final isComplete = percent >= 1.0;
@@ -40,7 +40,6 @@ class PackingSlipItemCard extends StatelessWidget {
           onTap: () => controller.editItem(item),
           child: Column(
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(12.0),
                 decoration: BoxDecoration(
@@ -71,6 +70,7 @@ class PackingSlipItemCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                               color: Colors.black87,
+                              fontFeatures: [FontFeature.slashedZero()], // Added
                             ),
                           ),
                           if (item.itemName.isNotEmpty)
@@ -97,10 +97,11 @@ class PackingSlipItemCard extends StatelessWidget {
                         child: Text(
                           '#${item.customInvoiceSerialNumber}',
                           style: TextStyle(
-                              color: Colors.blue.shade900,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              fontFamily: 'monospace'
+                            color: Colors.blue.shade900,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            fontFeatures: [const FontFeature.slashedZero()], // Added
                           ),
                         ),
                       ),
@@ -108,13 +109,11 @@ class PackingSlipItemCard extends StatelessWidget {
                 ),
               ),
 
-              // Content
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Progress Section
                     if (requiredQty > 0) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -145,7 +144,6 @@ class PackingSlipItemCard extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
 
-                    // Metadata Badges
                     Wrap(
                       spacing: 8.0,
                       runSpacing: 8.0,
@@ -187,6 +185,8 @@ class PackingSlipItemCard extends StatelessWidget {
               fontSize: 11,
               color: color.shade900,
               fontWeight: FontWeight.w600,
+              fontFamily: 'monospace', // Added
+              fontFeatures: [const FontFeature.slashedZero()], // Added
             ),
           ),
         ],

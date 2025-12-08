@@ -1,3 +1,4 @@
+import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -21,7 +22,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
     final double poQty = item.purchaseOrderQty ?? 0.0;
     final double currentQty = item.qty;
 
-    // Calculate percentage: Received / Ordered
     final double percent = (poQty > 0) ? (currentQty / poQty).clamp(0.0, 1.0) : 0.0;
     final bool isCompleted = percent >= 1.0;
     final bool hasOverReceipt = currentQty > poQty && poQty > 0;
@@ -52,7 +52,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. Circular Progress Indicator
                   if (poQty > 0)
                     Padding(
                       padding: const EdgeInsets.only(right: 12.0),
@@ -98,7 +97,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                       ),
                     ),
 
-                  // 2. Item Details
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,6 +111,7 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
                                   fontFamily: 'monospace',
+                                  fontFeatures: [FontFeature.slashedZero()], // Added
                                 ),
                               ),
                             ),
@@ -134,7 +133,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                             ),
                           ),
 
-                        // Badges Row
                         Wrap(
                           spacing: 8,
                           runSpacing: 4,
@@ -145,7 +143,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                             if (item.rack != null && item.rack!.isNotEmpty)
                               _buildMiniBadge(Icons.shelves, item.rack!, Colors.blueGrey),
 
-                            // Current Received Qty Badge
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
@@ -165,8 +162,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                   ),
 
                   const SizedBox(width: 8),
-
-                  // 3. Edit Action
                   const Icon(Icons.chevron_right, color: Colors.grey),
                 ],
               ),
@@ -192,7 +187,13 @@ class PurchaseReceiptItemCard extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             text,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color.shade800),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color.shade800,
+              fontFamily: 'monospace',
+              fontFeatures: [const FontFeature.slashedZero()], // Added
+            ),
           ),
         ],
       ),

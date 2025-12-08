@@ -1,3 +1,4 @@
+import 'dart:ui'; // Added for FontFeature
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
@@ -63,6 +64,7 @@ class StockEntryItemCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                               color: Colors.black87,
+                              fontFeatures: [FontFeature.slashedZero()], // Added
                             ),
                           ),
                           if (item.itemName != null)
@@ -217,6 +219,7 @@ class StockEntryItemCard extends StatelessWidget {
               color: color.shade900,
               fontWeight: FontWeight.w600,
               fontFamily: isMono ? 'monospace' : null,
+              fontFeatures: isMono ? [const FontFeature.slashedZero()] : null, // Added
             ),
           ),
         ],
@@ -270,10 +273,11 @@ class StockEntryItemCard extends StatelessWidget {
               child: Text(
                 rack,
                 style: TextStyle(
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.bold,
-                    color: color.shade900
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold,
+                  color: color.shade900,
+                  fontFeatures: [const FontFeature.slashedZero()], // Added
                 ),
               ),
             ),

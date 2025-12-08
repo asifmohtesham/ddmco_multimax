@@ -1,3 +1,4 @@
+import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/bom/bom_controller.dart';
@@ -56,7 +57,15 @@ class BomScreen extends GetView<BomController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text(bom.name, style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.grey)),
+                Text(
+                    bom.name,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Colors.grey,
+                      fontFeatures: [FontFeature.slashedZero()], // Added
+                    )
+                ),
                 const SizedBox(height: 4),
                 Text(
                   'Cost: ${FormattingHelper.getCurrencySymbol(bom.currency)} ${NumberFormat("#,##0.00").format(bom.totalCost)}',
@@ -90,12 +99,10 @@ class BomScreen extends GetView<BomController> {
   Widget _buildDashboardView(BuildContext context) {
     final bool isEmpty = controller.boms.isEmpty;
 
-    // Use Real Data or Sample Data
     final int totalBoms = isEmpty ? 142 : controller.totalBoms;
     final double activeRate = isEmpty ? 0.88 : controller.activeRate;
     final double avgCost = isEmpty ? 1250.50 : controller.averageCost;
 
-    // For Top Cost list, we mock items if empty
     final List<dynamic> topList = isEmpty
         ? [
       {'itemName': 'Industrial Pump Assy', 'totalCost': 5400.0, 'code': 'BOM-001'},
@@ -109,7 +116,6 @@ class BomScreen extends GetView<BomController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Banner for Sample Data
           if (isEmpty)
             Container(
               margin: const EdgeInsets.only(bottom: 24),
@@ -148,7 +154,6 @@ class BomScreen extends GetView<BomController> {
           ),
           const SizedBox(height: 16),
 
-          // 5-Second Glance Cards
           Row(
             children: [
               Expanded(
@@ -172,7 +177,6 @@ class BomScreen extends GetView<BomController> {
           ),
           const SizedBox(height: 12),
 
-          // Activity Status Card
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -214,7 +218,6 @@ class BomScreen extends GetView<BomController> {
           const Text('Highest Value Components', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
 
-          // Top Cost List
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -225,7 +228,6 @@ class BomScreen extends GetView<BomController> {
               separatorBuilder: (c, i) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final item = topList[index];
-                // Handle dynamic (real BOM object) vs Map (mock data)
                 final String name = isEmpty ? item['itemName'] : item.itemName;
                 final String code = isEmpty ? item['code'] : item.name;
                 final double cost = isEmpty ? item['totalCost'] : item.totalCost;
@@ -236,7 +238,14 @@ class BomScreen extends GetView<BomController> {
                     child: Text('${index + 1}', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
                   ),
                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: Text(code, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+                  subtitle: Text(
+                      code,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontFeatures: [FontFeature.slashedZero()], // Added
+                      )
+                  ),
                   trailing: Text(
                     '\$${NumberFormat("#,##0.00").format(cost)}',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),

@@ -1,10 +1,10 @@
+import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/modules/item/item_controller.dart';
 import 'package:ddmco_multimax/app/data/models/item_model.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
-import 'package:intl/intl.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -61,7 +61,7 @@ class _ItemScreenState extends State<ItemScreen> {
             icon: Obx(() => Icon(
                 Icons.filter_list,
                 color: controller.activeFilters.isNotEmpty || !controller.showImagesOnly.value
-                    ? Colors.amber // Highlight if filters are active or default is changed
+                    ? Colors.amber
                     : Colors.white
             )),
             onPressed: () => _showFilterBottomSheet(context),
@@ -74,7 +74,6 @@ class _ItemScreenState extends State<ItemScreen> {
       ),
       body: Column(
         children: [
-          // Filter Status Indicator
           Obx(() {
             if (controller.activeFilters.isEmpty && controller.showImagesOnly.value) return const SizedBox.shrink();
 
@@ -164,7 +163,7 @@ class _ItemScreenState extends State<ItemScreen> {
       padding: const EdgeInsets.all(8.0),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.75, // Taller for grid items
+        childAspectRatio: 0.75,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -189,7 +188,6 @@ class ItemCard extends GetView<ItemController> {
   Widget build(BuildContext context) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
-      // In Grid View, we don't expand inline, just show basics
       final isGrid = controller.isGridView.value;
 
       return Card(
@@ -199,8 +197,6 @@ class ItemCard extends GetView<ItemController> {
         child: InkWell(
           onTap: () {
             if (isGrid) {
-              // In Grid, maybe just navigate directly or show dialog? 
-              // For consistency, let's keep expand logic if list, else navigate
               Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode});
             } else {
               controller.toggleExpand(item.name, item.itemCode);
@@ -209,12 +205,11 @@ class ItemCard extends GetView<ItemController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image
               Expanded(
                 flex: isGrid ? 3 : 0,
                 child: Container(
                   width: double.infinity,
-                  height: isGrid ? null : 200, // Fixed height in List view
+                  height: isGrid ? null : 200,
                   color: Colors.white,
                   child: item.image != null && item.image!.isNotEmpty
                       ? Image.network(
@@ -226,7 +221,6 @@ class ItemCard extends GetView<ItemController> {
                 ),
               ),
 
-              // Content
               Expanded(
                 flex: isGrid ? 2 : 0,
                 child: Padding(
@@ -242,7 +236,15 @@ class ItemCard extends GetView<ItemController> {
                           overflow: TextOverflow.ellipsis
                       ),
                       const SizedBox(height: 4),
-                      Text(item.itemCode, style: const TextStyle(fontFamily: 'monospace', color: Colors.grey, fontSize: 12)),
+                      Text(
+                          item.itemCode,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            color: Colors.grey,
+                            fontSize: 12,
+                            fontFeatures: [FontFeature.slashedZero()], // Added
+                          )
+                      ),
 
                       if (!isGrid && isExpanded) ...[
                         const Divider(height: 16),
@@ -289,7 +291,15 @@ class ItemCard extends GetView<ItemController> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(stock.rack!, style: const TextStyle(fontSize: 12)),
-                Text(NumberFormat.decimalPattern().format(stock.quantity), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
+                Text(
+                    stock.quantity.toStringAsFixed(2),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      fontFeatures: [FontFeature.slashedZero()], // Added
+                    )
+                ),
               ],
             );
           },
