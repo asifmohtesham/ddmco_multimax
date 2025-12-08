@@ -5,6 +5,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:ddmco_multimax/app/data/services/storage_service.dart';
 
 class ApiProvider {
   bool _dioInitialized = false;
@@ -12,14 +13,31 @@ class ApiProvider {
   late Dio _dio;
   late CookieJar _cookieJar;
 
-  final String _baseUrl = "https://erp.multimax.cloud";
+  // Default fallback if nothing is stored
+  String _baseUrl = "https://erp.multimax.cloud";
 
   ApiProvider() {
     _initDio();
   }
 
+  // Allow updating the URL dynamically (e.g. from Login Screen)
+  void setBaseUrl(String url) {
+    _baseUrl = url;
+    if (_dioInitialized) {
+      _dio.options.baseUrl = _baseUrl;
+    }
+  }
+
   Future<void> _initDio() async {
     if (_dioInitialized) return;
+
+    // Load persisted URL if available
+    if (Get.isRegistered<StorageService>()) {
+      final storedUrl = Get.find<StorageService>().getBaseUrl();
+      if (storedUrl != null && storedUrl.isNotEmpty) {
+        _baseUrl = storedUrl;
+      }
+    }
 
     final appSupportDir = await getApplicationSupportDirectory();
     final cookiePath = '${appSupportDir.path}/.cookies/';

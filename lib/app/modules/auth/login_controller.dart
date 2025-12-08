@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/models/user_model.dart';
 import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
 import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
+import 'package:ddmco_multimax/app/data/services/storage_service.dart';
 
 class LoginController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -13,13 +14,82 @@ class LoginController extends GetxController {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
+  // Server Config
+  final TextEditingController serverUrlController = TextEditingController();
+  var isCheckingConnection = false.obs;
+
   var isLoading = false.obs;
   var isPasswordHidden = true.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _loadSavedServerUrl();
+  }
+
+  void _loadSavedServerUrl() {
+    if (Get.isRegistered<StorageService>()) {
+      final savedUrl = Get.find<StorageService>().getBaseUrl();
+      if (savedUrl != null) {
+        serverUrlController.text = savedUrl;
+      } else {
+        serverUrlController.text = "https://erp.multimax.cloud"; // Default
+      }
+    }
+  }
+
+  Future<void> saveServerConfiguration() async {
+    String url = serverUrlController.text.trim();
+    if (url.isEmpty) {
+      Get.snackbar('Error', 'Server URL cannot be empty');
+      return;
+    }
+
+    // Normalize URL
+    if (!url.startsWith('http')) {
+      url = 'https://$url';
+    }
+    if (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+
+    isCheckingConnection.value = true;
+    try {
+      // Update Provider temporarily to test connection
+      _apiProvider.setBaseUrl(url);
+
+      // Simple health check (fetching a public endpoint or login check)
+      // Since we don't have a guaranteed public health endpoint, we try the login endpoint which should respond 200 or 401, but certainly reachable.
+      // Alternatively, we just save it. But let's try to get a response.
+      // A get request to /api/method/ping is standard in Frappe
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 5);
+      final response = await dio.get('$url/api/method/ping');
+
+      if (response.statusCode == 200) {
+        if (Get.isRegistered<StorageService>()) {
+          await Get.find<StorageService>().saveBaseUrl(url);
+        }
+        serverUrlController.text = url;
+        Get.back(); // Close bottom sheet
+        Get.snackbar('Connected', 'Successfully connected to $url', backgroundColor: Colors.green, colorText: Colors.white);
+      } else {
+        throw Exception('Invalid response from server');
+      }
+
+    } catch (e) {
+      Get.snackbar('Connection Failed', 'Could not connect to server: $url', backgroundColor: Colors.red, colorText: Colors.white);
+      // Revert to old url in provider if needed, or keep as is since the user wants to change it.
+    } finally {
+      isCheckingConnection.value = false;
+    }
+  }
 
   @override
   void onClose() {
     emailController.dispose();
     passwordController.dispose();
+    serverUrlController.dispose();
     super.onClose();
   }
 
