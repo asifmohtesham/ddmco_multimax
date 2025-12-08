@@ -4,6 +4,7 @@ import 'package:ddmco_multimax/app/modules/item/item_controller.dart';
 import 'package:ddmco_multimax/app/data/models/item_model.dart';
 import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
 import 'package:ddmco_multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
+import 'package:intl/intl.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -287,8 +288,8 @@ class ItemCard extends GetView<ItemController> {
             return Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(stock.warehouse, style: const TextStyle(fontSize: 12)),
-                Text(stock.quantity.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
+                Text(stock.rack!, style: const TextStyle(fontSize: 12)),
+                Text(NumberFormat.decimalPattern().format(stock.quantity), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 12)),
               ],
             );
           },
