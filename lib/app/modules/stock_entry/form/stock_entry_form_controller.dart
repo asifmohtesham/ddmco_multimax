@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart'; // Added for DioException
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -50,7 +51,6 @@ class StockEntryFormController extends GetxController {
 
   // --- Context State ---
   var isItemSheetOpen = false.obs;
-  var editingItemIndex = RxnInt(); // Track which item is being edited (null = new)
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -61,7 +61,7 @@ class StockEntryFormController extends GetxController {
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
-  var rackError = RxnString(); // Validation error message for racks
+  var rackError = RxnString();
 
   // UX State
   var isSheetValid = false.obs;
@@ -135,23 +135,19 @@ class StockEntryFormController extends GetxController {
   // --- Validation Logic ---
 
   void validateSheet() {
-    // Reset specific errors first
     rackError.value = null;
 
-    // 1. Qty Check
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
     }
 
-    // 2. Batch Check (if entered)
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
       isSheetValid.value = false;
       return;
     }
 
-    // 3. Rack Checks based on Type
     final type = selectedStockEntryType.value;
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -170,7 +166,6 @@ class StockEntryFormController extends GetxController {
       }
     }
 
-    // 4. Same Rack Check
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
@@ -187,8 +182,8 @@ class StockEntryFormController extends GetxController {
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0); // Prevent negative
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0); // Assuming integer qtys for convenience
+    final newVal = (current + delta).clamp(0.0, 999999.0);
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
     validateSheet();
   }
 
@@ -295,6 +290,20 @@ class StockEntryFormController extends GetxController {
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
+
+    // --- MAIN VALIDATIONS ---
+    if (selectedStockEntryType.value == 'Material Transfer') {
+      if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
+        GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
+        return;
+      }
+      if (selectedFromWarehouse.value == selectedToWarehouse.value) {
+        GlobalSnackbar.error(message: 'Source and Target Warehouses cannot be the same');
+        return;
+      }
+    }
+    // ----------------------
+
     isSaving.value = true;
 
     final Map<String, dynamic> data = {
@@ -306,11 +315,14 @@ class StockEntryFormController extends GetxController {
       'custom_reference_no': customReferenceNoController.text,
     };
 
-    // Sanitize items: Remove 'local_' IDs before sending to server
     final itemsJson = stockEntry.value?.items.map((i) {
       final json = i.toJson();
       if (json['name'] != null && json['name'].toString().startsWith('local_')) {
         json.remove('name'); // Treat as new item
+      }
+      // Avoid sending 0.0 basic rate to let ERPNext fetch valuation rate automatically
+      if (json['basic_rate'] == 0.0) {
+        json.remove('basic_rate');
       }
       return json;
     }).toList() ?? [];
@@ -339,6 +351,18 @@ class StockEntryFormController extends GetxController {
           GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
       }
+    } on DioException catch (e) {
+      // Improved Error Parsing for 417 Expectation Failed
+      String errorMessage = 'Save failed';
+      if (e.response != null && e.response!.data != null) {
+        if (e.response!.data is Map && e.response!.data['exception'] != null) {
+          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+          // Handle server messages array (often JSON string inside string)
+          errorMessage = 'Validation Error: Check form details';
+        }
+      }
+      GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
@@ -406,7 +430,7 @@ class StockEntryFormController extends GetxController {
     isTargetRackValid.value = false;
 
     isSheetValid.value = false;
-    rackError.value = null; // Clear any previous error
+    rackError.value = null;
 
     selectedSerial.value = null;
     currentItemNameKey.value = null; // New Item Mode
@@ -505,7 +529,7 @@ class StockEntryFormController extends GetxController {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
-    currentItemNameKey.value = item.name; // Stores 'local_...' or real name
+    currentItemNameKey.value = item.name;
 
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
@@ -536,7 +560,7 @@ class StockEntryFormController extends GetxController {
       isScrollControlled: true,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
-      currentItemNameKey.value = null; // Reset on close
+      currentItemNameKey.value = null;
       rackError.value = null;
     });
   }
