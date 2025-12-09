@@ -23,9 +23,14 @@ class ItemController extends GetxController {
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
-  // Item Groups for Filter
+  // Filter Data Sources
   var itemGroups = <String>[].obs;
+  var itemAttributes = <String>[].obs;
+  var currentAttributeValues = <String>[].obs; // Values for the selected attribute
+
   var isLoadingGroups = false.obs;
+  var isLoadingAttributes = false.obs;
+  var isLoadingAttributeValues = false.obs;
 
   // Default to true as per requirements: "display only those items that have an image set"
   var showImagesOnly = true.obs;
@@ -37,7 +42,8 @@ class ItemController extends GetxController {
   void onInit() {
     super.onInit();
     fetchItems();
-    fetchItemGroups(); // Load groups for filter
+    fetchItemGroups();
+    fetchItemAttributes(); // Load attributes on init
   }
 
   void toggleLayout() {
@@ -55,8 +61,6 @@ class ItemController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    // Reset image filter to default requirement? Or keep user preference?
-    // User probably expects "Clear" to reset to the default state defined by the screen logic.
     showImagesOnly.value = true;
     fetchItems(clear: true);
   }
@@ -85,6 +89,18 @@ class ItemController extends GetxController {
 
       if (showImagesOnly.value) {
         queryFilters['image'] = ['!=', ''];
+      }
+
+      // Handle Attribute filtering
+      // If we have a specific attribute value selected in UI, map it to description search
+      // as standard Item list API doesn't support deep child table filtering easily.
+      if (queryFilters.containsKey('_attribute_value')) {
+        final val = queryFilters['_attribute_value'];
+        // Remove internal key
+        queryFilters.remove('_attribute_value');
+        queryFilters.remove('_attribute_name');
+        // Apply to description (e.g., finding "Red", "Large")
+        queryFilters['description'] = ['like', '%$val%'];
       }
 
       final response = await _provider.getItems(
@@ -137,6 +153,42 @@ class ItemController extends GetxController {
     }
   }
 
+  Future<void> fetchItemAttributes() async {
+    isLoadingAttributes.value = true;
+    try {
+      final response = await _provider.getItemAttributes();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        itemAttributes.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      print('Error fetching item attributes: $e');
+    } finally {
+      isLoadingAttributes.value = false;
+    }
+  }
+
+  Future<void> fetchAttributeValues(String attributeName) async {
+    isLoadingAttributeValues.value = true;
+    currentAttributeValues.clear();
+    try {
+      final response = await _provider.getItemAttributeDetails(attributeName);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        if (data['item_attribute_values'] != null) {
+          currentAttributeValues.value = (data['item_attribute_values'] as List)
+              .map((e) => e['attribute_value'] as String)
+              .toList();
+        }
+      }
+    } catch (e) {
+      print('Error fetching attribute values: $e');
+    } finally {
+      isLoadingAttributeValues.value = false;
+    }
+  }
+
   List<WarehouseStock>? getStockFor(String itemCode) => _stockLevelsCache[itemCode];
 
   Future<void> fetchStockLevels(String itemCode) async {
@@ -149,7 +201,6 @@ class ItemController extends GetxController {
         final List<dynamic> data = response.data['message']['result'];
         _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
       } else {
-        // Silent fail or low priority snackbar
         print('Failed to fetch stock levels');
       }
     } catch (e) {

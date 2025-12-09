@@ -13,16 +13,25 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   final ItemController controller = Get.find();
 
   late TextEditingController itemGroupController;
-  late TextEditingController attributeController;
+  late TextEditingController attributeNameController;
+  late TextEditingController attributeValueController;
   late bool showImagesOnly;
 
   @override
   void initState() {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
-    // We use description to filter by attributes (e.g., Color, Size usually appear in description/name)
-    attributeController = TextEditingController(text: _extractFilterValue('description'));
+
+    // Extract stored attribute filters (using internal keys)
+    attributeNameController = TextEditingController(text: controller.activeFilters['_attribute_name']);
+    attributeValueController = TextEditingController(text: controller.activeFilters['_attribute_value']);
+
     showImagesOnly = controller.showImagesOnly.value;
+
+    // Pre-load values if an attribute was already selected
+    if (attributeNameController.text.isNotEmpty) {
+      controller.fetchAttributeValues(attributeNameController.text);
+    }
   }
 
   String _extractFilterValue(String key) {
@@ -37,13 +46,21 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void dispose() {
     itemGroupController.dispose();
-    attributeController.dispose();
+    attributeNameController.dispose();
+    attributeValueController.dispose();
     super.dispose();
   }
 
-  void _showItemGroupSelector(BuildContext context) {
+  // Generic Picker for Group, Attribute Name, and Attribute Value
+  void _showSelectionSheet({
+    required BuildContext context,
+    required String title,
+    required List<String> items,
+    required Function(String) onSelected,
+    bool isLoading = false,
+  }) {
     final searchController = TextEditingController();
-    final RxList<String> filteredGroups = RxList<String>(controller.itemGroups);
+    final RxList<String> filteredItems = RxList<String>(items);
 
     showModalBottomSheet(
       context: context,
@@ -61,22 +78,23 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
               child: Column(
                 children: [
                   Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-                  const Text("Select Item Group", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   TextField(
                     controller: searchController,
                     decoration: InputDecoration(
-                      hintText: "Search groups...",
+                      hintText: "Search...",
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
                       if (val.isEmpty) {
-                        filteredGroups.assignAll(controller.itemGroups);
+                        filteredItems.assignAll(items);
                       } else {
-                        filteredGroups.assignAll(controller.itemGroups.where(
-                                (group) => group.toLowerCase().contains(val.toLowerCase())
+                        filteredItems.assignAll(items.where(
+                                (item) => item.toLowerCase().contains(val.toLowerCase())
                         ).toList());
                       }
                     },
@@ -84,26 +102,22 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   const SizedBox(height: 12),
                   Expanded(
                     child: Obx(() {
-                      if (controller.isLoadingGroups.value) {
+                      if (isLoading) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      if (filteredGroups.isEmpty) {
-                        return const Center(child: Text("No item groups found"));
+                      if (filteredItems.isEmpty) {
+                        return const Center(child: Text("No items found"));
                       }
                       return ListView.separated(
                         controller: scrollController,
-                        itemCount: filteredGroups.length,
+                        itemCount: filteredItems.length,
                         separatorBuilder: (c, i) => const Divider(height: 1),
                         itemBuilder: (context, index) {
-                          final group = filteredGroups[index];
-                          final isSelected = group == itemGroupController.text;
+                          final item = filteredItems[index];
                           return ListTile(
-                            title: Text(group, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                            trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                            title: Text(item),
                             onTap: () {
-                              setState(() {
-                                itemGroupController.text = group;
-                              });
+                              onSelected(item);
                               Get.back();
                             },
                           );
@@ -162,30 +176,86 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 12),
-                  const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: attributeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Attribute / Keywords',
-                      hintText: 'e.g., Red, Large, Cotton',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.style),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
 
-                  // Updated Item Group Field
+                  // Item Group
                   TextFormField(
                     controller: itemGroupController,
                     readOnly: true,
-                    onTap: () => _showItemGroupSelector(context),
+                    onTap: () => _showSelectionSheet(
+                      context: context,
+                      title: "Select Item Group",
+                      items: controller.itemGroups,
+                      isLoading: controller.isLoadingGroups.value,
+                      onSelected: (val) => setState(() => itemGroupController.text = val),
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Item Group',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.category),
                       suffixIcon: Icon(Icons.arrow_drop_down),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // New Attribute Filters
+                  const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: attributeNameController,
+                          readOnly: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Attribute',
+                            hintText: 'Color, Size...',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                          onTap: () => _showSelectionSheet(
+                              context: context,
+                              title: "Select Attribute",
+                              items: controller.itemAttributes,
+                              isLoading: controller.isLoadingAttributes.value,
+                              onSelected: (val) {
+                                setState(() {
+                                  attributeNameController.text = val;
+                                  attributeValueController.clear(); // Reset value on attribute change
+                                });
+                                controller.fetchAttributeValues(val);
+                              }
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Obx(() {
+                          final enabled = attributeNameController.text.isNotEmpty;
+                          return TextFormField(
+                            controller: attributeValueController,
+                            readOnly: true,
+                            enabled: enabled,
+                            decoration: InputDecoration(
+                              labelText: 'Value',
+                              hintText: 'Red, Large...',
+                              border: const OutlineInputBorder(),
+                              suffixIcon: controller.isLoadingAttributeValues.value
+                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2)))
+                                  : const Icon(Icons.arrow_drop_down),
+                              fillColor: enabled ? null : Colors.grey.shade100,
+                              filled: !enabled,
+                            ),
+                            onTap: enabled ? () => _showSelectionSheet(
+                              context: context,
+                              title: "Select Value",
+                              items: controller.currentAttributeValues,
+                              onSelected: (val) => setState(() => attributeValueController.text = val),
+                            ) : null,
+                          );
+                        }),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -196,13 +266,16 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                 final filters = <String, dynamic>{};
 
                 if (itemGroupController.text.isNotEmpty) {
-                  // Direct equals often safer for Item Group if name is exact
-                  filters['item_group'] = itemGroupController.text;
+                  filters['item_group'] = ['like', '%${itemGroupController.text}%'];
                 }
 
-                if (attributeController.text.isNotEmpty) {
-                  // Searching in description covers most attribute cases in standard ERPNext
-                  filters['description'] = ['like', '%${attributeController.text}%'];
+                // Store both name and value for UI restoration, though controller might only use value for querying
+                if (attributeNameController.text.isNotEmpty) {
+                  filters['_attribute_name'] = attributeNameController.text;
+                }
+
+                if (attributeValueController.text.isNotEmpty) {
+                  filters['_attribute_value'] = attributeValueController.text;
                 }
 
                 controller.setImagesOnly(showImagesOnly);

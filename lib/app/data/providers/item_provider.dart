@@ -22,7 +22,7 @@ class ItemProvider {
     );
   }
 
-  // --- Added Method ---
+  // --- Item Groups ---
   Future<Response> getItemGroups() async {
     return _apiProvider.getDocumentList(
       'Item Group',
@@ -31,6 +31,21 @@ class ItemProvider {
       orderBy: 'name asc',
     );
   }
+
+  // --- New: Item Attributes ---
+  Future<Response> getItemAttributes() async {
+    return _apiProvider.getDocumentList(
+      'Item Attribute',
+      limit: 0,
+      fields: ['name'],
+      orderBy: 'name asc',
+    );
+  }
+
+  Future<Response> getItemAttributeDetails(String name) async {
+    return _apiProvider.getDocument('Item Attribute', name);
+  }
+  // ---------------------------
 
   Future<Response> getStockLevels(String itemCode) async {
     return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
@@ -47,7 +62,6 @@ class ItemProvider {
   }
 
   Future<Response> getBatchWiseHistory(String itemCode) async {
-    // Default to a wide range to get relevant history
     final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 90)));
     final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
