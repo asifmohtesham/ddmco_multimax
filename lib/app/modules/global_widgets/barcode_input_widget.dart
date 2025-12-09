@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ddmco_multimax/app/data/services/data_wedge_service.dart';
@@ -34,6 +36,8 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
 
     // Listen to DataWedge scans via the Service
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      log('Scanned Code: $code', name: 'EAN');
+
       if (code.isNotEmpty) {
         // "Send ENTER key" in DataWedge Intent Output adds a newline character (or \r).
         // We trim the string to ensure the text field doesn't show the newline

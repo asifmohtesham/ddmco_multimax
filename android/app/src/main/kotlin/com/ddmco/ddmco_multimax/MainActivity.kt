@@ -19,71 +19,108 @@ class MainActivity : FlutterActivity() {
     private val ZEBRA_INTENT_ACTION = "com.ddmco.multimax.SCAN"
     private val ZEBRA_DATA_KEY = "com.symbol.datawedge.data_string"
 
-    // Netum C750 / Generic Scan Service Constants
+    // Netum / Generic Scanner Constants
+    // Note: Confirm this action in your Netum Scanner's specific settings/manual
     private val NETUM_INTENT_ACTION = "com.android.server.scannerservice.broadcast"
     private val NETUM_DATA_KEY = "scannerdata"
+
+    // Hold the event sink to send data to Flutter whenever we get it
+    private var eventSink: EventChannel.EventSink? = null
+
+    // Define the receiver as a property of the class
+    private val scanReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            // 1. Log that we actually received SOMETHING
+            Log.d("ScanCheck", "Native BroadcastReceiver onReceive. Action: $action")
+
+            var scanData: String? = null
+
+            // 2. Extract Data based on Source
+            if (action == ZEBRA_INTENT_ACTION) {
+                scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
+                Log.d("ScanCheck", "Source: Zebra. Data: $scanData")
+            }
+            else if (action == NETUM_INTENT_ACTION) {
+                scanData = intent.getStringExtra(NETUM_DATA_KEY)
+                Log.d("ScanCheck", "Source: Netum. Data: $scanData")
+            }
+            // Fallback: Dump all extras to Logcat if scanData is null (helps debug unknown keys)
+            else {
+                val bundle = intent?.extras
+                if (bundle != null) {
+                    for (key in bundle.keySet()) {
+                        Log.d("ScanCheck", "Extra Key: $key, Value: ${bundle.get(key)}")
+                    }
+                }
+            }
+
+            // 3. Send to Flutter
+            if (!scanData.isNullOrEmpty()) {
+                val cleanData = scanData.trim()
+                Log.d("ScanCheck", "Sending to Flutter: $cleanData")
+                eventSink?.success(cleanData)
+            } else {
+                Log.w("ScanCheck", "Received Intent but data was empty or key mismatch.")
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Setup the EventChannel to just capture the sink
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
-                private var receiver: BroadcastReceiver? = null
-
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    receiver = object : BroadcastReceiver() {
-                        override fun onReceive(context: Context?, intent: Intent?) {
-                            val action = intent?.action
-                            // Log incoming action for debugging
-                            Log.d("ScanCheck", "Received Intent Action: $action")
-
-                            var scanData: String? = null
-
-                            // Handle Zebra
-                            if (action == ZEBRA_INTENT_ACTION) {
-                                scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
-                            }
-                            // Handle Netum / Generic
-                            else if (action == NETUM_INTENT_ACTION) {
-                                scanData = intent.getStringExtra(NETUM_DATA_KEY)
-                            }
-
-                            if (!scanData.isNullOrEmpty()) {
-                                val cleanData = scanData.trim() // Handle "Enter" key suffix
-                                Log.d("ScanCheck", "Decoded Data: $cleanData")
-                                events?.success(cleanData)
-                            } else {
-                                Log.d("ScanCheck", "Scan data was null or empty")
-                            }
-                        }
-                    }
-
-                    val filter = IntentFilter()
-                    filter.addAction(ZEBRA_INTENT_ACTION)
-                    filter.addAction(NETUM_INTENT_ACTION)
-                    filter.addCategory(Intent.CATEGORY_DEFAULT)
-
-                    // Critical for Android 13+ (API 33): Export the receiver to allow external apps to send to it
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-                    } else {
-                        context.registerReceiver(receiver, filter)
-                    }
+                    Log.d("ScanCheck", "Flutter EventChannel connected")
+                    eventSink = events
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    if (receiver != null) {
-                        context.unregisterReceiver(receiver)
-                        receiver = null
-                    }
+                    Log.d("ScanCheck", "Flutter EventChannel disconnected")
+                    eventSink = null
                 }
             }
         )
 
+        // Create the profile for Zebra devices
         createDataWedgeProfile()
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Register the receiver immediately when the app starts
+        val filter = IntentFilter()
+        filter.addAction(ZEBRA_INTENT_ACTION)
+        filter.addAction(NETUM_INTENT_ACTION)
+        filter.addCategory(Intent.CATEGORY_DEFAULT)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(scanReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(scanReceiver, filter)
+            }
+            Log.d("ScanCheck", "BroadcastReceiver Registered Successfully in onCreate")
+        } catch (e: Exception) {
+            Log.e("ScanCheck", "Failed to register receiver: ${e.message}")
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(scanReceiver)
+            Log.d("ScanCheck", "BroadcastReceiver Unregistered")
+        } catch (e: Exception) {
+            // Receiver might not have been registered
+        }
+        super.onDestroy()
+    }
+
     private fun createDataWedgeProfile() {
+        // ... (Keep existing DataWedge profile creation logic) ...
         val profileConfig = Bundle()
         profileConfig.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
         profileConfig.putString("PROFILE_ENABLED", "true")
