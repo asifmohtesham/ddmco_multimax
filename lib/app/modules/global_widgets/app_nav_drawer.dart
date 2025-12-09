@@ -28,7 +28,7 @@ class AppNavDrawer extends StatelessWidget {
                     image: const AssetImage('lib/assets/images/logo.jpg'),
                     fit: BoxFit.cover,
                     colorFilter: ColorFilter.mode(
-                        Theme.of(context).primaryColor.withOpacity(0.9), BlendMode.multiply),
+                        Theme.of(context).primaryColor.withValues(alpha:0.9), BlendMode.multiply),
                   ),
                 ),
                 accountName: Text(
@@ -44,7 +44,7 @@ class AppNavDrawer extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha:0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -283,7 +283,7 @@ class _DrawerItem extends StatelessWidget {
     final item = Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
-        color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+        color: isSelected ? Theme.of(context).primaryColor.withValues(alpha:0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListTile(

@@ -138,7 +138,7 @@ class HomeScreen extends GetView<HomeController> {
           ),
           const SizedBox(width: 12),
           CircleAvatar(
-            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+            backgroundColor: Theme.of(context).primaryColor.withValues(alpha:0.1),
             child: Text(
               userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
               style: TextStyle(color: Theme.of(context).primaryColor),
@@ -248,7 +248,7 @@ class SpeedometerKpiCard extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      shadowColor: textColor.withOpacity(0.2),
+      shadowColor: textColor.withValues(alpha:0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
