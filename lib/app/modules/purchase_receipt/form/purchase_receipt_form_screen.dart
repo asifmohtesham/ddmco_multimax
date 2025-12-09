@@ -7,6 +7,7 @@ import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -35,20 +36,24 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             Obx(() {
               if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
 
+              // Fix: Prevent skewed loader
               return controller.isSaving.value
                   ? const Center(
                   child: Padding(
-                      padding: EdgeInsets.all(16.0),
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
                       child: SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
                       )
                   )
               )
                   : IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: controller.savePurchaseReceipt,
+                // Enable save only if dirty AND draft
+                onPressed: (controller.isDirty.value && controller.purchaseReceipt.value?.docstatus == 0)
+                    ? controller.savePurchaseReceipt
+                    : null,
               );
             }),
           ],
@@ -84,75 +89,164 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
   Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(12.0),
       child: Form(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextFormField(
-              controller: controller.supplierController,
-              decoration: const InputDecoration(
-                labelText: 'Supplier',
-                border: OutlineInputBorder(),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              readOnly: true,
-            ),
-            const SizedBox(height: 16),
-            Row(
+            // 1. General Info
+            _buildSectionCard(
+              title: 'General Information',
               children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: controller.postingDateController,
-                    decoration: const InputDecoration(
-                      labelText: 'Posting Date',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.calendar_today),
-                    ),
+                if (receipt.name != 'New Purchase Receipt') ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Receipt ID', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            Text(receipt.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                      StatusPill(status: receipt.status),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: controller.postingTimeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Posting Time',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.access_time),
-                    ),
+                  const Divider(height: 24),
+                ],
+                TextFormField(
+                  controller: controller.supplierController,
+                  decoration: const InputDecoration(
+                    labelText: 'Supplier',
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: Icon(Icons.business),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
+                  readOnly: true,
                 ),
               ],
             ),
+
             const SizedBox(height: 16),
-            Obx(() => DropdownButtonFormField<String>(
-              value: controller.setWarehouse.value,
-              decoration: const InputDecoration(
-                labelText: 'Set Accepted Warehouse',
-                border: OutlineInputBorder(),
-              ),
-              items: controller.warehouses.map((wh) {
-                return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
-              }).toList(),
-              onChanged: (value) => controller.setWarehouse.value = value,
-            )),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  DefaultTabController.of(context).animateTo(1);
-                },
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('Next: Add Items'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+
+            // 2. Schedule
+            _buildSectionCard(
+              title: 'Schedule',
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: controller.postingDateController,
+                        decoration: const InputDecoration(
+                          labelText: 'Posting Date',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: controller.postingTimeController,
+                        decoration: const InputDecoration(
+                          labelText: 'Posting Time',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.access_time),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+              ],
             ),
+
+            const SizedBox(height: 16),
+
+            // 3. Settings
+            _buildSectionCard(
+              title: 'Settings',
+              children: [
+                Obx(() => DropdownButtonFormField<String>(
+                  value: controller.setWarehouse.value,
+                  decoration: const InputDecoration(
+                    labelText: 'Set Accepted Warehouse',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.store),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  ),
+                  items: controller.warehouses.map((wh) {
+                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
+                  }).toList(),
+                  onChanged: (value) => controller.setWarehouse.value = value,
+                )),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // 4. Summary
+            _buildSectionCard(
+                title: 'Summary',
+                children: [
+                  _buildSummaryRow('Total Quantity', '${receipt.totalQty.toStringAsFixed(2)} Items'),
+                  const Divider(),
+                  _buildSummaryRow(
+                      'Grand Total',
+                      '${FormattingHelper.getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
+                      isBold: true
+                  ),
+                ]
+            ),
+
+            const SizedBox(height: 80),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(
+              value,
+              style: TextStyle(
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                  fontSize: isBold ? 16 : 14,
+                  color: isBold ? Colors.black87 : Colors.black54
+              )
+          ),
+        ],
       ),
     );
   }
@@ -162,13 +256,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
     return Column(
       children: [
-        const Divider(),
         Expanded(
           child: items.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
-              : ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80.0),
+              : ListView.separated(
+            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
             itemCount: items.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 0),
             itemBuilder: (context, index) {
               final item = items[index];
               return PurchaseReceiptItemCard(item: item, index: index);
@@ -179,217 +273,9 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           onScan: (code) => controller.scanBarcode(code),
           isLoading: controller.isScanning.value,
           controller: controller.barcodeController,
-          activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM, // Add this
+          activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
         )),
       ],
-    );
-  }
-}
-
-class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController> {
-  final ScrollController? scrollController;
-
-  const PurchaseReceiptItemFormSheet({super.key, this.scrollController});
-
-  @override
-  Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>(); // Form Key for Validation
-
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-        ),
-        child: SingleChildScrollView(
-          controller: scrollController,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        controller.currentItemNameKey != null
-                            ? 'Edit Item - Row #${controller.currentItemIdx.value}'
-                            : 'Add Item',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Get.back(),
-                      icon: const Icon(Icons.close),
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (controller.currentOwner.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: Row(
-                      children: [
-                        Text(
-                          '${controller.currentOwner} • ${FormattingHelper.getRelativeTime(controller.currentCreation)}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildReadOnlyRow('Item Code', controller.currentItemCode),
-                      const Divider(height: 16),
-                      _buildReadOnlyRow('Item Name', controller.currentItemName),
-                      if (controller.currentVariantOf.isNotEmpty) ...[
-                        const Divider(height: 16),
-                        _buildReadOnlyRow('Variant of', controller.currentVariantOf),
-                      ]
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                Obx(() => TextFormField(
-                  controller: controller.bsBatchController,
-                  readOnly: controller.bsIsBatchReadOnly.value,
-                  autofocus: !controller.bsIsBatchReadOnly.value && controller.currentItemNameKey == null,
-                  decoration: InputDecoration(
-                    labelText: 'Batch No',
-                    border: const OutlineInputBorder(),
-                    filled: controller.bsIsBatchReadOnly.value,
-                    fillColor: controller.bsIsBatchReadOnly.value ? Colors.grey.shade100 : null,
-                    suffixIcon: isValidatingIcon(
-                      controller.isValidatingBatch.value,
-                      controller.bsIsBatchValid.value,
-                      isReadOnly: controller.bsIsBatchReadOnly.value,
-                      onCheck: () => controller.validateBatch(controller.bsBatchController.text),
-                    ),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  onFieldSubmitted: (value) => controller.validateBatch(value),
-                )),
-                const SizedBox(height: 16),
-
-                Obx(() {
-                  return TextFormField(
-                    controller: controller.bsRackController,
-                    focusNode: controller.targetRackFocusNode,
-                    decoration: InputDecoration(
-                      labelText: 'Target Rack',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: isValidatingIcon(
-                        controller.isValidatingTargetRack.value,
-                        controller.isTargetRackValid.value,
-                        onCheck: () => controller.validateRack(controller.bsRackController.text, false),
-                      ),
-                    ),
-                    onChanged: (_) => controller.checkForChanges(),
-                    onFieldSubmitted: (val) => controller.validateRack(val, false),
-                  );
-                }),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: controller.bsQtyController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Quantity',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    final qty = double.tryParse(value);
-                    if (qty == null) return 'Invalid number';
-                    if (controller.currentPurchaseOrderQty.value > 0 && qty > controller.currentPurchaseOrderQty.value) {
-                      return 'Cannot exceed PO Qty (${controller.currentPurchaseOrderQty.value})';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-
-                if (controller.currentModifiedBy.isNotEmpty) ...[
-                  const Divider(),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'Last modified by ${controller.currentModifiedBy} • ${FormattingHelper.getRelativeTime(controller.currentModified)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                SizedBox(
-                  width: double.infinity,
-                  child: Obx(() => ElevatedButton(
-                    // Enable if Adding New (always allowed if valid) OR (Editing AND Dirty)
-                    onPressed: (controller.currentItemNameKey == null || controller.isFormDirty.value) && controller.bsIsBatchValid.value
-                        ? () {
-                      if (formKey.currentState!.validate()) controller.addItem();
-                    }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    child: Text(controller.currentItemNameKey != null ? 'Update Item' : 'Add Item'),
-                  )),
-                ),
-                SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReadOnlyRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        ),
-        Expanded(
-          child: SelectableText(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ),
-      ],
-    );
-  }
-
-  Widget? isValidatingIcon(bool isLoading, bool isValid, {bool isReadOnly = false, VoidCallback? onCheck}) {
-    if (isLoading) {
-      return const Padding(
-        padding: EdgeInsets.all(12.0),
-        child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
-      );
-    }
-    if (isValid || isReadOnly) {
-      return const Icon(Icons.check_circle, color: Colors.green);
-    }
-    return IconButton(
-      icon: const Icon(Icons.check),
-      onPressed: onCheck,
     );
   }
 }

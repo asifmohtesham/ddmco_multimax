@@ -1,4 +1,4 @@
-import 'dart:ui'; // Added
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -43,128 +43,138 @@ class PurchaseReceiptItemCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12.0),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => controller.editItem(item),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (poQty > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularPercentIndicator(
-                            radius: 24.0,
-                            lineWidth: 4.0,
-                            percent: percent,
-                            center: isCompleted && !hasOverReceipt
-                                ? const Icon(Icons.check, size: 16, color: Colors.green)
-                                : Text(
-                              "${(percent * 100).toInt()}%",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
-                                color: hasOverReceipt ? Colors.orange : Colors.black87,
-                              ),
-                            ),
-                            progressColor: hasOverReceipt ? Colors.orange : Colors.green,
-                            backgroundColor: Colors.grey.shade100,
-                            circularStrokeCap: CircularStrokeCap.round,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "of ${NumberFormat.compact().format(poQty)}",
-                            style: const TextStyle(fontSize: 9, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12.0),
-                      child: CircleAvatar(
-                        radius: 24,
-                        backgroundColor: Colors.grey.shade100,
-                        child: Text(
-                          '#${index + 1}',
-                          style: const TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-
-                  Expanded(
+        child: InkWell(
+          onTap: () => controller.editItem(item),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Leading: Progress Indicator or Index
+                if (poQty > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.itemCode,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  fontFamily: 'monospace',
-                                  fontFeatures: [FontFeature.slashedZero()], // Added
-                                ),
-                              ),
-                            ),
-                            if (item.rate != null)
-                              Text(
-                                '\$${item.rate!.toStringAsFixed(2)}',
-                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: Colors.black87),
-                              ),
-                          ],
-                        ),
-                        if (item.itemName != null && item.itemName!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2.0, bottom: 6.0),
-                            child: Text(
-                              item.itemName!,
-                              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                        CircularPercentIndicator(
+                          radius: 22.0,
+                          lineWidth: 4.0,
+                          percent: percent,
+                          center: isCompleted && !hasOverReceipt
+                              ? const Icon(Icons.check, size: 16, color: Colors.green)
+                              : Text(
+                            "${(percent * 100).toInt()}%",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                              color: hasOverReceipt ? Colors.orange : Colors.black87,
                             ),
                           ),
-
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            if (item.batchNo != null && item.batchNo!.isNotEmpty)
-                              _buildMiniBadge(Icons.qr_code, item.batchNo!, Colors.purple),
-
-                            if (item.rack != null && item.rack!.isNotEmpty)
-                              _buildMiniBadge(Icons.shelves, item.rack!, Colors.blueGrey),
-
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: Colors.green.shade100),
-                              ),
-                              child: Text(
-                                'Qty: ${NumberFormat('#,##0.##').format(item.qty)}',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                              ),
-                            ),
-                          ],
+                          progressColor: hasOverReceipt ? Colors.orange : Colors.green,
+                          backgroundColor: Colors.grey.shade100,
+                          circularStrokeCap: CircularStrokeCap.round,
                         ),
                       ],
                     ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
+                    child: CircleAvatar(
+                      radius: 22,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Text(
+                        '${index + 1}',
+                        style: TextStyle(fontSize: 14, color: Colors.blue.shade900, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ),
 
-                  const SizedBox(width: 8),
-                  const Icon(Icons.chevron_right, color: Colors.grey),
-                ],
-              ),
+                // Middle: Item Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.itemCode,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          fontFamily: 'monospace',
+                          fontFeatures: [FontFeature.slashedZero()],
+                        ),
+                      ),
+                      if (item.itemName != null && item.itemName!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2.0, bottom: 6.0),
+                          child: Text(
+                            item.itemName!,
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+
+                      // Badges
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          if (item.batchNo != null && item.batchNo!.isNotEmpty)
+                            _buildBadge(Icons.qr_code, item.batchNo!, Colors.purple, isMono: true),
+
+                          if (item.rack != null && item.rack!.isNotEmpty)
+                            _buildBadge(Icons.shelves, item.rack!, Colors.blueGrey),
+
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.green.shade100),
+                            ),
+                            child: Text(
+                              'Qty: ${NumberFormat('#,##0.##').format(item.qty)}',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Trailing: Actions
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                      onPressed: () => controller.editItem(item),
+                      constraints: const BoxConstraints(),
+                      padding: const EdgeInsets.all(8),
+                    ),
+                    // Conditional Delete
+                    Obx(() {
+                      if ((controller.purchaseReceipt.value?.items.length ?? 0) > 1) {
+                        return IconButton(
+                          icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                          onPressed: () {
+                            if (item.name != null || item.name == null) { // Handle both
+                              // Use the unique logic from controller
+                              controller.deleteItem(item.name ?? '');
+                            }
+                          },
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -172,7 +182,7 @@ class PurchaseReceiptItemCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMiniBadge(IconData icon, String text, MaterialColor color) {
+  Widget _buildBadge(IconData icon, String text, MaterialColor color, {bool isMono = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -191,8 +201,8 @@ class PurchaseReceiptItemCard extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: color.shade800,
-              fontFamily: 'monospace',
-              fontFeatures: [const FontFeature.slashedZero()], // Added
+              fontFamily: isMono ? 'monospace' : null,
+              fontFeatures: isMono ? [const FontFeature.slashedZero()] : null,
             ),
           ),
         ],
