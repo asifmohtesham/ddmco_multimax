@@ -49,7 +49,6 @@ class StockEntryFormController extends GetxController {
 
   // --- Context State ---
   var isItemSheetOpen = false.obs;
-  var editingItemIndex = RxnInt(); // Track which item is being edited (null = new)
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -68,7 +67,8 @@ class StockEntryFormController extends GetxController {
   var currentItemName = '';
   var currentUom = '';
 
-  String? currentItemNameKey;
+  // The unique identifier for the item being edited (Real ID or local_... ID)
+  var currentItemNameKey = RxnString();
   var selectedSerial = RxnString();
 
   final List<String> stockEntryTypes = [
@@ -284,7 +284,15 @@ class StockEntryFormController extends GetxController {
       'custom_reference_no': customReferenceNoController.text,
     };
 
-    final itemsJson = stockEntry.value?.items.map((i) => i.toJson()).toList() ?? [];
+    // Sanitize items: Remove 'local_' IDs before sending to server
+    final itemsJson = stockEntry.value?.items.map((i) {
+      final json = i.toJson();
+      if (json['name'] != null && json['name'].toString().startsWith('local_')) {
+        json.remove('name'); // Treat as new item
+      }
+      return json;
+    }).toList() ?? [];
+
     data['items'] = itemsJson;
 
     try {
@@ -378,8 +386,7 @@ class StockEntryFormController extends GetxController {
     isSheetValid.value = false;
 
     selectedSerial.value = null;
-    currentItemNameKey = null;
-    editingItemIndex.value = null;
+    currentItemNameKey.value = null; // New Item Mode
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -470,12 +477,12 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  void editItem(StockEntryItem item, int index) {
+  // EDITED: Now accepts item directly to populate fields
+  void editItem(StockEntryItem item) {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
-    currentItemNameKey = item.name;
-    editingItemIndex.value = index;
+    currentItemNameKey.value = item.name; // Stores 'local_...' or real name
 
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
@@ -505,22 +512,21 @@ class StockEntryFormController extends GetxController {
       isScrollControlled: true,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
-      editingItemIndex.value = null;
+      currentItemNameKey.value = null; // Reset on close
     });
   }
 
-  void deleteItem(int index) {
-    if (index >= 0 && index < (stockEntry.value?.items.length ?? 0)) {
-      final currentItems = stockEntry.value!.items.toList();
-      currentItems.removeAt(index);
+  // EDITED: Deletes by Unique Name ID
+  void deleteItem(String uniqueName) {
+    final currentItems = stockEntry.value?.items.toList() ?? [];
+    currentItems.removeWhere((i) => i.name == uniqueName);
 
-      stockEntry.update((val) {
-        val?.items.assignAll(currentItems);
-      });
+    stockEntry.update((val) {
+      val?.items.assignAll(currentItems);
+    });
 
-      isDirty.value = true;
-      Get.snackbar('Success', 'Item removed');
-    }
+    isDirty.value = true;
+    Get.snackbar('Success', 'Item removed');
   }
 
   void addItem() {
@@ -529,7 +535,12 @@ class StockEntryFormController extends GetxController {
 
     final batch = bsBatchController.text;
 
+    // Determine the unique ID for this item
+    // If editing, keep existing ID. If new, generate a local one.
+    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+
     final newItem = StockEntryItem(
+      name: uniqueId,
       itemCode: currentItemCode,
       qty: qty,
       basicRate: 0.0,
@@ -546,26 +557,28 @@ class StockEntryFormController extends GetxController {
 
     final currentItems = stockEntry.value?.items.toList() ?? [];
 
-    if (editingItemIndex.value != null) {
-      // UPDATE EXISTING
-      if (editingItemIndex.value! < currentItems.length) {
-        final oldItem = currentItems[editingItemIndex.value!];
+    // Check if we are updating an existing item (by unique ID)
+    final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
 
-        currentItems[editingItemIndex.value!] = StockEntryItem(
-          itemCode: newItem.itemCode,
-          qty: newItem.qty,
-          basicRate: oldItem.basicRate,
-          itemGroup: oldItem.itemGroup,
-          customVariantOf: newItem.customVariantOf,
-          batchNo: newItem.batchNo,
-          itemName: newItem.itemName,
-          rack: newItem.rack,
-          toRack: newItem.toRack,
-          sWarehouse: newItem.sWarehouse,
-          tWarehouse: newItem.tWarehouse,
-          customInvoiceSerialNumber: newItem.customInvoiceSerialNumber,
-        );
-      }
+    if (existingIndex != -1) {
+      // UPDATE EXISTING
+      final oldItem = currentItems[existingIndex];
+
+      currentItems[existingIndex] = StockEntryItem(
+        name: oldItem.name, // Keep ID
+        itemCode: newItem.itemCode,
+        qty: newItem.qty,
+        basicRate: oldItem.basicRate,
+        itemGroup: oldItem.itemGroup,
+        customVariantOf: newItem.customVariantOf,
+        batchNo: newItem.batchNo,
+        itemName: newItem.itemName,
+        rack: newItem.rack,
+        toRack: newItem.toRack,
+        sWarehouse: newItem.sWarehouse,
+        tWarehouse: newItem.tWarehouse,
+        customInvoiceSerialNumber: newItem.customInvoiceSerialNumber,
+      );
     } else {
       // ADD NEW
       currentItems.add(newItem);
@@ -577,12 +590,12 @@ class StockEntryFormController extends GetxController {
 
     Get.back();
 
-    // Auto-Save if New Document
+    // Auto-Save if New Document (First Item)
     if (mode == 'new') {
       saveStockEntry();
     } else {
-      isDirty.value = true; // Mark dirty if editing existing doc
-      Get.snackbar('Success', editingItemIndex.value != null ? 'Item updated' : 'Item added');
+      isDirty.value = true;
+      Get.snackbar('Success', existingIndex != -1 ? 'Item updated' : 'Item added');
     }
   }
 }

@@ -19,7 +19,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         appBar: AppBar(
           title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
           actions: [
-            // Modified: Fixed skewed loader using SizedBox and Center
+            // Modified: Fixed skewed loader using SizedBox and Center for proper constraint
             Obx(() => controller.isSaving.value
                 ? const Center(
               child: Padding(
@@ -71,6 +71,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
+  // ... (Rest of the file remains same, keeping the fix for Dropdown overflow from previous turn)
+
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
@@ -89,7 +91,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. General Info Card
               _buildSectionCard(
                 title: 'General Information',
                 children: [
@@ -111,7 +112,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                     ),
                     const Divider(height: 24),
                   ],
-                  // FIX: Added isExpanded and TextOverflow to prevent overflow
+                  // FIX: Added isExpanded and TextOverflow to prevent overflow (re-applying from previous fix)
                   DropdownButtonFormField<String>(
                     value: controller.selectedStockEntryType.value,
                     isExpanded: true,
@@ -135,7 +136,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   ),
                 ],
               ),
-
+              // ... (rest of details view identical to previous)
               const SizedBox(height: 16),
 
               // 2. Warehouses Card
@@ -328,7 +329,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       onScan: (code) => controller.scanBarcode(code),
       isLoading: controller.isScanning.value,
       controller: controller.barcodeController,
-      // Fixed: Pass context so scanner knows it is on this form
       activeRoute: AppRoutes.STOCK_ENTRY_FORM,
     ));
   }

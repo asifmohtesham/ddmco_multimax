@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
   final ScrollController? scrollController;
@@ -21,6 +20,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           controller: scrollController,
           shrinkWrap: true,
           children: [
+            // ... (Header and inputs remain same) ...
+
             // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -30,7 +31,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        controller.currentItemNameKey != null ? 'Edit Item' : 'Add Item',
+                        // Check name key to decide title
+                        controller.currentItemNameKey.value != null ? 'Edit Item' : 'Add Item',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
@@ -229,8 +231,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                   elevation: isValid ? 2 : 0,
                 ),
                 child: Text(
-                  // Use editingItemIndex to check if we are in edit mode
-                  controller.editingItemIndex.value != null ? 'Update Item' : 'Add Item',
+                  // UPDATED: Check name key instead of index
+                  controller.currentItemNameKey.value != null ? 'Update Item' : 'Add Item',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               );

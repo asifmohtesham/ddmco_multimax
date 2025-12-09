@@ -31,7 +31,7 @@ class StockEntryItemCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12.0),
         child: InkWell(
-          onTap: () => controller.editItem(item, index),
+          onTap: () => controller.editItem(item), // Changed to pass item
           child: Column(
             children: [
               // Header Section: Code, Name, Actions
@@ -86,7 +86,7 @@ class StockEntryItemCard extends StatelessWidget {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-                          onPressed: () => controller.editItem(item, index),
+                          onPressed: () => controller.editItem(item),
                           tooltip: 'Edit Item',
                         ),
                         // Only show delete if there is more than 1 item
@@ -94,7 +94,11 @@ class StockEntryItemCard extends StatelessWidget {
                           if ((controller.stockEntry.value?.items.length ?? 0) > 1) {
                             return IconButton(
                               icon: const Icon(Icons.delete, size: 20, color: Colors.red),
-                              onPressed: () => controller.deleteItem(index),
+                              onPressed: () {
+                                if (item.name != null) {
+                                  controller.deleteItem(item.name!);
+                                }
+                              },
                               tooltip: 'Remove Item',
                             );
                           }
@@ -212,7 +216,6 @@ class StockEntryItemCard extends StatelessWidget {
     );
   }
 
-  // ... _buildBadge & _buildLocationBlock (Kept identical) ...
   Widget _buildBadge({required IconData icon, required String label, required MaterialColor color, bool isMono = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
