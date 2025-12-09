@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ItemFilterBottomSheet extends StatefulWidget {
   const ItemFilterBottomSheet({super.key});
@@ -13,25 +14,28 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   final ItemController controller = Get.find();
 
   late TextEditingController itemGroupController;
+
+  // Local state for adding a new attribute filter
   late TextEditingController attributeNameController;
   late TextEditingController attributeValueController;
+
   late bool showImagesOnly;
+
+  // Local list to manage filters before applying
+  final RxList<Map<String, String>> localAttributeFilters = <Map<String, String>>[].obs;
 
   @override
   void initState() {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
 
-    // Extract stored attribute filters (using internal keys)
-    attributeNameController = TextEditingController(text: controller.activeFilters['_attribute_name']);
-    attributeValueController = TextEditingController(text: controller.activeFilters['_attribute_value']);
+    // Initialize with existing filters from controller
+    localAttributeFilters.assignAll(controller.attributeFilters);
+
+    attributeNameController = TextEditingController();
+    attributeValueController = TextEditingController();
 
     showImagesOnly = controller.showImagesOnly.value;
-
-    // Pre-load values if an attribute was already selected
-    if (attributeNameController.text.isNotEmpty) {
-      controller.fetchAttributeValues(attributeNameController.text);
-    }
   }
 
   String _extractFilterValue(String key) {
@@ -51,7 +55,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     super.dispose();
   }
 
-  // Generic Picker for Group, Attribute Name, and Attribute Value
   void _showSelectionSheet({
     required BuildContext context,
     required String title,
@@ -65,16 +68,19 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
           minChildSize: 0.5,
           maxChildSize: 0.95,
-          expand: false,
           builder: (context, scrollController) {
-            return Padding(
+            return Container(
               padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
               child: Column(
                 children: [
                   Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
@@ -132,6 +138,24 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         );
       },
     );
+  }
+
+  void _addAttributeFilter() {
+    final name = attributeNameController.text;
+    final value = attributeValueController.text;
+
+    if (name.isNotEmpty && value.isNotEmpty) {
+      // Check for duplicates
+      final exists = localAttributeFilters.any((e) => e['name'] == name && e['value'] == value);
+      if (!exists) {
+        localAttributeFilters.add({'name': name, 'value': value});
+        // Clear inputs
+        attributeNameController.clear();
+        attributeValueController.clear();
+      } else {
+        GlobalSnackbar.info(message: 'Filter already added');
+      }
+    }
   }
 
   @override
@@ -195,67 +219,114 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       suffixIcon: Icon(Icons.arrow_drop_down),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
 
-                  // New Attribute Filters
+                  // Attribute Filters Section
                   const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: attributeNameController,
-                          readOnly: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Attribute',
-                            hintText: 'Color, Size...',
-                            border: OutlineInputBorder(),
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                          onTap: () => _showSelectionSheet(
-                              context: context,
-                              title: "Select Attribute",
-                              items: controller.itemAttributes,
-                              isLoading: controller.isLoadingAttributes.value,
-                              onSelected: (val) {
-                                setState(() {
-                                  attributeNameController.text = val;
-                                  attributeValueController.clear(); // Reset value on attribute change
-                                });
-                                controller.fetchAttributeValues(val);
-                              }
+                  // Active Filters Chips
+                  Obx(() {
+                    if (localAttributeFilters.isEmpty) return const SizedBox.shrink();
+                    return Wrap(
+                      spacing: 8.0,
+                      children: localAttributeFilters.map((filter) {
+                        return Chip(
+                          label: Text('${filter['name']}: ${filter['value']}'),
+                          deleteIcon: const Icon(Icons.close, size: 18),
+                          onDeleted: () {
+                            localAttributeFilters.remove(filter);
+                          },
+                          backgroundColor: Colors.blue.shade50,
+                          side: BorderSide(color: Colors.blue.shade200),
+                        );
+                      }).toList(),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+
+                  // Add New Attribute Filter Row
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: attributeNameController,
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Attribute',
+                                  hintText: 'Color...',
+                                  border: OutlineInputBorder(),
+                                  suffixIcon: Icon(Icons.arrow_drop_down),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                ),
+                                onTap: () => _showSelectionSheet(
+                                    context: context,
+                                    title: "Select Attribute",
+                                    items: controller.itemAttributes,
+                                    isLoading: controller.isLoadingAttributes.value,
+                                    onSelected: (val) {
+                                      setState(() {
+                                        attributeNameController.text = val;
+                                        attributeValueController.clear(); // Reset value
+                                      });
+                                      controller.fetchAttributeValues(val);
+                                    }
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Obx(() {
+                                final enabled = attributeNameController.text.isNotEmpty;
+                                return TextFormField(
+                                  controller: attributeValueController,
+                                  readOnly: true,
+                                  enabled: enabled,
+                                  decoration: InputDecoration(
+                                    labelText: 'Value',
+                                    hintText: 'Red...',
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: controller.isLoadingAttributeValues.value
+                                        ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2)))
+                                        : const Icon(Icons.arrow_drop_down),
+                                    fillColor: enabled ? Colors.white : Colors.grey.shade100,
+                                    filled: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                  ),
+                                  onTap: enabled ? () => _showSelectionSheet(
+                                    context: context,
+                                    title: "Select Value",
+                                    items: controller.currentAttributeValues,
+                                    onSelected: (val) => setState(() => attributeValueController.text = val),
+                                  ) : null,
+                                );
+                              }),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => setState(_addAttributeFilter),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Attribute Filter'),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Obx(() {
-                          final enabled = attributeNameController.text.isNotEmpty;
-                          return TextFormField(
-                            controller: attributeValueController,
-                            readOnly: true,
-                            enabled: enabled,
-                            decoration: InputDecoration(
-                              labelText: 'Value',
-                              hintText: 'Red, Large...',
-                              border: const OutlineInputBorder(),
-                              suffixIcon: controller.isLoadingAttributeValues.value
-                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2)))
-                                  : const Icon(Icons.arrow_drop_down),
-                              fillColor: enabled ? null : Colors.grey.shade100,
-                              filled: !enabled,
-                            ),
-                            onTap: enabled ? () => _showSelectionSheet(
-                              context: context,
-                              title: "Select Value",
-                              items: controller.currentAttributeValues,
-                              onSelected: (val) => setState(() => attributeValueController.text = val),
-                            ) : null,
-                          );
-                        }),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -269,17 +340,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   filters['item_group'] = ['like', '%${itemGroupController.text}%'];
                 }
 
-                // Store both name and value for UI restoration, though controller might only use value for querying
-                if (attributeNameController.text.isNotEmpty) {
-                  filters['_attribute_name'] = attributeNameController.text;
-                }
-
-                if (attributeValueController.text.isNotEmpty) {
-                  filters['_attribute_value'] = attributeValueController.text;
-                }
-
                 controller.setImagesOnly(showImagesOnly);
-                controller.applyFilters(filters);
+                // Pass both general filters and specific attribute filters
+                controller.applyFilters(filters, localAttributeFilters);
                 Get.back();
               },
               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),

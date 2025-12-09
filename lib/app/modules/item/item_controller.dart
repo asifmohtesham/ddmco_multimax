@@ -20,22 +20,23 @@ class ItemController extends GetxController {
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
+
+  // Stores list of active attribute filters: [{'name': 'Color', 'value': 'Red'}, ...]
+  var attributeFilters = <Map<String, String>>[].obs;
+
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
   // Filter Data Sources
   var itemGroups = <String>[].obs;
   var itemAttributes = <String>[].obs;
-  var currentAttributeValues = <String>[].obs; // Values for the selected attribute
+  var currentAttributeValues = <String>[].obs;
 
   var isLoadingGroups = false.obs;
   var isLoadingAttributes = false.obs;
   var isLoadingAttributeValues = false.obs;
 
-  // Default to true as per requirements: "display only those items that have an image set"
   var showImagesOnly = true.obs;
-
-  // Layout state
   var isGridView = false.obs;
 
   @override
@@ -43,7 +44,7 @@ class ItemController extends GetxController {
     super.onInit();
     fetchItems();
     fetchItemGroups();
-    fetchItemAttributes(); // Load attributes on init
+    fetchItemAttributes();
   }
 
   void toggleLayout() {
@@ -54,13 +55,15 @@ class ItemController extends GetxController {
     showImagesOnly.value = value;
   }
 
-  void applyFilters(Map<String, dynamic> filters) {
+  void applyFilters(Map<String, dynamic> filters, List<Map<String, String>> attributes) {
     activeFilters.value = filters;
+    attributeFilters.value = attributes;
     fetchItems(clear: true);
   }
 
   void clearFilters() {
     activeFilters.clear();
+    attributeFilters.clear();
     showImagesOnly.value = true;
     fetchItems(clear: true);
   }
@@ -84,24 +87,55 @@ class ItemController extends GetxController {
     }
 
     try {
-      // Construct effective filters
       final Map<String, dynamic> queryFilters = Map.from(activeFilters);
 
       if (showImagesOnly.value) {
         queryFilters['image'] = ['!=', ''];
       }
 
-      // Handle Attribute filtering
-      // If we have a specific attribute value selected in UI, map it to description search
-      // as standard Item list API doesn't support deep child table filtering easily.
-      if (queryFilters.containsKey('_attribute_value')) {
-        final val = queryFilters['_attribute_value'];
-        // Remove internal key
-        queryFilters.remove('_attribute_value');
-        queryFilters.remove('_attribute_name');
-        // Apply to description (e.g., finding "Red", "Large")
-        queryFilters['description'] = ['like', '%$val%'];
+      // --- Attribute Filtering Logic ---
+      // If attributes are selected, we must first find the Items that possess ALL those attributes.
+      // We do this by querying 'Item Variant Attribute' table.
+      if (attributeFilters.isNotEmpty) {
+        Set<String>? commonItemCodes;
+
+        for (var filter in attributeFilters) {
+          final response = await _provider.getItemVariantsByAttribute(
+              filter['name']!,
+              filter['value']!
+          );
+
+          if (response.statusCode == 200 && response.data['data'] != null) {
+            final List<String> fetchedCodes = (response.data['data'] as List)
+                .map((e) => e['parent'].toString())
+                .toList();
+
+            if (commonItemCodes == null) {
+              // First iteration: initialize the set
+              commonItemCodes = Set.from(fetchedCodes);
+            } else {
+              // Subsequent iterations: find intersection (AND logic)
+              commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
+            }
+
+            // Optimization: If intersection is empty, no items match all criteria
+            if (commonItemCodes.isEmpty) break;
+          }
+        }
+
+        // If we found candidates, add them to the main query filters
+        if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
+          queryFilters['name'] = ['in', commonItemCodes.toList()];
+        } else {
+          // Attributes were selected but no items matched -> Return empty result immediately
+          items.clear();
+          isLoading.value = false;
+          hasMore.value = false;
+          isFetchingMore.value = false;
+          return;
+        }
       }
+      // ---------------------------------
 
       final response = await _provider.getItems(
         limit: _limit,
@@ -109,6 +143,7 @@ class ItemController extends GetxController {
         filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newItems = data.map((json) => Item.fromJson(json)).toList();
@@ -136,6 +171,8 @@ class ItemController extends GetxController {
       }
     }
   }
+
+  // ... (Existing helper methods fetchItemGroups, fetchItemAttributes, fetchAttributeValues, etc.)
 
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
@@ -200,8 +237,6 @@ class ItemController extends GetxController {
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
         _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
-      } else {
-        print('Failed to fetch stock levels');
       }
     } catch (e) {
       print('Failed to fetch stock levels: $e');

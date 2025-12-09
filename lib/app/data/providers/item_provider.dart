@@ -32,7 +32,7 @@ class ItemProvider {
     );
   }
 
-  // --- New: Item Attributes ---
+  // --- Item Attributes ---
   Future<Response> getItemAttributes() async {
     return _apiProvider.getDocumentList(
       'Item Attribute',
@@ -44,6 +44,20 @@ class ItemProvider {
 
   Future<Response> getItemAttributeDetails(String name) async {
     return _apiProvider.getDocument('Item Attribute', name);
+  }
+
+  /// Fetches the list of Items (parents) that have a specific attribute value.
+  /// Used for filtering Items by multiple attributes.
+  Future<Response> getItemVariantsByAttribute(String attribute, String value) async {
+    return _apiProvider.getDocumentList(
+      'Item Variant Attribute',
+      filters: {
+        'attribute': attribute,
+        'attribute_value': value
+      },
+      fields: ['parent'], // 'parent' is the Item Code in this child table
+      limit: 0, // We need all matches to filter correctly
+    );
   }
   // ---------------------------
 
