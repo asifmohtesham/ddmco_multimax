@@ -5,7 +5,6 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-// Import the new widget file:
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
 
@@ -43,6 +42,9 @@ class StockEntryFormController extends GetxController {
   final bsBatchController = TextEditingController();
   final bsSourceRackController = TextEditingController();
   final bsTargetRackController = TextEditingController();
+
+  // --- Context State ---
+  var isItemSheetOpen = false.obs; // Tracks if the item sheet is active
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -200,7 +202,7 @@ class StockEntryFormController extends GetxController {
       name: 'New Stock Entry',
       purpose: initialType,
       totalAmount: 0.0,
-      customTotalQty: 0.0, // FIX: Initialize as double
+      customTotalQty: 0.0,
       postingDate: DateFormat('yyyy-MM-dd').format(now),
       postingTime: DateFormat('HH:mm:ss').format(now),
       modified: '',
@@ -316,6 +318,19 @@ class StockEntryFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
+
+    // --- CONTEXTUAL SCAN HANDLING ---
+    // If the item sheet is open, we assume the user is scanning a property (Batch, Rack)
+    // rather than trying to open a new item sheet.
+    if (isItemSheetOpen.value) {
+      // Logic: Update the Batch No field with the scanned value
+      bsBatchController.text = barcode;
+      // Trigger validation to check batch and move focus
+      validateBatch(barcode);
+      return;
+    }
+
+    // --- STANDARD FLOW (Sheet Closed) ---
     isScanning.value = true;
 
     String itemCode;
@@ -376,7 +391,9 @@ class StockEntryFormController extends GetxController {
       validateBatch(scannedBatch);
     }
 
-    // UPDATED: Using DraggableScrollableSheet for better keyboard handling
+    // Set flag that sheet is open
+    isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -387,7 +404,10 @@ class StockEntryFormController extends GetxController {
         },
       ),
       isScrollControlled: true,
-    );
+    ).whenComplete(() {
+      // Reset flag when sheet closes
+      isItemSheetOpen.value = false;
+    });
   }
 
   Future<void> validateBatch(String batch) async {
@@ -477,7 +497,9 @@ class StockEntryFormController extends GetxController {
 
     validateSheet();
 
-    // UPDATED: Using DraggableScrollableSheet
+    // Set flag
+    isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -488,7 +510,10 @@ class StockEntryFormController extends GetxController {
         },
       ),
       isScrollControlled: true,
-    );
+    ).whenComplete(() {
+      // Reset flag
+      isItemSheetOpen.value = false;
+    });
   }
 
   void addItem() {
