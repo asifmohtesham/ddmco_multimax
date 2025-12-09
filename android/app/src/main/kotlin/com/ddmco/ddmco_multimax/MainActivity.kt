@@ -11,13 +11,16 @@ import io.flutter.plugin.common.EventChannel
 
 class MainActivity : FlutterActivity() {
     private val EVENT_CHANNEL = "com.ddmco.multimax/scan"
-    private val PROFILE_NAME = "MultimaxProfile"
-    private val SCAN_INTENT_ACTION = "com.ddmco.multimax.SCAN"
 
-    // DataWedge Extras
-    private val DATAWEDGE_INTENT_KEY_SOURCE = "com.symbol.datawedge.source"
-    private val DATAWEDGE_INTENT_KEY_LABEL_TYPE = "com.symbol.datawedge.label_type"
-    private val DATAWEDGE_INTENT_KEY_DATA = "com.symbol.datawedge.data_string"
+    // Zebra DataWedge Constants
+    private val ZEBRA_PROFILE_NAME = "MultimaxProfile"
+    private val ZEBRA_INTENT_ACTION = "com.ddmco.multimax.SCAN"
+    private val ZEBRA_DATA_KEY = "com.symbol.datawedge.data_string"
+
+    // Netum C750 / Netum Scan Service Constants
+    // Documentation refers to this as the default broadcast for Netum Android integration
+    private val NETUM_INTENT_ACTION = "com.android.server.scannerservice.broadcast"
+    private val NETUM_DATA_KEY = "scannerdata"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -31,18 +34,27 @@ class MainActivity : FlutterActivity() {
                     receiver = object : BroadcastReceiver() {
                         override fun onReceive(context: Context?, intent: Intent?) {
                             val action = intent?.action
-                            if (action == SCAN_INTENT_ACTION) {
-                                // Extract the string data from the intent
-                                val scanData = intent.getStringExtra(DATAWEDGE_INTENT_KEY_DATA)
-                                if (scanData != null) {
-                                    // Send to Flutter
-                                    events?.success(scanData)
-                                }
+                            var scanData: String? = null
+
+                            // Handle Zebra Scan
+                            if (action == ZEBRA_INTENT_ACTION) {
+                                scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
+                            }
+                            // Handle Netum Scan
+                            else if (action == NETUM_INTENT_ACTION) {
+                                scanData = intent.getStringExtra(NETUM_DATA_KEY)
+                            }
+
+                            if (!scanData.isNullOrEmpty()) {
+                                // Send to Flutter
+                                events?.success(scanData)
                             }
                         }
                     }
+
                     val filter = IntentFilter()
-                    filter.addAction(SCAN_INTENT_ACTION)
+                    filter.addAction(ZEBRA_INTENT_ACTION)
+                    filter.addAction(NETUM_INTENT_ACTION)
                     filter.addCategory(Intent.CATEGORY_DEFAULT)
                     context.registerReceiver(receiver, filter)
                 }
@@ -56,16 +68,16 @@ class MainActivity : FlutterActivity() {
             }
         )
 
-        // 2. Configure DataWedge Profile
+        // 2. Configure DataWedge Profile (Zebra specific)
         createDataWedgeProfile()
     }
 
     private fun createDataWedgeProfile() {
         // Main Bundle to Create/Config Profile
         val profileConfig = Bundle()
-        profileConfig.putString("PROFILE_NAME", PROFILE_NAME)
+        profileConfig.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
         profileConfig.putString("PROFILE_ENABLED", "true")
-        profileConfig.putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST") // Create if doesn't exist
+        profileConfig.putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST")
 
         // APP_LIST: Associate this profile with our App Package
         val appConfig = Bundle()
@@ -73,22 +85,21 @@ class MainActivity : FlutterActivity() {
         appConfig.putStringArray("ACTIVITY_LIST", arrayOf("*"))
         profileConfig.putParcelableArray("APP_LIST", arrayOf(appConfig))
 
-        // PLUGIN_CONFIG: Configure Barcode Input (NG SimulScan/Standard Engine)
+        // PLUGIN_CONFIG: Configure Barcode Input
         val barcodeConfig = Bundle()
         barcodeConfig.putString("PLUGIN_NAME", "BARCODE")
         barcodeConfig.putString("RESET_CONFIG", "true")
 
         val barcodeProps = Bundle()
         barcodeProps.putString("scanner_selection", "auto")
-        barcodeProps.putString("decoder_ean13", "true") // EAN Support
-        barcodeProps.putString("decoder_ean8", "true")  // EAN Support
-        barcodeProps.putString("decoder_qrcode", "true") // QR Support for {ean-batch} pattern
+        barcodeProps.putString("decoder_ean13", "true")
+        barcodeProps.putString("decoder_ean8", "true")
+        // Enable QR Code for {ean-batch_no} pattern support
+        barcodeProps.putString("decoder_qrcode", "true")
 
-        // "NG SimulScan" usually refers to advanced document capture, but for
-        // standard QR/EAN inputs, enabling these decoders allows the engine
-        // to act as the input source effectively.
-        barcodeProps.putString("decoder_code128", "true")
-        barcodeProps.putString("decoder_code39", "true")
+        // Enabling NG SimulScan properties (if supported by device hardware)
+        // This improves capture for complex forms/multi-barcode scenarios
+        barcodeProps.putString("scanning_mode", "1") // 1 = Single, 2 = UDI, 3 = MultiBarcode
 
         barcodeConfig.putBundle("PARAM_LIST", barcodeProps)
         profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig)
@@ -99,11 +110,11 @@ class MainActivity : FlutterActivity() {
         setConfigIntent.putExtra("com.symbol.datawedge.api.SET_CONFIG", profileConfig)
         sendBroadcast(setConfigIntent)
 
-        // PLUGIN_CONFIG: Configure Intent Output (Send data to our BroadcastReceiver)
+        // PLUGIN_CONFIG: Configure Intent Output
         val intentConfig = Bundle()
-        intentConfig.putString("PROFILE_NAME", PROFILE_NAME)
+        intentConfig.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
         intentConfig.putString("PROFILE_ENABLED", "true")
-        intentConfig.putString("CONFIG_MODE", "UPDATE") // Update existing profile
+        intentConfig.putString("CONFIG_MODE", "UPDATE")
 
         val intentPluginConfig = Bundle()
         intentPluginConfig.putString("PLUGIN_NAME", "INTENT")
@@ -111,7 +122,7 @@ class MainActivity : FlutterActivity() {
 
         val intentProps = Bundle()
         intentProps.putString("intent_output_enabled", "true")
-        intentProps.putString("intent_action", SCAN_INTENT_ACTION)
+        intentProps.putString("intent_action", ZEBRA_INTENT_ACTION)
         intentProps.putString("intent_delivery", "2") // 2 = Broadcast
 
         intentPluginConfig.putBundle("PARAM_LIST", intentProps)
