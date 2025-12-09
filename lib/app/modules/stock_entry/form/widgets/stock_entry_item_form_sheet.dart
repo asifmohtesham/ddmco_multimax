@@ -20,9 +20,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           controller: scrollController,
           shrinkWrap: true,
           children: [
-            // ... (Header and inputs remain same) ...
-
-            // Header
+            // ... (Header code remains same) ...
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -31,7 +29,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        // Check name key to decide title
                         controller.currentItemNameKey.value != null ? 'Edit Item' : 'Add Item',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                       ),
@@ -58,7 +55,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             ),
             const Divider(height: 24),
 
-            // Batch Field with styling
+            // ... (Batch No field code remains same) ...
             Obx(() => _buildInputGroup(
               label: 'Batch No',
               color: Colors.purple,
@@ -68,10 +65,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                 autofocus: !controller.bsIsBatchReadOnly.value,
                 decoration: InputDecoration(
                   hintText: 'Enter or scan batch',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.purple),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: Colors.purple.shade200),
@@ -95,7 +89,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 16),
 
-            // Invoice Serial Dropdown (if available)
+            // ... (Invoice Serial field code remains same) ...
             Obx(() {
               if (controller.posUploadSerialOptions.isEmpty) return const SizedBox.shrink();
               return Padding(
@@ -124,63 +118,78 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
               final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
 
-              return Row(
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (showSource)
-                    Expanded(
-                      child: _buildInputGroup(
-                        label: 'Source Rack',
-                        color: Colors.orange,
-                        child: TextFormField(
-                          controller: controller.bsSourceRackController,
-                          focusNode: controller.sourceRackFocusNode,
-                          decoration: InputDecoration(
-                            hintText: 'Rack',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Colors.orange.shade200),
+                  Row(
+                    children: [
+                      if (showSource)
+                        Expanded(
+                          child: _buildInputGroup(
+                            label: 'Source Rack',
+                            color: Colors.orange,
+                            child: TextFormField(
+                              controller: controller.bsSourceRackController,
+                              focusNode: controller.sourceRackFocusNode,
+                              decoration: InputDecoration(
+                                hintText: 'Rack',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.orange.shade200),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Colors.orange, width: 2),
+                                ),
+                                suffixIcon: controller.isSourceRackValid.value
+                                    ? const Icon(Icons.check_circle, color: Colors.orange, size: 20)
+                                    : null,
+                              ),
+                              onFieldSubmitted: (val) => controller.validateRack(val, true),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: Colors.orange, width: 2),
-                            ),
-                            suffixIcon: controller.isSourceRackValid.value
-                                ? const Icon(Icons.check_circle, color: Colors.orange, size: 20)
-                                : null,
                           ),
-                          onFieldSubmitted: (val) => controller.validateRack(val, true),
                         ),
-                      ),
-                    ),
 
-                  if (showSource && showTarget) const SizedBox(width: 12),
+                      if (showSource && showTarget) const SizedBox(width: 12),
 
-                  if (showTarget)
-                    Expanded(
-                      child: _buildInputGroup(
-                        label: 'Target Rack',
-                        color: Colors.green,
-                        child: TextFormField(
-                          controller: controller.bsTargetRackController,
-                          focusNode: controller.targetRackFocusNode,
-                          decoration: InputDecoration(
-                            hintText: 'Rack',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Colors.green.shade200),
+                      if (showTarget)
+                        Expanded(
+                          child: _buildInputGroup(
+                            label: 'Target Rack',
+                            color: Colors.green,
+                            child: TextFormField(
+                              controller: controller.bsTargetRackController,
+                              focusNode: controller.targetRackFocusNode,
+                              decoration: InputDecoration(
+                                hintText: 'Rack',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.green.shade200),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Colors.green, width: 2),
+                                ),
+                                suffixIcon: controller.isTargetRackValid.value
+                                    ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+                                    : null,
+                              ),
+                              onFieldSubmitted: (val) => controller.validateRack(val, false),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: Colors.green, width: 2),
-                            ),
-                            suffixIcon: controller.isTargetRackValid.value
-                                ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-                                : null,
                           ),
-                          onFieldSubmitted: (val) => controller.validateRack(val, false),
                         ),
+                    ],
+                  ),
+
+                  // NEW: Display specific Rack Error if it exists
+                  if (controller.rackError.value != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, left: 4.0),
+                      child: Text(
+                        controller.rackError.value!,
+                        style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
                 ],
@@ -189,12 +198,13 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 16),
 
-            // Quantity Field with Controls
+            // ... (Quantity and Submit button code remains same) ...
             _buildInputGroup(
               label: 'Quantity',
               color: Colors.black87,
               child: Row(
                 children: [
+                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
                   Expanded(
                     child: TextFormField(
                       controller: controller.bsQtyController,
@@ -207,7 +217,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                       ),
                     ),
                   ),
-                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
                   _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
                 ],
               ),
@@ -215,9 +224,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 24),
 
-            // Submit Button
             Obx(() {
-              // Determine if button should be active
               final isValid = controller.isSheetValid.value;
               return ElevatedButton(
                 onPressed: isValid && controller.stockEntry.value?.docstatus == 0
@@ -231,7 +238,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                   elevation: isValid ? 2 : 0,
                 ),
                 child: Text(
-                  // UPDATED: Check name key instead of index
                   controller.currentItemNameKey.value != null ? 'Update Item' : 'Add Item',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
@@ -253,7 +259,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
         ),
         Container(
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.05), // Very light background tint
+            color: color.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(8),
           ),
           child: child,

@@ -7,7 +7,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
@@ -50,6 +50,7 @@ class StockEntryFormController extends GetxController {
 
   // --- Context State ---
   var isItemSheetOpen = false.obs;
+  var editingItemIndex = RxnInt(); // Track which item is being edited (null = new)
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -59,6 +60,8 @@ class StockEntryFormController extends GetxController {
   var isTargetRackValid = false.obs;
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
+
+  var rackError = RxnString(); // Validation error message for racks
 
   // UX State
   var isSheetValid = false.obs;
@@ -132,17 +135,23 @@ class StockEntryFormController extends GetxController {
   // --- Validation Logic ---
 
   void validateSheet() {
+    // Reset specific errors first
+    rackError.value = null;
+
+    // 1. Qty Check
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
     }
 
+    // 2. Batch Check (if entered)
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
       isSheetValid.value = false;
       return;
     }
 
+    // 3. Rack Checks based on Type
     final type = selectedStockEntryType.value;
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -161,13 +170,25 @@ class StockEntryFormController extends GetxController {
       }
     }
 
+    // 4. Same Rack Check
+    if (requiresSource && requiresTarget) {
+      final source = bsSourceRackController.text.trim();
+      final target = bsTargetRackController.text.trim();
+
+      if (source.isNotEmpty && target.isNotEmpty && source == target) {
+        isSheetValid.value = false;
+        rackError.value = "Source and Target Racks cannot be the same";
+        return;
+      }
+    }
+
     isSheetValid.value = true;
   }
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0);
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+    final newVal = (current + delta).clamp(0.0, 999999.0); // Prevent negative
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0); // Assuming integer qtys for convenience
     validateSheet();
   }
 
@@ -385,6 +406,7 @@ class StockEntryFormController extends GetxController {
     isTargetRackValid.value = false;
 
     isSheetValid.value = false;
+    rackError.value = null; // Clear any previous error
 
     selectedSerial.value = null;
     currentItemNameKey.value = null; // New Item Mode
@@ -408,6 +430,7 @@ class StockEntryFormController extends GetxController {
       isScrollControlled: true,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
+      rackError.value = null;
     });
   }
 
@@ -478,7 +501,6 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // EDITED: Now accepts item directly to populate fields
   void editItem(StockEntryItem item) {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
@@ -500,6 +522,7 @@ class StockEntryFormController extends GetxController {
     validateSheet();
 
     isItemSheetOpen.value = true;
+    rackError.value = null;
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -514,10 +537,10 @@ class StockEntryFormController extends GetxController {
     ).whenComplete(() {
       isItemSheetOpen.value = false;
       currentItemNameKey.value = null; // Reset on close
+      rackError.value = null;
     });
   }
 
-  // EDITED: Deletes by Unique Name ID
   void deleteItem(String uniqueName) {
     final currentItems = stockEntry.value?.items.toList() ?? [];
     currentItems.removeWhere((i) => i.name == uniqueName);
@@ -536,8 +559,6 @@ class StockEntryFormController extends GetxController {
 
     final batch = bsBatchController.text;
 
-    // Determine the unique ID for this item
-    // If editing, keep existing ID. If new, generate a local one.
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
     final newItem = StockEntryItem(
@@ -557,16 +578,12 @@ class StockEntryFormController extends GetxController {
     );
 
     final currentItems = stockEntry.value?.items.toList() ?? [];
-
-    // Check if we are updating an existing item (by unique ID)
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (existingIndex != -1) {
-      // UPDATE EXISTING
       final oldItem = currentItems[existingIndex];
-
       currentItems[existingIndex] = StockEntryItem(
-        name: oldItem.name, // Keep ID
+        name: oldItem.name,
         itemCode: newItem.itemCode,
         qty: newItem.qty,
         basicRate: oldItem.basicRate,
@@ -581,7 +598,6 @@ class StockEntryFormController extends GetxController {
         customInvoiceSerialNumber: newItem.customInvoiceSerialNumber,
       );
     } else {
-      // ADD NEW
       currentItems.add(newItem);
     }
 
@@ -591,7 +607,6 @@ class StockEntryFormController extends GetxController {
 
     Get.back();
 
-    // Auto-Save if New Document (First Item)
     if (mode == 'new') {
       saveStockEntry();
     } else {
