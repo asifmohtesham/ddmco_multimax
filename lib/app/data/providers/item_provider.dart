@@ -32,6 +32,17 @@ class ItemProvider {
     );
   }
 
+  // --- Template Items (Variant Of) ---
+  Future<Response> getTemplateItems() async {
+    return _apiProvider.getDocumentList(
+      'Item',
+      limit: 0,
+      filters: {'has_variants': 1},
+      fields: ['name'],
+      orderBy: 'name asc',
+    );
+  }
+
   // --- Item Attributes ---
   Future<Response> getItemAttributes() async {
     return _apiProvider.getDocumentList(
@@ -55,7 +66,6 @@ class ItemProvider {
         'attribute_value': value
       },
       fields: ['parent'], // 'parent' is the Item Code in this child table
-      // FIX: Increased limit to ensure we get ALL matching items for correct filtering
       limit: 5000,
     );
   }

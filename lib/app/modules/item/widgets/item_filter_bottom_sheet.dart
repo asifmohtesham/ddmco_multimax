@@ -14,6 +14,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   final ItemController controller = Get.find();
 
   late TextEditingController itemGroupController;
+  late TextEditingController variantOfController; // Added
 
   // Local state for adding a new attribute filter
   late TextEditingController attributeNameController;
@@ -28,9 +29,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   void initState() {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
+    variantOfController = TextEditingController(text: _extractFilterValue('variant_of')); // Init
 
-    // FIX: Properly copy existing filters from controller to local state
-    // We iterate to create new Map instances to break references
+    // Copy existing attribute filters
     localAttributeFilters.assignAll(
         controller.attributeFilters.map((e) => Map<String, String>.from(e)).toList()
     );
@@ -46,6 +47,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     if (val is List && val.isNotEmpty && val[0] == 'like') {
       return val[1].toString().replaceAll('%', '');
     }
+    // Handle 'equals' which might be just the value or [=, val]
+    if (val is List && val.isNotEmpty && val[0] == '=') {
+      return val[1].toString();
+    }
     if (val is String) return val;
     return '';
   }
@@ -53,6 +58,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void dispose() {
     itemGroupController.dispose();
+    variantOfController.dispose(); // Dispose
     attributeNameController.dispose();
     attributeValueController.dispose();
     super.dispose();
@@ -220,6 +226,27 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       suffixIcon: Icon(Icons.arrow_drop_down),
                     ),
                   ),
+                  const SizedBox(height: 16),
+
+                  // Variant Of (Template) - NEW
+                  TextFormField(
+                    controller: variantOfController,
+                    readOnly: true,
+                    onTap: () => _showSelectionSheet(
+                      context: context,
+                      title: "Select Template Item",
+                      items: controller.templateItems,
+                      isLoading: controller.isLoadingTemplates.value,
+                      onSelected: (val) => setState(() => variantOfController.text = val),
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Variant Of (Template)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.copy),
+                      suffixIcon: Icon(Icons.arrow_drop_down),
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
 
                   const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -340,8 +367,11 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   filters['item_group'] = ['like', '%${itemGroupController.text}%'];
                 }
 
+                if (variantOfController.text.isNotEmpty) {
+                  filters['variant_of'] = variantOfController.text;
+                }
+
                 controller.setImagesOnly(showImagesOnly);
-                // FIX: Pass a copy to avoid reference issues
                 controller.applyFilters(filters, localAttributeFilters.toList());
                 Get.back();
               },

@@ -29,10 +29,12 @@ class ItemController extends GetxController {
 
   // Filter Data Sources
   var itemGroups = <String>[].obs;
+  var templateItems = <String>[].obs; // For 'Variant Of' filter
   var itemAttributes = <String>[].obs;
   var currentAttributeValues = <String>[].obs;
 
   var isLoadingGroups = false.obs;
+  var isLoadingTemplates = false.obs;
   var isLoadingAttributes = false.obs;
   var isLoadingAttributeValues = false.obs;
 
@@ -44,6 +46,7 @@ class ItemController extends GetxController {
     super.onInit();
     fetchItems();
     fetchItemGroups();
+    fetchTemplateItems(); // Fetch templates
     fetchItemAttributes();
   }
 
@@ -133,6 +136,9 @@ class ItemController extends GetxController {
         // Apply result to main query if we successfully fetched Item Codes
         if (!permissionErrorOccurred) {
           if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
+            // If queryFilters['name'] already exists (e.g. from searching), we need to intersect it?
+            // For simplicity, we just use the attribute results or intersect if supported.
+            // ERPNext 'in' operator takes a list.
             queryFilters['name'] = ['in', commonItemCodes.toList()];
           } else {
             // Attributes were checked but no intersection found
@@ -186,7 +192,6 @@ class ItemController extends GetxController {
     }
   }
 
-  // ... (Rest of the controller methods remain unchanged) ...
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {
@@ -198,6 +203,20 @@ class ItemController extends GetxController {
       print('Error fetching item groups: $e');
     } finally {
       isLoadingGroups.value = false;
+    }
+  }
+
+  Future<void> fetchTemplateItems() async {
+    isLoadingTemplates.value = true;
+    try {
+      final response = await _provider.getTemplateItems();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        templateItems.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+      }
+    } catch (e) {
+      print('Error fetching template items: $e');
+    } finally {
+      isLoadingTemplates.value = false;
     }
   }
 
