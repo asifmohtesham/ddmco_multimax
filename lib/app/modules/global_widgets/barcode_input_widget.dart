@@ -25,6 +25,7 @@ class BarcodeInputWidget extends StatefulWidget {
 class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
   late TextEditingController _textController;
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+  Worker? _scanWorker;
 
   @override
   void initState() {
@@ -32,14 +33,29 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     _textController = widget.controller ?? TextEditingController();
 
     // Listen to DataWedge scans
-    ever(_dataWedgeService.scannedCode, (String code) {
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
+        // "Send ENTER key" in DataWedge Intent Output adds a newline character.
+        // We trim the string to ensure regex matches and clean display.
+        final cleanCode = code.trim();
+
         // Update visual controller
-        _textController.text = code;
-        // Trigger callback
-        widget.onScan(code);
+        _textController.text = cleanCode;
+
+        // Trigger callback (Same behavior as onPressed)
+        widget.onScan(cleanCode);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _scanWorker?.dispose(); // Prevent memory leaks from the ever listener
+    // Only dispose _textController if it was created locally
+    if (widget.controller == null) {
+      _textController.dispose();
+    }
+    super.dispose();
   }
 
   @override
@@ -59,7 +75,6 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       child: SafeArea(
         child: TextFormField(
           controller: _textController,
-          // autofocus: true, // Optional: might conflict with hardware keyboard logic on some devices
           readOnly: widget.isLoading,
           decoration: InputDecoration(
             labelText: widget.isLoading
@@ -82,16 +97,16 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 : IconButton(
               icon: const Icon(Icons.send),
               onPressed: () {
-                if (_textController.text.isNotEmpty) {
-                  widget.onScan(_textController.text);
+                if (_textController.text.trim().isNotEmpty) {
+                  widget.onScan(_textController.text.trim());
                 }
               },
             )
             ),
           ),
           onFieldSubmitted: (value) {
-            if (value.isNotEmpty && !widget.isLoading) {
-              widget.onScan(value);
+            if (value.trim().isNotEmpty && !widget.isLoading) {
+              widget.onScan(value.trim());
             }
           },
         ),
