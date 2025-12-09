@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
-import 'package:collection/collection.dart'; // Required for groupBy
+import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -32,14 +32,13 @@ class StockEntryFormController extends GetxController {
 
   // --- POS Grouping State ---
   var posUpload = Rx<PosUpload?>(null);
-  var expandedInvoice = ''.obs; // Tracks which invoice group is expanded
+  var expandedInvoice = ''.obs;
 
   // Form Fields
   var selectedFromWarehouse = RxnString();
   var selectedToWarehouse = RxnString();
   final customReferenceNoController = TextEditingController();
 
-  // Changed to observable list for dynamic fetching
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
   var selectedStockEntryType = 'Material Transfer'.obs;
@@ -63,6 +62,7 @@ class StockEntryFormController extends GetxController {
 
   // --- Context State ---
   var isItemSheetOpen = false.obs;
+  var bsMaxQty = 0.0.obs; // Tracks available stock limit
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -92,9 +92,8 @@ class StockEntryFormController extends GetxController {
   void onInit() {
     super.onInit();
     fetchWarehouses();
-    fetchStockEntryTypes(); // Fetch dynamic types
+    fetchStockEntryTypes();
 
-    // Dirty Check Listeners
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
@@ -104,7 +103,6 @@ class StockEntryFormController extends GetxController {
       _markDirty();
     });
 
-    // Validation Listeners
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsSourceRackController.addListener(validateSheet);
@@ -136,7 +134,7 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
-  // --- POS Grouping Logic ---
+  // ... (POS Grouping, Fetch Data, Init Logic preserved) ...
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -150,13 +148,10 @@ class StockEntryFormController extends GetxController {
     if (stockEntry.value == null || stockEntry.value!.items.isEmpty) {
       return {};
     }
-    // Group items by their Invoice Serial Number
     return groupBy(stockEntry.value!.items, (StockEntryItem item) {
       return item.customInvoiceSerialNumber ?? '0';
     });
   }
-
-  // --- Fetch Data ---
 
   Future<void> fetchStockEntryTypes() async {
     isFetchingTypes.value = true;
@@ -165,15 +160,12 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         stockEntryTypes.value = data.map((e) => e['name'].toString()).toList();
-
-        // Ensure default selection exists in list
         if (stockEntryTypes.isNotEmpty && !stockEntryTypes.contains(selectedStockEntryType.value)) {
           selectedStockEntryType.value = stockEntryTypes.first;
         }
       }
     } catch (e) {
       print('Error fetching stock entry types: $e');
-      // Fallback
       if (stockEntryTypes.isEmpty) {
         stockEntryTypes.addAll(['Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture']);
       }
@@ -274,8 +266,7 @@ class StockEntryFormController extends GetxController {
       final response = await _posProvider.getPosUpload(posId);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final pos = PosUpload.fromJson(response.data['data']);
-        posUpload.value = pos; // Store full object
-
+        posUpload.value = pos;
         final count = pos.items.length;
         posUploadSerialOptions.value = List.generate(count, (index) => (index + 1).toString());
       }
@@ -284,13 +275,19 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // --- Validation Logic ---
+  // --- Validation & Stock Logic ---
 
   void validateSheet() {
     rackError.value = null;
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // New: Check against max allowed stock
+    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) {
       isSheetValid.value = false;
       return;
     }
@@ -321,7 +318,6 @@ class StockEntryFormController extends GetxController {
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
-
       if (source.isNotEmpty && target.isNotEmpty && source == target) {
         isSheetValid.value = false;
         rackError.value = "Source and Target Racks cannot be the same";
@@ -334,12 +330,15 @@ class StockEntryFormController extends GetxController {
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0);
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-    validateSheet();
-  }
+    final newVal = (current + delta);
+    // Clamp between 0 and max available stock (if defined)
+    final double upperLimit = bsMaxQty.value > 0 ? bsMaxQty.value : 999999.0;
 
-  // --- Save Logic ---
+    if (newVal >= 0 && newVal <= upperLimit) {
+      bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+      validateSheet();
+    }
+  }
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
@@ -386,7 +385,6 @@ class StockEntryFormController extends GetxController {
           final createdDoc = response.data['data'];
           name = createdDoc['name'];
           mode = 'edit';
-
           await fetchStockEntry();
           GlobalSnackbar.success(message: 'Stock Entry created: $name');
         } else {
@@ -417,8 +415,6 @@ class StockEntryFormController extends GetxController {
       isSaving.value = false;
     }
   }
-
-  // --- Scan & Item Logic ---
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
@@ -472,9 +468,9 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.clear();
     bsTargetRackController.clear();
 
-    // Clear derived warehouses when starting new
     derivedSourceWarehouse.value = null;
     derivedTargetWarehouse.value = null;
+    bsMaxQty.value = 0.0; // Reset max qty
 
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
@@ -482,7 +478,6 @@ class StockEntryFormController extends GetxController {
 
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
-
     isSheetValid.value = false;
     rackError.value = null;
 
@@ -512,6 +507,69 @@ class StockEntryFormController extends GetxController {
     });
   }
 
+  // --- UPDATED STOCK CALCULATION LOGIC ---
+
+  Future<void> _updateAvailableStock() async {
+    // Only check if it's a source transaction (Issue or Transfer)
+    final type = selectedStockEntryType.value;
+    final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+    if (!isSourceOp) {
+      bsMaxQty.value = 999999.0; // No limit for receipt
+      return;
+    }
+
+    // Determine constraints
+    String? warehouse = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    String batch = bsBatchController.text.trim();
+    String rack = bsSourceRackController.text.trim();
+
+    // If we don't have basic warehouse info, we can't check efficiently yet, or assume global stock?
+    // Usually Stock Balance report requires at least Item Code.
+
+    try {
+      final filters = {
+        'item_code': currentItemCode,
+        'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      };
+
+      // We use the generic Stock Balance report
+      final response = await _apiProvider.getReport('Stock Balance', filters: filters);
+
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> result = response.data['message']['result'];
+
+        // Client-side filtering to find the specific stock
+        double totalBalance = 0.0;
+
+        for (var row in result) {
+          // Filter by Warehouse
+          if (warehouse != null && warehouse.isNotEmpty && row['warehouse'] != warehouse) continue;
+
+          // Filter by Batch (if entered)
+          if (batch.isNotEmpty && row['batch_no'] != null && row['batch_no'] != batch) continue;
+
+          // Filter by Rack (if entered and row has rack data)
+          if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
+
+          // Add to balance
+          totalBalance += (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        }
+
+        bsMaxQty.value = totalBalance;
+
+        // If rack was specific and balance is 0, warn user
+        if (rack.isNotEmpty && totalBalance <= 0) {
+          GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack');
+          isSourceRackValid.value = false; // Invalidate rack
+        }
+      }
+    } catch (e) {
+      print('Failed to fetch stock balance: $e');
+    }
+  }
+
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
 
@@ -525,6 +583,10 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
+
+        // Update stock limit based on this batch
+        await _updateAvailableStock();
+
         GlobalSnackbar.success(message: 'Batch validated');
         _focusNextField();
       } else {
@@ -543,8 +605,6 @@ class StockEntryFormController extends GetxController {
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
 
-    // Auto-Parse Warehouse from Rack Pattern
-    // Format assumed: KA-WH-CODE-01 -> WH-CODE - KA
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -563,8 +623,13 @@ class StockEntryFormController extends GetxController {
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        if (isSource) isSourceRackValid.value = true;
-        else isTargetRackValid.value = true;
+        if (isSource) {
+          isSourceRackValid.value = true;
+          // Validate Stock in this Rack immediately
+          await _updateAvailableStock();
+        } else {
+          isTargetRackValid.value = true;
+        }
       } else {
         if (isSource) isSourceRackValid.value = false;
         else isTargetRackValid.value = false;
@@ -605,7 +670,6 @@ class StockEntryFormController extends GetxController {
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    // Set derived warehouses from current item to preserve them
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
 
@@ -614,6 +678,9 @@ class StockEntryFormController extends GetxController {
 
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
     if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
+
+    // Check stock for the item being edited to set constraints
+    _updateAvailableStock();
 
     validateSheet();
 
@@ -656,7 +723,6 @@ class StockEntryFormController extends GetxController {
     final batch = bsBatchController.text;
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
-    // Prioritize derived warehouse (from rack) > Header warehouse
     final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 

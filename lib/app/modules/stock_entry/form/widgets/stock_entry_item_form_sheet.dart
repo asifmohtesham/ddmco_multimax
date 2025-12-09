@@ -204,7 +204,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               color: Colors.black87,
               child: Row(
                 children: [
-                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
                   Expanded(
                     child: TextFormField(
                       controller: controller.bsQtyController,
@@ -217,6 +216,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                       ),
                     ),
                   ),
+                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
                   _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
                 ],
               ),
