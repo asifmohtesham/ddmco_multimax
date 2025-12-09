@@ -10,6 +10,7 @@ import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
 import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart'; // Added
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart'; // Added for currency
+import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});
@@ -210,49 +211,21 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   Widget _buildItemsView() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-          child: Obx(() {
-            String labelText = 'Scan or enter barcode';
-            Widget? suffixIcon;
-
-            if (controller.isScanning.value) {
-              labelText = 'Scanning...';
-              suffixIcon = const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
-              );
-            } else if (controller.isAddingItem.value) {
-              labelText = 'Item Validated';
-              suffixIcon = const Icon(Icons.check_circle, color: Colors.green);
-            } else {
-              suffixIcon = IconButton(
-                icon: const Icon(Icons.camera_alt),
-                onPressed: () {
-                  final text = controller.barcodeController.text;
-                  if (text.isNotEmpty) controller.addItemFromBarcode(text);
-                },
-              );
-            }
-
-            return TextFormField(
+        Obx(() {
+          if (controller.isScanning.value || controller.isAddingItem.value) {
+            // Keep showing visual feedback if busy
+            return BarcodeInputWidget(
+              onScan: (code) {}, // No-op when busy
+              isLoading: controller.isScanning.value,
+              isSuccess: controller.isAddingItem.value,
               controller: controller.barcodeController,
-              autofocus: true,
-              readOnly: controller.isScanning.value || controller.isAddingItem.value,
-              decoration: InputDecoration(
-                labelText: labelText,
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.qr_code_scanner),
-                suffixIcon: suffixIcon,
-              ),
-              onFieldSubmitted: (value) {
-                if (value.isNotEmpty && !controller.isScanning.value && !controller.isAddingItem.value) {
-                  controller.addItemFromBarcode(value);
-                }
-              },
             );
-          }),
-        ),
+          }
+          return BarcodeInputWidget(
+            onScan: (code) => controller.addItemFromBarcode(code),
+            controller: controller.barcodeController,
+          );
+        }),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16.0),

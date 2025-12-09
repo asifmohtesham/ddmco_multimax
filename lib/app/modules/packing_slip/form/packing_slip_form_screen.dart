@@ -5,6 +5,7 @@ import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:ddmco_multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   const PackingSlipFormScreen({super.key});
@@ -194,33 +195,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           ),
         ),
         if (slip.docstatus == 0)
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2)),
-              ],
-            ),
-            child: SafeArea(
-              child: TextFormField(
-                controller: controller.barcodeController,
-                decoration: InputDecoration(
-                  hintText: 'Scan Item / Batch',
-                  prefixIcon: const Icon(Icons.qr_code_scanner),
-                  suffixIcon: Obx(() => controller.isScanning.value
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: () => controller.scanBarcode(controller.barcodeController.text),
-                  )),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-                ),
-                onFieldSubmitted: (value) => controller.scanBarcode(value),
-              ),
-            ),
-          ),
+          Obx(() => BarcodeInputWidget(
+            onScan: (code) => controller.scanBarcode(code),
+            isLoading: controller.isScanning.value,
+            hintText: 'Scan Item / Batch',
+            controller: controller.barcodeController,
+          )),
       ],
     );
   }

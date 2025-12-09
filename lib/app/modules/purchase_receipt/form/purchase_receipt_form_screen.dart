@@ -5,6 +5,7 @@ import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receip
 import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:ddmco_multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_card.dart';
 import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -173,37 +174,11 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-          child: Obx(() {
-            String labelText = 'Scan or enter barcode';
-            Widget? suffixIcon;
-
-            if (controller.isScanning.value) {
-              labelText = 'Scanning...';
-              suffixIcon = const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
-              );
-            } else {
-              suffixIcon = IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: () => controller.scanBarcode(controller.barcodeController.text),
-              );
-            }
-
-            return TextFormField(
-              controller: controller.barcodeController,
-              decoration: InputDecoration(
-                labelText: labelText,
-                prefixIcon: const Icon(Icons.qr_code_scanner),
-                suffixIcon: suffixIcon,
-                border: const OutlineInputBorder(),
-              ),
-              onFieldSubmitted: (value) => controller.scanBarcode(value),
-            );
-          }),
-        ),
+        Obx(() => BarcodeInputWidget(
+          onScan: (code) => controller.scanBarcode(code),
+          isLoading: controller.isScanning.value,
+          controller: controller.barcodeController,
+        )),
       ],
     );
   }
