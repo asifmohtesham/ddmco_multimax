@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:dio/dio.dart'; // Added for DioException
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -25,7 +25,6 @@ class StockEntryFormController extends GetxController {
   var isScanning = false.obs;
   var isSaving = false.obs;
 
-  // --- Dirty Check State ---
   var isDirty = false.obs;
 
   var stockEntry = Rx<StockEntry?>(null);
@@ -49,6 +48,10 @@ class StockEntryFormController extends GetxController {
   final bsSourceRackController = TextEditingController();
   final bsTargetRackController = TextEditingController();
 
+  // --- Row-Level Warehouse State (Derived from Rack) ---
+  var derivedSourceWarehouse = RxnString();
+  var derivedTargetWarehouse = RxnString();
+
   // --- Context State ---
   var isItemSheetOpen = false.obs;
 
@@ -63,7 +66,6 @@ class StockEntryFormController extends GetxController {
 
   var rackError = RxnString();
 
-  // UX State
   var isSheetValid = false.obs;
 
   var currentItemCode = '';
@@ -71,7 +73,6 @@ class StockEntryFormController extends GetxController {
   var currentItemName = '';
   var currentUom = '';
 
-  // The unique identifier for the item being edited (Real ID or local_... ID)
   var currentItemNameKey = RxnString();
   var selectedSerial = RxnString();
 
@@ -90,7 +91,6 @@ class StockEntryFormController extends GetxController {
     super.onInit();
     fetchWarehouses();
 
-    // Listeners for Dirty Check
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
@@ -100,7 +100,6 @@ class StockEntryFormController extends GetxController {
       _markDirty();
     });
 
-    // Listen to changes for validation
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsSourceRackController.addListener(validateSheet);
@@ -291,7 +290,6 @@ class StockEntryFormController extends GetxController {
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
 
-    // --- MAIN VALIDATIONS ---
     if (selectedStockEntryType.value == 'Material Transfer') {
       if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
         GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
@@ -302,7 +300,6 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
-    // ----------------------
 
     isSaving.value = true;
 
@@ -318,9 +315,8 @@ class StockEntryFormController extends GetxController {
     final itemsJson = stockEntry.value?.items.map((i) {
       final json = i.toJson();
       if (json['name'] != null && json['name'].toString().startsWith('local_')) {
-        json.remove('name'); // Treat as new item
+        json.remove('name');
       }
-      // Avoid sending 0.0 basic rate to let ERPNext fetch valuation rate automatically
       if (json['basic_rate'] == 0.0) {
         json.remove('basic_rate');
       }
@@ -352,13 +348,11 @@ class StockEntryFormController extends GetxController {
         }
       }
     } on DioException catch (e) {
-      // Improved Error Parsing for 417 Expectation Failed
       String errorMessage = 'Save failed';
       if (e.response != null && e.response!.data != null) {
         if (e.response!.data is Map && e.response!.data['exception'] != null) {
           errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
         } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-          // Handle server messages array (often JSON string inside string)
           errorMessage = 'Validation Error: Check form details';
         }
       }
@@ -422,6 +416,10 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.clear();
     bsTargetRackController.clear();
 
+    // Clear derived warehouses when starting new
+    derivedSourceWarehouse.value = null;
+    derivedTargetWarehouse.value = null;
+
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
     isValidatingBatch.value = false;
@@ -433,7 +431,7 @@ class StockEntryFormController extends GetxController {
     rackError.value = null;
 
     selectedSerial.value = null;
-    currentItemNameKey.value = null; // New Item Mode
+    currentItemNameKey.value = null;
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -489,6 +487,20 @@ class StockEntryFormController extends GetxController {
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
 
+    // Auto-Parse Warehouse from Rack Pattern
+    // Format assumed: KA-WH-CODE-01 -> WH-CODE - KA
+    if (rack.contains('-')) {
+      final parts = rack.split('-');
+      if (parts.length >= 3) {
+        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
+        if (isSource) {
+          derivedSourceWarehouse.value = wh;
+        } else {
+          derivedTargetWarehouse.value = wh;
+        }
+      }
+    }
+
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
 
@@ -537,6 +549,10 @@ class StockEntryFormController extends GetxController {
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
+    // Set derived warehouses from current item to preserve them
+    derivedSourceWarehouse.value = item.sWarehouse;
+    derivedTargetWarehouse.value = item.tWarehouse;
+
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
 
@@ -582,8 +598,11 @@ class StockEntryFormController extends GetxController {
     if (qty <= 0) return;
 
     final batch = bsBatchController.text;
-
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Prioritise derived warehouse (from rack) > Header warehouse
+    final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
     final newItem = StockEntryItem(
       name: uniqueId,
@@ -596,8 +615,8 @@ class StockEntryFormController extends GetxController {
       itemName: currentItemName,
       rack: bsSourceRackController.text,
       toRack: bsTargetRackController.text,
-      sWarehouse: selectedFromWarehouse.value,
-      tWarehouse: selectedToWarehouse.value,
+      sWarehouse: sWh,
+      tWarehouse: tWh,
       customInvoiceSerialNumber: selectedSerial.value,
     );
 
