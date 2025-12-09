@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
+import 'package:collection/collection.dart'; // Required for groupBy
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -29,10 +30,18 @@ class StockEntryFormController extends GetxController {
 
   var stockEntry = Rx<StockEntry?>(null);
 
+  // --- POS Grouping State ---
+  var posUpload = Rx<PosUpload?>(null);
+  var expandedInvoice = ''.obs; // Tracks which invoice group is expanded
+
   // Form Fields
   var selectedFromWarehouse = RxnString();
   var selectedToWarehouse = RxnString();
   final customReferenceNoController = TextEditingController();
+
+  // Changed to observable list for dynamic fetching
+  var stockEntryTypes = <String>[].obs;
+  var isFetchingTypes = false.obs;
   var selectedStockEntryType = 'Material Transfer'.obs;
 
   final TextEditingController barcodeController = TextEditingController();
@@ -41,10 +50,6 @@ class StockEntryFormController extends GetxController {
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var posUploadSerialOptions = <String>[].obs;
-
-  // --- Dynamic Stock Entry Types ---
-  var stockEntryTypes = <String>[].obs; // Changed to RxList
-  var isFetchingTypes = false.obs;
 
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
@@ -87,8 +92,9 @@ class StockEntryFormController extends GetxController {
   void onInit() {
     super.onInit();
     fetchWarehouses();
-    fetchStockEntryTypes(); // Added
+    fetchStockEntryTypes(); // Fetch dynamic types
 
+    // Dirty Check Listeners
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
@@ -98,6 +104,7 @@ class StockEntryFormController extends GetxController {
       _markDirty();
     });
 
+    // Validation Listeners
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsSourceRackController.addListener(validateSheet);
@@ -129,6 +136,26 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
+  // --- POS Grouping Logic ---
+
+  void toggleInvoiceExpand(String key) {
+    if (expandedInvoice.value == key) {
+      expandedInvoice.value = '';
+    } else {
+      expandedInvoice.value = key;
+    }
+  }
+
+  Map<String, List<StockEntryItem>> get groupedItems {
+    if (stockEntry.value == null || stockEntry.value!.items.isEmpty) {
+      return {};
+    }
+    // Group items by their Invoice Serial Number
+    return groupBy(stockEntry.value!.items, (StockEntryItem item) {
+      return item.customInvoiceSerialNumber ?? '0';
+    });
+  }
+
   // --- Fetch Data ---
 
   Future<void> fetchStockEntryTypes() async {
@@ -137,106 +164,21 @@ class StockEntryFormController extends GetxController {
       final response = await _provider.getStockEntryTypes();
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final types = data.map((e) => e['name'].toString()).toList();
+        stockEntryTypes.value = data.map((e) => e['name'].toString()).toList();
 
-        stockEntryTypes.assignAll(types);
-
-        // Ensure selected type is valid
+        // Ensure default selection exists in list
         if (stockEntryTypes.isNotEmpty && !stockEntryTypes.contains(selectedStockEntryType.value)) {
-          // If 'Material Transfer' (default) is not in the list, pick the first available
           selectedStockEntryType.value = stockEntryTypes.first;
         }
       }
     } catch (e) {
       print('Error fetching stock entry types: $e');
-      // Fallback in case of API failure to prevent UI crash
+      // Fallback
       if (stockEntryTypes.isEmpty) {
-        stockEntryTypes.assignAll([
-          'Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'
-        ]);
+        stockEntryTypes.addAll(['Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture']);
       }
     } finally {
       isFetchingTypes.value = false;
-    }
-  }
-
-  // --- Validation Logic ---
-  // ... (Rest of the file remains unchanged) ...
-
-  void validateSheet() {
-    rackError.value = null;
-
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) {
-      isSheetValid.value = false;
-      return;
-    }
-
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
-      isSheetValid.value = false;
-      return;
-    }
-
-    final type = selectedStockEntryType.value;
-    final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-    final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
-    if (requiresSource) {
-      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
-        isSheetValid.value = false;
-        return;
-      }
-    }
-
-    if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
-        isSheetValid.value = false;
-        return;
-      }
-    }
-
-    if (requiresSource && requiresTarget) {
-      final source = bsSourceRackController.text.trim();
-      final target = bsTargetRackController.text.trim();
-
-      if (source.isNotEmpty && target.isNotEmpty && source == target) {
-        isSheetValid.value = false;
-        rackError.value = "Source and Target Racks cannot be the same";
-        return;
-      }
-    }
-
-    isSheetValid.value = true;
-  }
-
-  void adjustSheetQty(double delta) {
-    final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0);
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-    validateSheet();
-  }
-
-  // --- Existing Methods ---
-
-  void _onReferenceNoChanged() {
-    final ref = customReferenceNoController.text;
-    if (ref.isNotEmpty) {
-      _fetchPosUploadDetails(ref);
-    } else {
-      posUploadSerialOptions.clear();
-    }
-  }
-
-  Future<void> _fetchPosUploadDetails(String posId) async {
-    try {
-      final response = await _posProvider.getPosUpload(posId);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final pos = PosUpload.fromJson(response.data['data']);
-        final count = pos.items.length;
-        posUploadSerialOptions.value = List.generate(count, (index) => (index + 1).toString());
-      }
-    } catch (e) {
-      print('Error fetching POS Upload: $e');
     }
   }
 
@@ -317,6 +259,88 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  void _onReferenceNoChanged() {
+    final ref = customReferenceNoController.text;
+    if (ref.isNotEmpty) {
+      _fetchPosUploadDetails(ref);
+    } else {
+      posUploadSerialOptions.clear();
+      posUpload.value = null;
+    }
+  }
+
+  Future<void> _fetchPosUploadDetails(String posId) async {
+    try {
+      final response = await _posProvider.getPosUpload(posId);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final pos = PosUpload.fromJson(response.data['data']);
+        posUpload.value = pos; // Store full object
+
+        final count = pos.items.length;
+        posUploadSerialOptions.value = List.generate(count, (index) => (index + 1).toString());
+      }
+    } catch (e) {
+      print('Error fetching POS Upload: $e');
+    }
+  }
+
+  // --- Validation Logic ---
+
+  void validateSheet() {
+    rackError.value = null;
+
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    if (qty <= 0) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    final type = selectedStockEntryType.value;
+    final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+    if (requiresSource) {
+      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+
+    if (requiresTarget) {
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+
+    if (requiresSource && requiresTarget) {
+      final source = bsSourceRackController.text.trim();
+      final target = bsTargetRackController.text.trim();
+
+      if (source.isNotEmpty && target.isNotEmpty && source == target) {
+        isSheetValid.value = false;
+        rackError.value = "Source and Target Racks cannot be the same";
+        return;
+      }
+    }
+
+    isSheetValid.value = true;
+  }
+
+  void adjustSheetQty(double delta) {
+    final current = double.tryParse(bsQtyController.text) ?? 0;
+    final newVal = (current + delta).clamp(0.0, 999999.0);
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+    validateSheet();
+  }
+
+  // --- Save Logic ---
+
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
 
@@ -393,6 +417,8 @@ class StockEntryFormController extends GetxController {
       isSaving.value = false;
     }
   }
+
+  // --- Scan & Item Logic ---
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
@@ -630,7 +656,7 @@ class StockEntryFormController extends GetxController {
     final batch = bsBatchController.text;
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
-    // Prioritise derived warehouse (from rack) > Header warehouse
+    // Prioritize derived warehouse (from rack) > Header warehouse
     final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
