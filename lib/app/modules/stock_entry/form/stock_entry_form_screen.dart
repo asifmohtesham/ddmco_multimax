@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added Import
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
@@ -94,8 +93,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                     ),
                     const Divider(height: 24),
                   ],
+                  // FIX: Added isExpanded and TextOverflow to prevent overflow
                   DropdownButtonFormField<String>(
                     value: controller.selectedStockEntryType.value,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Stock Entry Type',
                       border: OutlineInputBorder(),
@@ -103,7 +104,14 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
                     items: controller.stockEntryTypes.map((type) {
-                      return DropdownMenuItem(value: type, child: Text(type, style: const TextStyle(fontSize: 14)));
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(
+                          type,
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
                     }).toList(),
                     onChanged: isEditable ? (value) => controller.selectedStockEntryType.value = value! : null,
                   ),
@@ -302,7 +310,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       onScan: (code) => controller.scanBarcode(code),
       isLoading: controller.isScanning.value,
       controller: controller.barcodeController,
-      activeRoute: AppRoutes.STOCK_ENTRY_FORM, // Add this
+      // Fixed: Pass context so scanner knows it is on this form
+      activeRoute: '/stock-entry/form',
     ));
   }
 }
