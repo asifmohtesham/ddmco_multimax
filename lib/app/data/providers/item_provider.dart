@@ -22,6 +22,16 @@ class ItemProvider {
     );
   }
 
+  // --- Added Method ---
+  Future<Response> getItemGroups() async {
+    return _apiProvider.getDocumentList(
+      'Item Group',
+      limit: 0, // Fetch all
+      fields: ['name'],
+      orderBy: 'name asc',
+    );
+  }
+
   Future<Response> getStockLevels(String itemCode) async {
     return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
   }

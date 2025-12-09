@@ -22,6 +22,10 @@ class ItemController extends GetxController {
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
+  // Item Groups for Filter
+  var itemGroups = <String>[].obs;
+  var isLoadingGroups = false.obs;
+
   // Default to true as per requirements: "display only those items that have an image set"
   var showImagesOnly = true.obs;
 
@@ -32,6 +36,7 @@ class ItemController extends GetxController {
   void onInit() {
     super.onInit();
     fetchItems();
+    fetchItemGroups(); // Load groups for filter
   }
 
   void toggleLayout() {
@@ -112,6 +117,22 @@ class ItemController extends GetxController {
       } else {
         isLoading.value = false;
       }
+    }
+  }
+
+  Future<void> fetchItemGroups() async {
+    isLoadingGroups.value = true;
+    try {
+      final response = await _provider.getItemGroups();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        itemGroups.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      print('Error fetching item groups: $e');
+    } finally {
+      isLoadingGroups.value = false;
     }
   }
 

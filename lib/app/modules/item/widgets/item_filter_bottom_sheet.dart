@@ -41,6 +41,85 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     super.dispose();
   }
 
+  void _showItemGroupSelector(BuildContext context) {
+    final searchController = TextEditingController();
+    final RxList<String> filteredGroups = RxList<String>(controller.itemGroups);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  const Text("Select Item Group", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      hintText: "Search groups...",
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      if (val.isEmpty) {
+                        filteredGroups.assignAll(controller.itemGroups);
+                      } else {
+                        filteredGroups.assignAll(controller.itemGroups.where(
+                                (group) => group.toLowerCase().contains(val.toLowerCase())
+                        ).toList());
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isLoadingGroups.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (filteredGroups.isEmpty) {
+                        return const Center(child: Text("No item groups found"));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: filteredGroups.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final group = filteredGroups[index];
+                          final isSelected = group == itemGroupController.text;
+                          return ListTile(
+                            title: Text(group, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                            trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                            onTap: () {
+                              setState(() {
+                                itemGroupController.text = group;
+                              });
+                              Get.back();
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -95,12 +174,17 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Updated Item Group Field
                   TextFormField(
                     controller: itemGroupController,
+                    readOnly: true,
+                    onTap: () => _showItemGroupSelector(context),
                     decoration: const InputDecoration(
                       labelText: 'Item Group',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.category),
+                      suffixIcon: Icon(Icons.arrow_drop_down),
                     ),
                   ),
                 ],
@@ -112,7 +196,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                 final filters = <String, dynamic>{};
 
                 if (itemGroupController.text.isNotEmpty) {
-                  filters['item_group'] = ['like', '%${itemGroupController.text}%'];
+                  // Direct equals often safer for Item Group if name is exact
+                  filters['item_group'] = itemGroupController.text;
                 }
 
                 if (attributeController.text.isNotEmpty) {
