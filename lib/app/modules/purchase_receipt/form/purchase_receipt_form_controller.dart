@@ -50,7 +50,7 @@ class PurchaseReceiptFormController extends GetxController {
   // Validation States
   var isSourceRackValid = false.obs;
   var isTargetRackValid = false.obs;
-  var isValidatingSourceRack = false.obs; // Added to fix error
+  var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
   // Item Editing State
@@ -191,7 +191,6 @@ class PurchaseReceiptFormController extends GetxController {
       'set_warehouse': setWarehouse.value,
     };
 
-    // Sanitize Items (remove local IDs)
     final itemsJson = purchaseReceipt.value?.items.map((i) {
       final json = i.toJson();
       if (json['name'] != null && json['name'].toString().startsWith('local_')) {
@@ -297,7 +296,6 @@ class PurchaseReceiptFormController extends GetxController {
     currentItemNameKey.value = null; // New Item Mode
     warehouse.value = null;
 
-    // Reset initial values for dirty check
     _initialBatch = '';
     _initialRack = '';
     _initialQty = '';
@@ -325,17 +323,22 @@ class PurchaseReceiptFormController extends GetxController {
     });
   }
 
-  // Logic to enable Update button only when changes are made
   void checkForChanges() {
     bool dirty = false;
     if (bsBatchController.text != _initialBatch) dirty = true;
     if (bsRackController.text != _initialRack) dirty = true;
     if (bsQtyController.text != _initialQty) dirty = true;
 
-    // For new items, if fields are filled, we consider it "dirty" enough to submit if valid
     if (currentItemNameKey.value == null && bsQtyController.text.isNotEmpty) dirty = true;
 
     isFormDirty.value = dirty;
+  }
+
+  void adjustSheetQty(double delta) {
+    final current = double.tryParse(bsQtyController.text) ?? 0;
+    final newVal = (current + delta).clamp(0.0, 999999.0);
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+    checkForChanges();
   }
 
   Future<void> validateBatch(String batch) async {
@@ -357,7 +360,7 @@ class PurchaseReceiptFormController extends GetxController {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
 
-      checkForChanges(); // Re-check dirty state
+      checkForChanges();
       _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to check batch: $e');
@@ -370,13 +373,6 @@ class PurchaseReceiptFormController extends GetxController {
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
 
-    if (isSource) {
-      isValidatingSourceRack.value = true;
-    } else {
-      isValidatingTargetRack.value = true;
-    }
-
-    // Auto-parse Warehouse from Rack Pattern
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -385,23 +381,22 @@ class PurchaseReceiptFormController extends GetxController {
       }
     }
 
+    // Since this is receipt, we are targeting a rack
+    isValidatingTargetRack.value = true;
+
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        if (isSource) isSourceRackValid.value = true;
-        else isTargetRackValid.value = true;
+        isTargetRackValid.value = true;
       } else {
-        if (isSource) isSourceRackValid.value = false;
-        else isTargetRackValid.value = false;
+        isTargetRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');
       }
     } catch (e) {
-      if (isSource) isSourceRackValid.value = false;
-      else isTargetRackValid.value = false;
+      isTargetRackValid.value = false;
     } finally {
-      if (isSource) isValidatingSourceRack.value = false;
-      else isValidatingTargetRack.value = false;
-      checkForChanges(); // Re-check dirty state
+      isValidatingTargetRack.value = false;
+      checkForChanges();
     }
   }
 
@@ -410,7 +405,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void editItem(PurchaseReceiptItem item) {
-    currentItemNameKey.value = item.name; // ID or local ID
+    currentItemNameKey.value = item.name;
     currentOwner = item.owner;
     currentCreation = item.creation;
     currentModified = item.modified ?? '';
@@ -433,10 +428,9 @@ class PurchaseReceiptFormController extends GetxController {
 
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
-    isFormDirty.value = false; // Start clean
+    isFormDirty.value = false;
 
-    if (item.rack != null && item.rack!.isNotEmpty) isTargetRackValid.value = true;
-    else isTargetRackValid.value = false;
+    isTargetRackValid.value = item.rack != null && item.rack!.isNotEmpty;
 
     isItemSheetOpen.value = true;
 
@@ -482,7 +476,6 @@ class PurchaseReceiptFormController extends GetxController {
     final index = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (index != -1) {
-      // Update Existing
       final existing = currentItems[index];
       currentItems[index] = existing.copyWith(
         qty: qty,
@@ -491,9 +484,8 @@ class PurchaseReceiptFormController extends GetxController {
         warehouse: warehouse.value!.isNotEmpty ? warehouse.value! : existing.warehouse,
       );
     } else {
-      // Add New
       currentItems.add(PurchaseReceiptItem(
-        name: uniqueId, // Assign local ID
+        name: uniqueId,
         owner: currentOwner,
         creation: DateTime.now().toString(),
         itemCode: currentItemCode,

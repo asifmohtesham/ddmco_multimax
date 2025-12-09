@@ -19,7 +19,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
         ),
-        child: Form( // FIX: Wrapped content in Form
+        child: Form(
           key: formKey,
           child: ListView(
             controller: scrollController,
@@ -111,13 +111,14 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
 
               const SizedBox(height: 16),
 
-              // Rack Input
+              // Rack Input - FIXED: Explicitly not readonly
               Obx(() => _buildInputGroup(
                 label: 'Target Rack',
                 color: Colors.green,
                 child: TextFormField(
                   controller: controller.bsRackController,
                   focusNode: controller.targetRackFocusNode,
+                  readOnly: false, // Ensure not readOnly
                   decoration: InputDecoration(
                     hintText: 'Rack',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -130,7 +131,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                       borderSide: const BorderSide(color: Colors.green, width: 2),
                     ),
                     suffixIcon: _isValidatingIcon(
-                      controller.isValidatingTargetRack.value, // Fixed variable name from previous context
+                      controller.isValidatingTargetRack.value,
                       controller.isTargetRackValid.value,
                       onCheck: () => controller.validateRack(controller.bsRackController.text, false),
                       color: Colors.green,
@@ -143,30 +144,38 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
 
               const SizedBox(height: 16),
 
-              // Quantity Input
+              // Quantity Input - FIXED: Added buttons
               _buildInputGroup(
                 label: 'Quantity',
                 color: Colors.black87,
-                child: TextFormField(
-                  controller: controller.bsQtyController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    final qty = double.tryParse(value);
-                    if (qty == null) return 'Invalid number';
-                    if (qty <= 0) return 'Must be > 0';
-                    if (controller.currentPurchaseOrderQty.value > 0 && qty > controller.currentPurchaseOrderQty.value) {
-                      return 'Exceeds PO (${controller.currentPurchaseOrderQty.value})';
-                    }
-                    return null;
-                  },
+                child: Row(
+                  children: [
+                    _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
+                    Expanded(
+                      child: TextFormField(
+                        controller: controller.bsQtyController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onChanged: (_) => controller.checkForChanges(),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Required';
+                          final qty = double.tryParse(value);
+                          if (qty == null) return 'Invalid number';
+                          if (qty <= 0) return 'Must be > 0';
+                          if (controller.currentPurchaseOrderQty.value > 0 && qty > controller.currentPurchaseOrderQty.value) {
+                            return 'Exceeds PO (${controller.currentPurchaseOrderQty.value})';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
+                  ],
                 ),
               ),
 
@@ -176,7 +185,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
               Obx(() => SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  // Logic: Enable if (New OR Dirty) AND Batch Valid
                   onPressed: (controller.currentItemNameKey.value == null || controller.isFormDirty.value) && controller.bsIsBatchValid.value
                       ? () {
                     if (formKey.currentState!.validate()) {
@@ -219,6 +227,25 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
           child: child,
         ),
       ],
+    );
+  }
+
+  Widget _buildQtyButton(IconData icon, VoidCallback onPressed) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onPressed,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+          ),
+          child: Icon(icon, size: 20),
+        ),
+      ),
     );
   }
 
