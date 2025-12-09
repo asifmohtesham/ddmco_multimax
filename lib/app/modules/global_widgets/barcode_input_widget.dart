@@ -32,17 +32,23 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     super.initState();
     _textController = widget.controller ?? TextEditingController();
 
-    // Listen to DataWedge scans
+    // Listen to DataWedge scans via the Service
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
-        // "Send ENTER key" in DataWedge Intent Output adds a newline character.
-        // We trim the string to ensure regex matches and clean display.
+        // "Send ENTER key" in DataWedge Intent Output adds a newline character (or \r).
+        // We trim the string to ensure the text field doesn't show the newline
+        // and the regex/logic matches correctly.
         final cleanCode = code.trim();
 
-        // Update visual controller
+        // 1. Set the Intent output data as the TextInputField value
         _textController.text = cleanCode;
 
-        // Trigger callback (Same behavior as onPressed)
+        // Update cursor position to the end of the text
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _textController.text.length),
+        );
+
+        // 2. Trigger the onScan function automatically (Same as pressing the send button)
         widget.onScan(cleanCode);
       }
     });
@@ -51,6 +57,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
   @override
   void dispose() {
     _scanWorker?.dispose(); // Prevent memory leaks from the ever listener
+
     // Only dispose _textController if it was created locally
     if (widget.controller == null) {
       _textController.dispose();
@@ -97,6 +104,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 : IconButton(
               icon: const Icon(Icons.send),
               onPressed: () {
+                // Manual entry trigger
                 if (_textController.text.trim().isNotEmpty) {
                   widget.onScan(_textController.text.trim());
                 }
@@ -104,6 +112,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
             )
             ),
           ),
+          // Handle keyboard "Done" or "Go" action
           onFieldSubmitted: (value) {
             if (value.trim().isNotEmpty && !widget.isLoading) {
               widget.onScan(value.trim());
