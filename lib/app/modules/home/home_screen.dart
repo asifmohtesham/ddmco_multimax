@@ -4,6 +4,7 @@ import 'package:ddmco_multimax/app/modules/global_widgets/app_bottom_bar.dart';
 import 'package:ddmco_multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
 import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
+import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added Import
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -31,39 +32,59 @@ class HomeScreen extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Dynamic Greeting
+              // 1. Welcome Section (Compact)
               Obx(() {
                 final user = authController.currentUser.value;
                 final name = user?.name ?? 'User';
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                        'Welcome back,',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[600])
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            'Welcome,',
+                            style: TextStyle(fontSize: 14, color: Colors.grey[600])
+                        ),
+                        Text(
+                            name,
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+                        ),
+                      ],
                     ),
-                    Text(
-                        name,
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
-                    ),
+                    CircleAvatar(
+                        backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                        child: Text(name.isNotEmpty ? name[0] : 'U', style: TextStyle(color: Theme.of(context).primaryColor))
+                    )
                   ],
                 );
               }),
-              const SizedBox(height: 24),
-
-              const Text('Overview', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
+
+              // 2. Barcode Input (Consistent UX)
+              Obx(() => BarcodeInputWidget(
+                onScan: controller.onScan,
+                controller: controller.barcodeController,
+                isLoading: controller.isScanning.value,
+                hintText: 'Scan Item / Batch',
+              )),
+
+              const SizedBox(height: 16),
+
+              // 3. Overview Grid (Compact)
+              const Text('Overview', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
               Obx(() {
                 if (controller.isLoadingStats.value) {
-                  return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+                  return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
                 }
                 return GridView.count(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.0,
+                  childAspectRatio: 1.6, // Shorter cards for compactness
                   children: [
                     DashboardStatCard(
                       title: 'Delivery Notes',
@@ -100,32 +121,17 @@ class HomeScreen extends GetView<HomeController> {
                   ],
                 );
               }),
-              const SizedBox(height: 24),
-              const Text('Quick Actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ActionCard(
-                      icon: Icons.add_circle_outline,
-                      title: 'New Delivery Note',
-                      onTap: controller.goToDeliveryNote,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ActionCard(
-                      icon: Icons.qr_code_scanner,
-                      title: 'Scan Item',
-                      // Updated to use the new scan logic
-                      onTap: controller.scanItem,
-                    ),
-                  ),
-                ],
-              ),
+
+              const SizedBox(height: 80),
             ],
           ),
         ),
+      ),
+      // 4. FAB for the main creation action (saving space from body)
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: controller.goToDeliveryNote,
+        icon: const Icon(Icons.add),
+        label: const Text('New Delivery Note'),
       ),
       bottomNavigationBar: const AppBottomBar(),
     );
@@ -153,15 +159,16 @@ class DashboardStatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 4,
-      shadowColor: color.withOpacity(0.3),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 2,
+      shadowColor: color.withOpacity(0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -171,114 +178,64 @@ class DashboardStatCard extends StatelessWidget {
               ],
             ),
           ),
-          child: Stack(
-            children: [
-              Positioned(
-                right: -12,
-                top: -12,
-                child: Opacity(
-                  opacity: 0.1,
-                  child: Icon(icon, size: 90, color: color),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, color: color, size: 20),
-                    ),
-                    const Spacer(),
-                    TweenAnimationBuilder<int>(
-                      tween: IntTween(begin: 0, end: count),
-                      duration: const Duration(seconds: 1),
-                      curve: Curves.easeOutExpo,
-                      builder: (context, value, child) {
-                        return Text(
-                          '$value',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            height: 1.0,
-                            color: Colors.black87,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(color: color, shape: BoxShape.circle)
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '$label Items',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  const ActionCard({super.key, required this.icon, required this.title, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.grey[100],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, size: 32, color: Colors.grey[800]),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 18),
+                  ),
+                  Text(
+                    '$count',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(color: color, shape: BoxShape.circle)
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),

@@ -27,6 +27,10 @@ class HomeController extends GetxController {
   var pendingPosUploadsCount = 0.obs;
   var openTodosCount = 0.obs;
 
+  // Controller for Barcode Widget
+  final TextEditingController barcodeController = TextEditingController();
+  var isScanning = false.obs;
+
   List<BottomNavigationBarItem> get homeBottomBarItems => [
     const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
     const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
@@ -41,6 +45,12 @@ class HomeController extends GetxController {
     super.onInit();
     _updateActiveScreenForRoute(Get.currentRoute);
     fetchDashboardData();
+  }
+
+  @override
+  void onClose() {
+    barcodeController.dispose();
+    super.onClose();
   }
 
   Future<void> fetchDashboardData() async {
@@ -125,64 +135,20 @@ class HomeController extends GetxController {
     }
   }
 
-  void scanItem() {
-    // Simulator Dialog for demonstration purposes
-    // In a real app, this would trigger camera scanning
-    final textController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Scan Item'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Enter barcode or QR code content:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: textController,
-              decoration: const InputDecoration(
-                hintText: 'e.g., 2100003000001 or QR_CODE',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Get.back();
-              _processScanResult(textController.text);
-            },
-            child: const Text('Scan'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _processScanResult(String code) async {
+  // Updated Scan Logic using the widget callback
+  Future<void> onScan(String code) async {
     if (code.isEmpty) return;
 
-    // Heuristic: EAN is usually numeric and length >= 12 (EAN-13, EAN-8 + checksum etc)
-    // Prompt Requirement: "Use first 7 chars of EAN"
-    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
+    isScanning.value = true;
 
-    Get.dialog(
-      const Center(child: CircularProgressIndicator()),
-      barrierDismissible: false,
-    );
+    // Heuristic: EAN is usually numeric and length >= 8
+    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
 
     try {
       if (isEan) {
         // --- 1. EAN Detected: Fetch Item ---
         final itemCode = code.length > 7 ? code.substring(0, 7) : code;
         final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
-
-        Get.back(); // Close loading
 
         if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
           final item = Item.fromJson(response.data['data'][0]);
@@ -201,8 +167,6 @@ class HomeController extends GetxController {
 
         final response = await _itemProvider.getStockLevels(itemCode);
 
-        Get.back(); // Close loading
-
         if (response.statusCode == 200 && response.data['message']?['result'] != null) {
           final List<dynamic> data = response.data['message']['result'];
           final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
@@ -216,8 +180,10 @@ class HomeController extends GetxController {
         }
       }
     } catch (e) {
-      if (Get.isDialogOpen == true) Get.back();
       Get.snackbar('Error', 'Scan processing failed: $e');
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
     }
   }
 
