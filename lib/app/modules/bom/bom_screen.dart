@@ -1,9 +1,9 @@
 import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/bom/bom_controller.dart';
-import 'package:ddmco_multimax/app/data/models/bom_model.dart';
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/bom/bom_controller.dart';
+import 'package:multimax/app/data/models/bom_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:intl/intl.dart';
 
 class BomScreen extends GetView<BomController> {

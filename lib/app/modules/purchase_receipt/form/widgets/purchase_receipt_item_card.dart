@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
+import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 
 class PurchaseReceiptItemCard extends StatelessWidget {
   final PurchaseReceiptItem item;

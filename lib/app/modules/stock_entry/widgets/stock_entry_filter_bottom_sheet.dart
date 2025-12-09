@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
+import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 
 class StockEntryFilterBottomSheet extends StatefulWidget {
   const StockEntryFilterBottomSheet({super.key});

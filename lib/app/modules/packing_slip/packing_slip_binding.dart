@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_controller.dart';
-import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 
 class PackingSlipBinding extends Bindings {
   @override

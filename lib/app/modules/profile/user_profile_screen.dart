@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/profile/user_profile_controller.dart';
+import 'package:multimax/app/modules/profile/user_profile_controller.dart';
 
 class UserProfileScreen extends GetView<UserProfileController> {
   const UserProfileScreen({super.key});

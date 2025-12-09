@@ -1,6 +1,6 @@
 {
-    "name": "ddmco_multimax",
-    "short_name": "ddmco_multimax",
+    "name": "multimax",
+    "short_name": "multimax",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

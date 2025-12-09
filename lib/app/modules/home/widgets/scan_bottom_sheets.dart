@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 
 class ItemDetailSheet extends StatelessWidget {
   final Item item;

@@ -2,9 +2,9 @@ import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/animated_expand_icon.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class DeliveryNoteItemCard extends StatelessWidget {
   final DeliveryNoteItem item;

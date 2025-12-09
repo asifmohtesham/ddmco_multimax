@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
-import 'package:ddmco_multimax/app/data/models/user_model.dart';
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();

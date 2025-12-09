@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/modules/home/home_controller.dart';
 
 class AppBottomBar extends StatelessWidget {
   const AppBottomBar({super.key});

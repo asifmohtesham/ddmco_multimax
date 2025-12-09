@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/bom/bom_controller.dart';
-import 'package:ddmco_multimax/app/data/providers/bom_provider.dart';
+import 'package:multimax/app/modules/bom/bom_controller.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 
 class BomBinding extends Bindings {
   @override

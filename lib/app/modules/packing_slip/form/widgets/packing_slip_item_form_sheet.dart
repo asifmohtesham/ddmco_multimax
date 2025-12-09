@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
 class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
   const PackingSlipItemFormSheet({super.key});

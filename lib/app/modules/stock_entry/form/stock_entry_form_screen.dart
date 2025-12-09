@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart'; // Added Import
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added Import
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class StockEntryFormScreen extends GetView<StockEntryFormController> {
   const StockEntryFormScreen({super.key});

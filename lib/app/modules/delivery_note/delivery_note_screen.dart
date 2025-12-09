@@ -1,12 +1,12 @@
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_controller.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});

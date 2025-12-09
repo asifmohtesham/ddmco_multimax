@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_order_model.dart';
-import 'package:ddmco_multimax/app/data/providers/purchase_order_provider.dart';
+import 'package:multimax/app/data/models/purchase_order_model.dart';
+import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:intl/intl.dart';
 
 class PurchaseOrderFormController extends GetxController {

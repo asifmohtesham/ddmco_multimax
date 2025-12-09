@@ -1,47 +1,47 @@
-import 'package:ddmco_multimax/app/modules/bom/bom_binding.dart';
-import 'package:ddmco_multimax/app/modules/bom/bom_screen.dart';
-import 'package:ddmco_multimax/app/modules/job_card/job_card_binding.dart';
-import 'package:ddmco_multimax/app/modules/job_card/job_card_screen.dart';
-import 'package:ddmco_multimax/app/modules/work_order/work_order_binding.dart';
-import 'package:ddmco_multimax/app/modules/work_order/work_order_screen.dart';
+import 'package:multimax/app/modules/bom/bom_binding.dart';
+import 'package:multimax/app/modules/bom/bom_screen.dart';
+import 'package:multimax/app/modules/job_card/job_card_binding.dart';
+import 'package:multimax/app/modules/job_card/job_card_screen.dart';
+import 'package:multimax/app/modules/work_order/work_order_binding.dart';
+import 'package:multimax/app/modules/work_order/work_order_screen.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/auth/login_controller.dart';
-import 'package:ddmco_multimax/app/modules/auth/login_screen.dart';
-import 'package:ddmco_multimax/app/modules/home/home_binding.dart';
-import 'package:ddmco_multimax/app/modules/home/home_screen.dart';
-import 'package:ddmco_multimax/app/modules/profile/user_profile_binding.dart';
-import 'package:ddmco_multimax/app/modules/profile/user_profile_screen.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_binding.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_screen.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_binding.dart'; // Added
-import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_screen.dart'; // Added
-import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart'; // Added
-import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart'; // Added
-import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_binding.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_screen.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/form/stock_entry_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_binding.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_screen.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_binding.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_screen.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_binding.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_screen.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/todo/todo_binding.dart';
-import 'package:ddmco_multimax/app/modules/todo/todo_screen.dart';
-import 'package:ddmco_multimax/app/modules/todo/form/todo_form_screen.dart';
-import 'package:ddmco_multimax/app/modules/item/item_binding.dart';
-import 'package:ddmco_multimax/app/modules/item/item_screen.dart';
-import 'package:ddmco_multimax/app/modules/item/form/item_form_binding.dart';
-import 'package:ddmco_multimax/app/modules/item/form/item_form_screen.dart';
+import 'package:multimax/app/modules/auth/login_controller.dart';
+import 'package:multimax/app/modules/auth/login_screen.dart';
+import 'package:multimax/app/modules/home/home_binding.dart';
+import 'package:multimax/app/modules/home/home_screen.dart';
+import 'package:multimax/app/modules/profile/user_profile_binding.dart';
+import 'package:multimax/app/modules/profile/user_profile_screen.dart';
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_binding.dart';
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_screen.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_binding.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
+import 'package:multimax/app/modules/purchase_order/purchase_order_binding.dart'; // Added
+import 'package:multimax/app/modules/purchase_order/purchase_order_screen.dart'; // Added
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart'; // Added
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart'; // Added
+import 'package:multimax/app/modules/stock_entry/stock_entry_binding.dart';
+import 'package:multimax/app/modules/stock_entry/stock_entry_screen.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_binding.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_screen.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_binding.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_screen.dart';
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_binding.dart';
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_screen.dart';
+import 'package:multimax/app/modules/packing_slip/packing_slip_binding.dart';
+import 'package:multimax/app/modules/packing_slip/packing_slip_screen.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_binding.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_screen.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_binding.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_screen.dart';
+import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
+import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart';
+import 'package:multimax/app/modules/todo/todo_binding.dart';
+import 'package:multimax/app/modules/todo/todo_screen.dart';
+import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
+import 'package:multimax/app/modules/item/item_binding.dart';
+import 'package:multimax/app/modules/item/item_screen.dart';
+import 'package:multimax/app/modules/item/form/item_form_binding.dart';
+import 'package:multimax/app/modules/item/form/item_form_screen.dart';
 
 import 'app_routes.dart';
 

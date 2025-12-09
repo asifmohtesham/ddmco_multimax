@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/bom_model.dart';
-import 'package:ddmco_multimax/app/data/providers/bom_provider.dart';
+import 'package:multimax/app/data/models/bom_model.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 
 class BomController extends GetxController {
   final BomProvider _provider = Get.find<BomProvider>();

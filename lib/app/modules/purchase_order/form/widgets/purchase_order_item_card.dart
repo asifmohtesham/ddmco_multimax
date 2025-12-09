@@ -1,7 +1,7 @@
 import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_order_model.dart';
+import 'package:multimax/app/data/models/purchase_order_model.dart';
 
 class PurchaseOrderItemCard extends StatelessWidget {
   final PurchaseOrderItem item;

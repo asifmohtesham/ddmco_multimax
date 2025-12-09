@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_controller.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 
 class PosUploadFilterBottomSheet extends StatefulWidget {
   const PosUploadFilterBottomSheet({super.key});

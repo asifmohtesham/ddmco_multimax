@@ -2,7 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 
 class BarcodeInputWidget extends StatefulWidget {
   final TextEditingController? controller;

@@ -1,11 +1,11 @@
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/stock_entry_controller.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/role_guard.dart'; // Import RoleGuard
+import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/role_guard.dart'; // Import RoleGuard
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});

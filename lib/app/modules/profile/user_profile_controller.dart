@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
-import 'package:ddmco_multimax/app/data/models/user_model.dart';
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 
 class UserProfileController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();

@@ -1,5 +1,5 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 
 class PurchaseOrderFormBinding extends Bindings {
   @override

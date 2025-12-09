@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
-import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
+import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
 class PackingSlipItemCard extends StatelessWidget {
   final PackingSlipItem item;

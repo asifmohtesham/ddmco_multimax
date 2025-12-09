@@ -2,10 +2,10 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_receipt_model.dart';
-import 'package:ddmco_multimax/app/data/providers/purchase_receipt_provider.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:intl/intl.dart';
 
 class PurchaseReceiptFormController extends GetxController {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_controller.dart';
+import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 
 class PackingSlipFilterBottomSheet extends StatefulWidget {
   const PackingSlipFilterBottomSheet({super.key});

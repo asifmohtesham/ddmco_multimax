@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/job_card/job_card_controller.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/job_card/job_card_controller.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 
 class JobCardScreen extends GetView<JobCardController> {

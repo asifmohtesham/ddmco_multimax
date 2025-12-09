@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/todo_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/item_provider.dart';
-import 'package:ddmco_multimax/app/data/models/item_model.dart';
-import 'package:ddmco_multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/providers/todo_provider.dart';
+import 'package:multimax/app/data/providers/item_provider.dart';
+import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 

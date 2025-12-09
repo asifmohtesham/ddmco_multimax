@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/item/item_controller.dart';
+import 'package:multimax/app/modules/item/item_controller.dart';
 
 class ItemFilterBottomSheet extends StatefulWidget {
   const ItemFilterBottomSheet({super.key});

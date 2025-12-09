@@ -1,10 +1,10 @@
 import 'dart:ui'; // Added
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/item/item_controller.dart';
-import 'package:ddmco_multimax/app/data/models/item_model.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/item/item_controller.dart';
+import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});

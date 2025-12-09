@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/animated_expand_icon.dart';
+import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class ItemGroupCard extends StatelessWidget {
   final bool isExpanded;

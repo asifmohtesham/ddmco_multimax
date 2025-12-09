@@ -1,8 +1,8 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/stock_entry_model.dart';
-import 'package:ddmco_multimax/app/data/providers/stock_entry_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart'; // Added
-import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart'; // Added
+import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart'; // Added
+import 'package:multimax/app/data/models/pos_upload_model.dart'; // Added
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();

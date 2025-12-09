@@ -20,48 +20,32 @@ class MainActivity : FlutterActivity() {
     private val ZEBRA_DATA_KEY = "com.symbol.datawedge.data_string"
 
     // Netum / Generic Scanner Constants
-    // Note: Confirm this action in your Netum Scanner's specific settings/manual
     private val NETUM_INTENT_ACTION = "com.android.server.scannerservice.broadcast"
     private val NETUM_DATA_KEY = "scannerdata"
 
-    // Hold the event sink to send data to Flutter whenever we get it
     private var eventSink: EventChannel.EventSink? = null
 
-    // Define the receiver as a property of the class
+    // 1. Define Receiver as a class property so it persists
     private val scanReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
-            // 1. Log that we actually received SOMETHING
-            Log.d("ScanCheck", "Native BroadcastReceiver onReceive. Action: $action")
+            // Debug Log: If this prints, the Intent connection is working!
+            Log.d("ScanCheck", "Broadcast Received. Action: $action")
 
             var scanData: String? = null
 
-            // 2. Extract Data based on Source
             if (action == ZEBRA_INTENT_ACTION) {
                 scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
-                Log.d("ScanCheck", "Source: Zebra. Data: $scanData")
-            }
-            else if (action == NETUM_INTENT_ACTION) {
+                Log.d("ScanCheck", "Source: Zebra | Data: $scanData")
+            } else if (action == NETUM_INTENT_ACTION) {
                 scanData = intent.getStringExtra(NETUM_DATA_KEY)
-                Log.d("ScanCheck", "Source: Netum. Data: $scanData")
-            }
-            // Fallback: Dump all extras to Logcat if scanData is null (helps debug unknown keys)
-            else {
-                val bundle = intent?.extras
-                if (bundle != null) {
-                    for (key in bundle.keySet()) {
-                        Log.d("ScanCheck", "Extra Key: $key, Value: ${bundle.get(key)}")
-                    }
-                }
+                Log.d("ScanCheck", "Source: Netum | Data: $scanData")
             }
 
-            // 3. Send to Flutter
             if (!scanData.isNullOrEmpty()) {
                 val cleanData = scanData.trim()
                 Log.d("ScanCheck", "Sending to Flutter: $cleanData")
                 eventSink?.success(cleanData)
-            } else {
-                Log.w("ScanCheck", "Received Intent but data was empty or key mismatch.")
             }
         }
     }
@@ -69,29 +53,24 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Setup the EventChannel to just capture the sink
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    Log.d("ScanCheck", "Flutter EventChannel connected")
+                    Log.d("ScanCheck", "Flutter EventChannel Listener Connected")
                     eventSink = events
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    Log.d("ScanCheck", "Flutter EventChannel disconnected")
                     eventSink = null
                 }
             }
         )
-
-        // Create the profile for Zebra devices
-        createDataWedgeProfile()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Register the receiver immediately when the app starts
+        // 2. Register Receiver Immediately (Robustness)
         val filter = IntentFilter()
         filter.addAction(ZEBRA_INTENT_ACTION)
         filter.addAction(NETUM_INTENT_ACTION)
@@ -103,24 +82,26 @@ class MainActivity : FlutterActivity() {
             } else {
                 registerReceiver(scanReceiver, filter)
             }
-            Log.d("ScanCheck", "BroadcastReceiver Registered Successfully in onCreate")
+            Log.d("ScanCheck", "Native Receiver Registered in onCreate")
         } catch (e: Exception) {
-            Log.e("ScanCheck", "Failed to register receiver: ${e.message}")
+            Log.e("ScanCheck", "Error registering receiver: ${e.message}")
         }
+
+        // 3. Configure DataWedge
+        configureDataWedge()
     }
 
     override fun onDestroy() {
+        super.onDestroy()
         try {
             unregisterReceiver(scanReceiver)
-            Log.d("ScanCheck", "BroadcastReceiver Unregistered")
         } catch (e: Exception) {
             // Receiver might not have been registered
         }
-        super.onDestroy()
     }
 
-    private fun createDataWedgeProfile() {
-        // ... (Keep existing DataWedge profile creation logic) ...
+    private fun configureDataWedge() {
+        // --- Step 1: Create Profile & Associate App ---
         val profileConfig = Bundle()
         profileConfig.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
         profileConfig.putString("PROFILE_ENABLED", "true")
@@ -131,6 +112,9 @@ class MainActivity : FlutterActivity() {
         appConfig.putStringArray("ACTIVITY_LIST", arrayOf("*"))
         profileConfig.putParcelableArray("APP_LIST", arrayOf(appConfig))
 
+        sendDataWedgeIntent("com.symbol.datawedge.api.SET_CONFIG", profileConfig)
+
+        // --- Step 2: Configure Barcode Input (Enable QR/EAN) ---
         val barcodeConfig = Bundle()
         barcodeConfig.putString("PLUGIN_NAME", "BARCODE")
         barcodeConfig.putString("RESET_CONFIG", "true")
@@ -140,36 +124,63 @@ class MainActivity : FlutterActivity() {
         barcodeProps.putString("decoder_ean13", "true")
         barcodeProps.putString("decoder_ean8", "true")
         barcodeProps.putString("decoder_qrcode", "true")
-        barcodeProps.putString("scanning_mode", "1")
 
         barcodeConfig.putBundle("PARAM_LIST", barcodeProps)
-        profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig)
 
-        val setConfigIntent = Intent()
-        setConfigIntent.action = "com.symbol.datawedge.api.ACTION"
-        setConfigIntent.putExtra("com.symbol.datawedge.api.SET_CONFIG", profileConfig)
-        sendBroadcast(setConfigIntent)
+        val barcodeProfile = Bundle()
+        barcodeProfile.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
+        barcodeProfile.putString("PROFILE_ENABLED", "true")
+        barcodeProfile.putString("CONFIG_MODE", "UPDATE")
+        barcodeProfile.putBundle("PLUGIN_CONFIG", barcodeConfig)
 
+        sendDataWedgeIntent("com.symbol.datawedge.api.SET_CONFIG", barcodeProfile)
+
+        // --- Step 3: DISABLE Keystroke Output (Crucial Fix) ---
+        // This stops the scanner from typing into text fields, ensuring only Intent output works
+        val keystrokeConfig = Bundle()
+        keystrokeConfig.putString("PLUGIN_NAME", "KEYSTROKE")
+        keystrokeConfig.putString("RESET_CONFIG", "true")
+
+        val keystrokeProps = Bundle()
+        keystrokeProps.putString("keystroke_output_enabled", "false") // <--- DISABLE HERE
+
+        keystrokeConfig.putBundle("PARAM_LIST", keystrokeProps)
+
+        val keystrokeProfile = Bundle()
+        keystrokeProfile.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
+        keystrokeProfile.putString("PROFILE_ENABLED", "true")
+        keystrokeProfile.putString("CONFIG_MODE", "UPDATE")
+        keystrokeProfile.putBundle("PLUGIN_CONFIG", keystrokeConfig)
+
+        sendDataWedgeIntent("com.symbol.datawedge.api.SET_CONFIG", keystrokeProfile)
+
+        // --- Step 4: ENABLE Intent Output ---
         val intentConfig = Bundle()
-        intentConfig.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
-        intentConfig.putString("PROFILE_ENABLED", "true")
-        intentConfig.putString("CONFIG_MODE", "UPDATE")
-
-        val intentPluginConfig = Bundle()
-        intentPluginConfig.putString("PLUGIN_NAME", "INTENT")
-        intentPluginConfig.putString("RESET_CONFIG", "true")
+        intentConfig.putString("PLUGIN_NAME", "INTENT")
+        intentConfig.putString("RESET_CONFIG", "true")
 
         val intentProps = Bundle()
         intentProps.putString("intent_output_enabled", "true")
         intentProps.putString("intent_action", ZEBRA_INTENT_ACTION)
-        intentProps.putString("intent_delivery", "2") // Broadcast
+        intentProps.putString("intent_delivery", "2") // 2 = Broadcast
 
-        intentPluginConfig.putBundle("PARAM_LIST", intentProps)
-        intentConfig.putBundle("PLUGIN_CONFIG", intentPluginConfig)
+        intentConfig.putBundle("PARAM_LIST", intentProps)
 
-        val setIntentConfig = Intent()
-        setIntentConfig.action = "com.symbol.datawedge.api.ACTION"
-        setIntentConfig.putExtra("com.symbol.datawedge.api.SET_CONFIG", intentConfig)
-        sendBroadcast(setIntentConfig)
+        val intentProfile = Bundle()
+        intentProfile.putString("PROFILE_NAME", ZEBRA_PROFILE_NAME)
+        intentProfile.putString("PROFILE_ENABLED", "true")
+        intentProfile.putString("CONFIG_MODE", "UPDATE")
+        intentProfile.putBundle("PLUGIN_CONFIG", intentConfig)
+
+        sendDataWedgeIntent("com.symbol.datawedge.api.SET_CONFIG", intentProfile)
+
+        Log.d("ScanCheck", "DataWedge Configuration Intents Sent")
+    }
+
+    private fun sendDataWedgeIntent(action: String, extra: Bundle) {
+        val i = Intent()
+        i.action = action
+        i.putExtra(action.substringAfterLast("."), extra)
+        sendBroadcast(i)
     }
 }

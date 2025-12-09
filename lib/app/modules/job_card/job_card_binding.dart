@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/job_card/job_card_controller.dart';
-import 'package:ddmco_multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/modules/job_card/job_card_controller.dart';
+import 'package:multimax/app/data/providers/job_card_provider.dart';
 
 class JobCardBinding extends Bindings {
   @override

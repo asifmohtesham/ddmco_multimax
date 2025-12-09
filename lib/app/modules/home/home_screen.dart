@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/app_bottom_bar.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/app_nav_drawer.dart';
-import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
-import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added Import
+import 'package:multimax/app/modules/global_widgets/app_bottom_bar.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added Import
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});

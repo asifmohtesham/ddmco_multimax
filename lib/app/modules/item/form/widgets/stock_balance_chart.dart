@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ddmco_multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 
 class StockBalanceChart extends StatelessWidget {
   final List<WarehouseStock> stockLevels;

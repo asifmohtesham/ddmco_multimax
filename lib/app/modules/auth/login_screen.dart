@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/auth/login_controller.dart';
+import 'package:multimax/app/modules/auth/login_controller.dart';
 
 class LoginScreen extends GetView<LoginController> {
   const LoginScreen({super.key});

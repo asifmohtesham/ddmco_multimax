@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/delivery_note_controller.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 
 class FilterBottomSheet extends StatefulWidget {
   const FilterBottomSheet({super.key});

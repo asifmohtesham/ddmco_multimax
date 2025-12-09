@@ -1,8 +1,8 @@
 import 'dart:developer';
 
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/item_model.dart';
-import 'package:ddmco_multimax/app/data/providers/item_provider.dart';
+import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/providers/item_provider.dart';
 
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();

@@ -1,10 +1,10 @@
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
   const PurchaseReceiptScreen({super.key});

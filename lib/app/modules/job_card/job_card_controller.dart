@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/job_card_model.dart';
-import 'package:ddmco_multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/providers/job_card_provider.dart';
 
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/item/form/item_form_controller.dart';
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
-import 'package:ddmco_multimax/app/modules/item/form/widgets/stock_balance_chart.dart'; // Added Import
+import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart'; // Added Import
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});

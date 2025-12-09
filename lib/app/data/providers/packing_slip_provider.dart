@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:get/get.dart' hide Response;
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 
 class PackingSlipProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();

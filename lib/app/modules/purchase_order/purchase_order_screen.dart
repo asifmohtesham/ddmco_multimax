@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_controller.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_order_model.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/widgets/purchase_order_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
+import 'package:multimax/app/data/models/purchase_order_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filter_bottom_sheet.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
   const PurchaseOrderScreen({super.key});

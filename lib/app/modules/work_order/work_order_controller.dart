@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/work_order_model.dart';
-import 'package:ddmco_multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/data/models/work_order_model.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
 
 class WorkOrderController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();

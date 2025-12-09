@@ -1,7 +1,7 @@
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/purchase_order_model.dart';
-import 'package:ddmco_multimax/app/data/providers/purchase_order_provider.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/models/purchase_order_model.dart';
+import 'package:multimax/app/data/providers/purchase_order_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PurchaseOrderController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();

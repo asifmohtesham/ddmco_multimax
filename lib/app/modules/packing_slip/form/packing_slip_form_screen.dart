@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
-import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
+import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   const PackingSlipFormScreen({super.key});

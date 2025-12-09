@@ -1,10 +1,10 @@
 
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
-import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
-import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
-import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();

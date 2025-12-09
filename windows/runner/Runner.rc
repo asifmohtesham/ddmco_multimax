@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.ddmco" "\0"
-            VALUE "FileDescription", "ddmco_multimax" "\0"
+            VALUE "FileDescription", "multimax" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "ddmco_multimax" "\0"
+            VALUE "InternalName", "multimax" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.ddmco. All rights reserved." "\0"
-            VALUE "OriginalFilename", "ddmco_multimax.exe" "\0"
-            VALUE "ProductName", "ddmco_multimax" "\0"
+            VALUE "OriginalFilename", "multimax.exe" "\0"
+            VALUE "ProductName", "multimax" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

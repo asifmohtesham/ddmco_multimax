@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/form/widgets/purchase_order_item_card.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
+import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_card.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   const PurchaseOrderFormScreen({super.key});

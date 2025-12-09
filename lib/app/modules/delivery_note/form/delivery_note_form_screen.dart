@@ -3,14 +3,14 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
-import 'package:ddmco_multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
-import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
-import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart'; // Added
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart'; // Added for currency
-import 'package:ddmco_multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
+import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added
+import 'package:multimax/app/data/utils/formatting_helper.dart'; // Added for currency
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});

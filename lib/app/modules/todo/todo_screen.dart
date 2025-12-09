@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/todo/todo_controller.dart';
+import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});

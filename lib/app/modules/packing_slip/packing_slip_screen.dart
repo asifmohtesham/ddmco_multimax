@@ -1,11 +1,11 @@
-import 'package:ddmco_multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/packing_slip_controller.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
+import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipScreen extends StatefulWidget {
   const PackingSlipScreen({super.key});

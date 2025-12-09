@@ -2,12 +2,12 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
-import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
-import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
-import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
-import 'package:ddmco_multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
+import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 
 class PackingSlipFormController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();

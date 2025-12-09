@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/pos_upload_model.dart';
-import 'package:ddmco_multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 
 class PosUploadFormController extends GetxController {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();

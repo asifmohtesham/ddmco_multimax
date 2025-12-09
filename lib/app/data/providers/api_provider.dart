@@ -5,7 +5,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ddmco_multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class ApiProvider {
   bool _dioInitialized = false;

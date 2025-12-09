@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/work_order/work_order_controller.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/work_order/work_order_controller.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:intl/intl.dart';
 

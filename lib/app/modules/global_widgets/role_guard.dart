@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 class RoleGuard extends StatelessWidget {
   final List<String> roles;

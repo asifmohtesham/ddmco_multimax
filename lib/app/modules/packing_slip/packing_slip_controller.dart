@@ -1,11 +1,11 @@
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'package:ddmco_multimax/app/data/models/packing_slip_model.dart';
-import 'package:ddmco_multimax/app/data/providers/packing_slip_provider.dart';
-import 'package:ddmco_multimax/app/modules/home/home_controller.dart';
-import 'package:ddmco_multimax/app/data/providers/delivery_note_provider.dart';
-import 'package:ddmco_multimax/app/data/models/delivery_note_model.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();

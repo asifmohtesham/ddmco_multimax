@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/pos_upload_controller.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:intl/intl.dart';
-import 'package:ddmco_multimax/app/data/routes/app_routes.dart';
-import 'package:ddmco_multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:ddmco_multimax/app/modules/pos_upload/widgets/pos_upload_filter_bottom_sheet.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_filter_bottom_sheet.dart';
 
 class PosUploadScreen extends StatefulWidget {
   const PosUploadScreen({super.key});

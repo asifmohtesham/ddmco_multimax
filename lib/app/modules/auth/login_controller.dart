@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/data/models/user_model.dart';
-import 'package:ddmco_multimax/app/data/providers/api_provider.dart';
-import 'package:ddmco_multimax/app/modules/auth/authentication_controller.dart';
-import 'package:ddmco_multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class LoginController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();

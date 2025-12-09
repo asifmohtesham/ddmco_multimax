@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:ddmco_multimax/app/modules/purchase_order/purchase_order_controller.dart';
+import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
 
 class PurchaseOrderFilterBottomSheet extends StatelessWidget {
   const PurchaseOrderFilterBottomSheet({super.key});

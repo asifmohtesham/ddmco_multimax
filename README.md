@@ -1,4 +1,4 @@
-# ddmco_multimax
+# multimax
 
 Manage stock, order, packing and delivery.
 
