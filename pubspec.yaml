@@ -46,9 +46,6 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus:
-  # Added for Voice Input
-  speech_to_text: ^6.6.0
-  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
