@@ -36,7 +36,7 @@ class UserProfileScreen extends GetView<UserProfileController> {
               // Profile Avatar
               CircleAvatar(
                 radius: 50,
-                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                 child: Text(
                   user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
                   style: TextStyle(

@@ -4,7 +4,8 @@ import 'package:multimax/app/modules/global_widgets/app_bottom_bar.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added Import
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:percent_indicator/circular_percent_indicator.dart'; // Required package
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -32,7 +33,7 @@ class HomeScreen extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Welcome Section (Compact)
+              // 1. Welcome Section
               Obx(() {
                 final user = authController.currentUser.value;
                 final name = user?.name ?? 'User';
@@ -53,7 +54,7 @@ class HomeScreen extends GetView<HomeController> {
                       ],
                     ),
                     CircleAvatar(
-                        backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                        backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                         child: Text(name.isNotEmpty ? name[0] : 'U', style: TextStyle(color: Theme.of(context).primaryColor))
                     )
                   ],
@@ -61,7 +62,7 @@ class HomeScreen extends GetView<HomeController> {
               }),
               const SizedBox(height: 16),
 
-              // 2. Barcode Input (Consistent UX)
+              // 2. Barcode Input
               Obx(() => BarcodeInputWidget(
                 onScan: controller.onScan,
                 controller: controller.barcodeController,
@@ -69,54 +70,39 @@ class HomeScreen extends GetView<HomeController> {
                 hintText: 'Scan Item / Batch',
               )),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
-              // 3. Overview Grid (Compact)
-              const Text('Overview', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              // 3. User KPI Gauges (Work Order & Job Cards)
+              const Text('Production KPIs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
+
               Obx(() {
                 if (controller.isLoadingStats.value) {
                   return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
                 }
-                return GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.6, // Shorter cards for compactness
+
+                return Row(
                   children: [
-                    DashboardStatCard(
-                      title: 'Delivery Notes',
-                      count: controller.draftDeliveryNotesCount.value,
-                      icon: Icons.local_shipping_outlined,
-                      color: Colors.blue,
-                      label: 'Draft',
-                      onTap: controller.goToDeliveryNote,
+                    Expanded(
+                      child: UserKpiGauge(
+                        title: 'Work Orders',
+                        actual: controller.activeWorkOrdersCount.value,
+                        target: controller.targetWorkOrders,
+                        color: Colors.blue,
+                        icon: Icons.assignment_outlined,
+                        onTap: controller.goToWorkOrder,
+                      ),
                     ),
-                    DashboardStatCard(
-                      title: 'Packing Slips',
-                      count: controller.draftPackingSlipsCount.value,
-                      icon: Icons.inventory_2_outlined,
-                      color: Colors.orange,
-                      label: 'Draft',
-                      onTap: controller.goToPackingSlip,
-                    ),
-                    DashboardStatCard(
-                      title: 'POS Uploads',
-                      count: controller.pendingPosUploadsCount.value,
-                      icon: Icons.receipt_long_outlined,
-                      color: Colors.purple,
-                      label: 'Pending',
-                      onTap: controller.goToPosUpload,
-                    ),
-                    DashboardStatCard(
-                      title: 'ToDos',
-                      count: controller.openTodosCount.value,
-                      icon: Icons.check_circle_outline,
-                      color: Colors.green,
-                      label: 'Open',
-                      onTap: controller.goToToDo,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: UserKpiGauge(
+                        title: 'Job Cards',
+                        actual: controller.activeJobCardsCount.value,
+                        target: controller.targetJobCards,
+                        color: Colors.orange,
+                        icon: Icons.assignment_ind_outlined,
+                        onTap: controller.goToJobCard,
+                      ),
                     ),
                   ],
                 );
@@ -127,7 +113,6 @@ class HomeScreen extends GetView<HomeController> {
           ),
         ),
       ),
-      // 4. FAB for the main creation action (saving space from body)
       floatingActionButton: FloatingActionButton.extended(
         onPressed: controller.goToDeliveryNote,
         icon: const Icon(Icons.add),
@@ -138,104 +123,73 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
-class DashboardStatCard extends StatelessWidget {
+class UserKpiGauge extends StatelessWidget {
   final String title;
-  final int count;
-  final String label;
-  final IconData icon;
+  final int actual;
+  final int target;
   final Color color;
+  final IconData icon;
   final VoidCallback onTap;
 
-  const DashboardStatCard({
+  const UserKpiGauge({
     super.key,
     required this.title,
-    required this.count,
-    required this.label,
-    required this.icon,
+    required this.actual,
+    required this.target,
     required this.color,
+    required this.icon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final double percent = (target > 0) ? (actual / target).clamp(0.0, 1.0) : 0.0;
+
     return Card(
       elevation: 2,
-      shadowColor: color.withOpacity(0.2),
+      shadowColor: color.withValues(alpha: 0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white,
-                color.withOpacity(0.05),
-              ],
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: color, size: 18),
-                  ),
-                  Text(
-                    '$count',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87,
-                    ),
-                  ),
+                  Icon(icon, size: 16, color: Colors.grey[700]),
+                  const SizedBox(width: 6),
+                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 ],
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[700],
+              const SizedBox(height: 16),
+              CircularPercentIndicator(
+                radius: 45.0,
+                lineWidth: 9.0,
+                percent: percent,
+                animation: true,
+                center: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "$actual",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20.0, color: color),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
+                  ],
+                ),
+                footer: Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: Text(
+                    "Target: $target",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(color: color, shape: BoxShape.circle)
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey[600],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
+                circularStrokeCap: CircularStrokeCap.round,
+                progressColor: color,
+                backgroundColor: color.withValues(alpha: 0.1),
               ),
             ],
           ),

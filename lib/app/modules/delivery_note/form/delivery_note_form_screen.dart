@@ -533,7 +533,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                                 ),
                               ],
                             ),
-                            barrierColor: Colors.black.withOpacity(0.9),
+                            barrierColor: Colors.black.withValues(alpha: 0.9),
                           );
                         },
                         child: ClipRRect(

@@ -250,7 +250,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
         ),
         Container(
           decoration: BoxDecoration(
-            color: color.withOpacity(0.05), // Very light background tint
+            color: color.withValues(alpha: 0.05), // Very light background tint
             borderRadius: BorderRadius.circular(8),
           ),
           child: child,
