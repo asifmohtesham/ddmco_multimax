@@ -19,9 +19,21 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         appBar: AppBar(
           title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
           actions: [
-            // Modified: Save Button reacts to isDirty
+            // Modified: Fixed skewed loader using SizedBox and Center
             Obx(() => controller.isSaving.value
-                ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
+                ? const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5
+                    )
+                ),
+              ),
+            )
                 : IconButton(
               icon: const Icon(Icons.save),
               // Enable save if Dirty AND docstatus is Draft (0)
@@ -59,14 +71,11 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  // ... _buildDetailsView ... (No changes needed, Obx handles reactive updates)
-
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Form(
         child: Obx(() {
-          // ... (existing logic) ...
           final type = controller.selectedStockEntryType.value;
           final isMaterialIssue = type == 'Material Issue';
           final isMaterialReceipt = type == 'Material Receipt';

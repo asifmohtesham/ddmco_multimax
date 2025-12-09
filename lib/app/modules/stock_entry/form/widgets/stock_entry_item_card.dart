@@ -89,11 +89,17 @@ class StockEntryItemCard extends StatelessWidget {
                           onPressed: () => controller.editItem(item, index),
                           tooltip: 'Edit Item',
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, size: 20, color: Colors.red),
-                          onPressed: () => controller.deleteItem(index),
-                          tooltip: 'Remove Item',
-                        ),
+                        // Only show delete if there is more than 1 item
+                        Obx(() {
+                          if ((controller.stockEntry.value?.items.length ?? 0) > 1) {
+                            return IconButton(
+                              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                              onPressed: () => controller.deleteItem(index),
+                              tooltip: 'Remove Item',
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }),
                       ],
                     ),
                   ],
@@ -134,7 +140,6 @@ class StockEntryItemCard extends StatelessWidget {
                         ),
                       ],
                     ),
-
 
                     const SizedBox(height: 12),
 
@@ -207,6 +212,7 @@ class StockEntryItemCard extends StatelessWidget {
     );
   }
 
+  // ... _buildBadge & _buildLocationBlock (Kept identical) ...
   Widget _buildBadge({required IconData icon, required String label, required MaterialColor color, bool isMono = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

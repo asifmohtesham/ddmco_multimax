@@ -131,20 +131,17 @@ class StockEntryFormController extends GetxController {
   // --- Validation Logic ---
 
   void validateSheet() {
-    // 1. Qty Check
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
     }
 
-    // 2. Batch Check (if entered)
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
       isSheetValid.value = false;
       return;
     }
 
-    // 3. Rack Checks based on Type
     final type = selectedStockEntryType.value;
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -168,8 +165,8 @@ class StockEntryFormController extends GetxController {
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0); // Prevent negative
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0); // Assuming integer qtys for convenience
+    final newVal = (current + delta).clamp(0.0, 999999.0);
+    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
     validateSheet();
   }
 
@@ -244,7 +241,7 @@ class StockEntryFormController extends GetxController {
     }
 
     isLoading.value = false;
-    isDirty.value = false; // New documents start clean (until edited) or dirty? Typically clean until touched.
+    isDirty.value = false;
   }
 
   Future<void> fetchStockEntry() async {
@@ -255,11 +252,8 @@ class StockEntryFormController extends GetxController {
         final entry = StockEntry.fromJson(response.data['data']);
         stockEntry.value = entry;
 
-        // Populate form fields
         selectedFromWarehouse.value = entry.fromWarehouse;
         selectedToWarehouse.value = entry.toWarehouse;
-        // Use setting text directly to avoid triggering listener immediately if we wanted,
-        // but since we reset isDirty below, it's fine.
         customReferenceNoController.text = entry.customReferenceNo ?? '';
         selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
 
@@ -273,7 +267,6 @@ class StockEntryFormController extends GetxController {
       Get.snackbar('Error', e.toString());
     } finally {
       isLoading.value = false;
-      // Reset dirty flag after initial load
       isDirty.value = false;
     }
   }
@@ -302,7 +295,6 @@ class StockEntryFormController extends GetxController {
           name = createdDoc['name'];
           mode = 'edit';
 
-          // Re-fetch or update local model with response
           await fetchStockEntry();
           Get.snackbar('Success', 'Stock Entry created: $name');
         } else {
@@ -312,7 +304,7 @@ class StockEntryFormController extends GetxController {
         final response = await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
           Get.snackbar('Success', 'Stock Entry updated');
-          await fetchStockEntry(); // Refresh data and clear dirty
+          await fetchStockEntry();
         } else {
           Get.snackbar('Error', 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
@@ -387,7 +379,7 @@ class StockEntryFormController extends GetxController {
 
     selectedSerial.value = null;
     currentItemNameKey = null;
-    editingItemIndex.value = null; // Ensure we are in "Add" mode
+    editingItemIndex.value = null;
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -483,7 +475,7 @@ class StockEntryFormController extends GetxController {
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
     currentItemNameKey = item.name;
-    editingItemIndex.value = index; // Set index for Update logic
+    editingItemIndex.value = index;
 
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
@@ -513,7 +505,7 @@ class StockEntryFormController extends GetxController {
       isScrollControlled: true,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
-      editingItemIndex.value = null; // Clean up on close
+      editingItemIndex.value = null;
     });
   }
 
@@ -526,7 +518,7 @@ class StockEntryFormController extends GetxController {
         val?.items.assignAll(currentItems);
       });
 
-      isDirty.value = true; // Mark dirty
+      isDirty.value = true;
       Get.snackbar('Success', 'Item removed');
     }
   }
@@ -540,8 +532,8 @@ class StockEntryFormController extends GetxController {
     final newItem = StockEntryItem(
       itemCode: currentItemCode,
       qty: qty,
-      basicRate: 0.0, // Should fetch rate ideally
-      itemGroup: null, // Should fetch
+      basicRate: 0.0,
+      itemGroup: null,
       customVariantOf: currentVariantOf,
       batchNo: batch,
       itemName: currentItemName,
@@ -557,14 +549,12 @@ class StockEntryFormController extends GetxController {
     if (editingItemIndex.value != null) {
       // UPDATE EXISTING
       if (editingItemIndex.value! < currentItems.length) {
-        // Merge relevant fields, keeping things like basicRate from original if needed
         final oldItem = currentItems[editingItemIndex.value!];
 
-        // Using new item values where applicable
         currentItems[editingItemIndex.value!] = StockEntryItem(
           itemCode: newItem.itemCode,
           qty: newItem.qty,
-          basicRate: oldItem.basicRate, // Preserve rate
+          basicRate: oldItem.basicRate,
           itemGroup: oldItem.itemGroup,
           customVariantOf: newItem.customVariantOf,
           batchNo: newItem.batchNo,
@@ -578,8 +568,6 @@ class StockEntryFormController extends GetxController {
       }
     } else {
       // ADD NEW
-      // Check for duplicates if business rule requires merging?
-      // For now, simple append
       currentItems.add(newItem);
     }
 
@@ -588,14 +576,12 @@ class StockEntryFormController extends GetxController {
     });
 
     Get.back();
-    isDirty.value = true; // Mark dirty
 
+    // Auto-Save if New Document
     if (mode == 'new') {
-      // Optional: Auto-save on first item add? Or let user click save?
-      // Usually user expects to build the list then save.
-      // Leaving manual save for now unless auto-save is desired.
-      Get.snackbar('Success', editingItemIndex.value != null ? 'Item updated' : 'Item added');
+      saveStockEntry();
     } else {
+      isDirty.value = true; // Mark dirty if editing existing doc
       Get.snackbar('Success', editingItemIndex.value != null ? 'Item updated' : 'Item added');
     }
   }
