@@ -21,7 +21,7 @@ class ItemController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
-  // Stores list of active attribute filters: [{'name': 'Color', 'value': 'Red'}, ...]
+  // Stores list of active attribute filters
   var attributeFilters = <Map<String, String>>[].obs;
 
   var sortField = 'modified'.obs;
@@ -57,7 +57,7 @@ class ItemController extends GetxController {
 
   void applyFilters(Map<String, dynamic> filters, List<Map<String, String>> attributes) {
     activeFilters.value = filters;
-    attributeFilters.value = attributes;
+    attributeFilters.assignAll(attributes);
     fetchItems(clear: true);
   }
 
@@ -94,45 +94,59 @@ class ItemController extends GetxController {
       }
 
       // --- Attribute Filtering Logic ---
-      // If attributes are selected, we must first find the Items that possess ALL those attributes.
-      // We do this by querying 'Item Variant Attribute' table.
       if (attributeFilters.isNotEmpty) {
         Set<String>? commonItemCodes;
+        bool permissionErrorOccurred = false;
 
+        // Find items that match ALL selected attributes (Intersection)
         for (var filter in attributeFilters) {
-          final response = await _provider.getItemVariantsByAttribute(
-              filter['name']!,
-              filter['value']!
-          );
+          try {
+            final response = await _provider.getItemVariantsByAttribute(
+                filter['name']!,
+                filter['value']!
+            );
 
-          if (response.statusCode == 200 && response.data['data'] != null) {
-            final List<String> fetchedCodes = (response.data['data'] as List)
-                .map((e) => e['parent'].toString())
-                .toList();
+            if (response.statusCode == 200 && response.data['data'] != null) {
+              final List<String> fetchedCodes = (response.data['data'] as List)
+                  .map((e) => e['parent'].toString())
+                  .toList();
 
-            if (commonItemCodes == null) {
-              // First iteration: initialize the set
-              commonItemCodes = Set.from(fetchedCodes);
-            } else {
-              // Subsequent iterations: find intersection (AND logic)
-              commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
+              if (commonItemCodes == null) {
+                commonItemCodes = Set.from(fetchedCodes);
+              } else {
+                commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
+              }
+
+              // Optimization: If intersection is empty, no items match -> break
+              if (commonItemCodes.isEmpty) break;
             }
-
-            // Optimization: If intersection is empty, no items match all criteria
-            if (commonItemCodes.isEmpty) break;
+          } catch (e) {
+            // Handle Permission 403 or other errors gracefully
+            print('Error fetching attributes: $e');
+            permissionErrorOccurred = true;
+            // Fallback: Add description filter for this value
+            // Note: This is less precise and only supports one 'description' key in Map
+            queryFilters['description'] = ['like', '%${filter['value']}%'];
           }
         }
 
-        // If we found candidates, add them to the main query filters
-        if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
-          queryFilters['name'] = ['in', commonItemCodes.toList()];
+        // Apply result to main query if we successfully fetched Item Codes
+        if (!permissionErrorOccurred) {
+          if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
+            queryFilters['name'] = ['in', commonItemCodes.toList()];
+          } else {
+            // Attributes were checked but no intersection found
+            // Return empty result immediately to avoid fetching all items
+            items.clear();
+            isLoading.value = false;
+            hasMore.value = false;
+            isFetchingMore.value = false;
+            return;
+          }
         } else {
-          // Attributes were selected but no items matched -> Return empty result immediately
-          items.clear();
-          isLoading.value = false;
-          hasMore.value = false;
-          isFetchingMore.value = false;
-          return;
+          // If we had a permission error, we rely on the 'description' filter added in catch block
+          // and let the main query run.
+          GlobalSnackbar.info(title: 'Permissions', message: 'Attribute access restricted. Searching by description instead.');
         }
       }
       // ---------------------------------
@@ -172,16 +186,13 @@ class ItemController extends GetxController {
     }
   }
 
-  // ... (Existing helper methods fetchItemGroups, fetchItemAttributes, fetchAttributeValues, etc.)
-
+  // ... (Rest of the controller methods remain unchanged) ...
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {
       final response = await _provider.getItemGroups();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        itemGroups.value = (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+        itemGroups.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
       print('Error fetching item groups: $e');
@@ -195,9 +206,7 @@ class ItemController extends GetxController {
     try {
       final response = await _provider.getItemAttributes();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        itemAttributes.value = (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+        itemAttributes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
       print('Error fetching item attributes: $e');
@@ -214,9 +223,7 @@ class ItemController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         if (data['item_attribute_values'] != null) {
-          currentAttributeValues.value = (data['item_attribute_values'] as List)
-              .map((e) => e['attribute_value'] as String)
-              .toList();
+          currentAttributeValues.value = (data['item_attribute_values'] as List).map((e) => e['attribute_value'] as String).toList();
         }
       }
     } catch (e) {
@@ -230,7 +237,6 @@ class ItemController extends GetxController {
 
   Future<void> fetchStockLevels(String itemCode) async {
     if (_stockLevelsCache.containsKey(itemCode)) return;
-
     isLoadingStock.value = true;
     try {
       final response = await _provider.getStockLevels(itemCode);

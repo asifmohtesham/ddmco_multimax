@@ -6,10 +6,9 @@ import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  // ... (Initialization code remains unchanged) ...
   bool _dioInitialized = false;
   late Dio _dio;
   late CookieJar _cookieJar;
@@ -47,6 +46,8 @@ class ApiProvider {
     _dioInitialized = true;
   }
 
+  // ... (Login methods remain unchanged) ...
+
   Future<Response> login(String email, String password) async {
     if (!_dioInitialized) await _initDio();
     try {
@@ -62,28 +63,14 @@ class ApiProvider {
   }
 
   Future<Response> loginWithFrappe(String username, String password) async {
-    // ... (rest of implementation similar)
     if (!_dioInitialized) await _initDio();
-    const String loginEndpoint = '/api/method/login';
-    final formData = FormData.fromMap({'usr': username, 'pwd': password});
-
     try {
-      return await _dio.post(loginEndpoint, data: formData, options: Options(contentType: Headers.formUrlEncodedContentType));
+      final formData = FormData.fromMap({'usr': username, 'pwd': password});
+      return await _dio.post('/api/method/login', data: formData, options: Options(contentType: Headers.formUrlEncodedContentType));
     } on DioException catch (e) {
-      printError(info: "ApiProvider DioException: ${e.message}");
-      rethrow;
-    } catch (e) {
-      printError(info: "ApiProvider generic error: $e");
       rethrow;
     }
   }
-
-  // ... (Rest of methods: hasSessionCookies, clearSessionCookies, logoutApiCall, getLoggedUser, getUserDetails, resetPassword, changePassword, getDocumentList, getDocument, createDocument, updateDocument, getReport, getBatchWiseBalance, and specific getters remain unchanged but use standard logging/rethrow logic) ...
-
-  // NOTE: For brevity, keeping standard methods. If any other method inside here used Get.snackbar, it should be replaced.
-  // currently only login() used it directly in the previous version.
-
-  // ... (Includes all previous methods for getPurchaseReceipts, getStockEntries, etc.) ...
 
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialized) await _initDio();
@@ -124,15 +111,51 @@ class ApiProvider {
     );
   }
 
-  Future<Response> getDocumentList(String doctype, {int limit = 20, int limitStart = 0, List<String>? fields, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async {
+  // --- UPDATED: Generic Document Fetching with Correct Filter Parsing ---
+
+  Future<Response> getDocumentList(String doctype, {
+    int limit = 20,
+    int limitStart = 0,
+    List<String>? fields,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+  }) async {
     if (!_dioInitialized) await _initDio();
-    final queryParameters = {'limit_page_length': limit, 'limit_start': limitStart, 'order_by': orderBy};
-    if (fields != null) queryParameters['fields'] = json.encode(fields);
-    if (filters != null && filters.isNotEmpty) {
-      queryParameters['filters'] = json.encode(filters.entries.map((e) => [doctype, e.key, '=', e.value]).toList());
+
+    final String endpoint = '/api/resource/$doctype';
+    final queryParameters = {
+      'limit_page_length': limit,
+      'limit_start': limitStart,
+      'order_by': orderBy,
+    };
+
+    if (fields != null) {
+      queryParameters['fields'] = json.encode(fields);
     }
-    return await _dio.get('/api/resource/$doctype', queryParameters: queryParameters);
+
+    if (filters != null && filters.isNotEmpty) {
+      // FIX: Handle custom operators (e.g. ['like', '%val%']) correctly
+      final List<List<dynamic>> filterList = filters.entries.map((entry) {
+        if (entry.value is List && (entry.value as List).length == 2) {
+          // Assume format [operator, value]
+          return [doctype, entry.key, entry.value[0], entry.value[1]];
+        }
+        // Default to equals
+        return [doctype, entry.key, '=', entry.value];
+      }).toList();
+
+      queryParameters['filters'] = json.encode(filterList);
+    }
+
+    try {
+      return await _dio.get(endpoint, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      // Optional: Log here but don't swallow, let controller handle UI
+      rethrow;
+    }
   }
+
+  // ... (Rest of the standard methods getDocument, createDocument, updateDocument, getReport remain same) ...
 
   Future<Response> getDocument(String doctype, String name) async {
     if (!_dioInitialized) await _initDio();
@@ -168,12 +191,12 @@ class ApiProvider {
     });
   }
 
-  // Helper getters for specific doctypes
+  // ... (Specific Getters for modules like getPurchaseReceipts etc. remain unchanged) ...
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
   Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
-  Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'docstatus']);
+  Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner']);
   Future<Response> getPackingSlip(String name) async => getDocument('Packing Slip', name);
-  Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation']);
+  Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']);
   Future<Response> getStockEntry(String name) async => getDocument('Stock Entry', name);
   Future<Response> getDeliveryNotes({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Delivery Note', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus']);
   Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);

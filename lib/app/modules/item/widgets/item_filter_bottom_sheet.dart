@@ -29,8 +29,11 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
 
-    // Initialize with existing filters from controller
-    localAttributeFilters.assignAll(controller.attributeFilters);
+    // FIX: Properly copy existing filters from controller to local state
+    // We iterate to create new Map instances to break references
+    localAttributeFilters.assignAll(
+        controller.attributeFilters.map((e) => Map<String, String>.from(e)).toList()
+    );
 
     attributeNameController = TextEditingController();
     attributeValueController = TextEditingController();
@@ -145,11 +148,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     final value = attributeValueController.text;
 
     if (name.isNotEmpty && value.isNotEmpty) {
-      // Check for duplicates
       final exists = localAttributeFilters.any((e) => e['name'] == name && e['value'] == value);
       if (!exists) {
         localAttributeFilters.add({'name': name, 'value': value});
-        // Clear inputs
         attributeNameController.clear();
         attributeValueController.clear();
       } else {
@@ -221,7 +222,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Attribute Filters Section
                   const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
 
@@ -276,7 +276,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                                     onSelected: (val) {
                                       setState(() {
                                         attributeNameController.text = val;
-                                        attributeValueController.clear(); // Reset value
+                                        attributeValueController.clear();
                                       });
                                       controller.fetchAttributeValues(val);
                                     }
@@ -341,8 +341,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                 }
 
                 controller.setImagesOnly(showImagesOnly);
-                // Pass both general filters and specific attribute filters
-                controller.applyFilters(filters, localAttributeFilters);
+                // FIX: Pass a copy to avoid reference issues
+                controller.applyFilters(filters, localAttributeFilters.toList());
                 Get.back();
               },
               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),

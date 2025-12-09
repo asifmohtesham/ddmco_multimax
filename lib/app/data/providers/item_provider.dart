@@ -47,7 +47,6 @@ class ItemProvider {
   }
 
   /// Fetches the list of Items (parents) that have a specific attribute value.
-  /// Used for filtering Items by multiple attributes.
   Future<Response> getItemVariantsByAttribute(String attribute, String value) async {
     return _apiProvider.getDocumentList(
       'Item Variant Attribute',
@@ -56,7 +55,8 @@ class ItemProvider {
         'attribute_value': value
       },
       fields: ['parent'], // 'parent' is the Item Code in this child table
-      limit: 0, // We need all matches to filter correctly
+      // FIX: Increased limit to ensure we get ALL matching items for correct filtering
+      limit: 5000,
     );
   }
   // ---------------------------
