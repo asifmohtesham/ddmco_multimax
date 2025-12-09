@@ -21,7 +21,17 @@ class StockEntryProvider {
     );
   }
 
-  // ... rest of the file
+  // --- Added Method ---
+  Future<Response> getStockEntryTypes() async {
+    return _apiProvider.getDocumentList(
+      'Stock Entry Type',
+      limit: 0, // Fetch all types
+      fields: ['name'],
+      orderBy: 'name asc',
+    );
+  }
+  // --------------------
+
   Future<Response> getStockEntry(String name) async {
     return _apiProvider.getStockEntry(name);
   }

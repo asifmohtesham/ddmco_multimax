@@ -42,6 +42,10 @@ class StockEntryFormController extends GetxController {
   var isFetchingWarehouses = false.obs;
   var posUploadSerialOptions = <String>[].obs;
 
+  // --- Dynamic Stock Entry Types ---
+  var stockEntryTypes = <String>[].obs; // Changed to RxList
+  var isFetchingTypes = false.obs;
+
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
@@ -76,13 +80,6 @@ class StockEntryFormController extends GetxController {
   var currentItemNameKey = RxnString();
   var selectedSerial = RxnString();
 
-  final List<String> stockEntryTypes = [
-    'Material Issue',
-    'Material Receipt',
-    'Material Transfer',
-    'Material Transfer for Manufacture'
-  ];
-
   final sourceRackFocusNode = FocusNode();
   final targetRackFocusNode = FocusNode();
 
@@ -90,6 +87,7 @@ class StockEntryFormController extends GetxController {
   void onInit() {
     super.onInit();
     fetchWarehouses();
+    fetchStockEntryTypes(); // Added
 
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
@@ -131,7 +129,39 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
+  // --- Fetch Data ---
+
+  Future<void> fetchStockEntryTypes() async {
+    isFetchingTypes.value = true;
+    try {
+      final response = await _provider.getStockEntryTypes();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        final types = data.map((e) => e['name'].toString()).toList();
+
+        stockEntryTypes.assignAll(types);
+
+        // Ensure selected type is valid
+        if (stockEntryTypes.isNotEmpty && !stockEntryTypes.contains(selectedStockEntryType.value)) {
+          // If 'Material Transfer' (default) is not in the list, pick the first available
+          selectedStockEntryType.value = stockEntryTypes.first;
+        }
+      }
+    } catch (e) {
+      print('Error fetching stock entry types: $e');
+      // Fallback in case of API failure to prevent UI crash
+      if (stockEntryTypes.isEmpty) {
+        stockEntryTypes.assignAll([
+          'Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'
+        ]);
+      }
+    } finally {
+      isFetchingTypes.value = false;
+    }
+  }
+
   // --- Validation Logic ---
+  // ... (Rest of the file remains unchanged) ...
 
   void validateSheet() {
     rackError.value = null;
