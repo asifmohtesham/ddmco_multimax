@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class PosUploadFormController extends GetxController {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -34,10 +35,10 @@ class PosUploadFormController extends GetxController {
           filteredItems.assignAll(posUpload.value!.items);
         }
       } else {
-        Get.snackbar('Error', 'Failed to fetch POS upload');
+        GlobalSnackbar.error(message: 'Failed to fetch POS upload');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       isLoading.value = false;
     }
@@ -59,14 +60,14 @@ class PosUploadFormController extends GetxController {
     try {
       final response = await _provider.updatePosUpload(name, data);
       if (response.statusCode == 200) {
-        Get.snackbar('Success', 'POS Upload updated successfully');
+        GlobalSnackbar.success(message: 'POS Upload updated successfully');
         // Refresh the data
         fetchPosUpload(); 
       } else {
-        Get.snackbar('Error', 'Failed to update POS Upload');
+        GlobalSnackbar.error(message: 'Failed to update POS Upload');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Update failed: $e');
+      GlobalSnackbar.error(message: 'Update failed: $e');
     } finally {
       isSaving.value = false;
     }

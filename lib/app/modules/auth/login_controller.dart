@@ -5,6 +5,7 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class LoginController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -41,7 +42,7 @@ class LoginController extends GetxController {
   Future<void> saveServerConfiguration() async {
     String url = serverUrlController.text.trim();
     if (url.isEmpty) {
-      Get.snackbar('Error', 'Server URL cannot be empty');
+      GlobalSnackbar.error(message: 'Server URL cannot be empty');
       return;
     }
 
@@ -72,13 +73,13 @@ class LoginController extends GetxController {
         }
         serverUrlController.text = url;
         Get.back(); // Close bottom sheet
-        Get.snackbar('Connected', 'Successfully connected to $url', backgroundColor: Colors.green, colorText: Colors.white);
+        GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
       } else {
         throw Exception('Invalid response from server');
       }
 
     } catch (e) {
-      Get.snackbar('Connection Failed', 'Could not connect to server: $url', backgroundColor: Colors.red, colorText: Colors.white);
+      GlobalSnackbar.error(title: 'Connection Failed', message: 'Could not connect to server: $url');
       // Revert to old url in provider if needed, or keep as is since the user wants to change it.
     } finally {
       isCheckingConnection.value = false;
@@ -141,12 +142,12 @@ class LoginController extends GetxController {
           }
 
         } else if (response.statusCode == 401 || response.statusCode == 403) {
-          Get.snackbar('Login Failed', response.data?['message'] ?? 'Invalid credentials.', backgroundColor: Colors.red, colorText: Colors.white);
+          GlobalSnackbar.error(title: 'Login Failed', message: response.data?['message'] ?? 'Invalid credentials.');
         } else {
-          Get.snackbar('Login Error', response.data?['message'] ?? 'An unknown error occurred.', backgroundColor: Colors.red, colorText: Colors.white);
+          GlobalSnackbar.error(title: 'Login Error', message: response.data?['message'] ?? 'An unknown error occurred.');
         }
       } catch (e) {
-        Get.snackbar('Login Error', 'An unexpected error occurred.', backgroundColor: Colors.red, colorText: Colors.white);
+        GlobalSnackbar.error(title: 'Login Error', message: 'An unexpected error occurred.');
       } finally {
         isLoading.value = false;
       }
@@ -155,7 +156,7 @@ class LoginController extends GetxController {
 
   Future<void> resetPassword() async {
     if (emailController.text.isEmpty) {
-      Get.snackbar('Error', 'Please enter your email address first', backgroundColor: Colors.red, colorText: Colors.white);
+      GlobalSnackbar.error(message: 'Please enter your email address first');
       return;
     }
 
@@ -164,12 +165,12 @@ class LoginController extends GetxController {
       final response = await _apiProvider.resetPassword(emailController.text.trim());
       if (response.statusCode == 200) {
         Get.back(); // Close dialog if open
-        Get.snackbar('Success', 'Password reset instructions sent to your email', backgroundColor: Colors.green, colorText: Colors.white);
+        GlobalSnackbar.success(message: 'Password reset instructions sent to your email');
       } else {
-        Get.snackbar('Error', 'Failed to send reset link', backgroundColor: Colors.red, colorText: Colors.white);
+        GlobalSnackbar.error(message: 'Failed to send reset link');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Reset failed: $e', backgroundColor: Colors.red, colorText: Colors.white);
+      GlobalSnackbar.error(message: 'Reset failed: $e');
     } finally {
       isLoading.value = false;
     }

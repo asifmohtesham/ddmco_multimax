@@ -6,6 +6,7 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -64,12 +65,9 @@ class AuthenticationController extends GetxController {
     currentUser.value = user;
     isAuthenticated.value = true;
     Get.offAllNamed(AppRoutes.HOME);
-    Get.snackbar(
-      'Login Successful',
-      'Welcome back, ${user.name}!',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.green,
-      colorText: Colors.white,
+    GlobalSnackbar.success(
+      title: 'Login Successful',
+      message: 'Welcome back, ${user.name}!',
     );
   }
 
@@ -93,7 +91,7 @@ class AuthenticationController extends GetxController {
                 await _clearSessionAndLocalData();
                 Get.offAllNamed(AppRoutes.LOGIN);
               } catch (e) {
-                Get.snackbar('Logout Error', 'Could not log out.');
+                GlobalSnackbar.error(title: 'Logout Error', message: 'Could not log out.');
               } finally {
                 isLoading.value = false;
               }

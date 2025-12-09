@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class UserProfileController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
@@ -56,13 +57,13 @@ class UserProfileController extends GetxController {
       final response = await _apiProvider.updateDocument('User', user.value!.id, {'mobile_no': newNumber});
       if (response.statusCode == 200) {
         Get.back(); // Close dialog
-        Get.snackbar('Success', 'Mobile number updated successfully', backgroundColor: Colors.green, colorText: Colors.white);
+        GlobalSnackbar.success(message: 'Mobile number updated successfully');
         refreshProfile();
       } else {
-        Get.snackbar('Error', 'Failed to update mobile number', backgroundColor: Colors.red, colorText: Colors.white);
+        GlobalSnackbar.error(message: 'Failed to update mobile number');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Update failed: $e', backgroundColor: Colors.red, colorText: Colors.white);
+      GlobalSnackbar.error(message: 'Update failed: $e');
     } finally {
       isUpdating.value = false;
     }
@@ -76,12 +77,12 @@ class UserProfileController extends GetxController {
       final response = await _apiProvider.changePassword(oldPassword, newPassword);
       if (response.statusCode == 200) {
         Get.back(); // Close dialog
-        Get.snackbar('Success', 'Password changed successfully', backgroundColor: Colors.green, colorText: Colors.white);
+        GlobalSnackbar.success(message: 'Password changed successfully');
       } else {
-        Get.snackbar('Error', 'Failed to change password', backgroundColor: Colors.red, colorText: Colors.white);
+        GlobalSnackbar.error(message: 'Failed to change password');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Change password failed: ${e.toString()}', backgroundColor: Colors.red, colorText: Colors.white);
+      GlobalSnackbar.error(message: 'Change password failed: ${e.toString()}');
     } finally {
       isUpdating.value = false;
     }

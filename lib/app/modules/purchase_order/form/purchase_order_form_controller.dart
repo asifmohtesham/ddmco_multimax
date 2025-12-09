@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
@@ -63,7 +64,7 @@ class PurchaseOrderFormController extends GetxController {
         dateController.text = po.transactionDate;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to load PO: $e');
+      GlobalSnackbar.error(message: 'Failed to load PO: $e');
     } finally {
       isLoading.value = false;
     }
@@ -86,12 +87,12 @@ class PurchaseOrderFormController extends GetxController {
 
       if (response.statusCode == 200) {
         Get.back();
-        Get.snackbar('Success', 'Purchase Order Saved');
+        GlobalSnackbar.success(message: 'Purchase Order Saved');
       } else {
-        Get.snackbar('Error', 'Failed to save');
+        GlobalSnackbar.error(message: 'Failed to save');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Save failed: $e');
+      GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }

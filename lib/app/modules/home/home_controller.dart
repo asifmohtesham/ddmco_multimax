@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
@@ -146,7 +147,7 @@ class HomeController extends GetxController {
           final item = Item.fromJson(response.data['data'][0]);
           Get.bottomSheet(ItemDetailSheet(item: item), isScrollControlled: true);
         } else {
-          Get.snackbar('Not Found', 'Item with code $itemCode not found.');
+          GlobalSnackbar.error(title: 'Not Found', message: 'Item with code $itemCode not found.');
         }
       } else {
         final itemCode = code;
@@ -156,11 +157,11 @@ class HomeController extends GetxController {
           final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
           Get.bottomSheet(RackBalanceSheet(itemCode: itemCode, stockData: stockList), isScrollControlled: true);
         } else {
-          Get.snackbar('Error', 'Could not fetch stock report for $itemCode');
+          GlobalSnackbar.error(message: 'Could not fetch stock report for $itemCode');
         }
       }
     } catch (e) {
-      Get.snackbar('Error', 'Scan processing failed: $e');
+      GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();

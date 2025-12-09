@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
@@ -43,10 +44,10 @@ class ItemFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         item.value = Item.fromJson(response.data['data'][0]);
       } else {
-        Get.snackbar('Error', 'Item not found');
+        GlobalSnackbar.error(message: 'Item not found');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       isLoading.value = false;
     }
@@ -182,7 +183,7 @@ class ItemFormController extends GetxController {
     if (relativeUrl == null) return;
     final fullUrl = 'https://erp.multimax.cloud$relativeUrl';
     Clipboard.setData(ClipboardData(text: fullUrl));
-    Get.snackbar('Success', 'Link copied to clipboard');
+    GlobalSnackbar.success(message: 'Link copied to clipboard');
   }
 
   Future<void> shareFile(String? relativeUrl, String? fileName) async {
@@ -203,7 +204,7 @@ class ItemFormController extends GetxController {
     } catch (e) {
       if (Get.isDialogOpen == true) Get.back();
       Clipboard.setData(ClipboardData(text: fullUrl));
-      Get.snackbar('Share Info', 'Could not download file. Link copied.', duration: const Duration(seconds: 3));
+      GlobalSnackbar.info(title: 'Share Info', message: 'Could not download file. Link copied.');
     }
   }
 }

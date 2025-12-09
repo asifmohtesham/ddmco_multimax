@@ -1,45 +1,96 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter/services.dart'; // For HapticFeedback
 
 class GlobalSnackbar {
-  static void show({
+  static void success({String title = 'Success', required String message}) {
+    _show(
+      title: title,
+      message: message,
+      icon: Icons.check_circle_rounded,
+      color: Colors.green.shade600,
+      shouldVibrate: true,
+    );
+  }
+
+  static void error({String title = 'Error', required String message}) {
+    _show(
+      title: title,
+      message: message,
+      icon: Icons.error_rounded,
+      color: Colors.red.shade600,
+      shouldVibrate: true,
+    );
+  }
+
+  static void warning({String title = 'Warning', required String message}) {
+    _show(
+      title: title,
+      message: message,
+      icon: Icons.warning_amber_rounded,
+      color: Colors.orange.shade700,
+    );
+  }
+
+  static void info({String title = 'Info', required String message}) {
+    _show(
+      title: title,
+      message: message,
+      icon: Icons.info_outline_rounded,
+      color: Colors.blue.shade600,
+    );
+  }
+
+  static void _show({
     required String title,
     required String message,
-    bool isError = false,
+    required IconData icon,
+    required Color color,
+    bool shouldVibrate = false,
   }) {
-    // Close existing snackbars to prevent stacking
+    // Close existing to prevent stacking clutter
     if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+
+    if (shouldVibrate) HapticFeedback.lightImpact();
 
     Get.snackbar(
       title,
       message,
-      backgroundColor: Colors.white,
-      colorText: Colors.black87,
-      borderWidth: 1,
-      borderColor: Colors.grey.shade300,
-      icon: Icon(
-        isError ? Icons.error_outline : Icons.check_circle_outline,
-        color: isError ? Colors.red : Colors.green,
-      ),
-      shouldIconPulse: true,
-      barBlur: 20,
-      isDismissible: true,
-      duration: const Duration(seconds: 4),
-      mainButton: TextButton(
-        onPressed: () {
-          if (Get.isSnackbarOpen) Get.back();
-        },
-        child: Text(
-          'DISMISS',
-          style: TextStyle(
-            color: isError ? Colors.red : Colors.green,
-            fontWeight: FontWeight.bold,
-          ),
+      titleText: Text(
+        title,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
         ),
       ),
+      messageText: Text(
+        message,
+        style: const TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+        ),
+      ),
+      backgroundColor: Colors.white,
+      icon: Icon(icon, color: color, size: 28),
+      shouldIconPulse: true,
+      snackPosition: SnackPosition.BOTTOM,
       margin: const EdgeInsets.all(16),
       borderRadius: 12,
-      snackPosition: SnackPosition.BOTTOM,
+      borderWidth: 1,
+      borderColor: Colors.grey.shade200,
+      boxShadows: [
+        BoxShadow(
+          color: color.withValues(alpha: 0.1),
+          offset: const Offset(0, 4),
+          blurRadius: 10,
+          spreadRadius: 1,
+        ),
+      ],
+      duration: const Duration(seconds: 4),
+      isDismissible: true,
+      leftBarIndicatorColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart'; // Added
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
@@ -261,10 +262,10 @@ class StockEntryFormController extends GetxController {
           _fetchPosUploadDetails(entry.customReferenceNo!);
         }
       } else {
-        Get.snackbar('Error', 'Failed to fetch stock entry');
+        GlobalSnackbar.error(message: 'Failed to fetch stock entry');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       isLoading.value = false;
       isDirty.value = false;
@@ -304,21 +305,21 @@ class StockEntryFormController extends GetxController {
           mode = 'edit';
 
           await fetchStockEntry();
-          Get.snackbar('Success', 'Stock Entry created: $name');
+          GlobalSnackbar.success(message: 'Stock Entry created: $name');
         } else {
-          Get.snackbar('Error', 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
+          GlobalSnackbar.error(message: 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
         final response = await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
-          Get.snackbar('Success', 'Stock Entry updated');
+          GlobalSnackbar.success(message: 'Stock Entry updated');
           await fetchStockEntry();
         } else {
-          Get.snackbar('Error', 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+          GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
       }
     } catch (e) {
-      Get.snackbar('Error', 'Save failed: $e');
+      GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }
@@ -360,10 +361,10 @@ class StockEntryFormController extends GetxController {
 
         _openQtySheet(scannedBatch: batchNo);
       } else {
-        Get.snackbar('Error', 'Item not found');
+        GlobalSnackbar.error(message: 'Item not found');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Scan failed: $e');
+      GlobalSnackbar.error(message: 'Scan failed: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();
@@ -423,14 +424,14 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
-        Get.snackbar('Success', 'Batch validated', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 1));
+        GlobalSnackbar.success(message: 'Batch validated');
         _focusNextField();
       } else {
         bsIsBatchValid.value = false;
-        Get.snackbar('Error', 'Batch not found for this item');
+        GlobalSnackbar.error(message: 'Batch not found for this item');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to validate batch: $e');
+      GlobalSnackbar.error(message: 'Failed to validate batch: $e');
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
@@ -452,7 +453,7 @@ class StockEntryFormController extends GetxController {
       } else {
         if (isSource) isSourceRackValid.value = false;
         else isTargetRackValid.value = false;
-        Get.snackbar('Error', 'Rack not found');
+        GlobalSnackbar.error(message: 'Rack not found');
       }
     } catch (e) {
       if (isSource) isSourceRackValid.value = false;
@@ -526,7 +527,7 @@ class StockEntryFormController extends GetxController {
     });
 
     isDirty.value = true;
-    Get.snackbar('Success', 'Item removed');
+    GlobalSnackbar.success(message: 'Item removed');
   }
 
   void addItem() {
@@ -595,7 +596,7 @@ class StockEntryFormController extends GetxController {
       saveStockEntry();
     } else {
       isDirty.value = true;
-      Get.snackbar('Success', existingIndex != -1 ? 'Item updated' : 'Item added');
+      GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
     }
   }
 }

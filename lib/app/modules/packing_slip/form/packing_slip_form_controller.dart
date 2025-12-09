@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 
 class PackingSlipFormController extends GetxController {
@@ -96,10 +97,10 @@ class PackingSlipFormController extends GetxController {
           await fetchLinkedDeliveryNote(slip.deliveryNote);
         }
       } else {
-        Get.snackbar('Error', 'Failed to fetch packing slip details');
+        GlobalSnackbar.error(message: 'Failed to fetch packing slip details');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to load data: ${e.toString()}');
+      GlobalSnackbar.error(message: 'Failed to load data: ${e.toString()}');
     } finally {
       isLoading.value = false;
     }
@@ -125,7 +126,7 @@ class PackingSlipFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
-      Get.snackbar('Error', 'Delivery Note not loaded yet. Please wait.');
+      GlobalSnackbar.error(message: 'Delivery Note not loaded yet. Please wait.');
       return;
     }
 
@@ -159,7 +160,7 @@ class PackingSlipFormController extends GetxController {
     if (match != null) {
       _prepareSheetForAdd(match);
     } else {
-      Get.snackbar('Error', 'Item $itemCode not found in Delivery Note or Batch mismatch.');
+      GlobalSnackbar.error(message: 'Item $itemCode not found in Delivery Note or Batch mismatch.');
     }
   }
 
@@ -392,15 +393,15 @@ class PackingSlipFormController extends GetxController {
         if (isNew) {
           name = saved.name;
           mode = 'edit';
-          Get.snackbar('Success', 'Packing Slip Created: ${saved.name}');
+          GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
         } else {
-          Get.snackbar('Success', 'Packing Slip Saved');
+          GlobalSnackbar.success(message: 'Packing Slip Saved');
         }
       } else {
-        Get.snackbar('Error', 'Failed to save Packing Slip');
+        GlobalSnackbar.error(message: 'Failed to save Packing Slip');
       }
     } catch (e) {
-      Get.snackbar('Error', 'Save failed: $e');
+      GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }

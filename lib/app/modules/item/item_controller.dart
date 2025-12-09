@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
@@ -107,10 +108,10 @@ class ItemController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch items');
+        GlobalSnackbar.error(message: 'Failed to fetch items');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;

@@ -132,10 +132,10 @@ class DeliveryNoteFormController extends GetxController {
           await fetchPosUpload(note.poNo!);
         }
       } else {
-        GlobalSnackbar.show(title: 'Error', message: 'Failed to fetch delivery note', isError: true);
+        GlobalSnackbar.error(message: 'Failed to fetch delivery note');
       }
     } catch (e) {
-      GlobalSnackbar.show(title: 'Error', message: 'Failed to load initial data: ${e.toString()}', isError: true);
+      GlobalSnackbar.error(message: 'Failed to load initial data: ${e.toString()}');
     } finally {
       isLoading.value = false;
     }
@@ -148,7 +148,7 @@ class DeliveryNoteFormController extends GetxController {
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      GlobalSnackbar.show(title: 'Error', message: 'Failed to fetch linked POS Upload: $e', isError: true);
+      GlobalSnackbar.error(message: 'Failed to fetch linked POS Upload: $e');
     }
   }
 
@@ -388,7 +388,7 @@ class DeliveryNoteFormController extends GetxController {
       itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
       batchNo = barcode;
     } else {
-      GlobalSnackbar.show(title: 'Error', message: 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)', isError: true);
+      GlobalSnackbar.error(message: 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)');
       barcodeController.clear();
       return;
     }
@@ -447,7 +447,7 @@ class DeliveryNoteFormController extends GetxController {
 
     } catch (e) {
       final errorMessage = 'Validation failed: ${e.toString().contains('404') ? 'Item or Batch not found' : e.toString()}';
-      GlobalSnackbar.show(title: 'Error', message: errorMessage, isError: true);
+      GlobalSnackbar.error(message: errorMessage);
     } finally {
       isScanning.value = false;
       isAddingItem.value = false;
@@ -483,7 +483,7 @@ class DeliveryNoteFormController extends GetxController {
       currentItems[index] = updatedItem;
       await _saveDocumentAndReflect(currentItems, updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
     } else {
-      GlobalSnackbar.show(title: 'Error', message: 'Item to update not found', isError: true);
+      GlobalSnackbar.error(message: 'Item to update not found');
     }
   }
 
@@ -566,13 +566,13 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
         if (Get.isBottomSheetOpen == true) Get.back();
-        GlobalSnackbar.show(title: 'Success', message: 'Document saved');
+        GlobalSnackbar.success(message: 'Document saved');
         _triggerItemFeedback(itemCode, serial);
       } else {
         throw Exception('Failed to save document. Status: ${response.statusCode}');
       }
     } catch (e) {
-      GlobalSnackbar.show(title: 'Error', message: 'Failed to save: $e', isError: true);
+      GlobalSnackbar.error(message: 'Failed to save: $e');
     } finally {
       isSaving.value = false;
     }
