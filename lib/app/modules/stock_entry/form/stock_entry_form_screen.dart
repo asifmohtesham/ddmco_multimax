@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
@@ -301,6 +302,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       onScan: (code) => controller.scanBarcode(code),
       isLoading: controller.isScanning.value,
       controller: controller.barcodeController,
+      activeRoute: AppRoutes.STOCK_ENTRY_FORM, // Add this
     ));
   }
 }

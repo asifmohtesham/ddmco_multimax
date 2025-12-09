@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -200,6 +201,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             isLoading: controller.isScanning.value,
             hintText: 'Scan Item / Batch',
             controller: controller.barcodeController,
+            activeRoute: AppRoutes.PACKING_SLIP_FORM, // Add this
           )),
       ],
     );

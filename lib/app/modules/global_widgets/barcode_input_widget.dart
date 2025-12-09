@@ -11,6 +11,10 @@ class BarcodeInputWidget extends StatefulWidget {
   final bool isSuccess;
   final String hintText;
 
+  /// The named route (e.g., AppRoutes.HOME) where this widget is valid.
+  /// If provided, the scanner will ignore broadcasts when Get.currentRoute differs.
+  final String? activeRoute;
+
   const BarcodeInputWidget({
     super.key,
     required this.onScan,
@@ -18,6 +22,7 @@ class BarcodeInputWidget extends StatefulWidget {
     this.isLoading = false,
     this.isSuccess = false,
     this.hintText = 'Scan or enter barcode',
+    this.activeRoute,
   });
 
   @override
@@ -39,6 +44,15 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       log('Scanned Code: $code', name: 'EAN');
 
       if (code.isNotEmpty) {
+        // --- Context Awareness Check ---
+        // If an activeRoute is defined, ensure we are currently on that route.
+        // This prevents background screens (like Home) from reacting to scans
+        // meant for the top-most screen (like a Form).
+        if (widget.activeRoute != null && Get.currentRoute != widget.activeRoute) {
+          log('Ignoring scan on ${widget.activeRoute} because current route is ${Get.currentRoute}', name: 'BarcodeInput');
+          return;
+        }
+
         // "Send ENTER key" in DataWedge Intent Output adds a newline character (or \r).
         // We trim the string to ensure the text field doesn't show the newline
         // and the regex/logic matches correctly.
@@ -52,7 +66,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
           TextPosition(offset: _textController.text.length),
         );
 
-        // 2. Trigger the onScan function automatically (Same as pressing the send button)
+        // 2. Trigger the onScan function automatically
         widget.onScan(cleanCode);
       }
     });
@@ -108,7 +122,8 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 : IconButton(
               icon: const Icon(Icons.send),
               onPressed: () {
-                // Manual entry trigger
+                // Manual entry trigger works regardless of route check
+                // because the user physically interacts with this specific widget.
                 if (_textController.text.trim().isNotEmpty) {
                   widget.onScan(_textController.text.trim());
                 }

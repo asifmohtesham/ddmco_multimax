@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart'; // Ensure this is imported
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -42,6 +43,7 @@ class HomeScreen extends GetView<HomeController> {
                 controller: controller.barcodeController,
                 isLoading: controller.isScanning.value,
                 hintText: 'Scan Item / Batch',
+                activeRoute: AppRoutes.HOME, // Add this
               )),
 
               const SizedBox(height: 24),

@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -219,11 +220,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               isLoading: controller.isScanning.value,
               isSuccess: controller.isAddingItem.value,
               controller: controller.barcodeController,
+              activeRoute: AppRoutes.DELIVERY_NOTE_FORM, // Add this
             );
           }
           return BarcodeInputWidget(
             onScan: (code) => controller.addItemFromBarcode(code),
             controller: controller.barcodeController,
+            activeRoute: AppRoutes.DELIVERY_NOTE_FORM, // Add this
           );
         }),
         SingleChildScrollView(
