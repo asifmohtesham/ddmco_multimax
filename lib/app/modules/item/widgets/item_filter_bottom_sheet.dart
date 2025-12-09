@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
 
 class ItemFilterBottomSheet extends StatefulWidget {
   const ItemFilterBottomSheet({super.key});
@@ -14,24 +16,25 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   final ItemController controller = Get.find();
 
   late TextEditingController itemGroupController;
-  late TextEditingController variantOfController; // Added
-
-  // Local state for adding a new attribute filter
+  late TextEditingController variantOfController;
   late TextEditingController attributeNameController;
   late TextEditingController attributeValueController;
 
   late bool showImagesOnly;
 
-  // Local list to manage filters before applying
   final RxList<Map<String, String>> localAttributeFilters = <Map<String, String>>[].obs;
+
+  // Speech to Text
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  String _lastWords = '';
 
   @override
   void initState() {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
-    variantOfController = TextEditingController(text: _extractFilterValue('variant_of')); // Init
+    variantOfController = TextEditingController(text: _extractFilterValue('variant_of'));
 
-    // Copy existing attribute filters
     localAttributeFilters.assignAll(
         controller.attributeFilters.map((e) => Map<String, String>.from(e)).toList()
     );
@@ -40,6 +43,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     attributeValueController = TextEditingController();
 
     showImagesOnly = controller.showImagesOnly.value;
+
+    _speech = stt.SpeechToText();
   }
 
   String _extractFilterValue(String key) {
@@ -47,7 +52,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     if (val is List && val.isNotEmpty && val[0] == 'like') {
       return val[1].toString().replaceAll('%', '');
     }
-    // Handle 'equals' which might be just the value or [=, val]
     if (val is List && val.isNotEmpty && val[0] == '=') {
       return val[1].toString();
     }
@@ -58,11 +62,95 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void dispose() {
     itemGroupController.dispose();
-    variantOfController.dispose(); // Dispose
+    variantOfController.dispose();
     attributeNameController.dispose();
     attributeValueController.dispose();
     super.dispose();
   }
+
+  // --- Voice Input Logic ---
+
+  Future<void> _listen() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize(
+        onStatus: (val) {
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _isListening = false);
+            if (_lastWords.isNotEmpty) {
+              _parseVoiceInput(_lastWords);
+            }
+          }
+        },
+        onError: (val) => print('onError: $val'),
+      );
+
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) => setState(() {
+            _lastWords = val.recognizedWords;
+          }),
+        );
+      } else {
+        GlobalSnackbar.error(message: 'Speech recognition not available');
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+
+  void _parseVoiceInput(String input) {
+    if (input.isEmpty) return;
+    String processed = input.toLowerCase();
+
+    // 1. Parse Item Group: "Filter the [Wallets] Item Group"
+    // Regex looks for words before "item group" or "group"
+    final groupRegex = RegExp(r'(?:filter\s+(?:the\s+)?)?(.+?)\s+(?:item\s+group|group)');
+    final groupMatch = groupRegex.firstMatch(processed);
+
+    if (groupMatch != null) {
+      String rawGroup = groupMatch.group(1)?.trim() ?? '';
+      // Cleanup common prefixes if regex didn't catch them
+      rawGroup = rawGroup.replaceAll('filter the', '').replaceAll('filter', '').trim();
+
+      if (rawGroup.isNotEmpty) {
+        // Attempt to find matching group from controller list
+        final match = controller.itemGroups.firstWhere(
+                (g) => g.toLowerCase().contains(rawGroup),
+            orElse: () => ''
+        );
+        if (match.isNotEmpty) {
+          itemGroupController.text = match;
+          GlobalSnackbar.success(message: 'Item Group set to $match');
+        } else {
+          // Fallback to raw text if no exact list match
+          itemGroupController.text = rawGroup[0].toUpperCase() + rawGroup.substring(1);
+        }
+      }
+    }
+
+    // 2. Parse Variant/Template: "Article Number/Template/Variant Of [022]"
+    // Regex looks for value after keywords
+    final variantRegex = RegExp(r'(?:article number|template|variant of|variant)\s+(.+)');
+    final variantMatch = variantRegex.firstMatch(processed);
+
+    if (variantMatch != null) {
+      String rawVariant = variantMatch.group(1)?.trim() ?? '';
+      // Remove any trailing punctuation
+      rawVariant = rawVariant.replaceAll(RegExp(r'[^\w\s\-]'), '');
+
+      if (rawVariant.isNotEmpty) {
+        variantOfController.text = rawVariant;
+        GlobalSnackbar.success(message: 'Variant filter set to $rawVariant');
+      }
+    }
+
+    // Clear last words to avoid re-processing
+    _lastWords = '';
+  }
+
+  // ... (Existing selection sheet methods) ...
 
   void _showSelectionSheet({
     required BuildContext context,
@@ -71,6 +159,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     required Function(String) onSelected,
     bool isLoading = false,
   }) {
+    // ... (Keep existing implementation) ...
     final searchController = TextEditingController();
     final RxList<String> filteredItems = RxList<String>(items);
 
@@ -150,6 +239,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   }
 
   void _addAttributeFilter() {
+    // ... (Keep existing implementation) ...
     final name = attributeNameController.text;
     final value = attributeValueController.text;
 
@@ -182,12 +272,22 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Filter Items', style: Theme.of(context).textTheme.titleLarge),
-                TextButton(
-                  onPressed: () {
-                    controller.clearFilters();
-                    Get.back();
-                  },
-                  child: const Text('Clear All'),
+                // VOICE INPUT BUTTON
+                Row(
+                  children: [
+                    AvatarGlowWidget(
+                      isListening: _isListening,
+                      onTap: _listen,
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () {
+                        controller.clearFilters();
+                        Get.back();
+                      },
+                      child: const Text('Clear All'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -228,7 +328,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Variant Of (Template) - NEW
+                  // Variant Of (Template)
                   TextFormField(
                     controller: variantOfController,
                     readOnly: true,
@@ -379,6 +479,33 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
               child: const Text('Apply Filters'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Simple Glow widget for mic feedback
+class AvatarGlowWidget extends StatelessWidget {
+  final bool isListening;
+  final VoidCallback onTap;
+
+  const AvatarGlowWidget({super.key, required this.isListening, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isListening ? Colors.redAccent.withOpacity(0.2) : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          isListening ? Icons.mic : Icons.mic_none,
+          color: isListening ? Colors.red : Colors.grey,
         ),
       ),
     );
