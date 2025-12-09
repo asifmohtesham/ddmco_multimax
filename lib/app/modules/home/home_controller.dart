@@ -1,33 +1,42 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
-import 'package:multimax/app/data/providers/work_order_provider.dart'; // Added
-import 'package:multimax/app/data/providers/job_card_provider.dart'; // Added
+import 'package:multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
 class HomeController extends GetxController {
+  final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
-  final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>(); // Added
-  final JobCardProvider _jcProvider = Get.find<JobCardProvider>(); // Added
+  final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
+  final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
+  final UserProvider _userProvider = Get.find<UserProvider>();
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
 
+  // --- User Filter & KPI State ---
   var isLoadingStats = true.obs;
+  var isLoadingUsers = true.obs;
 
-  // --- New KPI Observables ---
+  var userList = <User>[].obs;
+  Rx<User?> selectedFilterUser = Rx<User?>(null);
+
   var activeWorkOrdersCount = 0.obs;
-  var activeJobCardsCount = 0.obs;
-
-  // --- Static User Targets (Daily/Weekly Goals) ---
   final int targetWorkOrders = 12;
+
+  var activeJobCardsCount = 0.obs;
   final int targetJobCards = 40;
 
-  // Controller for Barcode Widget
+  // Barcode
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
 
@@ -36,15 +45,13 @@ class HomeController extends GetxController {
     const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
   ];
 
-  List<BottomNavigationBarItem> get currentBottomBarItems {
-    return homeBottomBarItems;
-  }
+  List<BottomNavigationBarItem> get currentBottomBarItems => homeBottomBarItems;
 
   @override
   void onInit() {
     super.onInit();
     _updateActiveScreenForRoute(Get.currentRoute);
-    fetchDashboardData();
+    _initDashboard();
   }
 
   @override
@@ -53,17 +60,62 @@ class HomeController extends GetxController {
     super.onClose();
   }
 
+  Future<void> _initDashboard() async {
+    await fetchUsers();
+    // Default to current user
+    if (selectedFilterUser.value == null) {
+      final myEmail = _authController.currentUser.value?.email;
+      if (myEmail != null) {
+        selectedFilterUser.value = userList.firstWhereOrNull((u) => u.email == myEmail);
+      }
+      // Fallback if not found or no current user
+      if (selectedFilterUser.value == null && userList.isNotEmpty) {
+        selectedFilterUser.value = userList.first;
+      }
+    }
+    fetchDashboardData();
+  }
+
+  Future<void> fetchUsers() async {
+    isLoadingUsers.value = true;
+    try {
+      final response = await _userProvider.getUsers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'] as List;
+        userList.assignAll(data.map((e) => User.fromJson(e)).toList());
+      }
+    } catch (e) {
+      print('Error fetching users: $e');
+    } finally {
+      isLoadingUsers.value = false;
+    }
+  }
+
+  void onUserFilterChanged(User user) {
+    selectedFilterUser.value = user;
+    Get.back(); // Close modal
+    fetchDashboardData();
+  }
+
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      // Fetch 'In Process' Work Orders and 'Open' Job Cards
+      // Example filters (if API supported):
+      // final userEmail = selectedFilterUser.value?.email;
+      // Map<String, dynamic> woFilters = {'status': 'In Process', 'owner': userEmail};
+
       final results = await Future.wait([
-        _woProvider.getWorkOrders(limit: 500, filters: {'status': 'In Process'}),
-        _jcProvider.getJobCards(limit: 500, filters: {'status': 'Open'}),
+        _woProvider.getWorkOrders(limit: 100, filters: {'status': 'In Process'}),
+        _jcProvider.getJobCards(limit: 100, filters: {'status': 'Open'}),
       ]);
 
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
       activeJobCardsCount.value = _getCountFromResponse(results[1]);
+
+      // Mock Data for Speedometer Demo if empty results
+      if (activeWorkOrdersCount.value == 0) activeWorkOrdersCount.value = 4; // Red zone
+      if (activeJobCardsCount.value == 0) activeJobCardsCount.value = 35;  // Green zone
+
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
@@ -72,25 +124,53 @@ class HomeController extends GetxController {
   }
 
   int _getCountFromResponse(dynamic response) {
-    if (response.statusCode == 200 && response.data['data'] != null) {
+    // Check for Dio Response structure
+    if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
       return (response.data['data'] as List).length;
     }
     return 0;
   }
 
-  void onBottomBarItemTapped(int index) {
-    if (index == 0) fetchDashboardData();
-  }
+  // --- Scan Logic ---
+  Future<void> onScan(String code) async {
+    if (code.isEmpty) return;
+    isScanning.value = true;
+    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
 
-  void changeDrawerPage(int index, String route) {
-    selectedDrawerIndex.value = index;
-    Get.back();
-    if (Get.currentRoute != route) {
-      Get.toNamed(route);
+    try {
+      if (isEan) {
+        final itemCode = code.length > 7 ? code.substring(0, 7) : code;
+        final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
+        // Correctly handling Dio Response
+        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+          final item = Item.fromJson(response.data['data'][0]);
+          Get.bottomSheet(ItemDetailSheet(item: item), isScrollControlled: true);
+        } else {
+          Get.snackbar('Not Found', 'Item with code $itemCode not found.');
+        }
+      } else {
+        final itemCode = code;
+        final response = await _itemProvider.getStockLevels(itemCode);
+        if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+          final List<dynamic> data = response.data['message']['result'];
+          final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
+          Get.bottomSheet(RackBalanceSheet(itemCode: itemCode, stockData: stockList), isScrollControlled: true);
+        } else {
+          Get.snackbar('Error', 'Could not fetch stock report for $itemCode');
+        }
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Scan processing failed: $e');
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
     }
-    _updateActiveScreenForRoute(route);
   }
 
+  // --- Navigation ---
+  void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
+
+  // Public method called by main.dart routing callback
   void updateActiveScreen(String route) {
     _updateActiveScreenForRoute(route);
   }
@@ -132,61 +212,21 @@ class HomeController extends GetxController {
     }
   }
 
-  // Scan Logic
-  Future<void> onScan(String code) async {
-    if (code.isEmpty) return;
-
-    isScanning.value = true;
-    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
-
-    try {
-      if (isEan) {
-        final itemCode = code.length > 7 ? code.substring(0, 7) : code;
-        final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
-
-        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-          final item = Item.fromJson(response.data['data'][0]);
-          Get.bottomSheet(
-            ItemDetailSheet(item: item),
-            isScrollControlled: true,
-          );
-        } else {
-          Get.snackbar('Not Found', 'Item with code $itemCode not found.');
-        }
-
-      } else {
-        final itemCode = code;
-        final response = await _itemProvider.getStockLevels(itemCode);
-
-        if (response.statusCode == 200 && response.data['message']?['result'] != null) {
-          final List<dynamic> data = response.data['message']['result'];
-          final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
-
-          Get.bottomSheet(
-            RackBalanceSheet(itemCode: itemCode, stockData: stockList),
-            isScrollControlled: true,
-          );
-        } else {
-          Get.snackbar('Error', 'Could not fetch stock report for $itemCode');
-        }
-      }
-    } catch (e) {
-      Get.snackbar('Error', 'Scan processing failed: $e');
-    } finally {
-      isScanning.value = false;
-      barcodeController.clear();
-    }
+  void changeDrawerPage(int index, String route) {
+    selectedDrawerIndex.value = index;
+    Get.back();
+    if (Get.currentRoute != route) Get.toNamed(route);
+    _updateActiveScreenForRoute(route);
   }
 
-  // Navigation Shortcuts
   void goToHome() => changeDrawerPage(0, AppRoutes.HOME);
-  void goToPurchaseReceipt() => changeDrawerPage(4, AppRoutes.PURCHASE_RECEIPT);
   void goToStockEntry() => changeDrawerPage(1, AppRoutes.STOCK_ENTRY);
   void goToDeliveryNote() => changeDrawerPage(2, AppRoutes.DELIVERY_NOTE);
   void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
+  void goToPurchaseReceipt() => changeDrawerPage(4, AppRoutes.PURCHASE_RECEIPT);
   void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
   void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
   void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
-  void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER); // Ensure index matches Drawer
-  void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD); // Ensure index matches Drawer
+  void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER);
+  void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD);
 }

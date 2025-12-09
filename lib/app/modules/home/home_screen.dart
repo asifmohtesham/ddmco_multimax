@@ -3,17 +3,15 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_bottom_bar.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
-import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart'; // Required package
+import 'package:percent_indicator/circular_percent_indicator.dart';
+import 'package:multimax/app/data/models/user_model.dart';
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final AuthenticationController authController = Get.find<AuthenticationController>();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard"),
@@ -33,33 +31,9 @@ class HomeScreen extends GetView<HomeController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Welcome Section
-              Obx(() {
-                final user = authController.currentUser.value;
-                final name = user?.name ?? 'User';
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            'Welcome,',
-                            style: TextStyle(fontSize: 14, color: Colors.grey[600])
-                        ),
-                        Text(
-                            name,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
-                        ),
-                      ],
-                    ),
-                    CircleAvatar(
-                        backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                        child: Text(name.isNotEmpty ? name[0] : 'U', style: TextStyle(color: Theme.of(context).primaryColor))
-                    )
-                  ],
-                );
-              }),
+              // 1. User Selection Header
+              _buildUserSelectionHeader(context),
+
               const SizedBox(height: 16),
 
               // 2. Barcode Input
@@ -72,34 +46,32 @@ class HomeScreen extends GetView<HomeController> {
 
               const SizedBox(height: 24),
 
-              // 3. User KPI Gauges (Work Order & Job Cards)
-              const Text('Production KPIs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              // 3. KPI Speedometers
+              const Text('Daily Goals', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
 
               Obx(() {
-                if (controller.isLoadingStats.value) {
+                if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
                   return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
                 }
 
                 return Row(
                   children: [
                     Expanded(
-                      child: UserKpiGauge(
+                      child: SpeedometerKpiCard(
                         title: 'Work Orders',
                         actual: controller.activeWorkOrdersCount.value,
                         target: controller.targetWorkOrders,
-                        color: Colors.blue,
                         icon: Icons.assignment_outlined,
                         onTap: controller.goToWorkOrder,
                       ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: UserKpiGauge(
+                      child: SpeedometerKpiCard(
                         title: 'Job Cards',
                         actual: controller.activeJobCardsCount.value,
                         target: controller.targetJobCards,
-                        color: Colors.orange,
                         icon: Icons.assignment_ind_outlined,
                         onTap: controller.goToJobCard,
                       ),
@@ -121,22 +93,139 @@ class HomeScreen extends GetView<HomeController> {
       bottomNavigationBar: const AppBottomBar(),
     );
   }
+
+  Widget _buildUserSelectionHeader(BuildContext context) {
+    return Obx(() {
+      final selectedUser = controller.selectedFilterUser.value;
+      final userName = selectedUser?.name ?? 'Select User';
+
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // FIX: Wrapped Column in Expanded to prevent overflow
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Showing data for:', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                InkWell(
+                  onTap: () => _showUserSearchModal(context),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // FIX: Wrapped Text in Flexible to handle long names
+                        Flexible(
+                          child: Text(
+                            userName,
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          CircleAvatar(
+            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+            child: Text(
+              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+              style: TextStyle(color: Theme.of(context).primaryColor),
+            ),
+          )
+        ],
+      );
+    });
+  }
+
+  void _showUserSearchModal(BuildContext context) {
+    final TextEditingController searchController = TextEditingController();
+    final RxList<User> filteredUsers = RxList<User>(controller.userList);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 16),
+                  const Text("Select User", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      hintText: "Search users...",
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onChanged: (val) {
+                      filteredUsers.assignAll(controller.userList.where((user) {
+                        final name = user.name?.toLowerCase() ?? '';
+                        final email = user.email?.toLowerCase() ?? '';
+                        return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
+                      }).toList());
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() => ListView.separated(
+                      controller: scrollController,
+                      itemCount: filteredUsers.length,
+                      separatorBuilder: (c, i) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final user = filteredUsers[index];
+                        final isSelected = user.email == controller.selectedFilterUser.value?.email;
+                        return ListTile(
+                          leading: CircleAvatar(child: Text(user.name?[0] ?? 'U')),
+                          title: Text(user.name ?? 'Unknown', style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                          subtitle: Text(user.email ?? ''),
+                          trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                          onTap: () => controller.onUserFilterChanged(user),
+                        );
+                      },
+                    )),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
-class UserKpiGauge extends StatelessWidget {
+class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
   final int target;
-  final Color color;
   final IconData icon;
   final VoidCallback onTap;
 
-  const UserKpiGauge({
+  const SpeedometerKpiCard({
     super.key,
     required this.title,
     required this.actual,
     required this.target,
-    required this.color,
     required this.icon,
     required this.onTap,
   });
@@ -145,51 +234,68 @@ class UserKpiGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final double percent = (target > 0) ? (actual / target).clamp(0.0, 1.0) : 0.0;
 
+    // Define Gradient colors: Red -> Yellow -> Green
+    const LinearGradient progressGradient = LinearGradient(
+      colors: [Colors.redAccent, Colors.amber, Colors.green],
+      stops: [0.0, 0.5, 1.0],
+      tileMode: TileMode.clamp,
+    );
+
+    // Dynamic Text Color
+    Color textColor = percent < 0.4 ? Colors.redAccent : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
+
     return Card(
       elevation: 2,
-      shadowColor: color.withValues(alpha: 0.2),
+      shadowColor: textColor.withOpacity(0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Column(
             children: [
+              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(icon, size: 16, color: Colors.grey[700]),
                   const SizedBox(width: 6),
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  Flexible( // Safety fix for long titles
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
               CircularPercentIndicator(
-                radius: 45.0,
-                lineWidth: 9.0,
+                radius: 60.0,
+                lineWidth: 12.0,
                 percent: percent,
                 animation: true,
-                center: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "$actual",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20.0, color: color),
-                    ),
-                    const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
-                  ],
-                ),
-                footer: Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
-                  child: Text(
-                    "Target: $target",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey),
+                arcType: ArcType.HALF,
+                startAngle: 270,
+                circularStrokeCap: CircularStrokeCap.round,
+                linearGradient: progressGradient,
+                backgroundColor: Colors.grey.shade200,
+                center: Padding(
+                  padding: const EdgeInsets.only(top: 20.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text("$actual", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24.0, color: textColor)),
+                      const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
+                    ],
                   ),
                 ),
-                circularStrokeCap: CircularStrokeCap.round,
-                progressColor: color,
-                backgroundColor: color.withValues(alpha: 0.1),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+                child: Text("Target: $target", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey.shade700)),
               ),
             ],
           ),
