@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_c
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class StockEntryFormScreen extends GetView<StockEntryFormController> {
   const StockEntryFormScreen({super.key});
@@ -18,12 +19,17 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         appBar: AppBar(
           title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
           actions: [
+            // Modified: Save Button reacts to isDirty
             Obx(() => controller.isSaving.value
                 ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: Colors.white)))
                 : IconButton(
               icon: const Icon(Icons.save),
-              onPressed: controller.stockEntry.value?.docstatus == 0 ? () => controller.saveStockEntry : null,
-            )),
+              // Enable save if Dirty AND docstatus is Draft (0)
+              onPressed: (controller.isDirty.value && controller.stockEntry.value?.docstatus == 0)
+                  ? controller.saveStockEntry
+                  : null,
+            )
+            ),
           ],
           bottom: const TabBar(
             tabs: [
@@ -53,11 +59,14 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
+  // ... _buildDetailsView ... (No changes needed, Obx handles reactive updates)
+
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Form(
         child: Obx(() {
+          // ... (existing logic) ...
           final type = controller.selectedStockEntryType.value;
           final isMaterialIssue = type == 'Material Issue';
           final isMaterialReceipt = type == 'Material Receipt';
@@ -311,7 +320,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       isLoading: controller.isScanning.value,
       controller: controller.barcodeController,
       // Fixed: Pass context so scanner knows it is on this form
-      activeRoute: '/stock-entry/form',
+      activeRoute: AppRoutes.STOCK_ENTRY_FORM,
     ));
   }
 }

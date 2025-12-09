@@ -229,7 +229,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                   elevation: isValid ? 2 : 0,
                 ),
                 child: Text(
-                  controller.currentItemNameKey != null ? 'Update Item' : 'Add Item',
+                  // Use editingItemIndex to check if we are in edit mode
+                  controller.editingItemIndex.value != null ? 'Update Item' : 'Add Item',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               );

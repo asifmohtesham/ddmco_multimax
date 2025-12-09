@@ -22,6 +22,10 @@ class StockEntryFormController extends GetxController {
   var isLoading = true.obs;
   var isScanning = false.obs;
   var isSaving = false.obs;
+
+  // --- Dirty Check State ---
+  var isDirty = false.obs;
+
   var stockEntry = Rx<StockEntry?>(null);
 
   // Form Fields
@@ -44,7 +48,8 @@ class StockEntryFormController extends GetxController {
   final bsTargetRackController = TextEditingController();
 
   // --- Context State ---
-  var isItemSheetOpen = false.obs; // Tracks if the item sheet is active
+  var isItemSheetOpen = false.obs;
+  var editingItemIndex = RxnInt(); // Track which item is being edited (null = new)
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -80,7 +85,16 @@ class StockEntryFormController extends GetxController {
   void onInit() {
     super.onInit();
     fetchWarehouses();
-    customReferenceNoController.addListener(_onReferenceNoChanged);
+
+    // Listeners for Dirty Check
+    ever(selectedFromWarehouse, (_) => _markDirty());
+    ever(selectedToWarehouse, (_) => _markDirty());
+    ever(selectedStockEntryType, (_) => _markDirty());
+
+    customReferenceNoController.addListener(() {
+      _onReferenceNoChanged();
+      _markDirty();
+    });
 
     // Listen to changes for validation
     bsQtyController.addListener(validateSheet);
@@ -92,6 +106,12 @@ class StockEntryFormController extends GetxController {
       _initNewStockEntry();
     } else {
       fetchStockEntry();
+    }
+  }
+
+  void _markDirty() {
+    if (!isLoading.value && !isDirty.value) {
+      isDirty.value = true;
     }
   }
 
@@ -224,6 +244,7 @@ class StockEntryFormController extends GetxController {
     }
 
     isLoading.value = false;
+    isDirty.value = false; // New documents start clean (until edited) or dirty? Typically clean until touched.
   }
 
   Future<void> fetchStockEntry() async {
@@ -234,8 +255,11 @@ class StockEntryFormController extends GetxController {
         final entry = StockEntry.fromJson(response.data['data']);
         stockEntry.value = entry;
 
+        // Populate form fields
         selectedFromWarehouse.value = entry.fromWarehouse;
         selectedToWarehouse.value = entry.toWarehouse;
+        // Use setting text directly to avoid triggering listener immediately if we wanted,
+        // but since we reset isDirty below, it's fine.
         customReferenceNoController.text = entry.customReferenceNo ?? '';
         selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
 
@@ -249,6 +273,8 @@ class StockEntryFormController extends GetxController {
       Get.snackbar('Error', e.toString());
     } finally {
       isLoading.value = false;
+      // Reset dirty flag after initial load
+      isDirty.value = false;
     }
   }
 
@@ -276,26 +302,8 @@ class StockEntryFormController extends GetxController {
           name = createdDoc['name'];
           mode = 'edit';
 
-          final old = stockEntry.value!;
-          stockEntry.value = StockEntry(
-            name: name,
-            purpose: old.purpose,
-            totalAmount: old.totalAmount,
-            postingDate: old.postingDate,
-            modified: old.modified,
-            creation: old.creation,
-            status: old.status,
-            docstatus: old.docstatus,
-            owner: old.owner,
-            stockEntryType: old.stockEntryType,
-            postingTime: old.postingTime,
-            fromWarehouse: old.fromWarehouse,
-            toWarehouse: old.toWarehouse,
-            customTotalQty: old.customTotalQty,
-            customReferenceNo: old.customReferenceNo,
-            items: old.items,
-          );
-
+          // Re-fetch or update local model with response
+          await fetchStockEntry();
           Get.snackbar('Success', 'Stock Entry created: $name');
         } else {
           Get.snackbar('Error', 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
@@ -304,7 +312,7 @@ class StockEntryFormController extends GetxController {
         final response = await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
           Get.snackbar('Success', 'Stock Entry updated');
-          fetchStockEntry();
+          await fetchStockEntry(); // Refresh data and clear dirty
         } else {
           Get.snackbar('Error', 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
@@ -319,18 +327,12 @@ class StockEntryFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
-    // --- CONTEXTUAL SCAN HANDLING ---
-    // If the item sheet is open, we assume the user is scanning a property (Batch, Rack)
-    // rather than trying to open a new item sheet.
     if (isItemSheetOpen.value) {
-      // Logic: Update the Batch No field with the scanned value
       bsBatchController.text = barcode;
-      // Trigger validation to check batch and move focus
       validateBatch(barcode);
       return;
     }
 
-    // --- STANDARD FLOW (Sheet Closed) ---
     isScanning.value = true;
 
     String itemCode;
@@ -381,17 +383,17 @@ class StockEntryFormController extends GetxController {
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
 
-    isSheetValid.value = false; // Reset valid state
+    isSheetValid.value = false;
 
-    selectedSerial.value = null; // Reset serial selection
+    selectedSerial.value = null;
     currentItemNameKey = null;
+    editingItemIndex.value = null; // Ensure we are in "Add" mode
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
       validateBatch(scannedBatch);
     }
 
-    // Set flag that sheet is open
     isItemSheetOpen.value = true;
 
     Get.bottomSheet(
@@ -405,7 +407,6 @@ class StockEntryFormController extends GetxController {
       ),
       isScrollControlled: true,
     ).whenComplete(() {
-      // Reset flag when sheet closes
       isItemSheetOpen.value = false;
     });
   }
@@ -434,7 +435,7 @@ class StockEntryFormController extends GetxController {
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
-      validateSheet(); // Re-evaluate sheet
+      validateSheet();
     }
   }
 
@@ -460,7 +461,7 @@ class StockEntryFormController extends GetxController {
     } finally {
       if (isSource) isValidatingSourceRack.value = false;
       else isValidatingTargetRack.value = false;
-      validateSheet(); // Re-evaluate sheet
+      validateSheet();
     }
   }
 
@@ -477,17 +478,18 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  void editItem(StockEntryItem item) {
+  void editItem(StockEntryItem item, int index) {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
     currentItemNameKey = item.name;
+    editingItemIndex.value = index; // Set index for Update logic
 
     bsQtyController.text = item.qty.toString();
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
-    selectedSerial.value = item.customInvoiceSerialNumber; // Populate serial
+    selectedSerial.value = item.customInvoiceSerialNumber;
 
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
@@ -497,7 +499,6 @@ class StockEntryFormController extends GetxController {
 
     validateSheet();
 
-    // Set flag
     isItemSheetOpen.value = true;
 
     Get.bottomSheet(
@@ -511,9 +512,23 @@ class StockEntryFormController extends GetxController {
       ),
       isScrollControlled: true,
     ).whenComplete(() {
-      // Reset flag
       isItemSheetOpen.value = false;
+      editingItemIndex.value = null; // Clean up on close
     });
+  }
+
+  void deleteItem(int index) {
+    if (index >= 0 && index < (stockEntry.value?.items.length ?? 0)) {
+      final currentItems = stockEntry.value!.items.toList();
+      currentItems.removeAt(index);
+
+      stockEntry.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+
+      isDirty.value = true; // Mark dirty
+      Get.snackbar('Success', 'Item removed');
+    }
   }
 
   void addItem() {
@@ -522,67 +537,66 @@ class StockEntryFormController extends GetxController {
 
     final batch = bsBatchController.text;
 
-    final currentItems = stockEntry.value?.items.toList() ?? [];
-
-    final index = currentItems.indexWhere((i) => i.itemCode == currentItemCode && i.batchNo == batch && i.customInvoiceSerialNumber == selectedSerial.value);
-
-    if (index != -1) {
-      final existing = currentItems[index];
-      currentItems[index] = StockEntryItem(
-        itemCode: existing.itemCode,
-        qty: existing.qty + qty,
-        basicRate: existing.basicRate,
-        itemGroup: existing.itemGroup,
-        customVariantOf: existing.customVariantOf,
-        batchNo: batch,
-        itemName: existing.itemName,
-        rack: bsSourceRackController.text.isNotEmpty ? bsSourceRackController.text : existing.rack,
-        toRack: bsTargetRackController.text.isNotEmpty ? bsTargetRackController.text : existing.toRack,
-        sWarehouse: selectedFromWarehouse.value,
-        tWarehouse: selectedToWarehouse.value,
-        customInvoiceSerialNumber: selectedSerial.value,
-      );
-    } else {
-      currentItems.add(StockEntryItem(
-        itemCode: currentItemCode,
-        qty: qty,
-        basicRate: 0.0,
-        itemName: currentItemName,
-        batchNo: batch,
-        rack: bsSourceRackController.text,
-        toRack: bsTargetRackController.text,
-        sWarehouse: selectedFromWarehouse.value,
-        tWarehouse: selectedToWarehouse.value,
-        customInvoiceSerialNumber: selectedSerial.value,
-      ));
-    }
-
-    final old = stockEntry.value!;
-    stockEntry.value = StockEntry(
-      name: old.name,
-      purpose: old.purpose,
-      totalAmount: old.totalAmount,
-      postingDate: old.postingDate,
-      modified: old.modified,
-      creation: old.creation,
-      status: old.status,
-      docstatus: old.docstatus,
-      owner: old.owner,
-      stockEntryType: selectedStockEntryType.value,
-      postingTime: old.postingTime,
-      fromWarehouse: selectedFromWarehouse.value,
-      toWarehouse: selectedToWarehouse.value,
-      customTotalQty: old.customTotalQty,
-      customReferenceNo: customReferenceNoController.text,
-      items: currentItems,
+    final newItem = StockEntryItem(
+      itemCode: currentItemCode,
+      qty: qty,
+      basicRate: 0.0, // Should fetch rate ideally
+      itemGroup: null, // Should fetch
+      customVariantOf: currentVariantOf,
+      batchNo: batch,
+      itemName: currentItemName,
+      rack: bsSourceRackController.text,
+      toRack: bsTargetRackController.text,
+      sWarehouse: selectedFromWarehouse.value,
+      tWarehouse: selectedToWarehouse.value,
+      customInvoiceSerialNumber: selectedSerial.value,
     );
 
+    final currentItems = stockEntry.value?.items.toList() ?? [];
+
+    if (editingItemIndex.value != null) {
+      // UPDATE EXISTING
+      if (editingItemIndex.value! < currentItems.length) {
+        // Merge relevant fields, keeping things like basicRate from original if needed
+        final oldItem = currentItems[editingItemIndex.value!];
+
+        // Using new item values where applicable
+        currentItems[editingItemIndex.value!] = StockEntryItem(
+          itemCode: newItem.itemCode,
+          qty: newItem.qty,
+          basicRate: oldItem.basicRate, // Preserve rate
+          itemGroup: oldItem.itemGroup,
+          customVariantOf: newItem.customVariantOf,
+          batchNo: newItem.batchNo,
+          itemName: newItem.itemName,
+          rack: newItem.rack,
+          toRack: newItem.toRack,
+          sWarehouse: newItem.sWarehouse,
+          tWarehouse: newItem.tWarehouse,
+          customInvoiceSerialNumber: newItem.customInvoiceSerialNumber,
+        );
+      }
+    } else {
+      // ADD NEW
+      // Check for duplicates if business rule requires merging?
+      // For now, simple append
+      currentItems.add(newItem);
+    }
+
+    stockEntry.update((val) {
+      val?.items.assignAll(currentItems);
+    });
+
     Get.back();
+    isDirty.value = true; // Mark dirty
 
     if (mode == 'new') {
-      saveStockEntry();
+      // Optional: Auto-save on first item add? Or let user click save?
+      // Usually user expects to build the list then save.
+      // Leaving manual save for now unless auto-save is desired.
+      Get.snackbar('Success', editingItemIndex.value != null ? 'Item updated' : 'Item added');
     } else {
-      Get.snackbar('Success', 'Item added to list');
+      Get.snackbar('Success', editingItemIndex.value != null ? 'Item updated' : 'Item added');
     }
   }
 }

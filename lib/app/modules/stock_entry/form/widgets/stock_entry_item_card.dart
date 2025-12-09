@@ -1,4 +1,4 @@
-import 'dart:ui'; // Added for FontFeature
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
@@ -31,18 +31,18 @@ class StockEntryItemCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12.0),
         child: InkWell(
-          onTap: () => controller.editItem(item),
+          onTap: () => controller.editItem(item, index),
           child: Column(
             children: [
-              // Header Section: Code, Name, Qty
+              // Header Section: Code, Name, Actions
               Container(
-                padding: const EdgeInsets.all(12.0),
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
                   border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     CircleAvatar(
                       radius: 12,
@@ -64,7 +64,7 @@ class StockEntryItemCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                               color: Colors.black87,
-                              fontFeatures: [FontFeature.slashedZero()], // Added
+                              fontFeatures: [FontFeature.slashedZero()],
                             ),
                           ),
                           if (item.itemName != null)
@@ -80,53 +80,61 @@ class StockEntryItemCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    // Actions: Edit and Delete
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          item.qty.toString(),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black),
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                          onPressed: () => controller.editItem(item, index),
+                          tooltip: 'Edit Item',
                         ),
-                        // Optional Unit display if available in model
-                        // Text('Nos', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                          onPressed: () => controller.deleteItem(index),
+                          tooltip: 'Remove Item',
+                        ),
                       ],
                     ),
                   ],
                 ),
               ),
 
-              // Content Section: Badges & Flow
+              // Content Section: Badges & Flow & Qty
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Metadata Badges (Batch, Variant, Group)
-                    Wrap(
-                      spacing: 8.0,
-                      runSpacing: 8.0,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        if (item.batchNo != null && item.batchNo!.isNotEmpty)
-                          _buildBadge(
-                              icon: Icons.qr_code,
-                              label: item.batchNo!,
-                              color: Colors.purple,
-                              isMono: true
-                          ),
-                        if (item.customVariantOf != null && item.customVariantOf!.isNotEmpty)
-                          _buildBadge(
-                              icon: Icons.style,
-                              label: item.customVariantOf!,
-                              color: Colors.teal
-                          ),
-                        if (item.itemGroup != null)
-                          _buildBadge(
-                              icon: Icons.category,
-                              label: item.itemGroup!,
-                              color: Colors.blueGrey
-                          ),
+                        Wrap(
+                          spacing: 8.0,
+                          runSpacing: 8.0,
+                          children: [
+                            if (item.batchNo != null && item.batchNo!.isNotEmpty)
+                              _buildBadge(
+                                  icon: Icons.qr_code,
+                                  label: item.batchNo!,
+                                  color: Colors.purple,
+                                  isMono: true
+                              ),
+                            if (item.customVariantOf != null && item.customVariantOf!.isNotEmpty)
+                              _buildBadge(
+                                  icon: Icons.style,
+                                  label: item.customVariantOf!,
+                                  color: Colors.teal
+                              ),
+                          ],
+                        ),
+                        Text(
+                          item.qty.toString(),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black),
+                        ),
                       ],
                     ),
+
 
                     const SizedBox(height: 12),
 
@@ -219,7 +227,7 @@ class StockEntryItemCard extends StatelessWidget {
               color: color.shade900,
               fontWeight: FontWeight.w600,
               fontFamily: isMono ? 'monospace' : null,
-              fontFeatures: isMono ? [const FontFeature.slashedZero()] : null, // Added
+              fontFeatures: isMono ? [const FontFeature.slashedZero()] : null,
             ),
           ),
         ],
@@ -277,7 +285,7 @@ class StockEntryItemCard extends StatelessWidget {
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.bold,
                   color: color.shade900,
-                  fontFeatures: [const FontFeature.slashedZero()], // Added
+                  fontFeatures: [const FontFeature.slashedZero()],
                 ),
               ),
             ),
