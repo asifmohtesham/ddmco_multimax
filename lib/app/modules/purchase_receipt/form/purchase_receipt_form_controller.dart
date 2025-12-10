@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:dio/dio.dart'; // Import Dio for exception handling
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
@@ -26,8 +26,12 @@ class PurchaseReceiptFormController extends GetxController {
   var isFormDirty = false.obs;
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
+  var linkedPurchaseOrder = Rx<PurchaseOrder?>(null);
 
-  // Cache for PO Item Quantities: Key = purchase_order_item ID, Value = Qty
+  // Helper: Document is only editable if it is a Draft (docstatus == 0)
+  bool get isEditable => purchaseReceipt.value?.docstatus == 0;
+
+  // Cache for PO Item Quantities
   var poItemQuantities = <String, double>{}.obs;
 
   final supplierController = TextEditingController();
@@ -45,6 +49,7 @@ class PurchaseReceiptFormController extends GetxController {
   final bsRackController = TextEditingController();
 
   var isItemSheetOpen = false.obs;
+  var bsMaxQty = 0.0.obs;
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -53,7 +58,7 @@ class PurchaseReceiptFormController extends GetxController {
 
   var isTargetRackValid = false.obs;
   var isValidatingTargetRack = false.obs;
-  var isValidatingSourceRack = false.obs; // Placeholder for consistency
+  var isValidatingSourceRack = false.obs;
 
   var isSheetValid = false.obs;
 
@@ -67,8 +72,8 @@ class PurchaseReceiptFormController extends GetxController {
   var currentUom = '';
   var currentItemIdx = 0.obs;
   var currentPurchaseOrderQty = 0.0.obs;
-  var currentPoItem = ''; // To store the link
-  var currentPoName = ''; // To store the link
+  var currentPoItem = '';
+  var currentPoName = '';
 
   var currentItemNameKey = RxnString();
   var warehouse = RxnString();
@@ -102,7 +107,8 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value) {
+    // Only mark dirty if document is actually editable
+    if (!isLoading.value && !isDirty.value && isEditable) {
       isDirty.value = true;
     }
   }
@@ -121,6 +127,7 @@ class PurchaseReceiptFormController extends GetxController {
     super.onClose();
   }
 
+  // ... (Fetch methods unchanged) ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -183,7 +190,6 @@ class PurchaseReceiptFormController extends GetxController {
         postingTimeController.text = receipt.postingTime;
         setWarehouse.value = receipt.setWarehouse;
 
-        // IDENTIFY LINKED POS
         final poNames = receipt.items
             .map((i) => i.purchaseOrder)
             .where((name) => name != null && name.isNotEmpty)
@@ -194,7 +200,6 @@ class PurchaseReceiptFormController extends GetxController {
         if (poNames.isNotEmpty) {
           await _fetchLinkedPurchaseOrders(poNames);
         }
-
       } else {
         GlobalSnackbar.error(message: 'Failed to fetch purchase receipt');
       }
@@ -212,8 +217,6 @@ class PurchaseReceiptFormController extends GetxController {
         final response = await _poProvider.getPurchaseOrder(poName);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final po = PurchaseOrder.fromJson(response.data['data']);
-
-          // Map Item Row IDs (name) to Quantity
           for (var item in po.items) {
             if (item.name != null) {
               poItemQuantities[item.name!] = item.qty;
@@ -231,9 +234,8 @@ class PurchaseReceiptFormController extends GetxController {
     return poItemQuantities[poItemName] ?? 0.0;
   }
 
-  // ... (Save Purchase Receipt - Same as before)
   Future<void> savePurchaseReceipt() async {
-    // ... [Previous implementation]
+    if (!isEditable) return; // Prevent save if not draft
     if (isSaving.value) return;
     isSaving.value = true;
 
@@ -277,8 +279,15 @@ class PurchaseReceiptFormController extends GetxController {
         }
       }
     } on DioException catch (e) {
-      // ... [Error Handling]
-      GlobalSnackbar.error(message: 'Error saving: ${e.message}');
+      String errorMessage = 'Save failed';
+      if (e.response != null && e.response!.data != null) {
+        if (e.response!.data is Map && e.response!.data['exception'] != null) {
+          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+          errorMessage = 'Validation Error: Check form details';
+        }
+      }
+      GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
@@ -286,8 +295,11 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  // ... (Scan, Sheet Logic, Validation - Standardized) ...
   Future<void> scanBarcode(String barcode) async {
+    if (!isEditable) {
+      GlobalSnackbar.warning(message: 'Document is submitted and cannot be edited.');
+      return;
+    }
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
@@ -321,7 +333,6 @@ class PurchaseReceiptFormController extends GetxController {
         currentModifiedBy = '';
         currentItemIdx.value = 0;
 
-        // Reset PO links for fresh scan
         currentPurchaseOrderQty.value = 0.0;
         currentPoItem = '';
         currentPoName = '';
@@ -350,7 +361,7 @@ class PurchaseReceiptFormController extends GetxController {
     isTargetRackValid.value = false;
     isSheetValid.value = false;
 
-    currentItemNameKey.value = null; // New Item Mode
+    currentItemNameKey.value = null;
     warehouse.value = null;
 
     _initialBatch = '';
@@ -381,6 +392,12 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void validateSheet() {
+    // If viewing a submitted doc, sheet is always valid (but buttons disabled by UI)
+    if (!isEditable) {
+      isSheetValid.value = true;
+      return;
+    }
+
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     bool valid = true;
     if (qty <= 0) valid = false;
@@ -410,12 +427,14 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void adjustSheetQty(double delta) {
+    if (!isEditable) return;
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta).clamp(0.0, 999999.0);
     bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
   }
 
   Future<void> validateBatch(String batch) async {
+    if (!isEditable) return;
     if (batch.isEmpty) return;
 
     bsIsLoadingBatch.value = true;
@@ -433,6 +452,7 @@ class PurchaseReceiptFormController extends GetxController {
       } else {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
+
       _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Error validating batch');
@@ -444,6 +464,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void resetBatchValidation() {
+    if (!isEditable) return;
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
     validateSheet();
@@ -453,6 +474,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   Future<void> validateRack(String rack) async {
+    if (!isEditable) return;
     if (rack.isEmpty) {
       isTargetRackValid.value = false;
       validateSheet();
@@ -488,6 +510,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void resetRackValidation() {
+    if (!isEditable) return;
     isTargetRackValid.value = false;
     validateSheet();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -515,7 +538,6 @@ class PurchaseReceiptFormController extends GetxController {
     currentItemIdx.value = item.idx;
     currentUom = item.uom ?? '';
 
-    // Set PO links if editing existing item
     currentPoItem = item.purchaseOrderItem ?? '';
     currentPoName = item.purchaseOrder ?? '';
     currentPurchaseOrderQty.value = getOrderedQty(currentPoItem);
@@ -555,16 +577,22 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void deleteItem(String uniqueName) {
+    if (!isEditable) return;
+
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
     currentItems.removeWhere((i) => i.name == uniqueName);
+
     purchaseReceipt.update((val) {
       val?.items.assignAll(currentItems);
     });
+
     isDirty.value = true;
     GlobalSnackbar.success(message: 'Item removed');
   }
 
   void addItem() {
+    if (!isEditable) return;
+
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 

@@ -7,7 +7,7 @@ import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -36,7 +36,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             Obx(() {
               if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
 
-              // Fix: Prevent skewed loader
               return controller.isSaving.value
                   ? const Center(
                   child: Padding(
@@ -51,7 +50,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                   : IconButton(
                 icon: const Icon(Icons.save),
                 // Enable save only if dirty AND draft
-                onPressed: (controller.isDirty.value && controller.purchaseReceipt.value?.docstatus == 0)
+                onPressed: (controller.isDirty.value && controller.isEditable)
                     ? controller.savePurchaseReceipt
                     : null,
               );
@@ -88,13 +87,14 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   }
 
   Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
+    final bool isEditable = controller.isEditable;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Form(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. General Info
             _buildSectionCard(
               title: 'General Information',
               children: [
@@ -126,14 +126,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     prefixIcon: Icon(Icons.business),
                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
-                  readOnly: true,
+                  readOnly: true, // Supplier generally fixed after creation via arg, or add picker if needed
                 ),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // 2. Schedule
             _buildSectionCard(
               title: 'Schedule',
               children: [
@@ -142,6 +141,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     Expanded(
                       child: TextFormField(
                         controller: controller.postingDateController,
+                        readOnly: !isEditable,
                         decoration: const InputDecoration(
                           labelText: 'Posting Date',
                           border: OutlineInputBorder(),
@@ -154,6 +154,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     Expanded(
                       child: TextFormField(
                         controller: controller.postingTimeController,
+                        readOnly: !isEditable,
                         decoration: const InputDecoration(
                           labelText: 'Posting Time',
                           border: OutlineInputBorder(),
@@ -169,7 +170,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
             const SizedBox(height: 16),
 
-            // 3. Settings
             _buildSectionCard(
               title: 'Settings',
               children: [
@@ -184,14 +184,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                   items: controller.warehouses.map((wh) {
                     return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
                   }).toList(),
-                  onChanged: (value) => controller.setWarehouse.value = value,
+                  onChanged: isEditable ? (value) => controller.setWarehouse.value = value : null,
                 )),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // 4. Summary
             _buildSectionCard(
                 title: 'Summary',
                 children: [
@@ -211,6 +210,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       ),
     );
   }
+
+  // ... (Helpers _buildSectionCard, _buildSummaryRow remain the same) ...
 
   Widget _buildSectionCard({required String title, required List<Widget> children}) {
     return Card(
@@ -269,12 +270,14 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             },
           ),
         ),
-        Obx(() => BarcodeInputWidget(
-          onScan: (code) => controller.scanBarcode(code),
-          isLoading: controller.isScanning.value,
-          controller: controller.barcodeController,
-          activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
-        )),
+        // Only show scanner if editable
+        if (controller.isEditable)
+          Obx(() => BarcodeInputWidget(
+            onScan: (code) => controller.scanBarcode(code),
+            isLoading: controller.isScanning.value,
+            controller: controller.barcodeController,
+            activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
+          )),
       ],
     );
   }
