@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class Item {
   final String name;
   final String itemName;
@@ -8,8 +6,8 @@ class Item {
   final String? image;
   final String? variantOf;
   final String? countryOfOrigin;
-  // Other attributes can be added here
   final String? description;
+  final String? stockUom; // Added: Essential ERPNext field
 
   Item({
     required this.name,
@@ -20,6 +18,7 @@ class Item {
     this.variantOf,
     this.countryOfOrigin,
     this.description,
+    this.stockUom,
   });
 
   factory Item.fromJson(Map<String, dynamic> json) {
@@ -32,6 +31,7 @@ class Item {
       variantOf: json['variant_of'],
       countryOfOrigin: json['country_of_origin'],
       description: json['description'],
+      stockUom: json['stock_uom'],
     );
   }
 }
@@ -39,7 +39,7 @@ class Item {
 class WarehouseStock {
   final String warehouse;
   final double quantity;
-  final String? rack; // Added Rack field
+  final String? rack;
 
   WarehouseStock({
     required this.warehouse,
@@ -51,7 +51,7 @@ class WarehouseStock {
     return WarehouseStock(
       warehouse: json['warehouse'] ?? '',
       quantity: (json['bal_qty'] as num?)?.toDouble() ?? 0.0,
-      rack: json['rack']?.toString(), // Parse rack
+      rack: json['rack']?.toString(),
     );
   }
 }
