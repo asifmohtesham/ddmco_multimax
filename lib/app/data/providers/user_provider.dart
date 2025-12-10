@@ -15,7 +15,6 @@ class UserProvider {
   }
 
   /// Fetches Employees who report to the given [employeeId].
-  /// Only returns employees who are linked to a User (user_id is set).
   Future<Response> getDirectReports(String employeeId) async {
     return await _apiProvider.getDocumentList(
       'Employee',
@@ -36,6 +35,14 @@ class UserProvider {
       filters: {'user_id': userEmail, 'status': 'Active'},
       fields: ['name'],
       limit: 1,
+    );
+  }
+
+  /// Fetches roles using standard RPC method which is accessible to the user
+  Future<Response> getUserRoles(String userId) async {
+    return await _apiProvider.callMethod(
+      'frappe.core.doctype.user.user.get_roles',
+      params: {'uid': userId},
     );
   }
 }

@@ -4,16 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/providers/user_provider.dart'; // Added
+import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  // UserProvider might not be registered yet if AuthBinding only puts AuthController
-  // So we lazy load it or use Get.put/find safely.
-  // Ideally UserProvider should be put in initial binding or main.dart, but here we can just ensure it exists.
+
   UserProvider get _userProvider {
     if (!Get.isRegistered<UserProvider>()) {
       Get.put(UserProvider());
@@ -41,6 +39,25 @@ class AuthenticationController extends GetxController {
         if (userDetailsResponse.statusCode == 200 && userDetailsResponse.data?['data'] != null) {
           var user = User.fromJson(userDetailsResponse.data['data']);
 
+          // --- ROLE FETCHING FIX ---
+          // Fetch roles explicitly via RPC if main doc roles are empty/hidden
+          if (user.roles.isEmpty) {
+            try {
+              final rolesResponse = await _userProvider.getUserRoles(user.id);
+              // RPC returns { "message": ["Role1", "Role2"] }
+              if (rolesResponse.statusCode == 200 && rolesResponse.data['message'] != null) {
+                final roleList = List<String>.from(rolesResponse.data['message']);
+
+                if (roleList.isNotEmpty) {
+                  user = user.copyWith(roles: roleList);
+                }
+              }
+            } catch (e) {
+              print('Failed to fetch roles manually: $e');
+            }
+          }
+          // -------------------------
+
           // --- LINK EMPLOYEE DOCUMENT ---
           try {
             final empResponse = await _userProvider.getEmployeeIdForUser(user.email);
@@ -59,7 +76,7 @@ class AuthenticationController extends GetxController {
           currentUser.value = user;
           isAuthenticated.value = true;
 
-          // Persist user with employee_id to storage
+          // Persist user
           if (Get.isRegistered<StorageService>()) {
             await Get.find<StorageService>().saveUser(user);
           }
@@ -81,7 +98,6 @@ class AuthenticationController extends GetxController {
     try {
       bool hasSession = await _apiProvider.hasSessionCookies();
       if (hasSession) {
-        // Try loading from storage first for speed
         if (Get.isRegistered<StorageService>()) {
           final storedUser = Get.find<StorageService>().getUser();
           if (storedUser != null) {
@@ -89,7 +105,6 @@ class AuthenticationController extends GetxController {
             isAuthenticated.value = true;
           }
         }
-        // Always refresh from API
         await fetchUserDetails();
       } else {
         await _clearSessionAndLocalData();
@@ -103,8 +118,6 @@ class AuthenticationController extends GetxController {
   }
 
   void processSuccessfulLogin(User user) {
-    // This is usually called from LoginController with basic info
-    // Trigger full fetch to get roles and employee link
     fetchUserDetails().then((_) {
       Get.offAllNamed(AppRoutes.HOME);
       GlobalSnackbar.success(

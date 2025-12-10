@@ -46,7 +46,7 @@ class ApiProvider {
     _dioInitialized = true;
   }
 
-  // ... (Login methods remain unchanged) ...
+  // --- Auth Methods ---
 
   Future<Response> login(String email, String password) async {
     if (!_dioInitialized) await _initDio();
@@ -111,7 +111,13 @@ class ApiProvider {
     );
   }
 
-  // --- UPDATED: Generic Document Fetching with Correct Filter Parsing ---
+  // --- Core Fetching Methods ---
+
+  // NEW: Generic Method Call
+  Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
+    if (!_dioInitialized) await _initDio();
+    return await _dio.get('/api/method/$method', queryParameters: params);
+  }
 
   Future<Response> getDocumentList(String doctype, {
     int limit = 20,
@@ -134,13 +140,10 @@ class ApiProvider {
     }
 
     if (filters != null && filters.isNotEmpty) {
-      // FIX: Handle custom operators (e.g. ['like', '%val%']) correctly
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
         if (entry.value is List && (entry.value as List).length == 2) {
-          // Assume format [operator, value]
           return [doctype, entry.key, entry.value[0], entry.value[1]];
         }
-        // Default to equals
         return [doctype, entry.key, '=', entry.value];
       }).toList();
 
@@ -150,12 +153,9 @@ class ApiProvider {
     try {
       return await _dio.get(endpoint, queryParameters: queryParameters);
     } on DioException catch (e) {
-      // Optional: Log here but don't swallow, let controller handle UI
       rethrow;
     }
   }
-
-  // ... (Rest of the standard methods getDocument, createDocument, updateDocument, getReport remain same) ...
 
   Future<Response> getDocument(String doctype, String name) async {
     if (!_dioInitialized) await _initDio();
@@ -191,7 +191,7 @@ class ApiProvider {
     });
   }
 
-  // ... (Specific Getters for modules like getPurchaseReceipts etc. remain unchanged) ...
+  // ... (Module specific getters remain same) ...
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
   Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
   Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async => getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner']);
