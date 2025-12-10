@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -72,6 +73,7 @@ class _ItemScreenState extends State<ItemScreen> {
           )),
         ],
       ),
+      drawer: const AppNavDrawer(), //
       body: Column(
         children: [
           // Filter Summary Bar

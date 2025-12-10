@@ -5,7 +5,8 @@ import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart'; // Import RoleGuard
+import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -203,6 +204,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), // Added
       body: Obx(() {
         if (controller.isLoading.value && controller.stockEntries.isEmpty) {
           return const Center(child: CircularProgressIndicator());

@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/bom/bom_controller.dart';
 import 'package:multimax/app/data/models/bom_model.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 
 class BomScreen extends GetView<BomController> {
   const BomScreen({super.key});
@@ -23,6 +24,7 @@ class BomScreen extends GetView<BomController> {
             ],
           ),
         ),
+        drawer: const AppNavDrawer(), //
         body: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());

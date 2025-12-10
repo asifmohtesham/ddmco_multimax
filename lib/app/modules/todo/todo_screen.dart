@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});
@@ -104,6 +105,7 @@ class _ToDoScreenState extends State<ToDoScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), // Added
       body: Column(
         children: [
           Padding(
@@ -199,54 +201,54 @@ class ToDoCard extends StatelessWidget {
                 child: !isCurrentlyExpanded
                     ? const SizedBox.shrink()
                     : Obx(() {
-                        final detailed = controller.detailedTodo;
-                        if (controller.isLoadingDetails.value && detailed?.name != todo.name) {
-                          return const LinearProgressIndicator();
-                        }
+                  final detailed = controller.detailedTodo;
+                  if (controller.isLoadingDetails.value && detailed?.name != todo.name) {
+                    return const LinearProgressIndicator();
+                  }
 
-                        if (detailed != null && detailed.name == todo.name) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                                  child: Text('Modified: ${detailed.modified}'),
-                                ),
-                                if (detailed.description.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
-                                    child: Html(data: 'Description: ${detailed.description}'),
-                                  ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (detailed.status == 'Open') ...[
-                                      TextButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Close ToDo'),
-                                        child: const Text('Close'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Navigate to form for editing'),
-                                        child: const Text('Edit'),
-                                      ),
-                                    ] else ...[
-                                      ElevatedButton(
-                                        onPressed: () => Get.snackbar('TODO', 'Navigate to form view in read-only mode'),
-                                        child: const Text('View'),
-                                      ),
-                                    ]
-                                  ],
-                                ),
-                              ],
+                  if (detailed != null && detailed.name == todo.name) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+                            child: Text('Modified: ${detailed.modified}'),
+                          ),
+                          if (detailed.description.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: Html(data: 'Description: ${detailed.description}'),
                             ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (detailed.status == 'Open') ...[
+                                TextButton(
+                                  onPressed: () => Get.snackbar('TODO', 'Close ToDo'),
+                                  child: const Text('Close'),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () => Get.snackbar('TODO', 'Navigate to form for editing'),
+                                  child: const Text('Edit'),
+                                ),
+                              ] else ...[
+                                ElevatedButton(
+                                  onPressed: () => Get.snackbar('TODO', 'Navigate to form view in read-only mode'),
+                                  child: const Text('View'),
+                                ),
+                              ]
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }),
               ),
             ),
           ],

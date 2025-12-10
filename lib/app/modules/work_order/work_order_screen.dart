@@ -4,6 +4,7 @@ import 'package:multimax/app/modules/work_order/work_order_controller.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
 
 class WorkOrderScreen extends GetView<WorkOrderController> {
   const WorkOrderScreen({super.key});
@@ -22,6 +23,7 @@ class WorkOrderScreen extends GetView<WorkOrderController> {
             ],
           ),
         ),
+        drawer: const AppNavDrawer(), // Added
         body: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());

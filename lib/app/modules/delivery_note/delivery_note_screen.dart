@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
@@ -113,6 +114,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), //
       body: Obx(() {
         if (controller.isLoading.value && controller.deliveryNotes.isEmpty) {
           return const Center(child: CircularProgressIndicator());

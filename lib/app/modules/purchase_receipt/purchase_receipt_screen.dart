@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controlle
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
 
 class PurchaseReceiptScreen extends StatefulWidget {
   const PurchaseReceiptScreen({super.key});
@@ -185,6 +186,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), // Added
       body: Obx(() {
         if (controller.isLoading.value && controller.purchaseReceipts.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -249,49 +251,6 @@ class PurchaseReceiptCard extends StatelessWidget {
     return format.currencySymbol;
   }
 
-  String _getRelativeTime(String? dateString) {
-    if (dateString == null || dateString.isEmpty) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ago';
-      } else if (difference.inSeconds > 0) {
-        return '${difference.inSeconds}s ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
-  String _getTimeTaken(String creation, String modified) {
-    try {
-      final start = DateTime.parse(creation);
-      final end = DateTime.parse(modified);
-      final difference = end.difference(start);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ${difference.inHours % 24}h';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ${difference.inMinutes % 60}m';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ${difference.inSeconds % 60}s';
-      } else {
-        return '${difference.inSeconds}s';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -322,7 +281,7 @@ class PurchaseReceiptCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              
+
               // Row 2: Supplier + Time
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -352,7 +311,7 @@ class PurchaseReceiptCard extends StatelessWidget {
                   if (receipt.docstatus == 1) // Submitted
                     Padding(
                       padding: const EdgeInsets.only(right: 8.0),
-                      child: _buildStatItem(Icons.timer_outlined, _getTimeTaken(receipt.creation, receipt.modified), color: Colors.green),
+                      child: _buildStatItem(Icons.timer_outlined, FormattingHelper.getTimeTaken(receipt.creation, receipt.modified), color: Colors.green),
                     ),
                   // Animated Arrow
                   Obx(() {
@@ -376,73 +335,73 @@ class PurchaseReceiptCard extends StatelessWidget {
                     child: !isCurrentlyExpanded
                         ? const SizedBox.shrink()
                         : Obx(() {
-                            final detailed = controller.detailedReceipt;
-                            if (controller.isLoadingDetails.value && detailed?.name != receipt.name) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16.0),
-                                  child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                                );
-                            }
+                      final detailed = controller.detailedReceipt;
+                      if (controller.isLoadingDetails.value && detailed?.name != receipt.name) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                        );
+                      }
 
-                            if (detailed != null && detailed.name == receipt.name) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Divider(height: 1),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      spacing: 4,
-                                      children: [
-                                        Icon(
-                                          Icons.account_balance,
-                                          size: 16,
-                                          color: Theme.of(context).primaryColor,
-                                        ),
-                                        Text(
-                                          '${_getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            color: Theme.of(context).primaryColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
+                      if (detailed != null && detailed.name == receipt.name) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Divider(height: 1),
+                              const SizedBox(height: 8),
+                              Row(
+                                spacing: 4,
+                                children: [
+                                  Icon(
+                                    Icons.account_balance,
+                                    size: 16,
+                                    color: Theme.of(context).primaryColor,
+                                  ),
+                                  Text(
+                                    '${_getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      color: Theme.of(context).primaryColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
                                     ),
-                                    Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        if (detailed.status == 'Draft') ...[
-                                          OutlinedButton.icon(
-                                            onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'edit'}),
-                                            icon: Icon(detailed.docstatus == 0 ? Icons.edit : Icons.file_open, size: 18),
-                                            label: Text(detailed.docstatus == 0 ? 'Edit': 'Open'),
-                                            style: OutlinedButton.styleFrom(
-                                              visualDensity: VisualDensity.compact,
-                                              // The `shape` property defines the border radius
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(4.0), // Your desired radius
-                                              ),
-                                              side: BorderSide(color: Theme.of(context).primaryColor),
-                                            ),
-                                          ),
-                                        ] else ...[
-                                          TextButton(
-                                            onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'view'}),
-                                            child: const Text('View'),
-                                          ),
-                                        ]
-                                      ],
+                                  ),
+                                ],
+                              ),
+                              Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  if (detailed.status == 'Draft') ...[
+                                    OutlinedButton.icon(
+                                      onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'edit'}),
+                                      icon: Icon(detailed.docstatus == 0 ? Icons.edit : Icons.file_open, size: 18),
+                                      label: Text(detailed.docstatus == 0 ? 'Edit': 'Open'),
+                                      style: OutlinedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        // The `shape` property defines the border radius
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(4.0), // Your desired radius
+                                        ),
+                                        side: BorderSide(color: Theme.of(context).primaryColor),
+                                      ),
                                     ),
-                                  ],
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          }),
+                                  ] else ...[
+                                    TextButton(
+                                      onPressed: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {'name': receipt.name, 'mode': 'view'}),
+                                      child: const Text('View'),
+                                    ),
+                                  ]
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
                   ),
                 );
               }),

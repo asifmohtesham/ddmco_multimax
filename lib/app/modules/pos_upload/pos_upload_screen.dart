@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -60,27 +62,6 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
       default: return Colors.grey;
     }
   }
-  
-  String _getRelativeTime(String? dateString) {
-    if (dateString == null || dateString.isEmpty) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +75,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), //
       body: Obx(() {
         if (controller.isLoading.value && controller.posUploads.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -159,7 +141,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
                           Text(upload.status, style: const TextStyle(fontSize: 12, color: Colors.black54)),
                           const Spacer(),
                           Text(
-                            _getRelativeTime(upload.modified),
+                            FormattingHelper.getRelativeTime(upload.modified),
                             style: const TextStyle(fontSize: 11, color: Colors.grey),
                           ),
                         ],

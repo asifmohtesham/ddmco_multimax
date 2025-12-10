@@ -7,6 +7,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
 
 class PurchaseOrderScreen extends StatefulWidget {
   const PurchaseOrderScreen({super.key});
@@ -63,6 +64,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           ),
         ],
       ),
+      drawer: const AppNavDrawer(), // Added
       body: Obx(() {
         if (controller.isLoading.value && controller.purchaseOrders.isEmpty) {
           return const Center(child: CircularProgressIndicator());
