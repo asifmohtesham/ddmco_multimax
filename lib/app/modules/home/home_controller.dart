@@ -40,7 +40,7 @@ class HomeController extends GetxController {
   // Date Selection
   var selectedDailyDate = DateTime.now().obs;
 
-  // NEW: Weekly Range Selection
+  // Weekly Range Selection
   var selectedWeeklyRange = DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 28)),
       end: DateTime.now()
@@ -179,7 +179,6 @@ class HomeController extends GetxController {
     if (!isWeeklyView.value) fetchPerformanceData();
   }
 
-  // NEW: Weekly Range Handler
   void onWeeklyRangeChanged(DateTimeRange range) {
     selectedWeeklyRange.value = range;
     if (isWeeklyView.value) fetchPerformanceData();
@@ -195,11 +194,9 @@ class HomeController extends GetxController {
       DateTime endDate;
 
       if (isWeeklyView.value) {
-        // Use the selected range
         startDate = selectedWeeklyRange.value.start;
         endDate = selectedWeeklyRange.value.end;
       } else {
-        // Daily: Last 7 days ending on selected date
         endDate = selectedDailyDate.value;
         startDate = endDate.subtract(const Duration(days: 6));
       }
@@ -228,7 +225,6 @@ class HomeController extends GetxController {
         // Generate dynamic buckets for the selected range
         DateTime current = startDate;
         // Iterate by week until we pass the end date
-        // Ensure we cover the full range
         while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
           final key = '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
           final label = '${DateFormat('MMM').format(current)} W${_getWeekOfMonth(current)}';
@@ -239,7 +235,7 @@ class HomeController extends GetxController {
           current = current.add(const Duration(days: 7));
         }
       } else {
-        // Daily Buckets (Last 7 days)
+        // Daily Buckets
         for (int i = 0; i < 7; i++) {
           final date = endDate.subtract(Duration(days: (6 - i)));
           final key = DateFormat('yyyy-MM-dd').format(date);
@@ -251,7 +247,6 @@ class HomeController extends GetxController {
       void fillBucket(List<dynamic> list, String type) {
         for (var item in list) {
           final date = DateTime.parse(item['creation']);
-          // Only process if within our start/end range (filters handle >= start, but check end too)
           if (date.isAfter(endDate.add(const Duration(days: 1)))) continue;
 
           String key;
@@ -301,8 +296,11 @@ class HomeController extends GetxController {
 
   // --- Helpers ---
 
+  // Calculates 4-Week Cycle per Month (W1-W4)
   int _getWeekOfMonth(DateTime date) {
-    return ((date.day - 1) / 7).floor() + 1;
+    int week = ((date.day - 1) / 7).floor() + 1;
+    // Cap at 4 to ensure days 29, 30, 31 fall into Week 4 bucket
+    return week > 4 ? 4 : week;
   }
 
   double _safeParseDouble(dynamic value) {
@@ -326,7 +324,6 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // ... (Scan Logic and Navigation remain same) ...
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
