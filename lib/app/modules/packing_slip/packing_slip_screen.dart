@@ -285,7 +285,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showDNSelectionBottomSheet(context),
+        onPressed: controller.openCreateDialog, // Call controller method
         child: const Icon(Icons.add),
       ),
     );

@@ -1,12 +1,14 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
-import 'package:multimax/app/data/providers/pos_upload_provider.dart'; // Added
-import 'package:multimax/app/data/models/pos_upload_model.dart'; // Added
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
-  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>(); // Added
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -24,7 +26,7 @@ class StockEntryController extends GetxController {
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
-  // --- NEW: For POS Selection (Material Issue) ---
+  // For POS Selection
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
@@ -37,6 +39,15 @@ class StockEntryController extends GetxController {
     fetchStockEntries();
   }
 
+  @override
+  void onReady() {
+    super.onReady();
+    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+      openCreateDialog();
+    }
+  }
+
+  // ... (Fetch, Filter, Sort, Expand logic unchanged) ...
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchStockEntries(isLoadMore: false, clear: true);
@@ -131,8 +142,6 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // --- NEW METHODS FOR POS SELECTION ---
-
   Future<void> fetchPendingPosUploads() async {
     isFetchingPosUploads.value = true;
     try {
@@ -165,5 +174,145 @@ class StockEntryController extends GetxController {
             upload.customer.toLowerCase().contains(q);
       }).toList();
     }
+  }
+
+  // Moved from Screen
+  void openCreateDialog() {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Create Stock Entry', style: Get.textTheme.titleLarge),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.outbond, color: Colors.white),
+                ),
+                title: const Text('Material Issue'),
+                subtitle: const Text('Requires Reference No from POS Upload'),
+                onTap: () {
+                  Get.back();
+                  _showPosSelectionBottomSheet();
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.transform, color: Colors.white),
+                ),
+                title: const Text('Material Transfer'),
+                subtitle: const Text('Internal Transfer'),
+                onTap: () {
+                  Get.back();
+                  Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                    'name': '',
+                    'mode': 'new',
+                    'stockEntryType': 'Material Transfer',
+                    'customReferenceNo': ''
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPosSelectionBottomSheet() {
+    fetchPendingPosUploads();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select POS Upload',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: filterPosUploads,
+                    decoration: InputDecoration(
+                      labelText: 'Search Pending Uploads',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingPosUploads.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (posUploadsForSelection.isEmpty) {
+                        return const Center(child: Text('No Pending POS Uploads found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: posUploadsForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final pos = posUploadsForSelection[index];
+                          return ListTile(
+                            title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${pos.customer} • ${pos.date}'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                                'name': '',
+                                'mode': 'new',
+                                'stockEntryType': 'Material Issue',
+                                'customReferenceNo': pos.name
+                              });
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 }

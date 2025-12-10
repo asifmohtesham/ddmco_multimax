@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -31,7 +32,7 @@ class PackingSlipController extends GetxController {
   // Search State
   var searchQuery = ''.obs;
 
-  // Cache for POS Customer Names: { "POS-123": "Customer Name" }
+  // Cache for POS Customer Names
   var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
@@ -46,6 +47,15 @@ class PackingSlipController extends GetxController {
     fetchPackingSlips();
   }
 
+  @override
+  void onReady() {
+    super.onReady();
+    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+      openCreateDialog();
+    }
+  }
+
+  // ... (Fetch logic unchanged) ...
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchPackingSlips(isLoadMore: false, clear: true);
@@ -96,7 +106,6 @@ class PackingSlipController extends GetxController {
           packingSlips.value = newSlips;
         }
 
-        // Fetch Customers for new slips
         _fetchAssociatedCustomers(newSlips);
 
         _currentPage++;
@@ -115,7 +124,6 @@ class PackingSlipController extends GetxController {
     }
   }
 
-  // Look up Customer Name from POS Upload if missing in Packing Slip
   Future<void> _fetchAssociatedCustomers(List<PackingSlip> slips) async {
     final poNumbers = slips
         .map((s) => s.customPoNo)
@@ -126,12 +134,9 @@ class PackingSlipController extends GetxController {
     if (poNumbers.isEmpty) return;
 
     try {
-      // Bulk fetch logic if API supports 'in' filter, else iterate
-      // POS Upload usually allows filtering by name
       final response = await _posProvider.getPosUploads(
         limit: 100,
         filters: {'name': ['in', poNumbers]},
-        // We only need name and customer fields
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -168,7 +173,6 @@ class PackingSlipController extends GetxController {
   }
 
   Map<String, List<PackingSlip>> get groupedPackingSlips {
-    // 1. Filter
     var list = packingSlips.toList();
     if (searchQuery.value.isNotEmpty) {
       final q = searchQuery.value.toLowerCase();
@@ -181,7 +185,6 @@ class PackingSlipController extends GetxController {
       }).toList();
     }
 
-    // 2. Group
     final grouped = groupBy(list, (PackingSlip slip) {
       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
         return slip.customPoNo!;
@@ -192,7 +195,6 @@ class PackingSlipController extends GetxController {
       return 'Other';
     });
 
-    // 3. Sort inside groups
     grouped.forEach((key, list) {
       list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
     });
@@ -203,6 +205,8 @@ class PackingSlipController extends GetxController {
   void onSearchChanged(String val) {
     searchQuery.value = val;
   }
+
+  // --- Creation Logic ---
 
   Future<void> fetchDeliveryNotesForSelection() async {
     isFetchingDNs.value = true;
@@ -268,5 +272,93 @@ class PackingSlipController extends GetxController {
       'customPoNo': dn.poNo,
       'nextCaseNo': nextCaseNo
     });
+  }
+
+  // Moved from Screen
+  void openCreateDialog() {
+    fetchDeliveryNotesForSelection();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select Delivery Note',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: filterDeliveryNotes,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Delivery Notes',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingDNs.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (deliveryNotesForSelection.isEmpty) {
+                        return const Center(child: Text('No Delivery Notes found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: deliveryNotesForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final dn = deliveryNotesForSelection[index];
+                          final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
+                          final title = hasPO ? dn.poNo! : dn.name;
+                          final subtitle = hasPO
+                              ? '${dn.name} • ${dn.customer}'
+                              : dn.customer;
+
+                          return ListTile(
+                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              initiatePackingSlipCreation(dn);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 }

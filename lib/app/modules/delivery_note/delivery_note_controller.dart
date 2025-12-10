@@ -1,10 +1,11 @@
-
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:intl/intl.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -29,7 +30,7 @@ class DeliveryNoteController extends GetxController {
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   var posUploadSearchQuery = ''.obs;
-  List<PosUpload> _allFetchedPosUploads = []; // Store all fetched for local filtering
+  List<PosUpload> _allFetchedPosUploads = [];
 
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
@@ -38,6 +39,16 @@ class DeliveryNoteController extends GetxController {
     super.onInit();
     fetchDeliveryNotes();
   }
+
+  @override
+  void onReady() {
+    super.onReady();
+    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+      openCreateDialog();
+    }
+  }
+
+  // ... (Existing Fetch, Filter logic unchanged) ...
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -74,7 +85,7 @@ class DeliveryNoteController extends GetxController {
         filters: activeFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
-      
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newNotes = data.map((json) => DeliveryNote.fromJson(json)).toList();
@@ -97,8 +108,7 @@ class DeliveryNoteController extends GetxController {
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
-      }
-      if (isLoading.value) {
+      } else {
         isLoading.value = false;
       }
     }
@@ -142,20 +152,18 @@ class DeliveryNoteController extends GetxController {
       final List<PosUpload> fetchedUploads = [];
       if (response.statusCode == 200 && response.data['data'] != null) {
         fetchedUploads.addAll((response.data['data'] as List).map((json) {
-          final posUpload = PosUpload.fromJson(json);
-          // print('Fetched POS Upload: ${posUpload.name}, Status: ${posUpload.status}'); 
-          return posUpload;
+          return PosUpload.fromJson(json);
         }).toList());
       }
-      
-      // Filter locally: Keep if status is 'Pending' (including null/empty) or 'In Progress'
+
+      // Filter locally
       _allFetchedPosUploads = fetchedUploads.where((upload) {
         final status = upload.status;
         return status == 'Pending' || status == 'In Progress';
       }).toList();
 
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
-      posUploadSearchQuery.value = ''; 
+      posUploadSearchQuery.value = '';
     } catch (e) {
       Get.snackbar('Error', 'Failed to fetch POS Uploads for selection: $e');
     } finally {
@@ -170,24 +178,19 @@ class DeliveryNoteController extends GetxController {
     } else {
       posUploadsForSelection.value = _allFetchedPosUploads
           .where((upload) => upload.name.toLowerCase().contains(query.toLowerCase()) ||
-                          upload.customer.toLowerCase().contains(query.toLowerCase()) ||
-                          upload.status.toLowerCase().contains(query.toLowerCase()))
+          upload.customer.toLowerCase().contains(query.toLowerCase()) ||
+          upload.status.toLowerCase().contains(query.toLowerCase()))
           .toList();
     }
   }
 
   Future<void> createNewDeliveryNote(PosUpload? selectedPosUpload) async {
     if (selectedPosUpload != null) {
-      // Check for existing Draft Delivery Note with matching PO No
       try {
-        // We can search locally first if the list is likely up to date, 
-        // but for correctness, a quick API check is safer or iterate through current list.
-        // Let's iterate through current list first as it's faster.
-        final existingDraft = deliveryNotes.firstWhereOrNull((note) => 
-            note.poNo == selectedPosUpload.name && note.docstatus == 0);
+        final existingDraft = deliveryNotes.firstWhereOrNull((note) =>
+        note.poNo == selectedPosUpload.name && note.docstatus == 0);
 
         if (existingDraft != null) {
-          // Found local match
           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
             'name': existingDraft.name,
             'mode': 'edit',
@@ -197,15 +200,14 @@ class DeliveryNoteController extends GetxController {
           return;
         }
 
-        // If not found locally, query the API to be sure (optional but robust)
         final response = await _provider.getDeliveryNotes(
-          limit: 1, 
-          filters: {'po_no': selectedPosUpload.name, 'docstatus': 0}
+            limit: 1,
+            filters: {'po_no': selectedPosUpload.name, 'docstatus': 0}
         );
-        
+
         if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-           final noteData = response.data['data'][0];
-           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+          final noteData = response.data['data'][0];
+          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
             'name': noteData['name'],
             'mode': 'edit',
             'posUploadCustomer': selectedPosUpload.customer,
@@ -216,7 +218,6 @@ class DeliveryNoteController extends GetxController {
 
       } catch (e) {
         print('Error checking for existing draft: $e');
-        // Proceed to create new if check fails
       }
 
       Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
@@ -228,5 +229,162 @@ class DeliveryNoteController extends GetxController {
     } else {
       Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new'});
     }
+  }
+
+  // Moved from Screen
+  void openCreateDialog() {
+    fetchPosUploadsForSelection();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Select POS Upload',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    child: TextField(
+                      onChanged: filterPosUploads,
+                      decoration: InputDecoration(
+                        hintText: 'Search POS Uploads',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingPosUploads.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (posUploadsForSelection.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+                              const SizedBox(height: 16),
+                              const Text('No POS Uploads found.', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: posUploadsForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final posUpload = posUploadsForSelection[index];
+                          // Simple logic for status color for display
+                          Color statusColor = posUpload.status == 'Pending' ? Colors.orange : Colors.blue;
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            title: Text(posUpload.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.person_outline, size: 14, color: Colors.grey),
+                                    const SizedBox(width: 4),
+                                    Expanded(child: Text(posUpload.customer, overflow: TextOverflow.ellipsis)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8, height: 8,
+                                      decoration: BoxDecoration(
+                                        color: statusColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(posUpload.status, style: const TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                            onTap: () {
+                              Get.back();
+                              createNewDeliveryNote(posUpload);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Get.back();
+                          createNewDeliveryNote(null);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: BorderSide(color: Theme.of(context).primaryColor),
+                        ),
+                        child: const Text('Skip & Create Blank Note'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 }

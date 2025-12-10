@@ -149,7 +149,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showPosUploadSelectionBottomSheet(context),
+        onPressed: controller.openCreateDialog, // Call controller method
         child: const Icon(Icons.add),
       ),
     );
@@ -316,11 +316,6 @@ class DeliveryNoteCard extends StatelessWidget {
   final DeliveryNoteController controller = Get.find();
 
   DeliveryNoteCard({super.key, required this.note});
-
-  String _getCurrencySymbol(String currency) {
-    final format = NumberFormat.simpleCurrency(name: currency);
-    return format.currencySymbol;
-  }
 
   @override
   Widget build(BuildContext context) {

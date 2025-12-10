@@ -293,7 +293,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       floatingActionButton: RoleGuard(
         roles: const ['Stock Manager'],
         child: FloatingActionButton.extended(
-          onPressed: () => _showCreateOptionsBottomSheet(context),
+          onPressed: controller.openCreateDialog, // Call controller method
           icon: const Icon(Icons.add),
           label: const Text('Create'),
         ),

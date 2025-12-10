@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
   const PurchaseReceiptScreen({super.key});
@@ -233,7 +234,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showPOSelectionBottomSheet(context),
+        onPressed: controller.openCreateDialog, // Call controller method
         child: const Icon(Icons.add),
       ),
     );

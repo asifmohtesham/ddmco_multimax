@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:dio/dio.dart' hide Response;
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
@@ -27,6 +28,7 @@ class PurchaseReceiptController extends GetxController {
   var isFetchingPOs = false.obs;
   var purchaseOrdersForSelection = <PurchaseOrder>[].obs;
   List<PurchaseOrder> _allFetchedPOs = [];
+  var poSearchQuery = ''.obs; // Added for filtering
 
   PurchaseReceipt? get detailedReceipt => _detailedReceiptsCache[expandedReceiptName.value];
 
@@ -35,6 +37,16 @@ class PurchaseReceiptController extends GetxController {
     super.onInit();
     fetchPurchaseReceipts();
   }
+
+  @override
+  void onReady() {
+    super.onReady();
+    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+      openCreateDialog();
+    }
+  }
+
+  // ... (Existing Filters, Sorting, Fetch logic unchanged) ...
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -123,10 +135,12 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
+  // --- Creation Logic ---
+
   Future<void> fetchPurchaseOrdersForSelection() async {
     isFetchingPOs.value = true;
     try {
-      final response = await _poProvider.getPurchaseOrders(limit: 50);
+      final response = await _poProvider.getPurchaseOrders(limit: 50, filters: {'docstatus': 1, 'status': ['!=', 'Completed']}); // Only Submitted & Not Completed
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         _allFetchedPOs = data.map((json) => PurchaseOrder.fromJson(json)).toList();
@@ -145,8 +159,8 @@ class PurchaseReceiptController extends GetxController {
     } else {
       final q = query.toLowerCase();
       purchaseOrdersForSelection.value = _allFetchedPOs.where((po) {
-        return po.name.toLowerCase().contains(q) || 
-               po.supplier.toLowerCase().contains(q);
+        return po.name.toLowerCase().contains(q) ||
+            po.supplier.toLowerCase().contains(q);
       }).toList();
     }
   }
@@ -158,5 +172,87 @@ class PurchaseReceiptController extends GetxController {
       'purchaseOrder': po.name,
       'supplier': po.supplier,
     });
+  }
+
+  // Moved from Screen
+  void openCreateDialog() {
+    fetchPurchaseOrdersForSelection();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Select Purchase Order',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: filterPurchaseOrders,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Purchase Orders',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingPOs.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (purchaseOrdersForSelection.isEmpty) {
+                        return const Center(child: Text('No Purchase Orders found.'));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: purchaseOrdersForSelection.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final po = purchaseOrdersForSelection[index];
+                          return ListTile(
+                            title: Text(po.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${po.supplier} • ${po.transactionDate}'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Get.back();
+                              initiatePurchaseReceiptCreation(po);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 }

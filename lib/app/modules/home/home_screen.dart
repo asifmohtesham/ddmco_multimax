@@ -37,7 +37,6 @@ class HomeScreen extends GetView<HomeController> {
       drawer: const AppNavDrawer(),
       body: Column(
         children: [
-          // Scrollable Content Area
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
@@ -45,25 +44,20 @@ class HomeScreen extends GetView<HomeController> {
                 await controller.fetchPerformanceData();
               },
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Bottom padding for FAB
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. User Context Card (Improvised Header)
                     _buildUserContextCard(context),
-
                     const SizedBox(height: 16),
-
-                    // 2. Performance Timeline (Visually grouped with context)
                     Obx(() => PerformanceTimelineCard(
                       isWeekly: controller.isWeeklyView.value,
                       onToggleView: controller.toggleTimelineView,
                       data: controller.timelineData,
                       isLoading: controller.isLoadingTimeline.value,
-                      // Pass dates dynamically based on view type
                       selectedDate: controller.isWeeklyView.value
-                          ? null // Range takes precedence in weekly view
+                          ? null
                           : controller.selectedDailyDate.value,
                       selectedRange: controller.isWeeklyView.value
                           ? controller.selectedWeeklyRange.value
@@ -71,18 +65,13 @@ class HomeScreen extends GetView<HomeController> {
                       onDateChanged: controller.onDailyDateChanged,
                       onRangeChanged: controller.onWeeklyRangeChanged,
                     )),
-
                     const SizedBox(height: 24),
-
-                    // 3. KPI Speedometers
                     const Text('Daily Goals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
-
                     Obx(() {
                       if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
                         return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
                       }
-
                       return Row(
                         children: [
                           Expanded(
@@ -112,8 +101,6 @@ class HomeScreen extends GetView<HomeController> {
               ),
             ),
           ),
-
-          // 4. Pinned Bottom Scan Field (Consistent with Forms)
           Obx(() => BarcodeInputWidget(
             onScan: controller.onScan,
             controller: controller.barcodeController,
@@ -123,15 +110,84 @@ class HomeScreen extends GetView<HomeController> {
           )),
         ],
       ),
-      // Floating Action Button Positioned above the Bottom Input
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 60.0),
-        child: FloatingActionButton.extended(
-          onPressed: controller.goToDeliveryNote,
-          icon: const Icon(Icons.add),
-          label: const Text('New Delivery Note'),
+        child: FloatingActionButton(
+          onPressed: () => _showQuickCreateSheet(context),
+          tooltip: 'Quick Create',
+          child: const Icon(Icons.add),
         ),
       ),
+    );
+  }
+
+  void _showQuickCreateSheet(BuildContext context) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              const Text('Select a module to manage or create documents.', style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 24),
+              _buildActionTile(
+                  context,
+                  'Purchase Receipt',
+                  Icons.receipt_long_outlined,
+                  Colors.green,
+                      () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})
+              ),
+              _buildActionTile(
+                  context,
+                  'Stock Entry',
+                  Icons.compare_arrows_outlined,
+                  Colors.orange,
+                      () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})
+              ),
+              _buildActionTile(
+                  context,
+                  'Delivery Note',
+                  Icons.local_shipping_outlined,
+                  Colors.blue,
+                      () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})
+              ),
+              _buildActionTile(
+                  context,
+                  'Packing Slip',
+                  Icons.assignment_return_outlined,
+                  Colors.purple,
+                      () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionTile(BuildContext context, String title, IconData icon, Color color, VoidCallback onTap) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+        child: Icon(icon, color: color),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      onTap: () {
+        Get.back();
+        onTap();
+      },
+      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
     );
   }
 
@@ -268,6 +324,7 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
+// ... SpeedometerKpiCard (Unchanged)
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -307,7 +364,6 @@ class SpeedometerKpiCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Column(
             children: [
-              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
