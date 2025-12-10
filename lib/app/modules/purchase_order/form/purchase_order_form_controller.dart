@@ -178,7 +178,7 @@ class PurchaseOrderFormController extends GetxController {
     isScanning.value = true;
 
     // Simple EAN check
-    String itemCode = barcode; // Assuming barcode is item code for now
+    String itemCode = barcode.substring(0,7); // Assuming barcode is item code for now
 
     try {
       final response = await _apiProvider.getDocument('Item', itemCode);
