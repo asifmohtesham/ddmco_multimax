@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
@@ -5,13 +7,13 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:intl/intl.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Check if we are on the dedicated route or inside a bottom sheet (Home)
     final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
 
     return DefaultTabController(
@@ -19,8 +21,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.item.value?.itemName ?? 'Item Details')),
-          // If modal (sheet), show Close (X) on left.
-          // If navigation (pushed), show Back (<-) on left (default behavior via null).
           leading: isModal
               ? IconButton(
             icon: const Icon(Icons.close),
@@ -31,7 +31,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             isScrollable: true,
             tabs: [
               Tab(text: 'Overview'),
-              Tab(text: 'Dashboard'),
+              Tab(text: 'Stock Levels'), // Renamed from Dashboard
               Tab(text: 'Attributes'),
               Tab(text: 'Attachments'),
             ],
@@ -50,7 +50,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
           return TabBarView(
             children: [
               _buildOverviewTab(context, item),
-              _buildDashboardTab(context),
+              _buildStockLevelsTab(context), // Updated method
               _buildAttributesTab(context, item),
               _buildAttachmentsTab(context),
             ],
@@ -60,7 +60,218 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // --- Tab Widgets ---
+  // --- Tab 2: Stock Levels (Revamped) ---
+  Widget _buildStockLevelsTab(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Stock Balance Chart
+          const Text('Warehouse Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Obx(() {
+            if (controller.isLoadingStock.value) return const LinearProgressIndicator();
+            if (controller.stockLevels.isEmpty) {
+              return _buildEmptyState('No stock available in any warehouse.');
+            }
+            return StockBalanceChart(stockLevels: controller.stockLevels);
+          }),
+
+          const SizedBox(height: 24),
+
+          // 2. Batch-Wise History & Stock Age (New)
+          const Text('Batch-Wise Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Obx(() {
+            if (controller.isLoadingBatches.value) return const LinearProgressIndicator();
+            if (controller.batchHistory.isEmpty) {
+              return const Text('No batch history found.', style: TextStyle(color: Colors.grey));
+            }
+
+            return SizedBox(
+              height: 140,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: controller.batchHistory.length,
+                separatorBuilder: (c, i) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final batch = controller.batchHistory[index];
+                  // Assuming 'from_date' is batch creation/inward date from report
+                  final dateStr = batch['from_date'] ?? DateTime.now().toString();
+                  final ageDays = controller.calculateStockAgeDays(dateStr);
+
+                  return Container(
+                    width: 200,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0,2))]
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(batch['batch'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis)),
+                            Icon(Icons.qr_code, size: 16, color: Theme.of(context).primaryColor),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        if (batch['rack'] != null)
+                          Text('Rack: ${batch['rack']}', style: TextStyle(color: Colors.blueGrey.shade700, fontWeight: FontWeight.bold, fontSize: 12)),
+
+                        const Spacer(),
+
+                        Text('${batch['balance_qty']} ${controller.item.value?.stockUom ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 4),
+
+                        Row(
+                          children: [
+                            Icon(Icons.history, size: 12, color: Colors.orange.shade700),
+                            const SizedBox(width: 4),
+                            Text(
+                                '$ageDays days',
+                                style: TextStyle(color: Colors.orange.shade800, fontSize: 11, fontWeight: FontWeight.w600)
+                            ),
+                            const Spacer(),
+                            Text(
+                                FormattingHelper.getRelativeTime(dateStr),
+                                style: const TextStyle(color: Colors.grey, fontSize: 10)
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
+
+          const SizedBox(height: 24),
+
+          // 3. Ledger Entries (With Filter)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Stock Ledger', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: Icon(
+                    Icons.calendar_month,
+                    color: controller.ledgerDateRange.value != null ? Theme.of(context).primaryColor : Colors.grey
+                ),
+                onPressed: () async {
+                  final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      initialDateRange: controller.ledgerDateRange.value
+                  );
+                  if (picked != null) controller.updateLedgerDateRange(picked);
+                  else if (controller.ledgerDateRange.value != null) {
+                    // Option to clear?
+                    // controller.clearLedgerDateRange();
+                  }
+                },
+              ),
+            ],
+          ),
+
+          if (controller.ledgerDateRange.value != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Chip(
+                label: Text('${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.start)} - ${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.end)}'),
+                deleteIcon: const Icon(Icons.close, size: 16),
+                onDeleted: controller.clearLedgerDateRange,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+
+          Obx(() {
+            if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
+            if (controller.stockLedgerEntries.isEmpty) {
+              return const Text('No transactions found in this period.', style: TextStyle(color: Colors.grey));
+            }
+
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: controller.stockLedgerEntries.length,
+              separatorBuilder: (c,i) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final entry = controller.stockLedgerEntries[index];
+                final qty = (entry['actual_qty'] as num).toDouble();
+                final isPositive = qty > 0;
+
+                // Determine Subtitle based on Type
+                String subtitle = '${entry['voucher_no']}';
+                String? extraInfo;
+
+                if (entry['voucher_type'] == 'Delivery Note' && entry['customer'] != null) {
+                  extraInfo = 'Customer: ${entry['customer']}';
+                } else if (entry['voucher_type'] == 'Stock Entry' &&
+                    entry['stock_entry_type'] == 'Material Issue' &&
+                    entry['custom_reference_no'] != null) {
+                  extraInfo = 'Ref: ${entry['custom_reference_no']}';
+                }
+
+                return Card(
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(entry['voucher_type'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text(
+                              '${isPositive ? '+' : ''}$qty',
+                              style: TextStyle(
+                                  color: isPositive ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(subtitle, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                        if (extraInfo != null)
+                          Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            if (entry['warehouse'] != null)
+                              Text(entry['warehouse'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Text(
+                                FormattingHelper.getRelativeTime('${entry['posting_date']} ${entry['posting_time']}'),
+                                style: const TextStyle(fontSize: 11, color: Colors.grey)
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ... (Overview, Attributes, Attachments tabs remain unchanged) ...
 
   Widget _buildAttributesTab(BuildContext context, Item item) {
     if (item.attributes.isEmpty) {
@@ -167,109 +378,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
             ),
 
           const SizedBox(height: 80),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDashboardTab(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Stock Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Obx(() {
-            if (controller.isLoadingStock.value) return const LinearProgressIndicator();
-
-            if (controller.stockLevels.isEmpty) {
-              return Container(
-                padding: const EdgeInsets.all(24),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200)
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('No stock available in any warehouse.', style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              );
-            }
-
-            return Column(
-              children: [
-                StockBalanceChart(stockLevels: controller.stockLevels),
-                const SizedBox(height: 12),
-                _buildSectionCard(
-                    title: 'Warehouse Details',
-                    children: [
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: controller.stockLevels.length,
-                        separatorBuilder: (c, i) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final stock = controller.stockLevels[index];
-                          return ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(stock.warehouse, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                            subtitle: stock.rack != null ? Text('Rack: ${stock.rack}', style: const TextStyle(fontSize: 12)) : null,
-                            trailing: Text(
-                              stock.quantity.toStringAsFixed(2),
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', fontSize: 14),
-                            ),
-                          );
-                        },
-                      ),
-                    ]
-                ),
-              ],
-            );
-          }),
-
-          const SizedBox(height: 24),
-
-          const Text('Recent Ledger Entries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Obx(() {
-            if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
-            if (controller.stockLedgerEntries.isEmpty) {
-              return const Text('No recent transactions.', style: TextStyle(color: Colors.grey));
-            }
-
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: controller.stockLedgerEntries.length,
-              itemBuilder: (context, index) {
-                final entry = controller.stockLedgerEntries[index];
-                return Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    dense: true,
-                    title: Text(entry['voucher_type'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${entry['voucher_no']} • ${entry['posting_date']}', style: const TextStyle(fontSize: 12)),
-                    trailing: Text(
-                      '${(entry['actual_qty'] as num).toDouble() > 0 ? '+' : ''}${entry['actual_qty']}',
-                      style: TextStyle(
-                          color: (entry['actual_qty'] as num).toDouble() > 0 ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.bold
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
         ],
       ),
     );
@@ -444,6 +552,25 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      width: double.infinity,
+      decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200)
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey),
+          const SizedBox(height: 8),
+          Text(message, style: const TextStyle(color: Colors.grey)),
         ],
       ),
     );

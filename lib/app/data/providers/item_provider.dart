@@ -75,10 +75,21 @@ class ItemProvider {
     return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
   }
 
-  Future<Response> getStockLedger(String itemCode) async {
+  // Updated to support Date Range
+  Future<Response> getStockLedger(String itemCode, {DateTime? fromDate, DateTime? toDate}) async {
+    // FIX: Explicitly type as Map<String, dynamic> so lists can be assigned
+    final Map<String, dynamic> filters = {'item_code': itemCode};
+
+    if (fromDate != null && toDate != null) {
+      filters['posting_date'] = ['between', [
+        DateFormat('yyyy-MM-dd').format(fromDate),
+        DateFormat('yyyy-MM-dd').format(toDate)
+      ]];
+    }
+
     return _apiProvider.getDocumentList(
       'Stock Ledger Entry',
-      filters: {'item_code': itemCode},
+      filters: filters,
       fields: ['posting_date', 'posting_time', 'warehouse', 'actual_qty', 'qty_after_transaction', 'voucher_type', 'voucher_no', 'batch_no'],
       orderBy: 'posting_date desc, posting_time desc',
       limit: 50,
@@ -86,7 +97,7 @@ class ItemProvider {
   }
 
   Future<Response> getBatchWiseHistory(String itemCode) async {
-    final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 90)));
+    final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365))); // Last 1 year
     final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     return _apiProvider.getReport('Batch-Wise Balance History', filters: {

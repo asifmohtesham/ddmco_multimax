@@ -20,10 +20,13 @@ class ItemFormController extends GetxController {
 
   var attachments = <Map<String, dynamic>>[].obs;
 
-  // Dashboard Data
+  // Stock Levels Data
   var stockLevels = <WarehouseStock>[].obs;
   var stockLedgerEntries = <Map<String, dynamic>>[].obs;
   var batchHistory = <Map<String, dynamic>>[].obs;
+
+  // Ledger Filtering
+  var ledgerDateRange = Rx<DateTimeRange?>(null);
 
   var isLoadingStock = false.obs;
   var isLoadingLedger = false.obs;
@@ -51,11 +54,20 @@ class ItemFormController extends GetxController {
     fetchDashboardData();
   }
 
+  void updateLedgerDateRange(DateTimeRange range) {
+    ledgerDateRange.value = range;
+    fetchStockLedger();
+  }
+
+  void clearLedgerDateRange() {
+    ledgerDateRange.value = null;
+    fetchStockLedger();
+  }
+
   Future<void> fetchItemDetails() async {
     if (itemCode.isEmpty) return;
     isLoading.value = true;
     try {
-      // Use getDocument to ensure we get child tables (Attributes)
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         item.value = Item.fromJson(response.data['data']);
@@ -110,7 +122,12 @@ class ItemFormController extends GetxController {
   Future<void> fetchStockLedger() async {
     isLoadingLedger.value = true;
     try {
-      final response = await _provider.getStockLedger(itemCode);
+      final response = await _provider.getStockLedger(
+          itemCode,
+          fromDate: ledgerDateRange.value?.start,
+          toDate: ledgerDateRange.value?.end
+      );
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         List<Map<String, dynamic>> entries = List<Map<String, dynamic>>.from(response.data['data']);
 
@@ -187,6 +204,21 @@ class ItemFormController extends GetxController {
       print('Error fetching batch history: $e');
     } finally {
       isLoadingBatches.value = false;
+    }
+  }
+
+  // Logic to calculate Stock Age (Actual Days) based on creation date
+  // Assuming 'creation' or 'posting_date' is available in batch data or we calculate from today
+  // For this example, we calculate difference between today and 'from_date' provided by report if available,
+  // or generally we need the batch creation date.
+  // If the report doesn't provide it, we use a placeholder or 0.
+  int calculateStockAgeDays(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return 0;
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateTime.now().difference(date).inDays;
+    } catch (e) {
+      return 0;
     }
   }
 
