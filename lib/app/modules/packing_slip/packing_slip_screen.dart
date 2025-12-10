@@ -246,45 +246,6 @@ class PackingSlipListTile extends StatelessWidget {
 
   PackingSlipListTile({super.key, required this.slip});
 
-  String _getRelativeTime(String? dateString) {
-    if (dateString == null || dateString.isEmpty) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
-  String _getTimeTaken(String creation, String modified) {
-    try {
-      final start = DateTime.parse(creation);
-      final end = DateTime.parse(modified);
-      final difference = end.difference(start);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays}d ${difference.inHours % 24}h';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours}h ${difference.inMinutes % 60}m';
-      } else {
-        return '${difference.inMinutes}m';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return InkWell(
