@@ -36,7 +36,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             children: [
               _buildOverviewTab(context, item),
               _buildDashboardTab(context),
-              _buildAttachmentsTab(),
+              _buildAttachmentsTab(context), // Passed context
             ],
           );
         }),
@@ -210,10 +210,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: controller.stockLedgerEntries.length,
               itemBuilder: (context, index) {
-                // ... (Existing ledger item build logic reused for consistency) ...
-                // Simplified for brevity, assume calling a helper method or inline code from previous implementation
                 final entry = controller.stockLedgerEntries[index];
-                // ... render card ...
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
@@ -239,22 +236,128 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  Widget _buildAttachmentsTab() {
-    // ... (Existing Attachment Logic) ...
+  Widget _buildAttachmentsTab(BuildContext context) {
     return Obx(() {
       if (controller.attachments.isEmpty) {
-        return const Center(child: Text("No attachments found."));
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.perm_media_outlined, size: 64, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              const Text('No attachments found.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ],
+          ),
+        );
       }
-      return ListView.builder(
-          itemCount: controller.attachments.length,
-          itemBuilder: (ctx, i) {
-            final file = controller.attachments[i];
-            return ListTile(
-              leading: const Icon(Icons.attachment),
-              title: Text(file['file_name']),
-              onTap: () => controller.copyLink(file['file_url']),
-            );
-          }
+
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.85,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: controller.attachments.length,
+        itemBuilder: (ctx, i) {
+          final file = controller.attachments[i];
+          final String fileUrl = file['file_url'] ?? '';
+          final String fileName = file['file_name'] ?? 'Unknown';
+          final bool isImg = controller.isImage(fileUrl);
+          final fullUrl = 'https://erp.multimax.cloud$fileUrl';
+
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Content (Image or Icon)
+                InkWell(
+                  onTap: () {
+                    if (isImg) {
+                      _openFullScreenImage(context, fullUrl);
+                    } else {
+                      controller.copyLink(fileUrl);
+                    }
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: isImg
+                            ? Hero(
+                          tag: fileUrl,
+                          child: Image.network(
+                            fullUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, o, s) => Container(
+                              color: Colors.grey.shade100,
+                              child: const Icon(Icons.broken_image, color: Colors.grey),
+                            ),
+                          ),
+                        )
+                            : Container(
+                          color: Colors.grey.shade100,
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.insert_drive_file,
+                            size: 48,
+                            color: Colors.blueGrey.shade300,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 48), // Spacer for footer
+                    ],
+                  ),
+                ),
+
+                // 2. Footer Info Bar
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    color: Colors.white,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                fileName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                isImg ? 'Image' : 'File',
+                                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.share_outlined, size: 20, color: Colors.blueGrey),
+                          onPressed: () => controller.shareFile(fileUrl, fileName),
+                          tooltip: 'Share',
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       );
     });
   }
