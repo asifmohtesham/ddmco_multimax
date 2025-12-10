@@ -39,6 +39,12 @@ class PurchaseOrderFormController extends GetxController {
   final bsQtyController = TextEditingController();
   final bsRateController = TextEditingController();
 
+  // Sheet Observables (For realtime calculation without rebuilding inputs)
+  var sheetQty = 0.0.obs;
+  var sheetRate = 0.0.obs;
+
+  double get sheetAmount => sheetQty.value * sheetRate.value;
+
   // Temp Item State
   String? currentItemCode;
   String? currentItemName;
@@ -55,8 +61,17 @@ class PurchaseOrderFormController extends GetxController {
     // Fetch Suppliers List
     fetchSuppliers();
 
+    // Document Listeners
     supplierController.addListener(_checkForChanges);
     dateController.addListener(_checkForChanges);
+
+    // Sheet Listeners (Sync Text -> Observable)
+    bsQtyController.addListener(() {
+      sheetQty.value = double.tryParse(bsQtyController.text) ?? 0.0;
+    });
+    bsRateController.addListener(() {
+      sheetRate.value = double.tryParse(bsRateController.text) ?? 0.0;
+    });
 
     if (mode == 'new') {
       _initNewPO();
@@ -78,7 +93,7 @@ class PurchaseOrderFormController extends GetxController {
   Future<void> fetchSuppliers() async {
     isFetchingSuppliers.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Supplier', limit: 0, fields: ['name']); // 0 for all
+      final response = await _apiProvider.getDocumentList('Supplier', limit: 0, fields: ['name']);
       if (response.statusCode == 200 && response.data['data'] != null) {
         suppliers.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
@@ -106,7 +121,6 @@ class PurchaseOrderFormController extends GetxController {
     );
     dateController.text = DateFormat('yyyy-MM-dd').format(now);
 
-    // New doc is dirty by default
     isDirty.value = true;
     _originalJson = '';
   }
@@ -143,12 +157,11 @@ class PurchaseOrderFormController extends GetxController {
       return;
     }
 
-    // Create a temp object with current form values to compare
     final tempPO = PurchaseOrder(
       name: purchaseOrder.value!.name,
       supplier: supplierController.text,
       transactionDate: dateController.text,
-      grandTotal: purchaseOrder.value!.grandTotal, // Recalc logic omitted for brevity in dirty check
+      grandTotal: purchaseOrder.value!.grandTotal,
       currency: purchaseOrder.value!.currency,
       status: purchaseOrder.value!.status,
       docstatus: purchaseOrder.value!.docstatus,
@@ -170,15 +183,10 @@ class PurchaseOrderFormController extends GetxController {
     }
     if (barcode.isEmpty) return;
 
-    if (isItemSheetOpen.value) {
-      // If sheet is open, maybe just update? For now, ignore or warn.
-      return;
-    }
+    if (isItemSheetOpen.value) return;
 
     isScanning.value = true;
-
-    // Simple EAN check
-    String itemCode = barcode.substring(0,7); // Assuming barcode is item code for now
+    String itemCode = barcode;
 
     try {
       final response = await _apiProvider.getDocument('Item', itemCode);
@@ -189,7 +197,7 @@ class PurchaseOrderFormController extends GetxController {
           code: data['item_code'],
           name: data['item_name'],
           uom: data['stock_uom'] ?? 'Nos',
-          rate: 0.0, // Or fetch valuation rate if available
+          rate: 0.0,
           qty: 1.0,
         );
       } else {
@@ -229,8 +237,12 @@ class PurchaseOrderFormController extends GetxController {
     currentUom = uom;
     currentItemNameKey = rowId;
 
-    bsQtyController.text = qty.toStringAsFixed(0); // Assuming integer qty for simplicity, or 2
+    bsQtyController.text = qty.toStringAsFixed(0);
     bsRateController.text = rate.toStringAsFixed(2);
+
+    // Sync Observables
+    sheetQty.value = qty;
+    sheetRate.value = rate;
 
     isItemSheetOpen.value = true;
 
@@ -253,6 +265,7 @@ class PurchaseOrderFormController extends GetxController {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta).clamp(0.0, 999999.0);
     bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+    // Listener will update observable
   }
 
   void submitItem() {
@@ -281,9 +294,9 @@ class PurchaseOrderFormController extends GetxController {
         );
       }
     } else {
-      // Add New (Check for duplicates if needed, or just add)
+      // Add New
       currentItems.add(PurchaseOrderItem(
-        name: null, // New item
+        name: null,
         itemCode: currentItemCode!,
         itemName: currentItemName!,
         qty: qty,
@@ -294,11 +307,10 @@ class PurchaseOrderFormController extends GetxController {
       ));
     }
 
-    // Update PO object
     final oldPO = purchaseOrder.value!;
     purchaseOrder.value = PurchaseOrder(
       name: oldPO.name,
-      supplier: supplierController.text, // Sync text fields
+      supplier: supplierController.text,
       transactionDate: dateController.text,
       grandTotal: currentItems.fold(0.0, (sum, i) => sum + i.amount),
       currency: oldPO.currency,
@@ -309,7 +321,7 @@ class PurchaseOrderFormController extends GetxController {
       items: currentItems,
     );
 
-    Get.back(); // Close sheet
+    Get.back();
     _checkForChanges();
   }
 
@@ -360,9 +372,6 @@ class PurchaseOrderFormController extends GetxController {
         _updateOriginalState(saved);
 
         GlobalSnackbar.success(message: 'Purchase Order Saved');
-        if (mode == 'new') {
-          // Optionally navigate to edit mode or refresh
-        }
       } else {
         GlobalSnackbar.error(message: 'Failed to save');
       }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
   final ScrollController? scrollController;
@@ -60,6 +62,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
               const Divider(height: 24),
 
               // Quantity Input
+              // NOTE: No Obx here to prevent focus loss
               _buildInputGroup(
                 label: 'Quantity',
                 child: Row(
@@ -74,6 +77,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
                     ),
                     Expanded(
                       child: TextFormField(
+                        key: const ValueKey('po_qty_field'),
                         controller: controller.bsQtyController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         textAlign: TextAlign.center,
@@ -108,6 +112,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
               _buildInputGroup(
                 label: 'Rate',
                 child: TextFormField(
+                  key: const ValueKey('po_rate_field'),
                   controller: controller.bsRateController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
@@ -122,6 +127,27 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
                   },
                 ),
               ),
+
+              const SizedBox(height: 16),
+
+              // Amount Display (Reactive)
+              Obx(() => Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Total Amount', style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold)),
+                    Text(
+                      '${FormattingHelper.getCurrencySymbol(controller.purchaseOrder.value?.currency ?? 'AED')} ${NumberFormat('#,##0.00').format(controller.sheetAmount)}',
+                      style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+              )),
 
               const SizedBox(height: 24),
 
@@ -144,6 +170,24 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
                   child: Text(controller.currentItemNameKey != null ? 'Update' : 'Add to Order'),
                 ),
               ),
+
+              // Delete Button (if editing)
+              if (controller.currentItemNameKey != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      // Find item object locally or pass it, here simplified:
+                      final item = controller.purchaseOrder.value!.items.firstWhere((i) => i.name == controller.currentItemNameKey);
+                      Get.back();
+                      controller.deleteItem(item);
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text('Remove Item', style: TextStyle(color: Colors.red)),
+                  ),
+                )
+              ],
 
               SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
             ],
