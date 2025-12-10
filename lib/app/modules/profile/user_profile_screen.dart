@@ -86,6 +86,43 @@ class UserProfileScreen extends GetView<UserProfileController> {
 
                 const SizedBox(height: 32),
 
+                // Roles Section (New)
+                if (user.roles.isNotEmpty) ...[
+                  _buildSectionTitle('Assigned Roles'),
+                  const SizedBox(height: 12),
+                  Card(
+                    elevation: 0,
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Wrap(
+                          spacing: 8.0,
+                          runSpacing: 8.0,
+                          children: user.roles.map((role) {
+                            return Chip(
+                              label: Text(role, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                              backgroundColor: Colors.grey.shade100,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+
                 // Actions Section
                 _buildSectionTitle('Account Settings'),
                 const SizedBox(height: 12),
@@ -122,6 +159,7 @@ class UserProfileScreen extends GetView<UserProfileController> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 40),
               ],
             ),
           ),
