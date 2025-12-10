@@ -47,7 +47,7 @@ class PurchaseReceipt {
       postingTime: json['posting_time'] ?? '',
       currency: json['currency'] ?? 'AED',
       setWarehouse: json['set_warehouse'],
-      totalQty: json['total_qty'] ?? 0,
+      totalQty: (json['total_qty'] as num?)?.toDouble() ?? 0.0,
       grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
       items: items,
     );
@@ -68,6 +68,9 @@ class PurchaseReceiptItem {
   final String? rack;
   final String warehouse;
   final String? purchaseOrderItem;
+  final String? uom; // Added
+  final String? stockUom; // Added
+  final double conversionFactor; // Added
 
   // New Fields
   final int idx;
@@ -88,6 +91,9 @@ class PurchaseReceiptItem {
     this.rack,
     required this.warehouse,
     this.purchaseOrderItem,
+    this.uom,
+    this.stockUom,
+    this.conversionFactor = 1.0,
     this.idx = 0,
     this.customVariantOf,
     this.purchaseOrderQty,
@@ -104,17 +110,19 @@ class PurchaseReceiptItem {
       itemName: json['item_name'],
       batchNo: json['batch_no'],
       rack: json['rack'],
-      warehouse: json['warehouse'],
+      warehouse: json['warehouse'] ?? '',
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       purchaseOrderItem: json['purchase_order_item'],
+      uom: json['uom'],
+      stockUom: json['stock_uom'],
+      conversionFactor: (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
       idx: json['idx'] as int? ?? 0,
       customVariantOf: json['custom_variant_of'],
       purchaseOrderQty: (json['purchase_order_qty'] as num?)?.toDouble(),
     );
   }
 
-  // --- ADDED copyWith METHOD ---
   PurchaseReceiptItem copyWith({
     String? name,
     String? owner,
@@ -129,6 +137,9 @@ class PurchaseReceiptItem {
     String? rack,
     String? warehouse,
     String? purchaseOrderItem,
+    String? uom,
+    String? stockUom,
+    double? conversionFactor,
     int? idx,
     String? customVariantOf,
     double? purchaseOrderQty,
@@ -147,6 +158,9 @@ class PurchaseReceiptItem {
       rack: rack ?? this.rack,
       warehouse: warehouse ?? this.warehouse,
       purchaseOrderItem: purchaseOrderItem ?? this.purchaseOrderItem,
+      uom: uom ?? this.uom,
+      stockUom: stockUom ?? this.stockUom,
+      conversionFactor: conversionFactor ?? this.conversionFactor,
       idx: idx ?? this.idx,
       customVariantOf: customVariantOf ?? this.customVariantOf,
       purchaseOrderQty: purchaseOrderQty ?? this.purchaseOrderQty,
@@ -154,19 +168,25 @@ class PurchaseReceiptItem {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'modified': modified,
-      'modified_by': modifiedBy,
-      'owner': owner,
-      'creation': name,
+    final Map<String, dynamic> data = {
       'item_code': itemCode,
       'qty': qty,
+      'received_qty': qty, // Required for PR validation usually
       'rate': rate,
       'batch_no': batchNo,
       'rack': rack,
+      'warehouse': warehouse, // CRITICAL FIX: Was missing
       'purchase_order_item': purchaseOrderItem,
+      'uom': uom,
+      'stock_uom': stockUom ?? uom, // Fallback to uom if stock_uom missing
+      'conversion_factor': conversionFactor,
       'idx': idx,
     };
+
+    // Only add name if it's a real server-side ID
+    if (name != null && !name!.startsWith('local_')) {
+      data['name'] = name;
+    }
+    return data;
   }
 }
