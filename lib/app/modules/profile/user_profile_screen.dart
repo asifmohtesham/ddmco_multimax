@@ -86,40 +86,11 @@ class UserProfileScreen extends GetView<UserProfileController> {
 
                 const SizedBox(height: 32),
 
-                // Roles Section (New)
+                // Roles Section (Tree View)
                 if (user.roles.isNotEmpty) ...[
                   _buildSectionTitle('Assigned Roles'),
                   const SizedBox(height: 12),
-                  Card(
-                    elevation: 0,
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Wrap(
-                          spacing: 8.0,
-                          runSpacing: 8.0,
-                          children: user.roles.map((role) {
-                            return Chip(
-                              label: Text(role, style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                              backgroundColor: Colors.grey.shade100,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                side: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildRoleTree(context, user.roles),
                   const SizedBox(height: 32),
                 ],
 
@@ -167,6 +138,107 @@ class UserProfileScreen extends GetView<UserProfileController> {
       }),
     );
   }
+
+  // --- Tree View Builders ---
+
+  Widget _buildRoleTree(BuildContext context, List<String> roles) {
+    final sortedRoles = List<String>.from(roles)..sort();
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+        child: Column(
+          children: sortedRoles.asMap().entries.map((entry) {
+            return _buildRoleNode(
+                context,
+                entry.value,
+                entry.key == 0,
+                entry.key == sortedRoles.length - 1
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleNode(BuildContext context, String role, bool isFirst, bool isLast) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Tree Connector Column
+          Column(
+            children: [
+              // Top Line
+              Container(
+                width: 2,
+                height: 18, // Distance to center of node
+                color: isFirst ? Colors.transparent : Colors.grey.shade300,
+              ),
+              // Node Circle
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Theme.of(context).primaryColor,
+                      width: 2.5
+                  ),
+                ),
+              ),
+              // Bottom Line
+              Expanded(
+                child: Container(
+                  width: 2,
+                  color: isLast ? Colors.transparent : Colors.grey.shade300,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          // Role Content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.verified_user_outlined, size: 18, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        role,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Dialogs & Helpers (Unchanged) ---
 
   void _showUpdateMobileDialog(BuildContext context, String? currentMobile) {
     final mobileController = TextEditingController(text: currentMobile);
