@@ -113,7 +113,6 @@ class ApiProvider {
 
   // --- Core Fetching Methods ---
 
-  // NEW: Generic Method Call
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialized) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
@@ -174,14 +173,27 @@ class ApiProvider {
 
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialized) await _initDio();
-    Map<String, dynamic> allFilters = filters ?? {};
+
+    // Default Filters
+    final Map<String, dynamic> defaultFilters = {};
+
     if (reportName == 'Stock Balance') {
-      allFilters.addAll({
-        "valuation_field_type": "Currency", "rack": [], "show_variant_attributes": 1, "show_dimension_wise_stock": 1,
-        "from_date": DateFormat('yyyy-MM-dd').format(DateTime.now()), "to_date": DateFormat('yyyy-MM-dd').format(DateTime.now())
+      defaultFilters.addAll({
+        "valuation_field_type": "Currency",
+        "rack": [], // Default to all, but overridable
+        "show_variant_attributes": 1,
+        "show_dimension_wise_stock": 1,
+        "from_date": DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        "to_date": DateFormat('yyyy-MM-dd').format(DateTime.now())
       });
     }
-    return await _dio.get('/api/method/frappe.desk.query_report.run', queryParameters: {'report_name': reportName, 'filters': json.encode(allFilters), 'ignore_prepared_report': 'true'});
+
+    // Merge passed filters ON TOP of defaults
+    if (filters != null) {
+      defaultFilters.addAll(filters);
+    }
+
+    return await _dio.get('/api/method/frappe.desk.query_report.run', queryParameters: {'report_name': reportName, 'filters': json.encode(defaultFilters), 'ignore_prepared_report': 'true'});
   }
 
   Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {

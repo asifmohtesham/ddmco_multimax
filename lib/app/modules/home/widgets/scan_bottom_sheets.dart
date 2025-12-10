@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class ItemDetailSheet extends StatelessWidget {
   final Item item;
@@ -214,6 +215,140 @@ class RackBalanceSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// --- NEW WIDGET FOR RACK SCAN ---
+class RackContentsSheet extends StatelessWidget {
+  final String rackId;
+  final List<dynamic> items;
+
+  const RackContentsSheet({super.key, required this.rackId, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Rack Contents', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(
+                              rackId,
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                const Divider(),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    itemCount: items.length,
+                    separatorBuilder: (c, i) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      // Note: Fields depend on report output structure
+                      final qty = (item['bal_qty'] as num?)?.toDouble() ?? 0.0;
+                      final batch = item['batch_no']?.toString();
+                      final itemCode = item['item_code']?.toString() ?? 'Unknown';
+                      final itemName = item['item_name']?.toString(); // Might need fetch if not in report
+
+                      return Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 20,
+                                backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                                child: Icon(Icons.inventory, color: Theme.of(context).primaryColor, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      itemCode,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'monospace'),
+                                    ),
+                                    if (itemName != null)
+                                      Text(itemName, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                    const SizedBox(height: 6),
+                                    if (batch != null && batch.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                            color: Colors.purple.shade50,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.purple.shade100)
+                                        ),
+                                        child: Text(
+                                            batch,
+                                            style: TextStyle(fontSize: 11, color: Colors.purple.shade800, fontWeight: FontWeight.bold)
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    qty.toStringAsFixed(2),
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                  ),
+                                  const Text('Qty', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

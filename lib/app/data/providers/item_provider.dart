@@ -22,17 +22,17 @@ class ItemProvider {
     );
   }
 
-  // --- Item Groups ---
+  // ... (Item Groups, Templates, Attributes methods remain the same) ...
+
   Future<Response> getItemGroups() async {
     return _apiProvider.getDocumentList(
       'Item Group',
-      limit: 0, // Fetch all
+      limit: 0,
       fields: ['name'],
       orderBy: 'name asc',
     );
   }
 
-  // --- Template Items (Variant Of) ---
   Future<Response> getTemplateItems() async {
     return _apiProvider.getDocumentList(
       'Item',
@@ -43,7 +43,6 @@ class ItemProvider {
     );
   }
 
-  // --- Item Attributes ---
   Future<Response> getItemAttributes() async {
     return _apiProvider.getDocumentList(
       'Item Attribute',
@@ -57,7 +56,6 @@ class ItemProvider {
     return _apiProvider.getDocument('Item Attribute', name);
   }
 
-  /// Fetches the list of Items (parents) that have a specific attribute value.
   Future<Response> getItemVariantsByAttribute(String attribute, String value) async {
     return _apiProvider.getDocumentList(
       'Item Variant Attribute',
@@ -65,19 +63,21 @@ class ItemProvider {
         'attribute': attribute,
         'attribute_value': value
       },
-      fields: ['parent'], // 'parent' is the Item Code in this child table
+      fields: ['parent'],
       limit: 5000,
     );
   }
-  // ---------------------------
 
   Future<Response> getStockLevels(String itemCode) async {
     return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
   }
 
-  // Updated to support Date Range
+  // NEW: Fetch Stock Balance by Warehouse (used for Rack lookup)
+  Future<Response> getWarehouseStock(String warehouse) async {
+    return _apiProvider.getReport('Stock Balance', filters: {'warehouse': warehouse});
+  }
+
   Future<Response> getStockLedger(String itemCode, {DateTime? fromDate, DateTime? toDate}) async {
-    // FIX: Explicitly type as Map<String, dynamic> so lists can be assigned
     final Map<String, dynamic> filters = {'item_code': itemCode};
 
     if (fromDate != null && toDate != null) {
@@ -97,7 +97,7 @@ class ItemProvider {
   }
 
   Future<Response> getBatchWiseHistory(String itemCode) async {
-    final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365))); // Last 1 year
+    final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365)));
     final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     return _apiProvider.getReport('Batch-Wise Balance History', filters: {

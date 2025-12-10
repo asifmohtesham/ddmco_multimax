@@ -14,8 +14,6 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
-
-// Import Item Form components to use in BottomSheet
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
 
@@ -64,6 +62,9 @@ class HomeController extends GetxController {
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
 
+  // Rack Scan State
+  var isRackScanning = false.obs;
+
   List<BottomNavigationBarItem> get homeBottomBarItems => [
     const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
     const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
@@ -100,25 +101,17 @@ class HomeController extends GetxController {
     fetchPerformanceData();
   }
 
-  // ... (Fetch Users, Dashboard Data, Performance Data methods remain the same) ...
+  // ... (Fetch Users, Dashboard Data, Performance Data methods same as before) ...
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
       final currentUser = _authController.currentUser.value;
       final empId = currentUser?.employeeId;
-
       if (empId != null) {
         final response = await _userProvider.getDirectReports(empId);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
-          final reports = data.map((e) => User(
-            id: e['user_id'] ?? '',
-            name: e['employee_name'] ?? 'Unknown',
-            email: e['user_id'] ?? '',
-            roles: [],
-            employeeId: e['name'],
-          )).toList();
-
+          final reports = data.map((e) => User(id: e['user_id'] ?? '', name: e['employee_name'] ?? 'Unknown', email: e['user_id'] ?? '', roles: [], employeeId: e['name'])).toList();
           if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
             reports.insert(0, currentUser);
           }
@@ -150,21 +143,17 @@ class HomeController extends GetxController {
     try {
       Map<String, dynamic> woFilters = {'status': 'In Process'};
       Map<String, dynamic> jcFilters = {'status': 'Open'};
-
       final filterEmail = selectedFilterUser.value?.email;
       if (filterEmail != null) {
         woFilters['owner'] = filterEmail;
         jcFilters['owner'] = filterEmail;
       }
-
       final results = await Future.wait([
         _woProvider.getWorkOrders(limit: 0, filters: woFilters),
         _jcProvider.getJobCards(limit: 0, filters: jcFilters),
       ]);
-
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
       activeJobCardsCount.value = _getCountFromResponse(results[1]);
-
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
@@ -193,10 +182,8 @@ class HomeController extends GetxController {
     try {
       final email = selectedFilterUser.value?.email ?? _authController.currentUser.value?.email;
       if (email == null) return;
-
       DateTime startDate;
       DateTime endDate;
-
       if (isWeeklyView.value) {
         startDate = selectedWeeklyRange.value.start;
         endDate = selectedWeeklyRange.value.end;
@@ -204,33 +191,22 @@ class HomeController extends GetxController {
         endDate = selectedDailyDate.value;
         startDate = endDate.subtract(const Duration(days: 6));
       }
-
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
-
-      final filters = {
-        'owner': email,
-        'docstatus': ['<', 2],
-        'creation': ['>=', dateStr]
-      };
-
+      final filters = {'owner': email, 'docstatus': ['<', 2], 'creation': ['>=', dateStr]};
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
-        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty', 'total_qty'], limit: 100),
         _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
       ]);
-
       final dnList = _extractList(results[0]);
       final seList = _extractList(results[1]);
       final prList = _extractList(results[2]);
-
       Map<String, TimelinePoint> buckets = {};
-
       if (isWeeklyView.value) {
         DateTime current = startDate;
         while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
           final key = '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
           final label = '${DateFormat('MMM').format(current)} W${_getWeekOfMonth(current)}';
-
           if (!buckets.containsKey(key)) {
             buckets[key] = TimelinePoint(label: label, date: current);
           }
@@ -244,19 +220,16 @@ class HomeController extends GetxController {
           buckets[key] = TimelinePoint(label: label, date: date);
         }
       }
-
       void fillBucket(List<dynamic> list, String type) {
         for (var item in list) {
           final date = DateTime.parse(item['creation']);
           if (date.isAfter(endDate.add(const Duration(days: 1)))) continue;
-
           String key;
           if (isWeeklyView.value) {
             key = '${date.year}-${date.month}-W${_getWeekOfMonth(date)}';
           } else {
             key = DateFormat('yyyy-MM-dd').format(date);
           }
-
           if (buckets.containsKey(key)) {
             final existing = buckets[key]!;
             double qty = 0.0;
@@ -264,12 +237,11 @@ class HomeController extends GetxController {
               qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'SE') {
               qty = _safeParseDouble(item['custom_total_qty']);
+              if (qty == 0) qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'PR') {
               qty = _safeParseDouble(item['total_qty']);
             }
-
             int custCount = (type == 'DN' && item['customer'] != null) ? 1 : 0;
-
             buckets[key] = TimelinePoint(
               label: existing.label,
               date: existing.date,
@@ -281,13 +253,10 @@ class HomeController extends GetxController {
           }
         }
       }
-
       fillBucket(dnList, 'DN');
       fillBucket(seList, 'SE');
       fillBucket(prList, 'PR');
-
       timelineData.assignAll(buckets.values.toList());
-
     } catch (e) {
       print('Error fetching timeline: $e');
     } finally {
@@ -321,14 +290,23 @@ class HomeController extends GetxController {
     return 0;
   }
 
+  // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
-    bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
 
     try {
-      // 1. Identify Item Code
+      // 1. Check if Rack Code (e.g., KA-WH-DXB1-1A)
+      // Checks for pattern with 3 hyphens
+      if (code.split('-').length >= 4) {
+        await _handleRackScan(code);
+        return; // Exit after handling rack
+      }
+
+      // 2. Identify Item Code
+      bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
       String itemCode = code;
+
       if (isEan) {
         final searchCode = code.length > 7 ? code.substring(0, 7) : code;
         final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': searchCode});
@@ -340,25 +318,24 @@ class HomeController extends GetxController {
         }
       }
 
-      // 2. Initialise Controller & Load Data
-      // Use Get.put to create a transient instance of the controller
+      // 3. Initialize Controller & Load Data
       final itemFormController = Get.put(ItemFormController());
       itemFormController.loadItem(itemCode);
 
-      // 3. Open Bottom Sheet with Full Form (All Tabs)
+      // 4. Open Bottom Sheet with Full Form (All Tabs)
       await Get.bottomSheet(
         FractionallySizedBox(
-          heightFactor: 0.9, // 90% height
+          heightFactor: 0.9,
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: const ItemFormScreen(), // Reuses the full screen widget
+            child: const ItemFormScreen(),
           ),
         ),
         isScrollControlled: true,
         enableDrag: true,
       );
 
-      // Cleanup controller after sheet closes to avoid state persistence
+      // Cleanup
       Get.delete<ItemFormController>();
 
     } catch (e) {
@@ -366,6 +343,54 @@ class HomeController extends GetxController {
     } finally {
       isScanning.value = false;
       barcodeController.clear();
+    }
+  }
+
+  Future<void> _handleRackScan(String rackCode) async {
+    isRackScanning.value = true;
+    try {
+      // Parse Warehouse from Rack ID: KA-WH-DXB1-1A -> WH-DXB1 - KA
+      // Convention assumed: 1A is rack, previous parts form warehouse
+      final parts = rackCode.split('-');
+      if (parts.length < 3) {
+        throw Exception('Invalid Rack Format');
+      }
+
+      // Attempt to construct warehouse name based on convention
+      final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
+
+      // Fetch Stock Balance for this Warehouse
+      final response = await _itemProvider.getWarehouseStock(warehouse);
+
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> data = response.data['message']['result'];
+
+        // Filter rows matching exactly the scanned rack
+        // Assuming 'rack' field in report matches last part or full scanned code?
+        // Usually rack field in ERPNext report contains just the Rack ID (e.g. "1A" or "KA-WH-DXB1-1A" depending on config).
+        // Let's filter loosely by checking if the report row's rack matches our scan or contains it.
+
+        final rackItems = data.where((row) {
+          final rowRack = row['rack']?.toString() ?? '';
+          return rowRack == rackCode || rowRack == parts.last;
+        }).toList();
+
+        if (rackItems.isEmpty) {
+          GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
+        } else {
+          // Open Rack Contents Sheet
+          Get.bottomSheet(
+            RackContentsSheet(rackId: rackCode, items: rackItems),
+            isScrollControlled: true,
+          );
+        }
+      } else {
+        GlobalSnackbar.error(message: 'Failed to fetch stock for warehouse $warehouse');
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
+    } finally {
+      isRackScanning.value = false;
     }
   }
 
@@ -382,6 +407,7 @@ class HomeController extends GetxController {
         activeScreen.value = ActiveScreen.home;
         selectedDrawerIndex.value = 0;
         break;
+    // ... same cases as before
       case AppRoutes.PURCHASE_RECEIPT:
         activeScreen.value = ActiveScreen.purchaseReceipt;
         selectedDrawerIndex.value = 4;
