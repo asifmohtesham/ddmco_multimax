@@ -83,7 +83,7 @@ class HomeController extends GetxController {
       }
     }
     fetchDashboardData();
-    fetchPerformanceData();
+    fetchPerformanceData(); // Trigger Timeline Fetch
   }
 
   Future<void> fetchUsers() async {
@@ -125,9 +125,9 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    Get.back();
+    Get.back(); // Close modal
     fetchDashboardData();
-    fetchPerformanceData();
+    fetchPerformanceData(); // Refresh timeline for selected user
   }
 
   Future<void> fetchDashboardData() async {
@@ -172,17 +172,19 @@ class HomeController extends GetxController {
       if (email == null) return;
 
       final now = DateTime.now();
+      // Daily: Last 7 days. Weekly: Last 28 days.
       final daysBack = isWeeklyView.value ? 28 : 7;
       final startDate = now.subtract(Duration(days: daysBack));
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-      // UPDATED: Include Draft (0) and Submitted (1) docs.
+      // Include Draft (0) and Submitted (1) docs.
       final filters = {
         'owner': email,
         'docstatus': ['<', 2], // 0 and 1, exclude cancelled
         'creation': ['>=', dateStr]
       };
 
+      // Parallel Fetch
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
         _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
@@ -193,22 +195,24 @@ class HomeController extends GetxController {
       final seList = _extractList(results[1]);
       final prList = _extractList(results[2]);
 
+      // Process Data into Buckets
       Map<String, TimelinePoint> buckets = {};
 
-      // Initialize Buckets
+      // Initialize Buckets (ensure X-axis is continuous)
       for (int i = 0; i < (isWeeklyView.value ? 4 : 7); i++) {
         DateTime date;
         String key;
         String label;
 
         if (isWeeklyView.value) {
-          // Weekly: Last 4 weeks
+          // Weekly buckets: Last 4 weeks
           date = now.subtract(Duration(days: (3 - i) * 7));
-          key = '${date.year}-W${_getWeekOfYear(date)}';
-          // IMPROVED: Show "Month W#" e.g., "Oct W42"
-          label = '${DateFormat('MMM').format(date)} W${_getWeekOfYear(date)}';
+          // Key: Year-Month-WeekOfMonth
+          key = '${date.year}-${date.month}-W${_getWeekOfMonth(date)}';
+          // Label: "MMM W#" e.g. "Oct W4"
+          label = '${DateFormat('MMM').format(date)} W${_getWeekOfMonth(date)}';
         } else {
-          // Daily: Last 7 days
+          // Daily buckets: Last 7 days
           date = now.subtract(Duration(days: (6 - i)));
           key = DateFormat('yyyy-MM-dd').format(date);
           label = DateFormat('E').format(date); // Mon, Tue
@@ -224,7 +228,8 @@ class HomeController extends GetxController {
           String key;
 
           if (isWeeklyView.value) {
-            key = '${date.year}-W${_getWeekOfYear(date)}';
+            // Match initialization logic
+            key = '${date.year}-${date.month}-W${_getWeekOfMonth(date)}';
           } else {
             key = DateFormat('yyyy-MM-dd').format(date);
           }
@@ -232,12 +237,9 @@ class HomeController extends GetxController {
           if (buckets.containsKey(key)) {
             final existing = buckets[key]!;
             double qty = 0.0;
-
-            // FIXED: Safe parsing for all fields to avoid type cast errors
             if (type == 'DN') {
               qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'SE') {
-              // Try custom first, then standard
               qty = _safeParseDouble(item['custom_total_qty']);
               if (qty == 0) qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'PR') {
@@ -271,24 +273,18 @@ class HomeController extends GetxController {
     }
   }
 
-  // Safe parser to handle String or Number from JSON
+  // --- Helpers ---
+
+  // Calculates Week Number within the Month (1-5)
+  int _getWeekOfMonth(DateTime date) {
+    return ((date.day - 1) / 7).floor() + 1;
+  }
+
   double _safeParseDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
-  }
-
-  int _getWeekOfYear(DateTime date) {
-    final startOfYear = DateTime(date.year, 1, 1);
-    final firstMonday = startOfYear.weekday;
-    final daysInFirstWeek = 8 - firstMonday;
-    final diff = date.difference(startOfYear);
-    var weeks = ((diff.inDays - daysInFirstWeek) / 7).ceil();
-    if (daysInFirstWeek < 7) {
-      weeks += 1;
-    }
-    return weeks;
   }
 
   List<dynamic> _extractList(Response response) {
@@ -305,6 +301,7 @@ class HomeController extends GetxController {
     return 0;
   }
 
+  // ... (Scan Logic and Navigation remain same) ...
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
