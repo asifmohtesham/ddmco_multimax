@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -21,6 +22,10 @@ class PackingSlipFormController extends GetxController {
   var isLoading = true.obs;
   var isSaving = false.obs;
   var isScanning = false.obs;
+
+  // Dirty Check State
+  var isDirty = false.obs;
+  String _originalJson = '';
 
   var packingSlip = Rx<PackingSlip?>(null);
   var linkedDeliveryNote = Rx<DeliveryNote?>(null);
@@ -83,6 +88,10 @@ class PackingSlipFormController extends GetxController {
       customer: '',
     );
 
+    // New docs are dirty by default until saved
+    isDirty.value = true;
+    _originalJson = '';
+
     if (dnName.isNotEmpty) {
       fetchLinkedDeliveryNote(dnName);
     }
@@ -96,6 +105,8 @@ class PackingSlipFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final slip = PackingSlip.fromJson(response.data['data']);
         packingSlip.value = slip;
+
+        _updateOriginalState(slip);
 
         if (slip.deliveryNote.isNotEmpty) {
           await fetchLinkedDeliveryNote(slip.deliveryNote);
@@ -119,11 +130,31 @@ class PackingSlipFormController extends GetxController {
 
         if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
           packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
+          if (mode != 'new') _checkForChanges();
         }
       }
     } catch (e) {
       log('Failed to fetch linked DN: $e');
     }
+  }
+
+  // --- Dirty Check Logic ---
+
+  void _updateOriginalState(PackingSlip slip) {
+    _originalJson = jsonEncode(slip.toJson());
+    isDirty.value = false;
+  }
+
+  void _checkForChanges() {
+    if (packingSlip.value == null) return;
+
+    if (mode == 'new') {
+      isDirty.value = true;
+      return;
+    }
+
+    final currentJson = jsonEncode(packingSlip.value!.toJson());
+    isDirty.value = currentJson != _originalJson;
   }
 
   // --- Grouping Logic ---
@@ -147,7 +178,6 @@ class PackingSlipFormController extends GetxController {
 
   double getTotalDnQtyForSerial(String serial) {
     if (linkedDeliveryNote.value == null) return 0.0;
-    // Sum qty of all DN items that share this serial number
     return linkedDeliveryNote.value!.items
         .where((item) => (item.customInvoiceSerialNumber ?? '0') == serial)
         .fold(0.0, (sum, item) => sum + item.qty);
@@ -342,7 +372,12 @@ class PackingSlipFormController extends GetxController {
 
     packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
     Get.back();
-    await savePackingSlip();
+
+    _checkForChanges();
+
+    if (isDirty.value) {
+      await savePackingSlip();
+    }
   }
 
   Future<void> deleteCurrentItem() async {
@@ -362,7 +397,11 @@ class PackingSlipFormController extends GetxController {
                 final currentItems = packingSlip.value?.items.toList() ?? [];
                 currentItems.removeWhere((i) => i.name == currentItemNameKey);
                 packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
-                await savePackingSlip();
+
+                _checkForChanges();
+                if (isDirty.value) {
+                  await savePackingSlip();
+                }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Remove', style: TextStyle(color: Colors.white)),
@@ -373,6 +412,11 @@ class PackingSlipFormController extends GetxController {
   }
 
   Future<void> savePackingSlip() async {
+    // Prevent saving if no changes, unless new
+    if (!isDirty.value && mode != 'new') {
+      return;
+    }
+
     if (isSaving.value) return;
     isSaving.value = true;
 
@@ -390,6 +434,8 @@ class PackingSlipFormController extends GetxController {
             'item_code': e.itemCode,
             'qty': e.qty,
             'dn_detail': e.dnDetail,
+            // FIX: Added missing mandatory field
+            'custom_invoice_serial_number': e.customInvoiceSerialNumber,
           };
           if (e.name.isNotEmpty) json['name'] = e.name;
           return json;
@@ -403,6 +449,8 @@ class PackingSlipFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final saved = PackingSlip.fromJson(response.data['data']);
         packingSlip.value = saved;
+
+        _updateOriginalState(saved);
 
         if (isNew) {
           name = saved.name;

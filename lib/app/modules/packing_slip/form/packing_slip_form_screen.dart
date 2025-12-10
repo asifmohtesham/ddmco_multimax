@@ -5,7 +5,7 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
-import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart'; // Imported
+import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
@@ -36,15 +36,26 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             ],
           ),
           actions: [
-            Obx(() => controller.isSaving.value
-                ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
-                : IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: controller.packingSlip.value?.docstatus == 0 ? controller.savePackingSlip : null,
-            )
-            ),
+            Obx(() {
+              if (controller.isSaving.value) {
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
+                );
+              }
+
+              // Enable Save button only if Draft AND Dirty
+              final bool isDraft = controller.packingSlip.value?.docstatus == 0;
+              final bool isDirty = controller.isDirty.value;
+
+              return IconButton(
+                icon: Icon(Icons.save, color: (isDraft && isDirty) ? Colors.white : Colors.white54),
+                onPressed: (isDraft && isDirty) ? controller.savePackingSlip : null,
+              );
+            }),
           ],
         ),
+        // ... (Rest of body remains same)
         body: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());
@@ -68,12 +79,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
+  // ... (Other widgets _buildDetailsView, _buildSectionCard, _buildItemsView remain identical)
+
   Widget _buildDetailsView(PackingSlip slip) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // 1. General Info
           _buildSectionCard(
             title: 'General Information',
             children: [
@@ -103,7 +115,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           ),
           const SizedBox(height: 16),
 
-          // 2. Package Details
           _buildSectionCard(
             title: 'Package Details',
             children: [
@@ -131,7 +142,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
 
           const SizedBox(height: 16),
 
-          // 3. References
           _buildSectionCard(
             title: 'References',
             children: [
@@ -191,7 +201,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               return const Center(child: Text('No items packed yet.'));
             }
 
-            // Sort by Serial Number
             final sortedKeys = grouped.keys.toList()..sort((a, b) {
               final intA = int.tryParse(a) ?? 9999;
               final intB = int.tryParse(b) ?? 9999;

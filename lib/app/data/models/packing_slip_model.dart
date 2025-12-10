@@ -9,7 +9,7 @@ class PackingSlip {
   final int? fromCaseNo;
   final int? toCaseNo;
   final String? owner;
-  final String? customer; 
+  final String? customer;
   final List<PackingSlipItem> items;
 
   PackingSlip({
@@ -49,7 +49,7 @@ class PackingSlip {
       fromCaseNo: json['from_case_no'] as int?,
       toCaseNo: json['to_case_no'] as int?,
       owner: json['owner'],
-      customer: json['customer_name'] ?? json['customer'], 
+      customer: json['customer_name'] ?? json['customer'],
       items: items,
     );
   }
@@ -83,6 +83,23 @@ class PackingSlip {
       items: items ?? this.items,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'delivery_note': deliveryNote,
+      'modified': modified,
+      'creation': creation,
+      'docstatus': docstatus,
+      'status': status,
+      'custom_po_no': customPoNo,
+      'from_case_no': fromCaseNo,
+      'to_case_no': toCaseNo,
+      'owner': owner,
+      'customer': customer,
+      'items': items.map((x) => x.toJson()).toList(),
+    };
+  }
 }
 
 class PackingSlipItem {
@@ -98,7 +115,7 @@ class PackingSlipItem {
   final String? customInvoiceSerialNumber;
   final String? customVariantOf;
   final String? customCountryOfOrigin;
-  final String? creation; // Added
+  final String? creation;
 
   PackingSlipItem({
     required this.name,
@@ -132,5 +149,23 @@ class PackingSlipItem {
       customCountryOfOrigin: json['custom_country_of_origin'],
       creation: json['creation'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'dn_detail': dnDetail,
+      'item_code': itemCode,
+      'item_name': itemName,
+      'qty': qty,
+      'uom': uom,
+      'batch_no': batchNo,
+      'net_weight': netWeight,
+      'weight_uom': weightUom,
+      'custom_invoice_serial_number': customInvoiceSerialNumber,
+      'custom_variant_of': customVariantOf,
+      'custom_country_of_origin': customCountryOfOrigin,
+      'creation': creation,
+    };
   }
 }
