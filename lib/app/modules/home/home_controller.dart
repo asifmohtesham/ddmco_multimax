@@ -11,15 +11,15 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/data/providers/api_provider.dart'; // Added
-import 'package:intl/intl.dart'; // Added
-import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart'; // Added
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>(); // Added direct access for custom queries
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
   final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
@@ -83,10 +83,9 @@ class HomeController extends GetxController {
       }
     }
     fetchDashboardData();
-    fetchPerformanceData(); // Trigger Timeline Fetch
+    fetchPerformanceData();
   }
 
-  // ... (fetchUsers and onUserFilterChanged remain same) ...
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
@@ -126,9 +125,9 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    Get.back(); // Close modal
+    Get.back();
     fetchDashboardData();
-    fetchPerformanceData(); // Refresh timeline for selected user
+    fetchPerformanceData();
   }
 
   Future<void> fetchDashboardData() async {
@@ -158,7 +157,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- New: Performance Data Logic ---
+  // --- Performance Data Logic ---
 
   void toggleTimelineView(bool weekly) {
     if (isWeeklyView.value == weekly) return;
@@ -173,22 +172,20 @@ class HomeController extends GetxController {
       if (email == null) return;
 
       final now = DateTime.now();
-      // Daily: Last 7 days. Weekly: Last 28 days.
       final daysBack = isWeeklyView.value ? 28 : 7;
       final startDate = now.subtract(Duration(days: daysBack));
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-      // We need submitted docs (docstatus=1) created by this user
+      // UPDATED: Include Draft (0) and Submitted (1) docs.
       final filters = {
         'owner': email,
-        'docstatus': 0,
+        'docstatus': ['<', 2], // 0 and 1, exclude cancelled
         'creation': ['>=', dateStr]
       };
 
-      // Parallel Fetch
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
-        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100), // Note: custom_total_qty based on your model
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
         _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
       ]);
 
@@ -196,22 +193,22 @@ class HomeController extends GetxController {
       final seList = _extractList(results[1]);
       final prList = _extractList(results[2]);
 
-      // Process Data into Buckets
       Map<String, TimelinePoint> buckets = {};
 
-      // Initialize Buckets (ensure X-axis is continuous)
+      // Initialize Buckets
       for (int i = 0; i < (isWeeklyView.value ? 4 : 7); i++) {
         DateTime date;
         String key;
         String label;
 
         if (isWeeklyView.value) {
-          // Weekly buckets
+          // Weekly: Last 4 weeks
           date = now.subtract(Duration(days: (3 - i) * 7));
           key = '${date.year}-W${_getWeekOfYear(date)}';
-          label = 'W${_getWeekOfYear(date)}';
+          // IMPROVED: Show "Month W#" e.g., "Oct W42"
+          label = '${DateFormat('MMM').format(date)} W${_getWeekOfYear(date)}';
         } else {
-          // Daily buckets
+          // Daily: Last 7 days
           date = now.subtract(Duration(days: (6 - i)));
           key = DateFormat('yyyy-MM-dd').format(date);
           label = DateFormat('E').format(date); // Mon, Tue
@@ -235,13 +232,19 @@ class HomeController extends GetxController {
           if (buckets.containsKey(key)) {
             final existing = buckets[key]!;
             double qty = 0.0;
-            if (type == 'DN') qty = (item['total_qty'] as num?)?.toDouble() ?? 0;
-            if (type == 'SE') qty = (item['custom_total_qty'] as num?)?.toDouble() ?? 0; // Check field name in your instance
-            if (type == 'PR') qty = (item['total_qty'] as num?)?.toDouble() ?? 0;
+
+            // FIXED: Safe parsing for all fields to avoid type cast errors
+            if (type == 'DN') {
+              qty = _safeParseDouble(item['total_qty']);
+            } else if (type == 'SE') {
+              // Try custom first, then standard
+              qty = _safeParseDouble(item['custom_total_qty']);
+              if (qty == 0) qty = _safeParseDouble(item['total_qty']);
+            } else if (type == 'PR') {
+              qty = _safeParseDouble(item['total_qty']);
+            }
 
             int custCount = (type == 'DN' && item['customer'] != null) ? 1 : 0;
-            // Note: Customer count here is just counting transactions, unique would require Set logic inside bucket.
-            // For simplicity in chart, we count transactions.
 
             buckets[key] = TimelinePoint(
               label: existing.label,
@@ -266,6 +269,14 @@ class HomeController extends GetxController {
     } finally {
       isLoadingTimeline.value = false;
     }
+  }
+
+  // Safe parser to handle String or Number from JSON
+  double _safeParseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
   }
 
   int _getWeekOfYear(DateTime date) {
@@ -294,8 +305,6 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // ... (Scan Logic and Navigation remain same) ...
-  // (Including onScan, updateActiveScreen, etc.)
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
