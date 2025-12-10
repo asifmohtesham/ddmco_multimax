@@ -37,6 +37,9 @@ class HomeController extends GetxController {
   var isLoadingTimeline = true.obs;
   var timelineData = <TimelinePoint>[].obs;
 
+  // NEW: Daily Date Selection
+  var selectedDailyDate = DateTime.now().obs;
+
   var userList = <User>[].obs;
   Rx<User?> selectedFilterUser = Rx<User?>(null);
 
@@ -83,7 +86,7 @@ class HomeController extends GetxController {
       }
     }
     fetchDashboardData();
-    fetchPerformanceData(); // Trigger Timeline Fetch
+    fetchPerformanceData();
   }
 
   Future<void> fetchUsers() async {
@@ -127,7 +130,7 @@ class HomeController extends GetxController {
     selectedFilterUser.value = user;
     Get.back(); // Close modal
     fetchDashboardData();
-    fetchPerformanceData(); // Refresh timeline for selected user
+    fetchPerformanceData();
   }
 
   Future<void> fetchDashboardData() async {
@@ -165,26 +168,39 @@ class HomeController extends GetxController {
     fetchPerformanceData();
   }
 
+  // NEW: Date Change Handler
+  void onDailyDateChanged(DateTime date) {
+    selectedDailyDate.value = date;
+    if (!isWeeklyView.value) {
+      fetchPerformanceData();
+    }
+  }
+
   Future<void> fetchPerformanceData() async {
     isLoadingTimeline.value = true;
     try {
       final email = selectedFilterUser.value?.email ?? _authController.currentUser.value?.email;
       if (email == null) return;
 
+      // Determine Reference Date (End of the graph)
       final now = DateTime.now();
-      // Daily: Last 7 days. Weekly: Last 28 days.
-      final daysBack = isWeeklyView.value ? 28 : 7;
-      final startDate = now.subtract(Duration(days: daysBack));
+      // If Weekly: Reference is today. If Daily: Reference is user selected date.
+      final referenceDate = isWeeklyView.value ? now : selectedDailyDate.value;
+
+      // Daily: Last 7 days ending on selected date. Weekly: Last 28 days ending today.
+      final daysBack = isWeeklyView.value ? 28 : 6;
+      final startDate = referenceDate.subtract(Duration(days: daysBack));
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-      // Include Draft (0) and Submitted (1) docs.
       final filters = {
         'owner': email,
-        'docstatus': ['<', 2], // 0 and 1, exclude cancelled
+        'docstatus': ['<', 2],
         'creation': ['>=', dateStr]
       };
 
-      // Parallel Fetch
+      // If in daily mode, we might want to upper bound it to end of reference date?
+      // For simplicity, >= startDate covers the required range.
+
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
         _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
@@ -195,25 +211,23 @@ class HomeController extends GetxController {
       final seList = _extractList(results[1]);
       final prList = _extractList(results[2]);
 
-      // Process Data into Buckets
       Map<String, TimelinePoint> buckets = {};
 
-      // Initialize Buckets (ensure X-axis is continuous)
+      // Initialize Buckets
+      // We iterate backwards from referenceDate
       for (int i = 0; i < (isWeeklyView.value ? 4 : 7); i++) {
         DateTime date;
         String key;
         String label;
 
         if (isWeeklyView.value) {
-          // Weekly buckets: Last 4 weeks
+          // Weekly buckets: Last 4 weeks from Now
           date = now.subtract(Duration(days: (3 - i) * 7));
-          // Key: Year-Month-WeekOfMonth
           key = '${date.year}-${date.month}-W${_getWeekOfMonth(date)}';
-          // Label: "MMM W#" e.g. "Oct W4"
           label = '${DateFormat('MMM').format(date)} W${_getWeekOfMonth(date)}';
         } else {
-          // Daily buckets: Last 7 days
-          date = now.subtract(Duration(days: (6 - i)));
+          // Daily buckets: Last 7 days ending on referenceDate
+          date = referenceDate.subtract(Duration(days: (6 - i)));
           key = DateFormat('yyyy-MM-dd').format(date);
           label = DateFormat('E').format(date); // Mon, Tue
         }
@@ -221,14 +235,12 @@ class HomeController extends GetxController {
         buckets[key] = TimelinePoint(label: label, date: date);
       }
 
-      // Helper to fill buckets
       void fillBucket(List<dynamic> list, String type) {
         for (var item in list) {
           final date = DateTime.parse(item['creation']);
           String key;
 
           if (isWeeklyView.value) {
-            // Match initialization logic
             key = '${date.year}-${date.month}-W${_getWeekOfMonth(date)}';
           } else {
             key = DateFormat('yyyy-MM-dd').format(date);
@@ -241,7 +253,6 @@ class HomeController extends GetxController {
               qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'SE') {
               qty = _safeParseDouble(item['custom_total_qty']);
-              if (qty == 0) qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'PR') {
               qty = _safeParseDouble(item['total_qty']);
             }
@@ -275,7 +286,6 @@ class HomeController extends GetxController {
 
   // --- Helpers ---
 
-  // Calculates Week Number within the Month (1-5)
   int _getWeekOfMonth(DateTime date) {
     return ((date.day - 1) / 7).floor() + 1;
   }

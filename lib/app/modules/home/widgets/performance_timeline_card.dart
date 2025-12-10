@@ -7,6 +7,8 @@ class PerformanceTimelineCard extends StatelessWidget {
   final Function(bool) onToggleView;
   final List<TimelinePoint> data;
   final bool isLoading;
+  final DateTime? selectedDate; // Added
+  final Function(DateTime)? onDateChanged; // Added
 
   const PerformanceTimelineCard({
     super.key,
@@ -14,6 +16,8 @@ class PerformanceTimelineCard extends StatelessWidget {
     required this.onToggleView,
     required this.data,
     required this.isLoading,
+    this.selectedDate,
+    this.onDateChanged,
   });
 
   @override
@@ -26,16 +30,62 @@ class PerformanceTimelineCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with Toggle
+            // Header with Toggle & Date Picker
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start, // Align top for better layout
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text('Items Managed & Fulfilled', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const Text('Items Managed & Fulfilled', style: TextStyle(fontSize: 12, color: Colors.grey)),
+
+                      // NEW: Date Picker for Daily View
+                      if (!isWeekly && selectedDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate!,
+                                firstDate: DateTime(2023),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null && onDateChanged != null) {
+                                onDateChanged!(picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Theme.of(context).primaryColor.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_today, size: 14, color: Theme.of(context).primaryColor),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    DateFormat('d MMM yyyy').format(selectedDate!),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).primaryColor
+                                    ),
+                                  ),
+                                  const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 Container(
                   decoration: BoxDecoration(
@@ -122,14 +172,13 @@ class PerformanceTimelineCard extends StatelessWidget {
 
   Widget _buildBarColumn(BuildContext context, TimelinePoint point) {
     // Calculate relative heights (simple stacking)
-    // Find max value in dataset to normalize
     double maxTotal = 0;
     for (var p in data) {
       if (p.total > maxTotal) maxTotal = p.total;
     }
     if (maxTotal == 0) maxTotal = 1;
 
-    final double heightFactor = 120.0 / maxTotal; // 140 is max pixel height for bars
+    final double heightFactor = 120.0 / maxTotal;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -172,7 +221,7 @@ class PerformanceTimelineCard extends StatelessWidget {
 }
 
 class TimelinePoint {
-  final String label; // "Mon", "Tue" or "Wk 1"
+  final String label;
   final DateTime date;
   final double stockQty;
   final double deliveryQty;

@@ -61,6 +61,9 @@ class HomeScreen extends GetView<HomeController> {
                 onToggleView: controller.toggleTimelineView,
                 data: controller.timelineData,
                 isLoading: controller.isLoadingTimeline.value,
+                // NEW PARAMS
+                selectedDate: controller.selectedDailyDate.value,
+                onDateChanged: controller.onDailyDateChanged,
               )),
 
               const SizedBox(height: 24),
@@ -113,6 +116,7 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
+  // ... (Rest of HomeScreen remains same) ...
   Widget _buildUserSelectionHeader(BuildContext context) {
     return Obx(() {
       final selectedUser = controller.selectedFilterUser.value;
@@ -153,7 +157,7 @@ class HomeScreen extends GetView<HomeController> {
           ),
           const SizedBox(width: 12),
           CircleAvatar(
-            backgroundColor: Theme.of(context).primaryColor.withValues(alpha:0.1),
+            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
             child: Text(
               userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
               style: TextStyle(color: Theme.of(context).primaryColor),
@@ -229,9 +233,8 @@ class HomeScreen extends GetView<HomeController> {
       },
     );
   }
-}
+}// --- Widget Definition ---
 
-// ... SpeedometerKpiCard (Same as before) ...
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -262,7 +265,7 @@ class SpeedometerKpiCard extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      shadowColor: textColor.withValues(alpha:0.2),
+      shadowColor: textColor.withOpacity(0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
@@ -277,7 +280,7 @@ class SpeedometerKpiCard extends StatelessWidget {
                 children: [
                   Icon(icon, size: 16, color: Colors.grey[700]),
                   const SizedBox(width: 6),
-                  Flexible( // Safety fix for long titles
+                  Flexible(
                     child: Text(
                       title,
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
