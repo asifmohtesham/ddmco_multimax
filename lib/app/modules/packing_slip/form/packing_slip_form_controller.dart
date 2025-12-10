@@ -15,8 +15,8 @@ class PackingSlipFormController extends GetxController {
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  String name = Get.arguments['name']; // Not final to allow update on creation
-  String mode = Get.arguments['mode']; // Not final to switch from new -> edit
+  String name = Get.arguments['name'];
+  String mode = Get.arguments['mode'];
 
   var isLoading = true.obs;
   var isSaving = false.obs;
@@ -27,12 +27,15 @@ class PackingSlipFormController extends GetxController {
 
   final TextEditingController barcodeController = TextEditingController();
 
+  // Grouping State
+  var expandedInvoice = ''.obs;
+
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
   var bsMaxQty = 0.0.obs;
-  var isEditing = false.obs; // Track if we are editing an existing row in PS
+  var isEditing = false.obs;
 
-  // Temporary State for Item currently being added/edited
+  // Temporary State
   String? currentItemDnDetail;
   String? currentItemCode;
   String? currentItemName;
@@ -41,7 +44,7 @@ class PackingSlipFormController extends GetxController {
   String? currentSerial;
   double? currentNetWeight;
   double? currentWeightUom;
-  String? currentItemNameKey; // The packing slip item row ID (null if new)
+  String? currentItemNameKey;
 
   @override
   void onInit() {
@@ -77,7 +80,7 @@ class PackingSlipFormController extends GetxController {
       fromCaseNo: nextCaseNo,
       toCaseNo: nextCaseNo,
       items: [],
-      customer: '', // Will be populated by fetchLinkedDeliveryNote
+      customer: '',
     );
 
     if (dnName.isNotEmpty) {
@@ -114,7 +117,6 @@ class PackingSlipFormController extends GetxController {
         final dn = DeliveryNote.fromJson(response.data['data']);
         linkedDeliveryNote.value = dn;
 
-        // Auto-populate Customer in Packing Slip if missing
         if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
           packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
         }
@@ -123,6 +125,35 @@ class PackingSlipFormController extends GetxController {
       log('Failed to fetch linked DN: $e');
     }
   }
+
+  // --- Grouping Logic ---
+
+  void toggleInvoiceExpand(String key) {
+    if (expandedInvoice.value == key) {
+      expandedInvoice.value = '';
+    } else {
+      expandedInvoice.value = key;
+    }
+  }
+
+  Map<String, List<PackingSlipItem>> get groupedItems {
+    if (packingSlip.value == null || packingSlip.value!.items.isEmpty) {
+      return {};
+    }
+    return groupBy(packingSlip.value!.items, (PackingSlipItem item) {
+      return item.customInvoiceSerialNumber ?? '0';
+    });
+  }
+
+  double getTotalDnQtyForSerial(String serial) {
+    if (linkedDeliveryNote.value == null) return 0.0;
+    // Sum qty of all DN items that share this serial number
+    return linkedDeliveryNote.value!.items
+        .where((item) => (item.customInvoiceSerialNumber ?? '0') == serial)
+        .fold(0.0, (sum, item) => sum + item.qty);
+  }
+
+  // -----------------------
 
   double? getRequiredQty(String dnDetail) {
     if (linkedDeliveryNote.value == null) return null;
@@ -142,7 +173,6 @@ class PackingSlipFormController extends GetxController {
     String itemCode;
     String? batchNo;
 
-    // Barcode Parsing logic (EAN or EAN-BATCH)
     if (barcode.contains('-')) {
       final parts = barcode.split('-');
       final ean = parts.first;
@@ -154,7 +184,6 @@ class PackingSlipFormController extends GetxController {
       batchNo = null;
     }
 
-    // Find matching item in Linked Delivery Note
     final match = _findItemInDN(itemCode, batchNo);
 
     isScanning.value = false;
@@ -168,7 +197,6 @@ class PackingSlipFormController extends GetxController {
   }
 
   DeliveryNoteItem? _findItemInDN(String code, String? batch) {
-    // Try exact match first
     return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
       bool codeMatch = item.itemCode == code;
       bool batchMatch = (batch == null) || (item.batchNo == batch);
@@ -178,10 +206,9 @@ class PackingSlipFormController extends GetxController {
 
   void _prepareSheetForAdd(DeliveryNoteItem item) {
     isEditing.value = false;
-    currentItemNameKey = null; // New Item
+    currentItemNameKey = null;
     _populateItemDetails(item);
 
-    // Calculate max allowed (Required - Already Packed in THIS slip)
     double existingPacked = 0;
     final currentSlipItems = packingSlip.value?.items ?? [];
     for (var i in currentSlipItems) {
@@ -203,15 +230,13 @@ class PackingSlipFormController extends GetxController {
   }
 
   void editItem(PackingSlipItem item) {
-    // Find original DN item to get max bounds
     final dnItem = linkedDeliveryNote.value?.items.firstWhereOrNull((d) => d.name == item.dnDetail);
     if (dnItem == null) return;
 
     isEditing.value = true;
     currentItemNameKey = item.name;
-    _populateItemDetails(dnItem); // Re-populate static data from DN item
+    _populateItemDetails(dnItem);
 
-    // Calculate max: (Remaining + Current Item Qty)
     double existingPackedOthers = 0;
     for (var i in packingSlip.value!.items) {
       if (i.dnDetail == item.dnDetail && i.name != item.name) {
@@ -235,7 +260,6 @@ class PackingSlipFormController extends GetxController {
     currentBatchNo = item.batchNo;
     currentUom = item.uom;
     currentSerial = item.customInvoiceSerialNumber;
-    // Assuming net weight logic exists or defaults
     currentNetWeight = 0.0;
     currentWeightUom = 0.0;
   }
@@ -258,7 +282,6 @@ class PackingSlipFormController extends GetxController {
     final currentItems = packingSlip.value?.items.toList() ?? [];
 
     if (isEditing.value && currentItemNameKey != null) {
-      // Update Existing
       final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
       if (index != -1) {
         final existing = currentItems[index];
@@ -267,7 +290,7 @@ class PackingSlipFormController extends GetxController {
             dnDetail: existing.dnDetail,
             itemCode: existing.itemCode,
             itemName: existing.itemName,
-            qty: qtyToAdd, // Updated Qty
+            qty: qtyToAdd,
             uom: existing.uom,
             batchNo: existing.batchNo,
             netWeight: existing.netWeight,
@@ -279,7 +302,6 @@ class PackingSlipFormController extends GetxController {
         );
       }
     } else {
-      // Add New
       final existingIndex = currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
       if (existingIndex != -1) {
         final existing = currentItems[existingIndex];
@@ -300,7 +322,7 @@ class PackingSlipFormController extends GetxController {
         );
       } else {
         final newItem = PackingSlipItem(
-            name: '', // Empty for new
+            name: '',
             dnDetail: currentItemDnDetail!,
             itemCode: currentItemCode!,
             itemName: currentItemName ?? '',
@@ -318,18 +340,15 @@ class PackingSlipFormController extends GetxController {
       }
     }
 
-    // Optimistic Update
     packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
     Get.back();
-
-    // Save to Server
     await savePackingSlip();
   }
 
   Future<void> deleteCurrentItem() async {
     if (currentItemNameKey == null) return;
 
-    Get.back(); // Close sheet
+    Get.back();
 
     Get.dialog(
         AlertDialog(
@@ -339,7 +358,7 @@ class PackingSlipFormController extends GetxController {
             TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
-                Get.back(); // Close dialog
+                Get.back();
                 final currentItems = packingSlip.value?.items.toList() ?? [];
                 currentItems.removeWhere((i) => i.name == currentItemNameKey);
                 packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
@@ -372,7 +391,6 @@ class PackingSlipFormController extends GetxController {
             'qty': e.qty,
             'dn_detail': e.dnDetail,
           };
-          // Only send 'name' if it's not empty/new to update existing row
           if (e.name.isNotEmpty) json['name'] = e.name;
           return json;
         }).toList(),

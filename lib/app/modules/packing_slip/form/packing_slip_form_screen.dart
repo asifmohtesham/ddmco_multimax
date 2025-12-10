@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
+import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart'; // Imported
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
@@ -87,7 +88,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 const Divider(height: 24),
               ],
               TextFormField(
-                key: ValueKey(slip.customer), // Force refresh when customer data loads
+                key: ValueKey(slip.customer),
                 initialValue: slip.customer ?? '',
                 readOnly: true,
                 decoration: const InputDecoration(
@@ -180,21 +181,53 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildItemsView(PackingSlip slip) {
-    final items = slip.items;
-
     return Column(
       children: [
         Expanded(
-          child: items.isEmpty
-              ? const Center(child: Text('No items packed yet.'))
-              : ListView.builder(
-            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return PackingSlipItemCard(item: item, index: index);
-            },
-          ),
+          child: Obx(() {
+            final grouped = controller.groupedItems;
+
+            if (grouped.isEmpty) {
+              return const Center(child: Text('No items packed yet.'));
+            }
+
+            // Sort by Serial Number
+            final sortedKeys = grouped.keys.toList()..sort((a, b) {
+              final intA = int.tryParse(a) ?? 9999;
+              final intB = int.tryParse(b) ?? 9999;
+              return intA.compareTo(intB);
+            });
+
+            return ListView.builder(
+              padding: const EdgeInsets.only(top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
+              itemCount: sortedKeys.length,
+              itemBuilder: (context, index) {
+                final serial = sortedKeys[index];
+                final items = grouped[serial]!;
+                final firstItem = items.first;
+
+                final packedQty = items.fold(0.0, (sum, i) => sum + i.qty);
+                final totalRequired = controller.getTotalDnQtyForSerial(serial);
+
+                return Obx(() {
+                  final isExpanded = controller.expandedInvoice.value == serial;
+                  return ItemGroupCard(
+                    isExpanded: isExpanded,
+                    serialNo: int.tryParse(serial) ?? 0,
+                    itemName: firstItem.itemName,
+                    rate: 0.0,
+                    totalQty: totalRequired,
+                    scannedQty: packedQty,
+                    onToggle: () => controller.toggleInvoiceExpand(serial),
+                    children: items.map((item) {
+                      final globalIndex = slip.items.indexOf(item);
+                      return PackingSlipItemCard(item: item, index: globalIndex);
+                    }).toList(),
+                  );
+                });
+              },
+            );
+          }),
         ),
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
