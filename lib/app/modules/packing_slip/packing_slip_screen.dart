@@ -209,11 +209,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                       final groupKey = groupKeys[index];
                       final slips = grouped[groupKey]!;
 
-                      // Identify Customer: Try slips, then controller cache
-                      String? customerName = slips.isNotEmpty ? slips.first.customer : null;
-                      if ((customerName == null || customerName.isEmpty) && groupKey != 'Other') {
-                        customerName = controller.getCustomerName(groupKey);
-                      }
+                      // Extract Customer from first slip
+                      final customerName = slips.isNotEmpty ? slips.first.customer : null;
 
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
@@ -342,7 +339,7 @@ class PackingSlipListTile extends StatelessWidget {
                     const Icon(Icons.timer_outlined, size: 12, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
-                      'Processed',
+                      FormattingHelper.getTimeTaken(slip.creation, slip.modified), // UPDATED: Show duration
                       style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
                     ),
                   ],
