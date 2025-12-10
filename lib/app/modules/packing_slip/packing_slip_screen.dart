@@ -110,11 +110,10 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                         separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final dn = controller.deliveryNotesForSelection[index];
-                          // Check if PO exists
                           final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
                           final title = hasPO ? dn.poNo! : dn.name;
-                          final subtitle = hasPO 
-                              ? '${dn.name} • ${dn.customer}' 
+                          final subtitle = hasPO
+                              ? '${dn.name} • ${dn.customer}'
                               : dn.customer;
 
                           return ListTile(
@@ -152,86 +151,140 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           ),
         ],
       ),
-      body: Obx(() {
-        if (controller.isLoading.value && controller.packingSlips.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (controller.packingSlips.isEmpty) {
-          return const Center(child: Text('No packing slips found.'));
-        }
-
-        final grouped = controller.groupedPackingSlips;
-        final groupKeys = grouped.keys.toList();
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            await controller.fetchPackingSlips(clear: true);
-          },
-          child: Scrollbar(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: groupKeys.length + (controller.hasMore.value ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= groupKeys.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-
-                final groupKey = groupKeys[index];
-                final slips = grouped[groupKey]!;
-                
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Group Header
-                      Container(
-                        padding: const EdgeInsets.all(12.0),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.description_outlined, size: 20, color: Colors.blueGrey),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                groupKey, 
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey),
-                              ),
-                            ),
-                            Text('${slips.length} slips', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      // List of Slips in this group
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: slips.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
-                        itemBuilder: (context, slipIndex) {
-                          final slip = slips[slipIndex];
-                          return PackingSlipListTile(slip: slip);
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
+      body: Column(
+        children: [
+          // 1. Search Box
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              onChanged: controller.onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Search slips, customers...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+              ),
             ),
           ),
-        );
-      }),
+
+          // 2. List
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value && controller.packingSlips.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (controller.packingSlips.isEmpty) {
+                return const Center(child: Text('No packing slips found.'));
+              }
+
+              final grouped = controller.groupedPackingSlips;
+              final groupKeys = grouped.keys.toList();
+
+              if (groupKeys.isEmpty) {
+                return const Center(child: Text('No results match your search.'));
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  await controller.fetchPackingSlips(clear: true);
+                },
+                child: Scrollbar(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: groupKeys.length + (controller.hasMore.value ? 1 : 0),
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemBuilder: (context, index) {
+                      if (index >= groupKeys.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      final groupKey = groupKeys[index];
+                      final slips = grouped[groupKey]!;
+
+                      // Identify Customer: Try slips, then controller cache
+                      String? customerName = slips.isNotEmpty ? slips.first.customer : null;
+                      if ((customerName == null || customerName.isEmpty) && groupKey != 'Other') {
+                        customerName = controller.getCustomerName(groupKey);
+                      }
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 2,
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Group Header with Customer Info
+                            Container(
+                              padding: const EdgeInsets.all(12.0),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.description_outlined, size: 20, color: Colors.blueGrey),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          groupKey,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
+                                        ),
+                                        if (customerName != null && customerName.isNotEmpty)
+                                          Text(
+                                            customerName,
+                                            style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade700),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.grey.shade300)
+                                    ),
+                                    child: Text('${slips.length} slips', style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            // List of Slips in this group
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: slips.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                              itemBuilder: (context, slipIndex) {
+                                final slip = slips[slipIndex];
+                                return PackingSlipListTile(slip: slip);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showDNSelectionBottomSheet(context),
         child: const Icon(Icons.add),
@@ -259,7 +312,7 @@ class PackingSlipListTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    slip.customPoNo != null && slip.customPoNo.isNotEmpty ? slip.customPoNo : slip.name, 
+                    slip.name,
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
@@ -289,18 +342,10 @@ class PackingSlipListTile extends StatelessWidget {
                     const Icon(Icons.timer_outlined, size: 12, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
-                      'Draft to Submit: ${FormattingHelper.getTimeTaken(slip.creation, slip.modified)}',
+                      'Processed',
                       style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
                     ),
                   ],
-                ),
-              ),
-            if (slip.owner != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(
-                  'Created by ${slip.owner}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ),
           ],

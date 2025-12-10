@@ -5,11 +5,13 @@ import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
-  final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>(); // Ensure this is available
+  final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final HomeController _homeController = Get.find<HomeController>();
 
   var isLoading = true.obs;
@@ -20,11 +22,17 @@ class PackingSlipController extends GetxController {
   int _currentPage = 0;
 
   var expandedSlipName = ''.obs;
-  var expandedGroup = ''.obs; 
-  
+  var expandedGroup = ''.obs;
+
   final activeFilters = <String, dynamic>{}.obs;
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
+
+  // Search State
+  var searchQuery = ''.obs;
+
+  // Cache for POS Customer Names: { "POS-123": "Customer Name" }
+  var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
   var isFetchingDNs = false.obs;
@@ -73,7 +81,7 @@ class PackingSlipController extends GetxController {
         filters: activeFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
-      
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newSlips = data.map((json) => PackingSlip.fromJson(json)).toList();
@@ -87,6 +95,10 @@ class PackingSlipController extends GetxController {
         } else {
           packingSlips.value = newSlips;
         }
+
+        // Fetch Customers for new slips
+        _fetchAssociatedCustomers(newSlips);
+
         _currentPage++;
       } else {
         Get.snackbar('Error', 'Failed to fetch packing slips');
@@ -101,6 +113,42 @@ class PackingSlipController extends GetxController {
         isLoading.value = false;
       }
     }
+  }
+
+  // Look up Customer Name from POS Upload if missing in Packing Slip
+  Future<void> _fetchAssociatedCustomers(List<PackingSlip> slips) async {
+    final poNumbers = slips
+        .map((s) => s.customPoNo)
+        .where((po) => po != null && po.isNotEmpty && !posCustomerMap.containsKey(po))
+        .toSet()
+        .toList();
+
+    if (poNumbers.isEmpty) return;
+
+    try {
+      // Bulk fetch logic if API supports 'in' filter, else iterate
+      // POS Upload usually allows filtering by name
+      final response = await _posProvider.getPosUploads(
+        limit: 100,
+        filters: {'name': ['in', poNumbers]},
+        // We only need name and customer fields
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        for (var doc in response.data['data']) {
+          final String name = doc['name'];
+          final String customer = doc['customer'] ?? 'Unknown';
+          posCustomerMap[name] = customer;
+        }
+      }
+    } catch (e) {
+      print('Error fetching POS customers: $e');
+    }
+  }
+
+  String getCustomerName(String? poNo) {
+    if (poNo == null) return '';
+    return posCustomerMap[poNo] ?? '';
   }
 
   void toggleExpand(String name) {
@@ -120,7 +168,21 @@ class PackingSlipController extends GetxController {
   }
 
   Map<String, List<PackingSlip>> get groupedPackingSlips {
-    final grouped = groupBy(packingSlips, (PackingSlip slip) {
+    // 1. Filter
+    var list = packingSlips.toList();
+    if (searchQuery.value.isNotEmpty) {
+      final q = searchQuery.value.toLowerCase();
+      list = list.where((slip) {
+        final customer = slip.customer ?? posCustomerMap[slip.customPoNo] ?? '';
+        return slip.name.toLowerCase().contains(q) ||
+            slip.deliveryNote.toLowerCase().contains(q) ||
+            (slip.customPoNo ?? '').toLowerCase().contains(q) ||
+            customer.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    // 2. Group
+    final grouped = groupBy(list, (PackingSlip slip) {
       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
         return slip.customPoNo!;
       }
@@ -130,6 +192,7 @@ class PackingSlipController extends GetxController {
       return 'Other';
     });
 
+    // 3. Sort inside groups
     grouped.forEach((key, list) {
       list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
     });
@@ -137,16 +200,19 @@ class PackingSlipController extends GetxController {
     return grouped;
   }
 
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+  }
+
   Future<void> fetchDeliveryNotesForSelection() async {
     isFetchingDNs.value = true;
     try {
-      // Fetch only Draft (docstatus=0) Delivery Notes
       final response = await _dnProvider.getDeliveryNotes(
-        limit: 100, // Fetch more to allow local search
-        orderBy: 'modified desc',
-        filters: {'docstatus': 0} 
+          limit: 100,
+          orderBy: 'modified desc',
+          filters: {'docstatus': 0}
       );
-      
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         _allFetchedDNs = data.map((json) => DeliveryNote.fromJson(json)).toList();
@@ -174,15 +240,14 @@ class PackingSlipController extends GetxController {
   }
 
   Future<void> initiatePackingSlipCreation(DeliveryNote dn) async {
-    // Determine next case number
     int nextCaseNo = 1;
     try {
       final response = await _provider.getPackingSlips(
-        limit: 1,
-        filters: {'delivery_note': dn.name},
-        orderBy: 'to_case_no desc'
+          limit: 1,
+          filters: {'delivery_note': dn.name},
+          orderBy: 'to_case_no desc'
       );
-      
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         if (data.isNotEmpty) {
