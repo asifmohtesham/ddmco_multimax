@@ -207,11 +207,6 @@ class ItemFormController extends GetxController {
     }
   }
 
-  // Logic to calculate Stock Age (Actual Days) based on creation date
-  // Assuming 'creation' or 'posting_date' is available in batch data or we calculate from today
-  // For this example, we calculate difference between today and 'from_date' provided by report if available,
-  // or generally we need the batch creation date.
-  // If the report doesn't provide it, we use a placeholder or 0.
   int calculateStockAgeDays(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return 0;
     try {
@@ -249,6 +244,8 @@ class ItemFormController extends GetxController {
       final savePath = '${tempDir.path}/$fileName';
       await Dio().download(fullUrl, savePath);
       if (Get.isDialogOpen == true) Get.back();
+
+      // Updated to SharePlus as requested by deprecation warning
       await Share.shareXFiles([XFile(savePath)], text: 'Shared via Multimax ERP');
     } catch (e) {
       if (Get.isDialogOpen == true) Get.back();

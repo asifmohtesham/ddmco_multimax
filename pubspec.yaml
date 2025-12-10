@@ -45,7 +45,7 @@ dependencies:
   intl: ^0.19.0
   percent_indicator:
   flutter_html:
-  share_plus:
+  share_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
