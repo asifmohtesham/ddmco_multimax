@@ -30,6 +30,10 @@ class PurchaseOrderFormController extends GetxController {
   final dateController = TextEditingController();
   final barcodeController = TextEditingController();
 
+  // Suppliers Data
+  var suppliers = <String>[].obs;
+  var isFetchingSuppliers = false.obs;
+
   // Sheet State
   var isItemSheetOpen = false.obs;
   final bsQtyController = TextEditingController();
@@ -47,6 +51,9 @@ class PurchaseOrderFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
+    // Fetch Suppliers List
+    fetchSuppliers();
 
     supplierController.addListener(_checkForChanges);
     dateController.addListener(_checkForChanges);
@@ -66,6 +73,20 @@ class PurchaseOrderFormController extends GetxController {
     bsQtyController.dispose();
     bsRateController.dispose();
     super.onClose();
+  }
+
+  Future<void> fetchSuppliers() async {
+    isFetchingSuppliers.value = true;
+    try {
+      final response = await _apiProvider.getDocumentList('Supplier', limit: 0, fields: ['name']); // 0 for all
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        suppliers.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+      }
+    } catch (e) {
+      print('Error fetching suppliers: $e');
+    } finally {
+      isFetchingSuppliers.value = false;
+    }
   }
 
   void _initNewPO() {

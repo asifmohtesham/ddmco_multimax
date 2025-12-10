@@ -43,7 +43,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           return SafeArea(
             child: TabBarView(
               children: [
-                _buildDetailsView(po),
+                _buildDetailsView(context, po), // Passed context for bottom sheet
                 _buildItemsView(po),
               ],
             ),
@@ -53,7 +53,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
     );
   }
 
-  Widget _buildDetailsView(dynamic po) {
+  Widget _buildDetailsView(BuildContext context, dynamic po) {
     final bool isEditable = controller.isEditable;
 
     return SingleChildScrollView(
@@ -69,11 +69,24 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             ],
           ),
           const Divider(height: 24),
-          TextFormField(
-            controller: controller.supplierController,
-            decoration: const InputDecoration(labelText: 'Supplier', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)),
-            readOnly: !isEditable,
+
+          // SEARCHABLE SUPPLIER FIELD
+          GestureDetector(
+            onTap: isEditable ? () => _showSupplierSelectionSheet(context) : null,
+            child: AbsorbPointer(
+              child: TextFormField(
+                controller: controller.supplierController,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.business),
+                  suffixIcon: Icon(Icons.arrow_drop_down),
+                ),
+                readOnly: true, // Always read-only, tap handled by parent
+              ),
+            ),
           ),
+
           const SizedBox(height: 16),
           TextFormField(
             controller: controller.dateController,
@@ -96,6 +109,89 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showSupplierSelectionSheet(BuildContext context) {
+    final searchController = TextEditingController();
+    final RxList<String> filteredSuppliers = RxList<String>(controller.suppliers);
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Supplier', style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Suppliers',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      if (val.isEmpty) {
+                        filteredSuppliers.assignAll(controller.suppliers);
+                      } else {
+                        filteredSuppliers.assignAll(controller.suppliers.where(
+                                (s) => s.toLowerCase().contains(val.toLowerCase())));
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingSuppliers.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (filteredSuppliers.isEmpty) {
+                        return const Center(child: Text('No suppliers found'));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: filteredSuppliers.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final supplier = filteredSuppliers[index];
+                          final isSelected = supplier == controller.supplierController.text;
+                          return ListTile(
+                            title: Text(supplier, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                            trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                            onTap: () {
+                              controller.supplierController.text = supplier;
+                              Get.back();
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 
