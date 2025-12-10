@@ -3,31 +3,36 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
-import 'package:multimax/app/data/models/item_model.dart'; // Import for Item model
+import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Check if we are on the dedicated route or inside a bottom sheet (Home)
+    final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
+
     return DefaultTabController(
-      length: 4, // Increased to 4
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.item.value?.itemName ?? 'Item Details')),
-          automaticallyImplyLeading: false,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => Get.back(),
-            )
-          ],
+          // If modal (sheet), show Close (X) on left.
+          // If navigation (pushed), show Back (<-) on left (default behavior via null).
+          leading: isModal
+              ? IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Get.back(),
+          )
+              : null,
           bottom: const TabBar(
-            isScrollable: true, // Allow scrolling if tabs don't fit
+            isScrollable: true,
             tabs: [
               Tab(text: 'Overview'),
               Tab(text: 'Dashboard'),
-              Tab(text: 'Attributes'), // New Tab
+              Tab(text: 'Attributes'),
               Tab(text: 'Attachments'),
             ],
           ),
@@ -46,7 +51,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             children: [
               _buildOverviewTab(context, item),
               _buildDashboardTab(context),
-              _buildAttributesTab(context, item), // New View
+              _buildAttributesTab(context, item),
               _buildAttachmentsTab(context),
             ],
           );
@@ -55,7 +60,8 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // --- New Attributes Tab Widget ---
+  // --- Tab Widgets ---
+
   Widget _buildAttributesTab(BuildContext context, Item item) {
     if (item.attributes.isEmpty) {
       return Center(
