@@ -51,42 +51,90 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
 
   Widget _buildDetailsView(dynamic po) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Status', style: TextStyle(color: Colors.grey[600])),
-              StatusPill(status: po.status),
-            ],
-          ),
-          const Divider(height: 24),
-          TextFormField(
-            controller: controller.supplierController,
-            decoration: const InputDecoration(labelText: 'Supplier', border: OutlineInputBorder()),
-            readOnly: po.docstatus != 0,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: controller.dateController,
-            decoration: const InputDecoration(
-              labelText: 'Transaction Date',
-              border: OutlineInputBorder(),
-              suffixIcon: Icon(Icons.calendar_today),
+          // Header Card
+          Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Status', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                      StatusPill(status: po.status),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('Transaction Date', po.transactionDate, icon: Icons.calendar_today),
+                ],
+              ),
             ),
-            readOnly: true, // Typically date picker
           ),
+
           const SizedBox(height: 16),
-          _buildInfoRow('Currency', po.currency, icon: Icons.attach_money),
-          const SizedBox(height: 16),
-          _buildInfoRow(
-            'Grand Total',
-            '${FormattingHelper.getCurrencySymbol(po.currency)} ${po.grandTotal.toStringAsFixed(2)}',
-            icon: Icons.account_balance_wallet,
-            isBold: true,
+
+          // Supplier Info
+          Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Supplier Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: controller.supplierController,
+                    decoration: const InputDecoration(
+                      labelText: 'Supplier',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.business),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    readOnly: po.docstatus != 0,
+                  ),
+                ],
+              ),
+            ),
           ),
+
+          const SizedBox(height: 16),
+
+          // Financials
+          Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Financials', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('Currency', po.currency, icon: Icons.attach_money),
+                  const Divider(height: 24),
+                  _buildInfoRow(
+                    'Grand Total',
+                    '${FormattingHelper.getCurrencySymbol(po.currency)} ${po.grandTotal.toStringAsFixed(2)}',
+                    icon: Icons.account_balance_wallet,
+                    isBold: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
         ],
       ),
     );
@@ -107,8 +155,9 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
               Text(
                 value,
                 style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal
+                    fontSize: 15,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                    color: isBold ? Colors.black87 : null
                 ),
               ),
             ],
@@ -119,12 +168,15 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   }
 
   Widget _buildItemsView(dynamic po) {
-    if (po.items.isEmpty) return const Center(child: Text('No items'));
+    if (po.items.isEmpty) return const Center(child: Text('No items in this order.'));
     return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
       itemCount: po.items.length,
       itemBuilder: (context, index) {
-        return PurchaseOrderItemCard(item: po.items[index]);
+        return PurchaseOrderItemCard(
+          item: po.items[index],
+          index: index,
+        );
       },
     );
   }
