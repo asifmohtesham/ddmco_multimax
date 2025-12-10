@@ -137,7 +137,7 @@ class PerformanceTimelineCard extends StatelessWidget {
         // Tooltip or Value
         if (point.total > 0)
           Text(
-            point.total.toStringAsFixed(0),
+            NumberFormat('#,###.##').format(point.total),
             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
           ),
         const SizedBox(height: 4),
