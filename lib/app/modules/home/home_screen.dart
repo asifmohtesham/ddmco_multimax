@@ -6,7 +6,8 @@ import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
-import 'package:multimax/app/data/routes/app_routes.dart'; // Ensure this is imported
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart'; // Import
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -19,13 +20,19 @@ class HomeScreen extends GetView<HomeController> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => controller.fetchDashboardData(),
+            onPressed: () {
+              controller.fetchDashboardData();
+              controller.fetchPerformanceData();
+            },
           ),
         ],
       ),
       drawer: const AppNavDrawer(),
       body: RefreshIndicator(
-        onRefresh: controller.fetchDashboardData,
+        onRefresh: () async {
+          await controller.fetchDashboardData();
+          await controller.fetchPerformanceData();
+        },
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           physics: const AlwaysScrollableScrollPhysics(),
@@ -43,12 +50,22 @@ class HomeScreen extends GetView<HomeController> {
                 controller: controller.barcodeController,
                 isLoading: controller.isScanning.value,
                 hintText: 'Scan Item / Batch',
-                activeRoute: AppRoutes.HOME, // Add this
+                activeRoute: AppRoutes.HOME,
               )),
 
               const SizedBox(height: 24),
 
-              // 3. KPI Speedometers
+              // 3. Performance Timeline (New)
+              Obx(() => PerformanceTimelineCard(
+                isWeekly: controller.isWeeklyView.value,
+                onToggleView: controller.toggleTimelineView,
+                data: controller.timelineData,
+                isLoading: controller.isLoadingTimeline.value,
+              )),
+
+              const SizedBox(height: 24),
+
+              // 4. KPI Speedometers
               const Text('Daily Goals', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
 
@@ -104,7 +121,6 @@ class HomeScreen extends GetView<HomeController> {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // FIX: Wrapped Column in Expanded to prevent overflow
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,7 +134,6 @@ class HomeScreen extends GetView<HomeController> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // FIX: Wrapped Text in Flexible to handle long names
                         Flexible(
                           child: Text(
                             userName,
@@ -181,8 +196,8 @@ class HomeScreen extends GetView<HomeController> {
                     ),
                     onChanged: (val) {
                       filteredUsers.assignAll(controller.userList.where((user) {
-                        final name = user.name?.toLowerCase() ?? '';
-                        final email = user.email?.toLowerCase() ?? '';
+                        final name = user.name.toLowerCase();
+                        final email = user.email.toLowerCase();
                         return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
                       }).toList());
                     },
@@ -197,9 +212,9 @@ class HomeScreen extends GetView<HomeController> {
                         final user = filteredUsers[index];
                         final isSelected = user.email == controller.selectedFilterUser.value?.email;
                         return ListTile(
-                          leading: CircleAvatar(child: Text(user.name?[0] ?? 'U')),
-                          title: Text(user.name ?? 'Unknown', style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                          subtitle: Text(user.email ?? ''),
+                          leading: CircleAvatar(child: Text(user.name.isNotEmpty ? user.name[0] : 'U')),
+                          title: Text(user.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                          subtitle: Text(user.email),
                           trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
                           onTap: () => controller.onUserFilterChanged(user),
                         );
@@ -216,6 +231,7 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
+// ... SpeedometerKpiCard (Same as before) ...
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -236,14 +252,12 @@ class SpeedometerKpiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final double percent = (target > 0) ? (actual / target).clamp(0.0, 1.0) : 0.0;
 
-    // Define Gradient colors: Red -> Yellow -> Green
     const LinearGradient progressGradient = LinearGradient(
       colors: [Colors.redAccent, Colors.amber, Colors.green],
       stops: [0.0, 0.5, 1.0],
       tileMode: TileMode.clamp,
     );
 
-    // Dynamic Text Color
     Color textColor = percent < 0.4 ? Colors.redAccent : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
 
     return Card(

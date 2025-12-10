@@ -11,11 +11,15 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/data/providers/api_provider.dart'; // Added
+import 'package:intl/intl.dart'; // Added
+import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart'; // Added
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>(); // Added direct access for custom queries
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
   final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
@@ -27,6 +31,11 @@ class HomeController extends GetxController {
   // --- User Filter & KPI State ---
   var isLoadingStats = true.obs;
   var isLoadingUsers = true.obs;
+
+  // Timeline State
+  var isWeeklyView = false.obs;
+  var isLoadingTimeline = true.obs;
+  var timelineData = <TimelinePoint>[].obs;
 
   var userList = <User>[].obs;
   Rx<User?> selectedFilterUser = Rx<User?>(null);
@@ -64,7 +73,6 @@ class HomeController extends GetxController {
   Future<void> _initDashboard() async {
     await fetchUsers();
 
-    // Set default filter to current user if available in list, else first in list
     if (selectedFilterUser.value == null) {
       final myEmail = _authController.currentUser.value?.email;
       if (myEmail != null) {
@@ -75,8 +83,10 @@ class HomeController extends GetxController {
       }
     }
     fetchDashboardData();
+    fetchPerformanceData(); // Trigger Timeline Fetch
   }
 
+  // ... (fetchUsers and onUserFilterChanged remain same) ...
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
@@ -84,32 +94,23 @@ class HomeController extends GetxController {
       final empId = currentUser?.employeeId;
 
       if (empId != null) {
-        // --- HIERARCHY BASED FILTER ---
-        // Fetch users who report to this employee
         final response = await _userProvider.getDirectReports(empId);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
-
-          // Convert Employee list to User list
-          // We map 'user_id' (email) to id/email and 'employee_name' to name
           final reports = data.map((e) => User(
             id: e['user_id'] ?? '',
             name: e['employee_name'] ?? 'Unknown',
             email: e['user_id'] ?? '',
-            roles: [], // Not needed for filter
+            roles: [],
             employeeId: e['name'],
           )).toList();
 
-          // Add Self to the list
           if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
             reports.insert(0, currentUser);
           }
-
           userList.assignAll(reports);
         }
       } else {
-        // --- FALLBACK (No Employee Link or Top Level) ---
-        // Fetch all active users
         final response = await _userProvider.getUsers();
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
@@ -127,13 +128,12 @@ class HomeController extends GetxController {
     selectedFilterUser.value = user;
     Get.back(); // Close modal
     fetchDashboardData();
+    fetchPerformanceData(); // Refresh timeline for selected user
   }
 
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      // Apply Filter: If a user is selected, filter Work Orders/Job Cards by that user (Owner)
-      // Note: This depends on API support. Assuming standard 'owner' filter works.
       Map<String, dynamic> woFilters = {'status': 'In Process'};
       Map<String, dynamic> jcFilters = {'status': 'Open'};
 
@@ -144,7 +144,7 @@ class HomeController extends GetxController {
       }
 
       final results = await Future.wait([
-        _woProvider.getWorkOrders(limit: 0, filters: woFilters), // limit 0 for counts if possible, else high limit
+        _woProvider.getWorkOrders(limit: 0, filters: woFilters),
         _jcProvider.getJobCards(limit: 0, filters: jcFilters),
       ]);
 
@@ -158,6 +158,135 @@ class HomeController extends GetxController {
     }
   }
 
+  // --- New: Performance Data Logic ---
+
+  void toggleTimelineView(bool weekly) {
+    if (isWeeklyView.value == weekly) return;
+    isWeeklyView.value = weekly;
+    fetchPerformanceData();
+  }
+
+  Future<void> fetchPerformanceData() async {
+    isLoadingTimeline.value = true;
+    try {
+      final email = selectedFilterUser.value?.email ?? _authController.currentUser.value?.email;
+      if (email == null) return;
+
+      final now = DateTime.now();
+      // Daily: Last 7 days. Weekly: Last 28 days.
+      final daysBack = isWeeklyView.value ? 28 : 7;
+      final startDate = now.subtract(Duration(days: daysBack));
+      final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
+
+      // We need submitted docs (docstatus=1) created by this user
+      final filters = {
+        'owner': email,
+        'docstatus': 0,
+        'creation': ['>=', dateStr]
+      };
+
+      // Parallel Fetch
+      final results = await Future.wait([
+        _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100), // Note: custom_total_qty based on your model
+        _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
+      ]);
+
+      final dnList = _extractList(results[0]);
+      final seList = _extractList(results[1]);
+      final prList = _extractList(results[2]);
+
+      // Process Data into Buckets
+      Map<String, TimelinePoint> buckets = {};
+
+      // Initialize Buckets (ensure X-axis is continuous)
+      for (int i = 0; i < (isWeeklyView.value ? 4 : 7); i++) {
+        DateTime date;
+        String key;
+        String label;
+
+        if (isWeeklyView.value) {
+          // Weekly buckets
+          date = now.subtract(Duration(days: (3 - i) * 7));
+          key = '${date.year}-W${_getWeekOfYear(date)}';
+          label = 'W${_getWeekOfYear(date)}';
+        } else {
+          // Daily buckets
+          date = now.subtract(Duration(days: (6 - i)));
+          key = DateFormat('yyyy-MM-dd').format(date);
+          label = DateFormat('E').format(date); // Mon, Tue
+        }
+
+        buckets[key] = TimelinePoint(label: label, date: date);
+      }
+
+      // Helper to fill buckets
+      void fillBucket(List<dynamic> list, String type) {
+        for (var item in list) {
+          final date = DateTime.parse(item['creation']);
+          String key;
+
+          if (isWeeklyView.value) {
+            key = '${date.year}-W${_getWeekOfYear(date)}';
+          } else {
+            key = DateFormat('yyyy-MM-dd').format(date);
+          }
+
+          if (buckets.containsKey(key)) {
+            final existing = buckets[key]!;
+            double qty = 0.0;
+            if (type == 'DN') qty = (item['total_qty'] as num?)?.toDouble() ?? 0;
+            if (type == 'SE') qty = (item['custom_total_qty'] as num?)?.toDouble() ?? 0; // Check field name in your instance
+            if (type == 'PR') qty = (item['total_qty'] as num?)?.toDouble() ?? 0;
+
+            int custCount = (type == 'DN' && item['customer'] != null) ? 1 : 0;
+            // Note: Customer count here is just counting transactions, unique would require Set logic inside bucket.
+            // For simplicity in chart, we count transactions.
+
+            buckets[key] = TimelinePoint(
+              label: existing.label,
+              date: existing.date,
+              deliveryQty: existing.deliveryQty + (type == 'DN' ? qty : 0),
+              stockQty: existing.stockQty + (type == 'SE' ? qty : 0),
+              receiptQty: existing.receiptQty + (type == 'PR' ? qty : 0),
+              customerCount: existing.customerCount + custCount,
+            );
+          }
+        }
+      }
+
+      fillBucket(dnList, 'DN');
+      fillBucket(seList, 'SE');
+      fillBucket(prList, 'PR');
+
+      timelineData.assignAll(buckets.values.toList());
+
+    } catch (e) {
+      print('Error fetching timeline: $e');
+    } finally {
+      isLoadingTimeline.value = false;
+    }
+  }
+
+  int _getWeekOfYear(DateTime date) {
+    final startOfYear = DateTime(date.year, 1, 1);
+    final firstMonday = startOfYear.weekday;
+    final daysInFirstWeek = 8 - firstMonday;
+    final diff = date.difference(startOfYear);
+    var weeks = ((diff.inDays - daysInFirstWeek) / 7).ceil();
+    if (daysInFirstWeek < 7) {
+      weeks += 1;
+    }
+    return weeks;
+  }
+
+  List<dynamic> _extractList(Response response) {
+    if (response.statusCode == 200 && response.data['data'] != null) {
+      return response.data['data'] as List;
+    }
+    return [];
+  }
+
   int _getCountFromResponse(dynamic response) {
     if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
       return (response.data['data'] as List).length;
@@ -165,7 +294,8 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // --- Scan Logic ---
+  // ... (Scan Logic and Navigation remain same) ...
+  // (Including onScan, updateActiveScreen, etc.)
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
@@ -201,7 +331,6 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- Navigation ---
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
 
   void updateActiveScreen(String route) {
