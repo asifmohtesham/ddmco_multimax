@@ -4,6 +4,8 @@ import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_con
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_card.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   const PurchaseOrderFormScreen({super.key});
@@ -19,8 +21,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             Obx(() => controller.isSaving.value
                 ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
                 : IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: controller.purchaseOrder.value?.docstatus == 0 ? controller.savePurchaseOrder : null,
+              icon: Icon(Icons.save, color: (controller.isDirty.value && controller.isEditable) ? Colors.white : Colors.white54),
+              onPressed: (controller.isDirty.value && controller.isEditable) ? controller.savePurchaseOrder : null,
             )
             ),
           ],
@@ -38,11 +40,13 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           final po = controller.purchaseOrder.value;
           if (po == null) return const Center(child: Text('Not found'));
 
-          return TabBarView(
-            children: [
-              _buildDetailsView(po),
-              _buildItemsView(po),
-            ],
+          return SafeArea(
+            child: TabBarView(
+              children: [
+                _buildDetailsView(po),
+                _buildItemsView(po),
+              ],
+            ),
           );
         }),
       ),
@@ -50,91 +54,46 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   }
 
   Widget _buildDetailsView(dynamic po) {
+    final bool isEditable = controller.isEditable;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Card
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Status', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                      StatusPill(status: po.status),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('Transaction Date', po.transactionDate, icon: Icons.calendar_today),
-                ],
-              ),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Status', style: TextStyle(color: Colors.grey[600])),
+              StatusPill(status: po.status),
+            ],
           ),
-
+          const Divider(height: 24),
+          TextFormField(
+            controller: controller.supplierController,
+            decoration: const InputDecoration(labelText: 'Supplier', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)),
+            readOnly: !isEditable,
+          ),
           const SizedBox(height: 16),
-
-          // Supplier Info
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Supplier Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: controller.supplierController,
-                    decoration: const InputDecoration(
-                      labelText: 'Supplier',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.business),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    readOnly: po.docstatus != 0,
-                  ),
-                ],
-              ),
+          TextFormField(
+            controller: controller.dateController,
+            decoration: const InputDecoration(
+              labelText: 'Transaction Date',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.calendar_today),
             ),
+            readOnly: !isEditable,
+            // Add date picker onTap if needed
           ),
-
           const SizedBox(height: 16),
-
-          // Financials
-          Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Financials', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('Currency', po.currency, icon: Icons.attach_money),
-                  const Divider(height: 24),
-                  _buildInfoRow(
-                    'Grand Total',
-                    '${FormattingHelper.getCurrencySymbol(po.currency)} ${po.grandTotal.toStringAsFixed(2)}',
-                    icon: Icons.account_balance_wallet,
-                    isBold: true,
-                  ),
-                ],
-              ),
-            ),
+          _buildInfoRow('Currency', po.currency, icon: Icons.attach_money),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            'Grand Total',
+            '${FormattingHelper.getCurrencySymbol(po.currency)} ${po.grandTotal.toStringAsFixed(2)}',
+            icon: Icons.account_balance_wallet,
+            isBold: true,
           ),
-          const SizedBox(height: 80),
         ],
       ),
     );
@@ -155,9 +114,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
               Text(
                 value,
                 style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                    color: isBold ? Colors.black87 : null
+                    fontSize: 16,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal
                 ),
               ),
             ],
@@ -168,16 +126,32 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   }
 
   Widget _buildItemsView(dynamic po) {
-    if (po.items.isEmpty) return const Center(child: Text('No items in this order.'));
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
-      itemCount: po.items.length,
-      itemBuilder: (context, index) {
-        return PurchaseOrderItemCard(
-          item: po.items[index],
-          index: index,
-        );
-      },
+    return Column(
+      children: [
+        Expanded(
+          child: po.items.isEmpty
+              ? const Center(child: Text('No items in this order.'))
+              : ListView.builder(
+            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
+            itemCount: po.items.length,
+            itemBuilder: (context, index) {
+              final item = po.items[index];
+              return InkWell(
+                onTap: () => controller.editItem(item),
+                child: PurchaseOrderItemCard(item: item, index: index),
+              );
+            },
+          ),
+        ),
+        if (controller.isEditable)
+          Obx(() => BarcodeInputWidget(
+            onScan: (code) => controller.scanBarcode(code),
+            isLoading: controller.isScanning.value,
+            controller: controller.barcodeController,
+            hintText: 'Scan Item Code',
+            activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
+          )),
+      ],
     );
   }
 }
