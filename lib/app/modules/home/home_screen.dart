@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart'; // Import
+import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -55,15 +55,17 @@ class HomeScreen extends GetView<HomeController> {
 
               const SizedBox(height: 24),
 
-              // 3. Performance Timeline (New)
+              // 3. Performance Timeline
               Obx(() => PerformanceTimelineCard(
                 isWeekly: controller.isWeeklyView.value,
                 onToggleView: controller.toggleTimelineView,
                 data: controller.timelineData,
                 isLoading: controller.isLoadingTimeline.value,
-                // NEW PARAMS
+                // Pass appropriate date params
                 selectedDate: controller.selectedDailyDate.value,
                 onDateChanged: controller.onDailyDateChanged,
+                selectedRange: controller.selectedWeeklyRange.value,
+                onRangeChanged: controller.onWeeklyRangeChanged,
               )),
 
               const SizedBox(height: 24),
@@ -116,7 +118,7 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
-  // ... (Rest of HomeScreen remains same) ...
+  // ... (Rest of HomeScreen remains same)
   Widget _buildUserSelectionHeader(BuildContext context) {
     return Obx(() {
       final selectedUser = controller.selectedFilterUser.value;
@@ -233,8 +235,9 @@ class HomeScreen extends GetView<HomeController> {
       },
     );
   }
-}// --- Widget Definition ---
+}
 
+// ... SpeedometerKpiCard ...
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -274,7 +277,6 @@ class SpeedometerKpiCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Column(
             children: [
-              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
