@@ -4,7 +4,8 @@ class User {
   final String email;
   final String? designation;
   final String? department;
-  final String? mobileNo; // Added mobile number
+  final String? mobileNo;
+  final String? employeeId; // Added: Links to Employee Document
   final List<String> roles;
 
   User({
@@ -14,6 +15,7 @@ class User {
     this.designation,
     this.department,
     this.mobileNo,
+    this.employeeId,
     required this.roles,
   });
 
@@ -27,11 +29,12 @@ class User {
 
     return User(
       id: json['name'],
-      name: json['full_name'],
-      email: json['email'],
+      name: json['full_name'] ?? json['name'],
+      email: json['email'] ?? json['name'],
       designation: json['designation'],
       department: json['department'],
-      mobileNo: json['mobile_no'], // Parse mobile_no
+      mobileNo: json['mobile_no'],
+      employeeId: json['employee_id'], // Load from storage/custom logic
       roles: rolesList,
     );
   }
@@ -44,6 +47,7 @@ class User {
       'designation': designation,
       'department': department,
       'mobile_no': mobileNo,
+      'employee_id': employeeId, // Persist to storage
       'roles': roles.map((r) => {'role': r}).toList(),
     };
   }
@@ -55,6 +59,7 @@ class User {
     String? designation,
     String? department,
     String? mobileNo,
+    String? employeeId,
     List<String>? roles,
   }) {
     return User(
@@ -64,6 +69,7 @@ class User {
       designation: designation ?? this.designation,
       department: department ?? this.department,
       mobileNo: mobileNo ?? this.mobileNo,
+      employeeId: employeeId ?? this.employeeId,
       roles: roles ?? this.roles,
     );
   }

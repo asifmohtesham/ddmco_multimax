@@ -10,7 +10,32 @@ class UserProvider {
       'User',
       filters: {'enabled': 1},
       fields: ['name', 'full_name', 'email'],
-      limit: 0, // 0 = All records
+      limit: 0,
+    );
+  }
+
+  /// Fetches Employees who report to the given [employeeId].
+  /// Only returns employees who are linked to a User (user_id is set).
+  Future<Response> getDirectReports(String employeeId) async {
+    return await _apiProvider.getDocumentList(
+      'Employee',
+      filters: {
+        'reports_to': employeeId,
+        'status': 'Active',
+        'user_id': ['!=', '']
+      },
+      fields: ['name', 'employee_name', 'user_id'], // 'name' is Employee ID
+      limit: 0,
+    );
+  }
+
+  /// Helper to find Employee ID for a given User ID (Email)
+  Future<Response> getEmployeeIdForUser(String userEmail) async {
+    return await _apiProvider.getDocumentList(
+      'Employee',
+      filters: {'user_id': userEmail, 'status': 'Active'},
+      fields: ['name'],
+      limit: 1,
     );
   }
 }

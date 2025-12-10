@@ -4,12 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart'; // Added
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  // UserProvider might not be registered yet if AuthBinding only puts AuthController
+  // So we lazy load it or use Get.put/find safely.
+  // Ideally UserProvider should be put in initial binding or main.dart, but here we can just ensure it exists.
+  UserProvider get _userProvider {
+    if (!Get.isRegistered<UserProvider>()) {
+      Get.put(UserProvider());
+    }
+    return Get.find<UserProvider>();
+  }
 
   var currentUser = Rx<User?>(null);
   var isAuthenticated = false.obs;
@@ -29,9 +39,31 @@ class AuthenticationController extends GetxController {
 
         final userDetailsResponse = await _apiProvider.getUserDetails(loggedInUserEmail);
         if (userDetailsResponse.statusCode == 200 && userDetailsResponse.data?['data'] != null) {
-          final user = User.fromJson(userDetailsResponse.data['data']);
+          var user = User.fromJson(userDetailsResponse.data['data']);
+
+          // --- LINK EMPLOYEE DOCUMENT ---
+          try {
+            final empResponse = await _userProvider.getEmployeeIdForUser(user.email);
+            if (empResponse.statusCode == 200 && empResponse.data['data'] != null) {
+              final list = empResponse.data['data'] as List;
+              if (list.isNotEmpty) {
+                final empId = list[0]['name'];
+                user = user.copyWith(employeeId: empId);
+              }
+            }
+          } catch (e) {
+            print('Could not link Employee record: $e');
+          }
+          // -----------------------------
+
           currentUser.value = user;
           isAuthenticated.value = true;
+
+          // Persist user with employee_id to storage
+          if (Get.isRegistered<StorageService>()) {
+            await Get.find<StorageService>().saveUser(user);
+          }
+
         } else {
           await _clearSessionAndLocalData();
         }
@@ -49,6 +81,15 @@ class AuthenticationController extends GetxController {
     try {
       bool hasSession = await _apiProvider.hasSessionCookies();
       if (hasSession) {
+        // Try loading from storage first for speed
+        if (Get.isRegistered<StorageService>()) {
+          final storedUser = Get.find<StorageService>().getUser();
+          if (storedUser != null) {
+            currentUser.value = storedUser;
+            isAuthenticated.value = true;
+          }
+        }
+        // Always refresh from API
         await fetchUserDetails();
       } else {
         await _clearSessionAndLocalData();
@@ -62,13 +103,15 @@ class AuthenticationController extends GetxController {
   }
 
   void processSuccessfulLogin(User user) {
-    currentUser.value = user;
-    isAuthenticated.value = true;
-    Get.offAllNamed(AppRoutes.HOME);
-    GlobalSnackbar.success(
-      title: 'Login Successful',
-      message: 'Welcome back, ${user.name}!',
-    );
+    // This is usually called from LoginController with basic info
+    // Trigger full fetch to get roles and employee link
+    fetchUserDetails().then((_) {
+      Get.offAllNamed(AppRoutes.HOME);
+      GlobalSnackbar.success(
+        title: 'Login Successful',
+        message: 'Welcome back, ${currentUser.value?.name ?? user.name}!',
+      );
+    });
   }
 
   Future<void> logoutUser() async {
@@ -113,15 +156,12 @@ class AuthenticationController extends GetxController {
 
   // --- PERMISSION HELPERS ---
 
-  /// Returns true if the user has specific role
   bool hasRole(String role) {
     if (currentUser.value == null) return false;
-    // System Manager usually has all permissions
     if (currentUser.value!.roles.contains('System Manager')) return true;
     return currentUser.value!.roles.contains(role);
   }
 
-  /// Returns true if the user has ANY of the provided roles
   bool hasAnyRole(List<String> roles) {
     if (currentUser.value == null) return false;
     if (currentUser.value!.roles.contains('System Manager')) return true;

@@ -63,13 +63,13 @@ class HomeController extends GetxController {
 
   Future<void> _initDashboard() async {
     await fetchUsers();
-    // Default to current user
+
+    // Set default filter to current user if available in list, else first in list
     if (selectedFilterUser.value == null) {
       final myEmail = _authController.currentUser.value?.email;
       if (myEmail != null) {
         selectedFilterUser.value = userList.firstWhereOrNull((u) => u.email == myEmail);
       }
-      // Fallback if not found or no current user
       if (selectedFilterUser.value == null && userList.isNotEmpty) {
         selectedFilterUser.value = userList.first;
       }
@@ -80,10 +80,41 @@ class HomeController extends GetxController {
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
-      final response = await _userProvider.getUsers();
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'] as List;
-        userList.assignAll(data.map((e) => User.fromJson(e)).toList());
+      final currentUser = _authController.currentUser.value;
+      final empId = currentUser?.employeeId;
+
+      if (empId != null) {
+        // --- HIERARCHY BASED FILTER ---
+        // Fetch users who report to this employee
+        final response = await _userProvider.getDirectReports(empId);
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final data = response.data['data'] as List;
+
+          // Convert Employee list to User list
+          // We map 'user_id' (email) to id/email and 'employee_name' to name
+          final reports = data.map((e) => User(
+            id: e['user_id'] ?? '',
+            name: e['employee_name'] ?? 'Unknown',
+            email: e['user_id'] ?? '',
+            roles: [], // Not needed for filter
+            employeeId: e['name'],
+          )).toList();
+
+          // Add Self to the list
+          if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
+            reports.insert(0, currentUser);
+          }
+
+          userList.assignAll(reports);
+        }
+      } else {
+        // --- FALLBACK (No Employee Link or Top Level) ---
+        // Fetch all active users
+        final response = await _userProvider.getUsers();
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final data = response.data['data'] as List;
+          userList.assignAll(data.map((e) => User.fromJson(e)).toList());
+        }
       }
     } catch (e) {
       print('Error fetching users: $e');
@@ -101,21 +132,24 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      // Example filters (if API supported):
-      // final userEmail = selectedFilterUser.value?.email;
-      // Map<String, dynamic> woFilters = {'status': 'In Process', 'owner': userEmail};
+      // Apply Filter: If a user is selected, filter Work Orders/Job Cards by that user (Owner)
+      // Note: This depends on API support. Assuming standard 'owner' filter works.
+      Map<String, dynamic> woFilters = {'status': 'In Process'};
+      Map<String, dynamic> jcFilters = {'status': 'Open'};
+
+      final filterEmail = selectedFilterUser.value?.email;
+      if (filterEmail != null) {
+        woFilters['owner'] = filterEmail;
+        jcFilters['owner'] = filterEmail;
+      }
 
       final results = await Future.wait([
-        _woProvider.getWorkOrders(limit: 100, filters: {'status': 'In Process'}),
-        _jcProvider.getJobCards(limit: 100, filters: {'status': 'Open'}),
+        _woProvider.getWorkOrders(limit: 0, filters: woFilters), // limit 0 for counts if possible, else high limit
+        _jcProvider.getJobCards(limit: 0, filters: jcFilters),
       ]);
 
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
       activeJobCardsCount.value = _getCountFromResponse(results[1]);
-
-      // Mock Data for Speedometer Demo if empty results
-      if (activeWorkOrdersCount.value == 0) activeWorkOrdersCount.value = 4; // Red zone
-      if (activeJobCardsCount.value == 0) activeJobCardsCount.value = 35;  // Green zone
 
     } catch (e) {
       print('Error fetching dashboard stats: $e');
@@ -125,7 +159,6 @@ class HomeController extends GetxController {
   }
 
   int _getCountFromResponse(dynamic response) {
-    // Check for Dio Response structure
     if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
       return (response.data['data'] as List).length;
     }
@@ -142,7 +175,7 @@ class HomeController extends GetxController {
       if (isEan) {
         final itemCode = code.length > 7 ? code.substring(0, 7) : code;
         final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
-        // Correctly handling Dio Response
+
         if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
           final item = Item.fromJson(response.data['data'][0]);
           Get.bottomSheet(ItemDetailSheet(item: item), isScrollControlled: true);
@@ -171,7 +204,6 @@ class HomeController extends GetxController {
   // --- Navigation ---
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
 
-  // Public method called by main.dart routing callback
   void updateActiveScreen(String route) {
     _updateActiveScreenForRoute(route);
   }
