@@ -56,27 +56,17 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             ),
             const Divider(height: 24),
 
-            if (controller.currentOwner.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Added by ${controller.currentOwner} • ${FormattingHelper.getRelativeTime(controller.currentCreation)}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-
             // Batch Input
             Obx(() => _buildInputGroup(
               label: 'Batch No',
               color: Colors.purple,
+              // Grey out background if validated
+              bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
               child: TextFormField(
+                key: const ValueKey('batch_field'),
                 controller: controller.bsBatchController,
+                focusNode: controller.batchFocusNode,
+                // Lock field if validated
                 readOnly: controller.bsIsBatchReadOnly.value,
                 autofocus: !controller.bsIsBatchReadOnly.value && controller.currentItemNameKey.value == null,
                 decoration: InputDecoration(
@@ -90,14 +80,17 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Colors.purple, width: 2),
                   ),
-                  filled: controller.bsIsBatchReadOnly.value,
-                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : null,
+                  filled: true,
+                  // If validated, fill color matches wrapper. If editing, white.
+                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : Colors.white,
+
+                  // Reactive Icon
                   suffixIcon: _isValidatingIcon(
-                    controller.isValidatingBatch.value,
+                    controller.bsIsLoadingBatch.value,
                     controller.bsIsBatchValid.value,
-                    isReadOnly: controller.bsIsBatchReadOnly.value,
-                    onCheck: () => controller.validateBatch(controller.bsBatchController.text),
                     color: Colors.purple,
+                    onSubmit: () => controller.validateBatch(controller.bsBatchController.text),
+                    onReset: controller.resetBatchValidation,
                   ),
                 ),
                 onFieldSubmitted: (value) => controller.validateBatch(value),
@@ -110,9 +103,13 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             Obx(() => _buildInputGroup(
               label: 'Target Rack',
               color: Colors.green,
+              bgColor: controller.isTargetRackValid.value ? Colors.green.shade50 : null,
               child: TextFormField(
+                key: const ValueKey('rack_field'),
                 controller: controller.bsRackController,
                 focusNode: controller.targetRackFocusNode,
+                // Lock field if validated
+                readOnly: controller.isTargetRackValid.value,
                 decoration: InputDecoration(
                   hintText: 'Rack',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -124,11 +121,19 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Colors.green, width: 2),
                   ),
-                  suffixIcon: controller.isTargetRackValid.value
-                      ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-                      : null,
+                  filled: true,
+                  fillColor: controller.isTargetRackValid.value ? Colors.green.shade50 : Colors.white,
+
+                  // Reactive Icon
+                  suffixIcon: _isValidatingIcon(
+                    controller.isValidatingTargetRack.value,
+                    controller.isTargetRackValid.value,
+                    color: Colors.green,
+                    onSubmit: () => controller.validateRack(controller.bsRackController.text),
+                    onReset: controller.resetRackValidation,
+                  ),
                 ),
-                onFieldSubmitted: (val) => controller.validateRack(val, false),
+                onFieldSubmitted: (val) => controller.validateRack(val),
               ),
             )),
 
@@ -142,6 +147,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                 children: [
                   Expanded(
                     child: TextFormField(
+                      key: const ValueKey('qty_field'),
                       controller: controller.bsQtyController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       textAlign: TextAlign.center,
@@ -150,6 +156,13 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.symmetric(vertical: 8),
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return 'Required';
+                        final qty = double.tryParse(value);
+                        if (qty == null) return 'Invalid number';
+                        if (qty <= 0) return 'Must be > 0';
+                        return null;
+                      },
                     ),
                   ),
                   _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
@@ -161,23 +174,20 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             const SizedBox(height: 24),
 
             // Submit Button
-            Obx(() {
-              final isValid = controller.isSheetValid.value;
-              return SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: isValid ? controller.addItem : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: isValid ? Theme.of(context).primaryColor : Colors.grey.shade300,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  child: Text(controller.currentItemNameKey.value != null ? 'Update Item' : 'Add Item'),
+            Obx(() => SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: controller.isSheetValid.value ? controller.addItem : null,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: controller.isSheetValid.value ? Theme.of(context).primaryColor : Colors.grey.shade300,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-              );
-            }),
+                child: Text(controller.currentItemNameKey.value != null ? 'Update Item' : 'Add Item'),
+              ),
+            )),
 
             SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
           ],
@@ -186,7 +196,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
     );
   }
 
-  Widget _buildInputGroup({required String label, required Color color, required Widget child}) {
+  Widget _buildInputGroup({required String label, required Color color, required Widget child, Color? bgColor}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -196,7 +206,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
         ),
         Container(
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.05),
+            color: bgColor ?? color.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(8),
           ),
           child: child,
@@ -224,19 +234,32 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
     );
   }
 
-  Widget? _isValidatingIcon(bool isLoading, bool isValid, {bool isReadOnly = false, VoidCallback? onCheck, required Color color}) {
+  Widget? _isValidatingIcon(bool isLoading, bool isValid, {
+    required Color color,
+    required VoidCallback onSubmit,
+    required VoidCallback onReset,
+  }) {
     if (isLoading) {
       return Padding(
         padding: const EdgeInsets.all(12.0),
         child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, color: color)),
       );
     }
-    if (isValid || isReadOnly) {
-      return Icon(Icons.check_circle, color: color);
+
+    if (isValid) {
+      // Show Green Edit/Reset Icon to allow user to re-enable field
+      return IconButton(
+        icon: const Icon(Icons.edit, size: 20), // Or Icons.check_circle if strictly status
+        tooltip: 'Edit Field',
+        onPressed: onReset,
+        color: color,
+      );
     }
+
+    // Show Submit/Check icon to trigger validation
     return IconButton(
       icon: const Icon(Icons.check),
-      onPressed: onCheck,
+      onPressed: onSubmit,
       color: Colors.grey,
     );
   }
