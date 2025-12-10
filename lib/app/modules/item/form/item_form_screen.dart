@@ -14,6 +14,13 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.item.value?.itemName ?? 'Item Details')),
+          automaticallyImplyLeading: false, // Don't show back arrow in bottom sheet
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Get.back(),
+            )
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Overview'),
@@ -36,7 +43,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             children: [
               _buildOverviewTab(context, item),
               _buildDashboardTab(context),
-              _buildAttachmentsTab(context), // Passed context
+              _buildAttachmentsTab(context),
             ],
           );
         }),
@@ -44,6 +51,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
+  // ... (Rest of the widget methods _buildOverviewTab, _buildDashboardTab, etc. remain unchanged)
   Widget _buildOverviewTab(BuildContext context, dynamic item) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),

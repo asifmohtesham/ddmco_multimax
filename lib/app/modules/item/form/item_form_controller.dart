@@ -14,7 +14,7 @@ class ItemFormController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  final String itemCode = Get.arguments['itemCode'];
+  String itemCode = '';
   var item = Rx<Item?>(null);
   var isLoading = true.obs;
 
@@ -32,12 +32,27 @@ class ItemFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Support standard navigation arguments
+    if (Get.arguments != null && Get.arguments is Map && Get.arguments['itemCode'] != null) {
+      itemCode = Get.arguments['itemCode'];
+      _loadAllData();
+    }
+  }
+
+  // New method to load data manually (for Bottom Sheet usage)
+  void loadItem(String code) {
+    itemCode = code;
+    _loadAllData();
+  }
+
+  void _loadAllData() {
     fetchItemDetails();
     fetchAttachments();
     fetchDashboardData();
   }
 
   Future<void> fetchItemDetails() async {
+    if (itemCode.isEmpty) return;
     isLoading.value = true;
     try {
       final response = await _provider.getItems(limit: 1, filters: {'item_code': itemCode});
@@ -54,6 +69,7 @@ class ItemFormController extends GetxController {
   }
 
   Future<void> fetchAttachments() async {
+    if (itemCode.isEmpty) return;
     try {
       final response = await _apiProvider.getDocumentList('File', filters: {
         'attached_to_doctype': 'Item',
@@ -69,6 +85,7 @@ class ItemFormController extends GetxController {
   }
 
   Future<void> fetchDashboardData() async {
+    if (itemCode.isEmpty) return;
     fetchStockLevels();
     fetchStockLedger();
     fetchBatchHistory();

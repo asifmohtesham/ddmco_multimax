@@ -15,6 +15,11 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 
+// Import Item Form components to use in BottomSheet
+import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/item/form/item_form_screen.dart';
+
+
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
 class HomeController extends GetxController {
@@ -95,6 +100,7 @@ class HomeController extends GetxController {
     fetchPerformanceData();
   }
 
+  // ... (Fetch Users, Dashboard Data, Performance Data methods remain the same) ...
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
@@ -166,8 +172,6 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- Performance Data Logic ---
-
   void toggleTimelineView(bool weekly) {
     if (isWeeklyView.value == weekly) return;
     isWeeklyView.value = weekly;
@@ -211,7 +215,7 @@ class HomeController extends GetxController {
 
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
-        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty', 'total_qty'], limit: 100),
         _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
       ]);
 
@@ -222,9 +226,7 @@ class HomeController extends GetxController {
       Map<String, TimelinePoint> buckets = {};
 
       if (isWeeklyView.value) {
-        // Generate dynamic buckets for the selected range
         DateTime current = startDate;
-        // Iterate by week until we pass the end date
         while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
           final key = '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
           final label = '${DateFormat('MMM').format(current)} W${_getWeekOfMonth(current)}';
@@ -235,7 +237,6 @@ class HomeController extends GetxController {
           current = current.add(const Duration(days: 7));
         }
       } else {
-        // Daily Buckets
         for (int i = 0; i < 7; i++) {
           final date = endDate.subtract(Duration(days: (6 - i)));
           final key = DateFormat('yyyy-MM-dd').format(date);
@@ -263,6 +264,7 @@ class HomeController extends GetxController {
               qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'SE') {
               qty = _safeParseDouble(item['custom_total_qty']);
+              if (qty == 0) qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'PR') {
               qty = _safeParseDouble(item['total_qty']);
             }
@@ -294,12 +296,8 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- Helpers ---
-
-  // Calculates 4-Week Cycle per Month (W1-W4)
   int _getWeekOfMonth(DateTime date) {
     int week = ((date.day - 1) / 7).floor() + 1;
-    // Cap at 4 to ensure days 29, 30, 31 fall into Week 4 bucket
     return week > 4 ? 4 : week;
   }
 
@@ -324,33 +322,46 @@ class HomeController extends GetxController {
     return 0;
   }
 
+  // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
     bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
 
     try {
+      // 1. Identify Item Code (Handle EAN)
+      String itemCode = code;
       if (isEan) {
-        final itemCode = code.length > 7 ? code.substring(0, 7) : code;
-        final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': itemCode});
-
+        final searchCode = code.length > 7 ? code.substring(0, 7) : code;
+        final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': searchCode});
         if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-          final item = Item.fromJson(response.data['data'][0]);
-          Get.bottomSheet(ItemDetailSheet(item: item), isScrollControlled: true);
+          itemCode = response.data['data'][0]['item_code'];
         } else {
-          GlobalSnackbar.error(title: 'Not Found', message: 'Item with code $itemCode not found.');
-        }
-      } else {
-        final itemCode = code;
-        final response = await _itemProvider.getStockLevels(itemCode);
-        if (response.statusCode == 200 && response.data['message']?['result'] != null) {
-          final List<dynamic> data = response.data['message']['result'];
-          final stockList = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
-          Get.bottomSheet(RackBalanceSheet(itemCode: itemCode, stockData: stockList), isScrollControlled: true);
-        } else {
-          GlobalSnackbar.error(message: 'Could not fetch stock report for $itemCode');
+          GlobalSnackbar.error(title: 'Not Found', message: 'Item with code $searchCode not found.');
+          return;
         }
       }
+
+      // 2. Initialize Controller
+      final itemFormController = Get.put(ItemFormController());
+      itemFormController.loadItem(itemCode);
+
+      // 3. Open Bottom Sheet with Full Form
+      await Get.bottomSheet(
+        FractionallySizedBox(
+          heightFactor: 0.9,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: const ItemFormScreen(),
+          ),
+        ),
+        isScrollControlled: true,
+        enableDrag: true,
+      );
+
+      // Cleanup
+      Get.delete<ItemFormController>();
+
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
@@ -358,7 +369,7 @@ class HomeController extends GetxController {
       barcodeController.clear();
     }
   }
-
+  // ... (Bottom bar taps, active screen updates etc. remain same) ...
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
 
   void updateActiveScreen(String route) {
