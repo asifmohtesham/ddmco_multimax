@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
@@ -31,7 +29,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             isScrollable: true,
             tabs: [
               Tab(text: 'Overview'),
-              Tab(text: 'Stock Levels'), // Renamed from Dashboard
+              Tab(text: 'Stock Levels'),
               Tab(text: 'Attributes'),
               Tab(text: 'Attachments'),
             ],
@@ -50,7 +48,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
           return TabBarView(
             children: [
               _buildOverviewTab(context, item),
-              _buildStockLevelsTab(context), // Updated method
+              _buildStockLevelsTab(context),
               _buildAttributesTab(context, item),
               _buildAttachmentsTab(context),
             ],
@@ -60,7 +58,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // --- Tab 2: Stock Levels (Revamped) ---
+  // --- Tab 2: Stock Levels (Revamped with Compact Batch Layout) ---
   Widget _buildStockLevelsTab(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
@@ -80,7 +78,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 24),
 
-          // 2. Batch-Wise History & Stock Age (New)
+          // 2. Batch-Wise History (Compact Layout)
           const Text('Batch-Wise Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Obx(() {
@@ -89,72 +87,68 @@ class ItemFormScreen extends GetView<ItemFormController> {
               return const Text('No batch history found.', style: TextStyle(color: Colors.grey));
             }
 
-            return SizedBox(
-              height: 140,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: controller.batchHistory.length,
-                separatorBuilder: (c, i) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final batch = controller.batchHistory[index];
-                  // Assuming 'from_date' is batch creation/inward date from report
-                  final dateStr = batch['from_date'] ?? DateTime.now().toString();
-                  final ageDays = controller.calculateStockAgeDays(dateStr);
+            // Using Wrap for "At a Glance" view without scrolling
+            return Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: controller.batchHistory.map((batch) {
+                final dateStr = batch['stock_age_date'];
+                final ageString = controller.getFormattedStockAge(dateStr);
+                final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
+                final qty = batch['balance_qty'];
+                final warehouse = batch['warehouse'];
 
-                  return Container(
-                    width: 200,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0,2))]
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(child: Text(batch['batch'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis)),
-                            Icon(Icons.qr_code, size: 16, color: Theme.of(context).primaryColor),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        if (batch['rack'] != null)
-                          Text('Rack: ${batch['rack']}', style: TextStyle(color: Colors.blueGrey.shade700, fontWeight: FontWeight.bold, fontSize: 12)),
-
-                        const Spacer(),
-
-                        Text('${batch['balance_qty']} ${controller.item.value?.stockUom ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 4),
-
-                        Row(
-                          children: [
-                            Icon(Icons.history, size: 12, color: Colors.orange.shade700),
-                            const SizedBox(width: 4),
-                            Text(
-                                '$ageDays days',
-                                style: TextStyle(color: Colors.orange.shade800, fontSize: 11, fontWeight: FontWeight.w600)
+                return Container(
+                  width: (MediaQuery.of(context).size.width / 1) - 18, // 1 items per row approx
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              batchNo,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const Spacer(),
-                            Text(
-                                FormattingHelper.getRelativeTime(dateStr),
-                                style: const TextStyle(color: Colors.grey, fontSize: 10)
+                          ),
+                          if (warehouse != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
+                              child: Text(warehouse, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                             ),
-                          ],
-                        )
-                      ],
-                    ),
-                  );
-                },
-              ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                          '$qty ${controller.item.value?.stockUom ?? ''}',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).primaryColor)
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Age: $ageString',
+                        style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             );
           }),
 
           const SizedBox(height: 24),
 
-          // 3. Ledger Entries (With Filter)
+          // 3. Ledger Entries
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -172,10 +166,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       initialDateRange: controller.ledgerDateRange.value
                   );
                   if (picked != null) controller.updateLedgerDateRange(picked);
-                  else if (controller.ledgerDateRange.value != null) {
-                    // Option to clear?
-                    // controller.clearLedgerDateRange();
-                  }
                 },
               ),
             ],
@@ -208,7 +198,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 final qty = (entry['actual_qty'] as num).toDouble();
                 final isPositive = qty > 0;
 
-                // Determine Subtitle based on Type
                 String subtitle = '${entry['voucher_no']}';
                 String? extraInfo;
 
@@ -271,8 +260,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ... (Overview, Attributes, Attachments tabs remain unchanged) ...
-
+  // ... (Other Tabs: Overview, Attributes, Attachments - No Changes) ...
   Widget _buildAttributesTab(BuildContext context, Item item) {
     if (item.attributes.isEmpty) {
       return Center(
@@ -286,7 +274,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
         ),
       );
     }
-
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: item.attributes.length,
@@ -330,7 +317,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 ),
               ),
             ),
-
           _buildSectionCard(
             title: 'General',
             children: [
@@ -341,9 +327,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               _buildDetailRow('Item Group', item.itemGroup),
             ],
           ),
-
           const SizedBox(height: 16),
-
           _buildSectionCard(
             title: 'Inventory',
             children: [
@@ -354,9 +338,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ]
             ],
           ),
-
           const SizedBox(height: 16),
-
           if (item.variantOf != null || item.description != null)
             _buildSectionCard(
               title: 'Description',
@@ -376,7 +358,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                   ),
               ],
             ),
-
           const SizedBox(height: 80),
         ],
       ),
@@ -397,7 +378,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
         );
       }
-
       return GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -459,7 +439,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     ],
                   ),
                 ),
-
                 Positioned(
                   left: 0,
                   right: 0,

@@ -198,7 +198,53 @@ class ItemFormController extends GetxController {
       final response = await _provider.getBatchWiseHistory(itemCode);
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        batchHistory.value = data.whereType<Map<String, dynamic>>().toList();
+        List<Map<String, dynamic>> historyList = data.whereType<Map<String, dynamic>>().toList();
+
+        // 1. Extract Batch Names
+        final batchIds = historyList
+            .map((e) => e['batch_no'] ?? e['batch'])
+            .where((val) => val != null && val.toString().isNotEmpty)
+            .map((e) => e.toString())
+            .toSet()
+            .toList();
+
+        // 2. Fetch Manufacturing Dates from Batch Document
+        if (batchIds.isNotEmpty) {
+          try {
+            final batchResponse = await _apiProvider.getDocumentList(
+                'Batch',
+                filters: {'name': ['in', batchIds]},
+                fields: ['name', 'manufacturing_date', 'creation'],
+                limit: batchIds.length
+            );
+
+            if (batchResponse.statusCode == 200 && batchResponse.data['data'] != null) {
+              final batchDocs = batchResponse.data['data'] as List;
+              final Map<String, String> dateMap = {};
+
+              for (var b in batchDocs) {
+                // Prefer Manufacturing Date, fallback to Creation Date
+                final mfgDate = b['manufacturing_date'] ?? b['creation'];
+                if (mfgDate != null) {
+                  dateMap[b['name']] = mfgDate;
+                }
+              }
+
+              // 3. Enrich history list with 'stock_age_date'
+              for (var i = 0; i < historyList.length; i++) {
+                // Some reports return 'batch_no', others 'batch'
+                final batchId = historyList[i]['batch_no'] ?? historyList[i]['batch'];
+                if (batchId != null && dateMap.containsKey(batchId)) {
+                  historyList[i]['stock_age_date'] = dateMap[batchId];
+                }
+              }
+            }
+          } catch (e) {
+            print('Error fetching batch details: $e');
+          }
+        }
+
+        batchHistory.value = historyList;
       }
     } catch (e) {
       print('Error fetching batch history: $e');
@@ -207,13 +253,28 @@ class ItemFormController extends GetxController {
     }
   }
 
-  int calculateStockAgeDays(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return 0;
+  // Improved Age Formatting
+  String getFormattedStockAge(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return 'N/A';
     try {
       final date = DateTime.parse(dateStr);
-      return DateTime.now().difference(date).inDays;
+      final now = DateTime.now();
+      final difference = now.difference(date).inDays;
+
+      if (difference < 30) return '$difference Days';
+
+      int years = difference ~/ 365;
+      int months = (difference % 365) ~/ 30;
+      int days = (difference % 365) % 30;
+
+      List<String> parts = [];
+      if (years > 0) parts.add('$years Year${years > 1 ? 's' : ''}');
+      if (months > 0) parts.add('$months Month${months > 1 ? 's' : ''}');
+      if (days > 0) parts.add('$days Day${days > 1 ? 's' : ''}');
+
+      return parts.join(', ');
     } catch (e) {
-      return 0;
+      return 'N/A';
     }
   }
 
@@ -245,7 +306,6 @@ class ItemFormController extends GetxController {
       await Dio().download(fullUrl, savePath);
       if (Get.isDialogOpen == true) Get.back();
 
-      // Updated to SharePlus as requested by deprecation warning
       await Share.shareXFiles([XFile(savePath)], text: 'Shared via Multimax ERP');
     } catch (e) {
       if (Get.isDialogOpen == true) Get.back();

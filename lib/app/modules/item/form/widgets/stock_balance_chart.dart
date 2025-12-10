@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 
@@ -41,7 +43,8 @@ class StockBalanceChart extends StatelessWidget {
       ..sort((a, b) => b.quantity.compareTo(a.quantity));
 
     final displayStocks = sortedStocks.length > 5
-        ? sortedStocks.sublist(0, 5)
+        // ? sortedStocks.sublist(0, 5)
+        ? sortedStocks
         : sortedStocks;
 
     return Card(
@@ -53,7 +56,7 @@ class StockBalanceChart extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Distribution by Warehouse (Top 5)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const Text('Distribution by Rack', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
             const SizedBox(height: 16),
             ...displayStocks.map((stock) => _buildBarRow(context, stock, maxQty)),
           ],
@@ -65,6 +68,7 @@ class StockBalanceChart extends StatelessWidget {
   Widget _buildBarRow(BuildContext context, WarehouseStock stock, double maxQty) {
     final double qty = stock.quantity < 0 ? 0 : stock.quantity;
     final double percentage = (qty / maxQty).clamp(0.0, 1.0);
+    log(stock.rack.toString());
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -74,9 +78,9 @@ class StockBalanceChart extends StatelessWidget {
           SizedBox(
             width: 80,
             child: Text(
-              stock.warehouse,
+              stock.rack ?? stock.warehouse,
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-              maxLines: 1,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
