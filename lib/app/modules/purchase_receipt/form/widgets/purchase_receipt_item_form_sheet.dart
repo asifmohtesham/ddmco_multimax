@@ -10,8 +10,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
 
   @override
   Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(16.0),
@@ -19,193 +17,170 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
         ),
-        child: Form(
-          key: formKey,
-          child: ListView(
-            controller: scrollController,
-            shrinkWrap: true,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Obx(() => Text(
-                          controller.currentItemNameKey.value != null ? 'Edit Item' : 'Add Item',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                        )),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${controller.currentItemCode}${controller.currentVariantOf.isNotEmpty ? ' • ${controller.currentVariantOf}' : ''}',
-                          style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
-                        ),
-                        Text(
-                          controller.currentItemName,
-                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Get.back(),
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-
-              if (controller.currentOwner.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Row(
+        child: ListView(
+          controller: scrollController,
+          shrinkWrap: true,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.info_outline, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
+                      Obx(() => Text(
+                        controller.currentItemNameKey.value != null ? 'Edit Item' : 'Add Item',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      )),
+                      const SizedBox(height: 4),
                       Text(
-                        'Added by ${controller.currentOwner} • ${FormattingHelper.getRelativeTime(controller.currentCreation)}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        '${controller.currentItemCode}${controller.currentVariantOf.isNotEmpty ? ' • ${controller.currentVariantOf}' : ''}',
+                        style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
+                      ),
+                      Text(
+                        controller.currentItemName,
+                        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-
-              // Batch Input
-              Obx(() => _buildInputGroup(
-                label: 'Batch No',
-                color: Colors.purple,
-                child: TextFormField(
-                  controller: controller.bsBatchController,
-                  readOnly: controller.bsIsBatchReadOnly.value,
-                  autofocus: !controller.bsIsBatchReadOnly.value && controller.currentItemNameKey.value == null,
-                  decoration: InputDecoration(
-                    hintText: 'Enter or scan batch',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.purple.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.purple, width: 2),
-                    ),
-                    filled: controller.bsIsBatchReadOnly.value,
-                    fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : null,
-                    suffixIcon: _isValidatingIcon(
-                      controller.isValidatingBatch.value,
-                      controller.bsIsBatchValid.value,
-                      isReadOnly: controller.bsIsBatchReadOnly.value,
-                      onCheck: () => controller.validateBatch(controller.bsBatchController.text),
-                      color: Colors.purple,
-                    ),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  onFieldSubmitted: (value) => controller.validateBatch(value),
+                IconButton(
+                  onPressed: () => Get.back(),
+                  icon: const Icon(Icons.close),
+                  style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
                 ),
-              )),
+              ],
+            ),
+            const Divider(height: 24),
 
-              const SizedBox(height: 16),
-
-              // Rack Input - FIXED: Explicitly not readonly
-              Obx(() => _buildInputGroup(
-                label: 'Target Rack',
-                color: Colors.green,
-                child: TextFormField(
-                  controller: controller.bsRackController,
-                  focusNode: controller.targetRackFocusNode,
-                  readOnly: false, // Ensure not readOnly
-                  decoration: InputDecoration(
-                    hintText: 'Rack',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.green.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.green, width: 2),
-                    ),
-                    suffixIcon: _isValidatingIcon(
-                      controller.isValidatingTargetRack.value,
-                      controller.isTargetRackValid.value,
-                      onCheck: () => controller.validateRack(controller.bsRackController.text, false),
-                      color: Colors.green,
-                    ),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  onFieldSubmitted: (val) => controller.validateRack(val, false),
-                ),
-              )),
-
-              const SizedBox(height: 16),
-
-              // Quantity Input - FIXED: Added buttons
-              _buildInputGroup(
-                label: 'Quantity',
-                color: Colors.black87,
+            if (controller.currentOwner.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
                 child: Row(
                   children: [
-                    _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
-                    Expanded(
-                      child: TextFormField(
-                        controller: controller.bsQtyController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8),
-                        ),
-                        onChanged: (_) => controller.checkForChanges(),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Required';
-                          final qty = double.tryParse(value);
-                          if (qty == null) return 'Invalid number';
-                          if (qty <= 0) return 'Must be > 0';
-                          if (controller.currentPurchaseOrderQty.value > 0 && qty > controller.currentPurchaseOrderQty.value) {
-                            return 'Exceeds PO (${controller.currentPurchaseOrderQty.value})';
-                          }
-                          return null;
-                        },
-                      ),
+                    const Icon(Icons.info_outline, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Added by ${controller.currentOwner} • ${FormattingHelper.getRelativeTime(controller.currentCreation)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                    _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
+            // Batch Input
+            Obx(() => _buildInputGroup(
+              label: 'Batch No',
+              color: Colors.purple,
+              child: TextFormField(
+                controller: controller.bsBatchController,
+                readOnly: controller.bsIsBatchReadOnly.value,
+                autofocus: !controller.bsIsBatchReadOnly.value && controller.currentItemNameKey.value == null,
+                decoration: InputDecoration(
+                  hintText: 'Enter or scan batch',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.purple.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.purple, width: 2),
+                  ),
+                  filled: controller.bsIsBatchReadOnly.value,
+                  fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : null,
+                  suffixIcon: _isValidatingIcon(
+                    controller.isValidatingBatch.value,
+                    controller.bsIsBatchValid.value,
+                    isReadOnly: controller.bsIsBatchReadOnly.value,
+                    onCheck: () => controller.validateBatch(controller.bsBatchController.text),
+                    color: Colors.purple,
+                  ),
+                ),
+                onFieldSubmitted: (value) => controller.validateBatch(value),
+              ),
+            )),
 
-              // Submit Button
-              Obx(() => SizedBox(
+            const SizedBox(height: 16),
+
+            // Rack Input
+            Obx(() => _buildInputGroup(
+              label: 'Target Rack',
+              color: Colors.green,
+              child: TextFormField(
+                controller: controller.bsRackController,
+                focusNode: controller.targetRackFocusNode,
+                decoration: InputDecoration(
+                  hintText: 'Rack',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.green.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.green, width: 2),
+                  ),
+                  suffixIcon: controller.isTargetRackValid.value
+                      ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+                      : null,
+                ),
+                onFieldSubmitted: (val) => controller.validateRack(val, false),
+              ),
+            )),
+
+            const SizedBox(height: 16),
+
+            // Quantity Input
+            _buildInputGroup(
+              label: 'Quantity',
+              color: Colors.black87,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: controller.bsQtyController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
+                  _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Submit Button
+            Obx(() {
+              final isValid = controller.isSheetValid.value;
+              return SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: (controller.currentItemNameKey.value == null || controller.isFormDirty.value) && controller.bsIsBatchValid.value
-                      ? () {
-                    if (formKey.currentState!.validate()) {
-                      controller.addItem();
-                    }
-                  }
-                      : null,
+                  onPressed: isValid ? controller.addItem : null,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Theme.of(context).primaryColor,
+                    backgroundColor: isValid ? Theme.of(context).primaryColor : Colors.grey.shade300,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   child: Text(controller.currentItemNameKey.value != null ? 'Update Item' : 'Add Item'),
                 ),
-              )),
+              );
+            }),
 
-              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-            ],
-          ),
+            SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+          ],
         ),
       ),
     );

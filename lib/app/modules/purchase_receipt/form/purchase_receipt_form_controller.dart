@@ -19,8 +19,7 @@ class PurchaseReceiptFormController extends GetxController {
   var isSaving = false.obs;
 
   // Dirty Check State
-  var isDirty = false.obs; // For the main document form
-  var isFormDirty = false.obs; // For the bottom sheet item form
+  var isDirty = false.obs;
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
@@ -42,16 +41,16 @@ class PurchaseReceiptFormController extends GetxController {
 
   // Context State
   var isItemSheetOpen = false.obs;
+  var bsMaxQty = 0.0.obs;
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
   var isValidatingBatch = false.obs;
 
   // Validation States
-  var isSourceRackValid = false.obs;
   var isTargetRackValid = false.obs;
-  var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
+  var isSheetValid = false.obs; // Main validity flag for the sheet
 
   // Item Editing State
   var currentOwner = '';
@@ -81,11 +80,16 @@ class PurchaseReceiptFormController extends GetxController {
     super.onInit();
     fetchWarehouses();
 
-    // Dirty Check Listeners for Main Form
+    // Document Level Listeners
     supplierController.addListener(_markDirty);
     postingDateController.addListener(_markDirty);
     postingTimeController.addListener(_markDirty);
     ever(setWarehouse, (_) => _markDirty());
+
+    // Sheet Level Listeners (Fixes Focus Issues)
+    bsQtyController.addListener(validateSheet);
+    bsBatchController.addListener(validateSheet);
+    bsRackController.addListener(validateSheet);
 
     if (mode == 'new') {
       _initNewPurchaseReceipt();
@@ -292,6 +296,7 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchValid.value = false;
     isValidatingBatch.value = false;
     isTargetRackValid.value = false;
+    isSheetValid.value = false;
 
     currentItemNameKey.value = null; // New Item Mode
     warehouse.value = null;
@@ -299,7 +304,6 @@ class PurchaseReceiptFormController extends GetxController {
     _initialBatch = '';
     _initialRack = '';
     _initialQty = '';
-    isFormDirty.value = false;
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -323,22 +327,51 @@ class PurchaseReceiptFormController extends GetxController {
     });
   }
 
-  void checkForChanges() {
-    bool dirty = false;
-    if (bsBatchController.text != _initialBatch) dirty = true;
-    if (bsRackController.text != _initialRack) dirty = true;
-    if (bsQtyController.text != _initialQty) dirty = true;
+  // --- Centralized Validation Logic ---
 
-    if (currentItemNameKey.value == null && bsQtyController.text.isNotEmpty) dirty = true;
+  void validateSheet() {
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    if (qty <= 0) {
+      isSheetValid.value = false;
+      return;
+    }
 
-    isFormDirty.value = dirty;
+    if (currentPurchaseOrderQty.value > 0 && qty > currentPurchaseOrderQty.value) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // Check if rack is empty (assuming rack is mandatory if field is visible)
+    if (bsRackController.text.isEmpty || !isTargetRackValid.value) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // Dirty check for existing items
+    if (currentItemNameKey.value != null) {
+      bool changed = false;
+      if (bsBatchController.text != _initialBatch) changed = true;
+      if (bsRackController.text != _initialRack) changed = true;
+      if (bsQtyController.text != _initialQty) changed = true;
+      if (!changed) {
+        isSheetValid.value = false; // Disable button if nothing changed
+        return;
+      }
+    }
+
+    isSheetValid.value = true;
   }
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta).clamp(0.0, 999999.0);
     bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-    checkForChanges();
+    // validateSheet called automatically via listener
   }
 
   Future<void> validateBatch(String batch) async {
@@ -360,19 +393,24 @@ class PurchaseReceiptFormController extends GetxController {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
 
-      checkForChanges();
       _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to check batch: $e');
       bsIsBatchValid.value = false;
     } finally {
       isValidatingBatch.value = false;
+      validateSheet(); // Re-evaluate
     }
   }
 
   Future<void> validateRack(String rack, bool isSource) async {
-    if (rack.isEmpty) return;
+    if (rack.isEmpty) {
+      isTargetRackValid.value = false;
+      validateSheet();
+      return;
+    }
 
+    // Auto-parse Warehouse from Rack Pattern
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -381,8 +419,8 @@ class PurchaseReceiptFormController extends GetxController {
       }
     }
 
-    // Since this is receipt, we are targeting a rack
-    isValidatingTargetRack.value = true;
+    // Optimistic valid while checking? Or wait?
+    // Let's wait to avoid false positives.
 
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
@@ -390,18 +428,22 @@ class PurchaseReceiptFormController extends GetxController {
         isTargetRackValid.value = true;
       } else {
         isTargetRackValid.value = false;
-        GlobalSnackbar.error(message: 'Rack not found');
+        // Optional: show snackbar only on explicit submit, not every keystroke if this was connected to listener
+        // But since this is triggered by field submission or debounce, it's okay.
       }
     } catch (e) {
       isTargetRackValid.value = false;
     } finally {
-      isValidatingTargetRack.value = false;
-      checkForChanges();
+      validateSheet();
     }
   }
 
   void _focusNextField() {
-    targetRackFocusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (targetRackFocusNode.canRequestFocus) {
+        targetRackFocusNode.requestFocus();
+      }
+    });
   }
 
   void editItem(PurchaseReceiptItem item) {
@@ -428,9 +470,9 @@ class PurchaseReceiptFormController extends GetxController {
 
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
-    isFormDirty.value = false;
-
     isTargetRackValid.value = item.rack != null && item.rack!.isNotEmpty;
+
+    validateSheet(); // Initial check
 
     isItemSheetOpen.value = true;
 
@@ -467,7 +509,6 @@ class PurchaseReceiptFormController extends GetxController {
     if (qty <= 0) return;
 
     final batch = bsBatchController.text;
-    if (!bsIsBatchValid.value && batch.isNotEmpty) return;
 
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
