@@ -110,7 +110,7 @@ class UserProfileScreen extends GetView<UserProfileController> {
                         leading: const Icon(Icons.lock_outline, color: Colors.blueGrey),
                         title: const Text('Change Password'),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _showChangePasswordDialog(context),
+                        onTap: () => _showChangePasswordSheet(context),
                       ),
                     ],
                   ),
@@ -238,7 +238,7 @@ class UserProfileScreen extends GetView<UserProfileController> {
     );
   }
 
-  // --- Dialogs & Helpers (Unchanged) ---
+  // --- Dialogs & Helpers ---
 
   void _showUpdateMobileDialog(BuildContext context, String? currentMobile) {
     final mobileController = TextEditingController(text: currentMobile);
@@ -282,49 +282,124 @@ class UserProfileScreen extends GetView<UserProfileController> {
     );
   }
 
-  void _showChangePasswordDialog(BuildContext context) {
+  void _showChangePasswordSheet(BuildContext context) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
+    final confirmPassController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Change Password'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: oldPassController,
-                decoration: const InputDecoration(labelText: 'Old Password', border: OutlineInputBorder()),
-                obscureText: true,
-                validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+    // Local state for visibility toggles
+    final RxBool obscureOld = true.obs;
+    final RxBool obscureNew = true.obs;
+    final RxBool obscureConfirm = true.obs;
+
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Change Password', style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Old Password
+                  Obx(() => TextFormField(
+                    controller: oldPassController,
+                    obscureText: obscureOld.value,
+                    decoration: InputDecoration(
+                      labelText: 'Current Password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureOld.value ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        onPressed: () => obscureOld.toggle(),
+                      ),
+                    ),
+                    validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                  )),
+                  const SizedBox(height: 16),
+
+                  // New Password
+                  Obx(() => TextFormField(
+                    controller: newPassController,
+                    obscureText: obscureNew.value,
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      prefixIcon: const Icon(Icons.vpn_key_outlined),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew.value ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        onPressed: () => obscureNew.toggle(),
+                      ),
+                    ),
+                    validator: (val) => val == null || val.length < 6 ? 'Minimum 6 characters required' : null,
+                  )),
+                  const SizedBox(height: 16),
+
+                  // Confirm Password
+                  Obx(() => TextFormField(
+                    controller: confirmPassController,
+                    obscureText: obscureConfirm.value,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      prefixIcon: const Icon(Icons.check_circle_outline),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm.value ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        onPressed: () => obscureConfirm.toggle(),
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.isEmpty) return 'Required';
+                      if (val != newPassController.text) return 'Passwords do not match';
+                      return null;
+                    },
+                  )),
+
+                  const SizedBox(height: 32),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: Obx(() => ElevatedButton(
+                      onPressed: controller.isUpdating.value ? null : () {
+                        if (formKey.currentState!.validate()) {
+                          controller.changePassword(oldPassController.text, newPassController.text);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: controller.isUpdating.value
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                          : const Text('Update Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    )),
+                  ),
+                  SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: newPassController,
-                decoration: const InputDecoration(labelText: 'New Password', border: OutlineInputBorder()),
-                obscureText: true,
-                validator: (val) => val == null || val.length < 6 ? 'Min 6 chars' : null,
-              ),
-            ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-          Obx(() => ElevatedButton(
-            onPressed: controller.isUpdating.value ? null : () {
-              if (formKey.currentState!.validate()) {
-                controller.changePassword(oldPassController.text, newPassController.text);
-              }
-            },
-            child: controller.isUpdating.value
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Change'),
-          )),
-        ],
       ),
+      isScrollControlled: true,
     );
   }
 
