@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/app_bottom_bar.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -20,154 +19,186 @@ class HomeScreen extends GetView<HomeController> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Data',
             onPressed: () {
               controller.fetchDashboardData();
               controller.fetchPerformanceData();
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            tooltip: 'Notifications',
+            onPressed: () {
+              Get.snackbar('Notifications', 'No new notifications');
+            },
+          ),
         ],
       ),
       drawer: const AppNavDrawer(),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await controller.fetchDashboardData();
-          await controller.fetchPerformanceData();
-        },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. User Selection Header
-              _buildUserSelectionHeader(context),
-
-              const SizedBox(height: 16),
-
-              // 2. Barcode Input
-              Obx(() => BarcodeInputWidget(
-                onScan: controller.onScan,
-                controller: controller.barcodeController,
-                isLoading: controller.isScanning.value,
-                hintText: 'Scan Item / Batch',
-                activeRoute: AppRoutes.HOME,
-              )),
-
-              const SizedBox(height: 24),
-
-              // 3. Performance Timeline
-              Obx(() => PerformanceTimelineCard(
-                isWeekly: controller.isWeeklyView.value,
-                onToggleView: controller.toggleTimelineView,
-                data: controller.timelineData,
-                isLoading: controller.isLoadingTimeline.value,
-                // Pass appropriate date params
-                selectedDate: controller.selectedDailyDate.value,
-                onDateChanged: controller.onDailyDateChanged,
-                selectedRange: controller.selectedWeeklyRange.value,
-                onRangeChanged: controller.onWeeklyRangeChanged,
-              )),
-
-              const SizedBox(height: 24),
-
-              // 4. KPI Speedometers
-              const Text('Daily Goals', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-
-              Obx(() {
-                if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                  return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
-                }
-
-                return Row(
+      body: Column(
+        children: [
+          // Scrollable Content Area
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await controller.fetchDashboardData();
+                await controller.fetchPerformanceData();
+              },
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Bottom padding for FAB
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: SpeedometerKpiCard(
-                        title: 'Work Orders',
-                        actual: controller.activeWorkOrdersCount.value,
-                        target: controller.targetWorkOrders,
-                        icon: Icons.assignment_outlined,
-                        onTap: controller.goToWorkOrder,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: SpeedometerKpiCard(
-                        title: 'Job Cards',
-                        actual: controller.activeJobCardsCount.value,
-                        target: controller.targetJobCards,
-                        icon: Icons.assignment_ind_outlined,
-                        onTap: controller.goToJobCard,
-                      ),
-                    ),
+                    // 1. User Context Card (Improvised Header)
+                    _buildUserContextCard(context),
+
+                    const SizedBox(height: 16),
+
+                    // 2. Performance Timeline (Visually grouped with context)
+                    Obx(() => PerformanceTimelineCard(
+                      isWeekly: controller.isWeeklyView.value,
+                      onToggleView: controller.toggleTimelineView,
+                      data: controller.timelineData,
+                      isLoading: controller.isLoadingTimeline.value,
+                      // Pass dates dynamically based on view type
+                      selectedDate: controller.isWeeklyView.value
+                          ? null // Range takes precedence in weekly view
+                          : controller.selectedDailyDate.value,
+                      selectedRange: controller.isWeeklyView.value
+                          ? controller.selectedWeeklyRange.value
+                          : null,
+                      onDateChanged: controller.onDailyDateChanged,
+                      onRangeChanged: controller.onWeeklyRangeChanged,
+                    )),
+
+                    const SizedBox(height: 24),
+
+                    // 3. KPI Speedometers
+                    const Text('Daily Goals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+
+                    Obx(() {
+                      if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
+                        return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
+                      }
+
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: SpeedometerKpiCard(
+                              title: 'Work Orders',
+                              actual: controller.activeWorkOrdersCount.value,
+                              target: controller.targetWorkOrders,
+                              icon: Icons.assignment_outlined,
+                              onTap: controller.goToWorkOrder,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: SpeedometerKpiCard(
+                              title: 'Job Cards',
+                              actual: controller.activeJobCardsCount.value,
+                              target: controller.targetJobCards,
+                              icon: Icons.assignment_ind_outlined,
+                              onTap: controller.goToJobCard,
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
                   ],
+                ),
+              ),
+            ),
+          ),
+
+          // 4. Pinned Bottom Scan Field (Consistent with Forms)
+          Obx(() => BarcodeInputWidget(
+            onScan: controller.onScan,
+            controller: controller.barcodeController,
+            isLoading: controller.isScanning.value,
+            hintText: 'Scan Item / Batch / Rack',
+            activeRoute: AppRoutes.HOME,
+          )),
+        ],
+      ),
+      // Floating Action Button Positioned above the Bottom Input
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 60.0),
+        child: FloatingActionButton.extended(
+          onPressed: controller.goToDeliveryNote,
+          icon: const Icon(Icons.add),
+          label: const Text('New Delivery Note'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserContextCard(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).primaryColor.withValues(alpha: 0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Theme.of(context).primaryColor.withValues(alpha: 0.1)),
+      ),
+      child: InkWell(
+        onTap: () => _showUserSearchModal(context),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Obx(() {
+                final selectedUser = controller.selectedFilterUser.value;
+                final userName = selectedUser?.name ?? 'Select User';
+                return CircleAvatar(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  child: Text(
+                    userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
                 );
               }),
-
-              const SizedBox(height: 80),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Showing data for',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 4),
+                    Obx(() {
+                      final selectedUser = controller.selectedFilterUser.value;
+                      return Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              selectedUser?.name ?? 'Select User',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.blueGrey),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: controller.goToDeliveryNote,
-        icon: const Icon(Icons.add),
-        label: const Text('New Delivery Note'),
-      ),
-      bottomNavigationBar: const AppBottomBar(),
     );
-  }
-
-  // ... (Rest of HomeScreen remains same)
-  Widget _buildUserSelectionHeader(BuildContext context) {
-    return Obx(() {
-      final selectedUser = controller.selectedFilterUser.value;
-      final userName = selectedUser?.name ?? 'Select User';
-
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Showing data for:', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-                InkWell(
-                  onTap: () => _showUserSearchModal(context),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            userName,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_drop_down),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          CircleAvatar(
-            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-            child: Text(
-              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-              style: TextStyle(color: Theme.of(context).primaryColor),
-            ),
-          )
-        ],
-      );
-    });
   }
 
   void _showUserSearchModal(BuildContext context) {
@@ -237,7 +268,6 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
-// ... SpeedometerKpiCard ...
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -268,7 +298,7 @@ class SpeedometerKpiCard extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      shadowColor: textColor.withOpacity(0.2),
+      shadowColor: textColor.withValues(alpha: 0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
@@ -277,6 +307,7 @@ class SpeedometerKpiCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Column(
             children: [
+              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
