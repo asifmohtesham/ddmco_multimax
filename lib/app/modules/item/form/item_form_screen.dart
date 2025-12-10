@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
+import 'package:multimax/app/data/models/item_model.dart'; // Import for Item model
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -10,11 +11,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4, // Increased to 4
       child: Scaffold(
         appBar: AppBar(
           title: Obx(() => Text(controller.item.value?.itemName ?? 'Item Details')),
-          automaticallyImplyLeading: false, // Don't show back arrow in bottom sheet
+          automaticallyImplyLeading: false,
           actions: [
             IconButton(
               icon: const Icon(Icons.close),
@@ -22,9 +23,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
             )
           ],
           bottom: const TabBar(
+            isScrollable: true, // Allow scrolling if tabs don't fit
             tabs: [
               Tab(text: 'Overview'),
               Tab(text: 'Dashboard'),
+              Tab(text: 'Attributes'), // New Tab
               Tab(text: 'Attachments'),
             ],
           ),
@@ -43,6 +46,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
             children: [
               _buildOverviewTab(context, item),
               _buildDashboardTab(context),
+              _buildAttributesTab(context, item), // New View
               _buildAttachmentsTab(context),
             ],
           );
@@ -51,14 +55,42 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ... (Rest of the widget methods _buildOverviewTab, _buildDashboardTab, etc. remain unchanged)
+  // --- New Attributes Tab Widget ---
+  Widget _buildAttributesTab(BuildContext context, Item item) {
+    if (item.attributes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.list_alt, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text('No attributes defined.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: item.attributes.length,
+      separatorBuilder: (context, index) => const Divider(),
+      itemBuilder: (context, index) {
+        final attr = item.attributes[index];
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(attr.attributeName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          trailing: Text(attr.attributeValue, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        );
+      },
+    );
+  }
+
   Widget _buildOverviewTab(BuildContext context, dynamic item) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image Header
           if (item.image != null)
             GestureDetector(
               onTap: () => _openFullScreenImage(context, 'https://erp.multimax.cloud${item.image}'),
@@ -82,7 +114,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ),
             ),
 
-          // 1. General Section
           _buildSectionCard(
             title: 'General',
             children: [
@@ -96,12 +127,10 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 16),
 
-          // 2. Inventory Section
           _buildSectionCard(
             title: 'Inventory',
             children: [
               _buildDetailRow('Default UOM', item.stockUom ?? '-'),
-              // Add Valuation Method here if available in model later
               if (item.countryOfOrigin != null) ...[
                 const Divider(),
                 _buildDetailRow('Country of Origin', item.countryOfOrigin!),
@@ -111,7 +140,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 16),
 
-          // 3. Variants & Description
           if (item.variantOf != null || item.description != null)
             _buildSectionCard(
               title: 'Description',
@@ -144,13 +172,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Stock Balance
           const Text('Stock Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Obx(() {
             if (controller.isLoadingStock.value) return const LinearProgressIndicator();
 
-            // Empty State Handling
             if (controller.stockLevels.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(24),
@@ -204,7 +230,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 24),
 
-          // 2. Ledger
           const Text('Recent Ledger Entries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Obx(() {
@@ -282,7 +307,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. Content (Image or Icon)
                 InkWell(
                   onTap: () {
                     if (isImg) {
@@ -317,12 +341,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 48), // Spacer for footer
+                      const SizedBox(height: 48),
                     ],
                   ),
                 ),
 
-                // 2. Footer Info Bar
                 Positioned(
                   left: 0,
                   right: 0,

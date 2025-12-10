@@ -1,3 +1,17 @@
+class ItemAttribute {
+  final String attributeName;
+  final String attributeValue;
+
+  ItemAttribute({required this.attributeName, required this.attributeValue});
+
+  factory ItemAttribute.fromJson(Map<String, dynamic> json) {
+    return ItemAttribute(
+      attributeName: json['attribute'] ?? '',
+      attributeValue: json['attribute_value'] ?? '',
+    );
+  }
+}
+
 class Item {
   final String name;
   final String itemName;
@@ -7,7 +21,8 @@ class Item {
   final String? variantOf;
   final String? countryOfOrigin;
   final String? description;
-  final String? stockUom; // Added: Essential ERPNext field
+  final String? stockUom;
+  final List<ItemAttribute> attributes; // Added
 
   Item({
     required this.name,
@@ -19,9 +34,13 @@ class Item {
     this.countryOfOrigin,
     this.description,
     this.stockUom,
+    this.attributes = const [],
   });
 
   factory Item.fromJson(Map<String, dynamic> json) {
+    var attrList = json['attributes'] as List? ?? [];
+    List<ItemAttribute> attributes = attrList.map((i) => ItemAttribute.fromJson(i)).toList();
+
     return Item(
       name: json['name'] ?? '',
       itemName: json['item_name'] ?? '',
@@ -32,6 +51,7 @@ class Item {
       countryOfOrigin: json['country_of_origin'],
       description: json['description'],
       stockUom: json['stock_uom'],
+      attributes: attributes,
     );
   }
 }

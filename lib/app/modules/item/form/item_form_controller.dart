@@ -55,9 +55,10 @@ class ItemFormController extends GetxController {
     if (itemCode.isEmpty) return;
     isLoading.value = true;
     try {
-      final response = await _provider.getItems(limit: 1, filters: {'item_code': itemCode});
-      if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-        item.value = Item.fromJson(response.data['data'][0]);
+      // Use getDocument to ensure we get child tables (Attributes)
+      final response = await _apiProvider.getDocument('Item', itemCode);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        item.value = Item.fromJson(response.data['data']);
       } else {
         GlobalSnackbar.error(message: 'Item not found');
       }
@@ -180,7 +181,6 @@ class ItemFormController extends GetxController {
       final response = await _provider.getBatchWiseHistory(itemCode);
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        // Filter out rows that might be headers or empty if the report structure varies
         batchHistory.value = data.whereType<Map<String, dynamic>>().toList();
       }
     } catch (e) {

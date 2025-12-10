@@ -322,14 +322,13 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
     if (code.isEmpty) return;
     isScanning.value = true;
     bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
 
     try {
-      // 1. Identify Item Code (Handle EAN)
+      // 1. Identify Item Code
       String itemCode = code;
       if (isEan) {
         final searchCode = code.length > 7 ? code.substring(0, 7) : code;
@@ -342,24 +341,25 @@ class HomeController extends GetxController {
         }
       }
 
-      // 2. Initialize Controller
+      // 2. Initialise Controller & Load Data
+      // Use Get.put to create a transient instance of the controller
       final itemFormController = Get.put(ItemFormController());
       itemFormController.loadItem(itemCode);
 
-      // 3. Open Bottom Sheet with Full Form
+      // 3. Open Bottom Sheet with Full Form (All Tabs)
       await Get.bottomSheet(
         FractionallySizedBox(
-          heightFactor: 0.9,
+          heightFactor: 0.9, // 90% height
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: const ItemFormScreen(),
+            child: const ItemFormScreen(), // Reuses the full screen widget
           ),
         ),
         isScrollControlled: true,
         enableDrag: true,
       );
 
-      // Cleanup
+      // Cleanup controller after sheet closes to avoid state persistence
       Get.delete<ItemFormController>();
 
     } catch (e) {
@@ -369,6 +369,7 @@ class HomeController extends GetxController {
       barcodeController.clear();
     }
   }
+
   // ... (Bottom bar taps, active screen updates etc. remain same) ...
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
 
