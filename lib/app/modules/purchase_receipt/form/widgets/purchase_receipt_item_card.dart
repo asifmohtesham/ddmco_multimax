@@ -19,15 +19,23 @@ class PurchaseReceiptItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Progress Calculation
-    final double poQty = item.purchaseOrderQty ?? 0.0;
+    // 1. Resolve Target Quantity via Controller Map
+    double targetQty = controller.getOrderedQty(item.purchaseOrderItem);
+
+    // If lookup failed (e.g. not loaded yet), try local item property
+    if (targetQty == 0) {
+      targetQty = item.purchaseOrderQty ?? 0.0;
+    }
+
+    // 2. Calculate Progress
     final double currentQty = item.qty;
-    final double percent = (poQty > 0) ? (currentQty / poQty).clamp(0.0, 1.0) : 0.0;
+    final double percent = (targetQty > 0) ? (currentQty / targetQty).clamp(0.0, 1.0) : 0.0;
 
     final bool isCompleted = percent >= 1.0;
-    final bool hasOverReceipt = currentQty > poQty && poQty > 0;
+    final bool hasOverReceipt = currentQty > targetQty && targetQty > 0;
 
     return Container(
+      // ... (Rest of styling remains identical to previous version)
       margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -48,7 +56,7 @@ class PurchaseReceiptItemCard extends StatelessWidget {
           onTap: () => controller.editItem(item),
           child: Column(
             children: [
-              // 1. Header Section (Standardized)
+              // Header Section
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
                 decoration: BoxDecoration(
@@ -74,10 +82,10 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                           Text(
                             item.itemCode,
                             style: const TextStyle(
-                              fontFamily: 'monospace',
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                               color: Colors.black87,
+                              fontFamily: 'monospace',
                               fontFeatures: [FontFeature.slashedZero()],
                             ),
                           ),
@@ -94,26 +102,22 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Actions
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
                           onPressed: () => controller.editItem(item),
-                          tooltip: 'Edit Item',
                         ),
                         Obx(() {
-                          // Only show delete if there is more than 1 item
                           if ((controller.purchaseReceipt.value?.items.length ?? 0) > 1) {
                             return IconButton(
                               icon: const Icon(Icons.delete, size: 20, color: Colors.red),
                               onPressed: () {
-                                if (item.name != null || item.name == null) {
-                                  controller.deleteItem(item.name ?? '');
+                                if (item.name != null) {
+                                  controller.deleteItem(item.name!);
                                 }
                               },
-                              tooltip: 'Remove Item',
                             );
                           }
                           return const SizedBox.shrink();
@@ -124,7 +128,7 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                 ),
               ),
 
-              // 2. Content Section
+              // Content Section
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
@@ -133,35 +137,20 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Badges
                         Expanded(
                           child: Wrap(
                             spacing: 8.0,
                             runSpacing: 8.0,
                             children: [
                               if (item.batchNo != null && item.batchNo!.isNotEmpty)
-                                _buildBadge(
-                                    icon: Icons.qr_code,
-                                    label: item.batchNo!,
-                                    color: Colors.purple,
-                                    isMono: true
-                                ),
+                                _buildBadge(icon: Icons.qr_code, label: item.batchNo!, color: Colors.purple, isMono: true),
                               if (item.rack != null && item.rack!.isNotEmpty)
-                                _buildBadge(
-                                    icon: Icons.shelves,
-                                    label: item.rack!,
-                                    color: Colors.blueGrey
-                                ),
+                                _buildBadge(icon: Icons.shelves, label: item.rack!, color: Colors.blueGrey),
                               if (item.warehouse.isNotEmpty)
-                                _buildBadge(
-                                    icon: Icons.store,
-                                    label: item.warehouse,
-                                    color: Colors.orange
-                                ),
+                                _buildBadge(icon: Icons.store, label: item.warehouse, color: Colors.orange),
                             ],
                           ),
                         ),
-                        // Large Quantity Display
                         Text(
                           NumberFormat('#,##0.##').format(item.qty),
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black),
@@ -169,14 +158,13 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                       ],
                     ),
 
-                    // 3. PO Progress Indicator
-                    if (poQty > 0) ...[
+                    if (targetQty > 0) ...[
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'PO Qty: ${NumberFormat('#,##0.##').format(poQty)}',
+                            'PO Qty: ${NumberFormat('#,##0.##').format(targetQty)}',
                             style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
                           ),
                           Text(
@@ -195,7 +183,6 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                         percent: percent,
                         padding: EdgeInsets.zero,
                         barRadius: const Radius.circular(3),
-                        // Orange if over-received, Green if complete, Blue if partial
                         progressColor: hasOverReceipt ? Colors.orange : (isCompleted ? Colors.green : Colors.blue),
                         backgroundColor: Colors.grey.shade100,
                       ),

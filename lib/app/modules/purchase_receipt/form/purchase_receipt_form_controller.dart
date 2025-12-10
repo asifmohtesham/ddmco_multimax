@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart'; // Import Dio for exception handling
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
+import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_form_sheet.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
+  final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   String name = Get.arguments['name'];
@@ -23,6 +27,9 @@ class PurchaseReceiptFormController extends GetxController {
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
+  // Cache for PO Item Quantities: Key = purchase_order_item ID, Value = Qty
+  var poItemQuantities = <String, double>{}.obs;
+
   final supplierController = TextEditingController();
   final postingDateController = TextEditingController();
   final postingTimeController = TextEditingController();
@@ -33,24 +40,23 @@ class PurchaseReceiptFormController extends GetxController {
 
   final TextEditingController barcodeController = TextEditingController();
 
-  // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
   final bsRackController = TextEditingController();
 
   var isItemSheetOpen = false.obs;
 
-  // Validation States
-  var bsIsLoadingBatch = false.obs;
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
+  var bsIsLoadingBatch = false.obs;
+  var isValidatingBatch = false.obs;
 
-  var isValidatingTargetRack = false.obs;
   var isTargetRackValid = false.obs;
+  var isValidatingTargetRack = false.obs;
+  var isValidatingSourceRack = false.obs; // Placeholder for consistency
 
   var isSheetValid = false.obs;
 
-  // Item Editing State
   var currentOwner = '';
   var currentCreation = '';
   var currentModifiedBy = '';
@@ -61,6 +67,8 @@ class PurchaseReceiptFormController extends GetxController {
   var currentUom = '';
   var currentItemIdx = 0.obs;
   var currentPurchaseOrderQty = 0.0.obs;
+  var currentPoItem = ''; // To store the link
+  var currentPoName = ''; // To store the link
 
   var currentItemNameKey = RxnString();
   var warehouse = RxnString();
@@ -82,7 +90,6 @@ class PurchaseReceiptFormController extends GetxController {
     postingTimeController.addListener(_markDirty);
     ever(setWarehouse, (_) => _markDirty());
 
-    // Sheet Listeners
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsRackController.addListener(validateSheet);
@@ -114,7 +121,6 @@ class PurchaseReceiptFormController extends GetxController {
     super.onClose();
   }
 
-  // ... (Fetch/Save methods remain the same) ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -133,6 +139,7 @@ class PurchaseReceiptFormController extends GetxController {
     isLoading.value = true;
     final now = DateTime.now();
     final supplier = Get.arguments['supplier'] ?? '';
+    final poName = Get.arguments['purchaseOrder'];
 
     purchaseReceipt.value = PurchaseReceipt(
       name: 'New Purchase Receipt',
@@ -155,6 +162,10 @@ class PurchaseReceiptFormController extends GetxController {
     postingDateController.text = DateFormat('yyyy-MM-dd').format(now);
     postingTimeController.text = DateFormat('HH:mm:ss').format(now);
 
+    if (poName != null && poName.isNotEmpty) {
+      _fetchLinkedPurchaseOrders([poName]);
+    }
+
     isLoading.value = false;
     isDirty.value = false;
   }
@@ -171,6 +182,19 @@ class PurchaseReceiptFormController extends GetxController {
         postingDateController.text = receipt.postingDate;
         postingTimeController.text = receipt.postingTime;
         setWarehouse.value = receipt.setWarehouse;
+
+        // IDENTIFY LINKED POS
+        final poNames = receipt.items
+            .map((i) => i.purchaseOrder)
+            .where((name) => name != null && name.isNotEmpty)
+            .whereType<String>()
+            .toSet()
+            .toList();
+
+        if (poNames.isNotEmpty) {
+          await _fetchLinkedPurchaseOrders(poNames);
+        }
+
       } else {
         GlobalSnackbar.error(message: 'Failed to fetch purchase receipt');
       }
@@ -182,7 +206,34 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
+  Future<void> _fetchLinkedPurchaseOrders(List<String> poNames) async {
+    for (var poName in poNames) {
+      try {
+        final response = await _poProvider.getPurchaseOrder(poName);
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final po = PurchaseOrder.fromJson(response.data['data']);
+
+          // Map Item Row IDs (name) to Quantity
+          for (var item in po.items) {
+            if (item.name != null) {
+              poItemQuantities[item.name!] = item.qty;
+            }
+          }
+        }
+      } catch (e) {
+        print('Failed to fetch linked PO $poName: $e');
+      }
+    }
+  }
+
+  double getOrderedQty(String? poItemName) {
+    if (poItemName == null) return 0.0;
+    return poItemQuantities[poItemName] ?? 0.0;
+  }
+
+  // ... (Save Purchase Receipt - Same as before)
   Future<void> savePurchaseReceipt() async {
+    // ... [Previous implementation]
     if (isSaving.value) return;
     isSaving.value = true;
 
@@ -225,6 +276,9 @@ class PurchaseReceiptFormController extends GetxController {
           GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
       }
+    } on DioException catch (e) {
+      // ... [Error Handling]
+      GlobalSnackbar.error(message: 'Error saving: ${e.message}');
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
@@ -232,8 +286,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  // --- Scan & Sheet Logic ---
-
+  // ... (Scan, Sheet Logic, Validation - Standardized) ...
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
@@ -244,19 +297,13 @@ class PurchaseReceiptFormController extends GetxController {
     }
 
     isScanning.value = true;
-
-    String itemCode;
+    String itemCode = barcode;
     String? batchNo;
 
     if (barcode.contains('-')) {
       final parts = barcode.split('-');
-      final ean = parts.first;
-      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo = parts.join('-');
-    } else {
-      final ean = barcode;
-      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo = null;
+      itemCode = parts.first;
+      batchNo = parts.length > 1 ? parts.sublist(1).join('-') : null;
     }
 
     try {
@@ -267,7 +314,6 @@ class PurchaseReceiptFormController extends GetxController {
         currentVariantOf = itemData['variant_of'] ?? '';
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
-        currentPurchaseOrderQty.value = 0.0;
 
         currentOwner = '';
         currentCreation = '';
@@ -275,7 +321,12 @@ class PurchaseReceiptFormController extends GetxController {
         currentModifiedBy = '';
         currentItemIdx.value = 0;
 
-        _openBottomSheet(scannedBatch: batchNo);
+        // Reset PO links for fresh scan
+        currentPurchaseOrderQty.value = 0.0;
+        currentPoItem = '';
+        currentPoName = '';
+
+        _openQtySheet(scannedBatch: batchNo);
       } else {
         GlobalSnackbar.error(message: 'Item not found');
       }
@@ -287,15 +338,15 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  void _openBottomSheet({String? scannedBatch}) {
+  void _openQtySheet({String? scannedBatch}) {
     bsQtyController.clear();
     bsBatchController.clear();
     bsRackController.clear();
 
-    // Reset States
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
     bsIsLoadingBatch.value = false;
+
     isTargetRackValid.value = false;
     isSheetValid.value = false;
 
@@ -334,43 +385,41 @@ class PurchaseReceiptFormController extends GetxController {
     bool valid = true;
     if (qty <= 0) valid = false;
 
-    // Batch must be valid if entered
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
-
-    // Rack must be valid
     if (bsRackController.text.isEmpty || !isTargetRackValid.value) valid = false;
 
-    // Dirty check logic
     if (currentItemNameKey.value != null) {
-      bool dirty = false;
-      if (bsBatchController.text != _initialBatch) dirty = true;
-      if (bsRackController.text != _initialRack) dirty = true;
-      if (bsQtyController.text != _initialQty) dirty = true;
-      isFormDirty.value = dirty;
-      if (!dirty) valid = false;
+      bool changed = false;
+      if (bsBatchController.text != _initialBatch) changed = true;
+      if (bsRackController.text != _initialRack) changed = true;
+      if (bsQtyController.text != _initialQty) changed = true;
+      isFormDirty.value = changed;
+      if (!changed) valid = false;
     } else {
-      // For new items, being valid is enough
       isFormDirty.value = true;
     }
 
     isSheetValid.value = valid;
   }
 
+  void onRackChanged(String val) {
+    if (isTargetRackValid.value) {
+      isTargetRackValid.value = false;
+    }
+    validateSheet();
+  }
+
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta).clamp(0.0, 999999.0);
     bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-    validateSheet();
   }
-
-  // --- Validation Methods ---
 
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
 
     bsIsLoadingBatch.value = true;
     try {
-      // Logic: Just check if we can list it. If empty, it's a new batch.
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
@@ -384,7 +433,6 @@ class PurchaseReceiptFormController extends GetxController {
       } else {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
-
       _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Error validating batch');
@@ -399,7 +447,6 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
     validateSheet();
-    // Focus back on batch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       batchFocusNode.requestFocus();
     });
@@ -414,7 +461,6 @@ class PurchaseReceiptFormController extends GetxController {
 
     isValidatingTargetRack.value = true;
 
-    // Auto-parse
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -457,8 +503,6 @@ class PurchaseReceiptFormController extends GetxController {
     });
   }
 
-  // --- CRUD Operations ---
-
   void editItem(PurchaseReceiptItem item) {
     currentItemNameKey.value = item.name;
     currentOwner = item.owner;
@@ -469,7 +513,12 @@ class PurchaseReceiptFormController extends GetxController {
     currentItemName = item.itemName ?? '';
     currentVariantOf = item.customVariantOf ?? '';
     currentItemIdx.value = item.idx;
-    currentPurchaseOrderQty.value = item.purchaseOrderQty ?? 0.0;
+    currentUom = item.uom ?? '';
+
+    // Set PO links if editing existing item
+    currentPoItem = item.purchaseOrderItem ?? '';
+    currentPoName = item.purchaseOrder ?? '';
+    currentPurchaseOrderQty.value = getOrderedQty(currentPoItem);
 
     _initialQty = item.qty.toString();
     _initialBatch = item.batchNo ?? '';
@@ -481,7 +530,6 @@ class PurchaseReceiptFormController extends GetxController {
 
     warehouse.value = item.warehouse;
 
-    // Set initial validation states for existing items
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
     isTargetRackValid.value = item.rack != null && item.rack!.isNotEmpty;
@@ -509,11 +557,9 @@ class PurchaseReceiptFormController extends GetxController {
   void deleteItem(String uniqueName) {
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
     currentItems.removeWhere((i) => i.name == uniqueName);
-
     purchaseReceipt.update((val) {
       val?.items.assignAll(currentItems);
     });
-
     isDirty.value = true;
     GlobalSnackbar.success(message: 'Item removed');
   }
@@ -523,10 +569,14 @@ class PurchaseReceiptFormController extends GetxController {
     if (qty <= 0) return;
 
     final batch = bsBatchController.text;
+
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
     final index = currentItems.indexWhere((i) => i.name == uniqueId);
+
+    String finalWarehouse = warehouse.value ?? '';
+    if (finalWarehouse.isEmpty) finalWarehouse = setWarehouse.value ?? '';
 
     if (index != -1) {
       final existing = currentItems[index];
@@ -534,7 +584,7 @@ class PurchaseReceiptFormController extends GetxController {
         qty: qty,
         batchNo: batch,
         rack: bsRackController.text,
-        warehouse: warehouse.value!.isNotEmpty ? warehouse.value! : existing.warehouse,
+        warehouse: finalWarehouse.isNotEmpty ? finalWarehouse : existing.warehouse,
       );
     } else {
       currentItems.add(PurchaseReceiptItem(
@@ -546,9 +596,13 @@ class PurchaseReceiptFormController extends GetxController {
         itemName: currentItemName,
         batchNo: batch,
         rack: bsRackController.text,
-        warehouse: warehouse.value ?? '',
+        warehouse: finalWarehouse,
+        uom: currentUom,
+        stockUom: currentUom,
         customVariantOf: currentVariantOf,
-        purchaseOrderQty: currentPurchaseOrderQty.value,
+        purchaseOrderItem: currentPoItem.isNotEmpty ? currentPoItem : null,
+        purchaseOrder: currentPoName.isNotEmpty ? currentPoName : null,
+        purchaseOrderQty: currentPurchaseOrderQty.value > 0 ? currentPurchaseOrderQty.value : null,
         idx: currentItems.length + 1,
       ));
     }

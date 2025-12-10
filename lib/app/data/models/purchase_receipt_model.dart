@@ -67,15 +67,15 @@ class PurchaseReceiptItem {
   final String? batchNo;
   final String? rack;
   final String warehouse;
-  final String? purchaseOrderItem;
-  final String? uom; // Added
-  final String? stockUom; // Added
-  final double conversionFactor; // Added
+  final String? purchaseOrderItem; // The Unique ID of the row in PO
+  final String? purchaseOrder;     // The Name of the PO Header (Added)
+  final String? uom;
+  final String? stockUom;
+  final double conversionFactor;
 
-  // New Fields
   final int idx;
   final String? customVariantOf;
-  final double? purchaseOrderQty;
+  final double? purchaseOrderQty; // Can still be used if server sends it directly
 
   PurchaseReceiptItem({
     this.name,
@@ -91,6 +91,7 @@ class PurchaseReceiptItem {
     this.rack,
     required this.warehouse,
     this.purchaseOrderItem,
+    this.purchaseOrder,
     this.uom,
     this.stockUom,
     this.conversionFactor = 1.0,
@@ -114,6 +115,7 @@ class PurchaseReceiptItem {
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       purchaseOrderItem: json['purchase_order_item'],
+      purchaseOrder: json['purchase_order'], // Map standard ERPNext field
       uom: json['uom'],
       stockUom: json['stock_uom'],
       conversionFactor: (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
@@ -137,6 +139,7 @@ class PurchaseReceiptItem {
     String? rack,
     String? warehouse,
     String? purchaseOrderItem,
+    String? purchaseOrder,
     String? uom,
     String? stockUom,
     double? conversionFactor,
@@ -158,6 +161,7 @@ class PurchaseReceiptItem {
       rack: rack ?? this.rack,
       warehouse: warehouse ?? this.warehouse,
       purchaseOrderItem: purchaseOrderItem ?? this.purchaseOrderItem,
+      purchaseOrder: purchaseOrder ?? this.purchaseOrder,
       uom: uom ?? this.uom,
       stockUom: stockUom ?? this.stockUom,
       conversionFactor: conversionFactor ?? this.conversionFactor,
@@ -171,19 +175,19 @@ class PurchaseReceiptItem {
     final Map<String, dynamic> data = {
       'item_code': itemCode,
       'qty': qty,
-      'received_qty': qty, // Required for PR validation usually
+      'received_qty': qty,
       'rate': rate,
       'batch_no': batchNo,
       'rack': rack,
-      'warehouse': warehouse, // CRITICAL FIX: Was missing
+      'warehouse': warehouse,
       'purchase_order_item': purchaseOrderItem,
+      'purchase_order': purchaseOrder,
       'uom': uom,
-      'stock_uom': stockUom ?? uom, // Fallback to uom if stock_uom missing
+      'stock_uom': stockUom ?? uom,
       'conversion_factor': conversionFactor,
       'idx': idx,
     };
 
-    // Only add name if it's a real server-side ID
     if (name != null && !name!.startsWith('local_')) {
       data['name'] = name;
     }
