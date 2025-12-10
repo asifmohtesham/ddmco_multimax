@@ -77,6 +77,7 @@ class PackingSlipFormController extends GetxController {
       fromCaseNo: nextCaseNo,
       toCaseNo: nextCaseNo,
       items: [],
+      customer: '', // Will be populated by fetchLinkedDeliveryNote
     );
 
     if (dnName.isNotEmpty) {
@@ -110,7 +111,13 @@ class PackingSlipFormController extends GetxController {
     try {
       final response = await _dnProvider.getDeliveryNote(dnName);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        linkedDeliveryNote.value = DeliveryNote.fromJson(response.data['data']);
+        final dn = DeliveryNote.fromJson(response.data['data']);
+        linkedDeliveryNote.value = dn;
+
+        // Auto-populate Customer in Packing Slip if missing
+        if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
+          packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
+        }
       }
     } catch (e) {
       log('Failed to fetch linked DN: $e');
@@ -140,11 +147,7 @@ class PackingSlipFormController extends GetxController {
       final parts = barcode.split('-');
       final ean = parts.first;
       itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo = parts.join('-'); // Full string as batch usually, or just part 2? Assuming full logic
-      // Actually standard logic: EAN is part 1, Batch is the rest.
-      // If your batch format is specifically formatted, adjust here.
-      // Reverting to simple split for safety based on provided controllers:
-      batchNo = barcode;
+      batchNo = parts.join('-');
     } else {
       final ean = barcode;
       itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
@@ -168,8 +171,6 @@ class PackingSlipFormController extends GetxController {
     // Try exact match first
     return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
       bool codeMatch = item.itemCode == code;
-      // If scanned has batch, it MUST match. If scanned doesn't, we can match any line
-      // (usually implies prompting user, but for now match first available)
       bool batchMatch = (batch == null) || (item.batchNo == batch);
       return codeMatch && batchMatch;
     });
@@ -181,7 +182,6 @@ class PackingSlipFormController extends GetxController {
     _populateItemDetails(item);
 
     // Calculate max allowed (Required - Already Packed in THIS slip)
-    // Note: Ideally check across ALL slips, but for now checking this slip
     double existingPacked = 0;
     final currentSlipItems = packingSlip.value?.items ?? [];
     for (var i in currentSlipItems) {
@@ -280,8 +280,6 @@ class PackingSlipFormController extends GetxController {
       }
     } else {
       // Add New
-      // Check if exact same line exists (same dn_detail) to merge?
-      // Usually packing slips list individually, but merging is cleaner if identical.
       final existingIndex = currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
       if (existingIndex != -1) {
         final existing = currentItems[existingIndex];
@@ -373,7 +371,6 @@ class PackingSlipFormController extends GetxController {
             'item_code': e.itemCode,
             'qty': e.qty,
             'dn_detail': e.dnDetail,
-            // Add other fields if necessary
           };
           // Only send 'name' if it's not empty/new to update existing row
           if (e.name.isNotEmpty) json['name'] = e.name;
@@ -389,7 +386,6 @@ class PackingSlipFormController extends GetxController {
         final saved = PackingSlip.fromJson(response.data['data']);
         packingSlip.value = saved;
 
-        // If it was new, update the route args or name so next save is an update
         if (isNew) {
           name = saved.name;
           mode = 'edit';

@@ -87,6 +87,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 const Divider(height: 24),
               ],
               TextFormField(
+                key: ValueKey(slip.customer), // Force refresh when customer data loads
                 initialValue: slip.customer ?? '',
                 readOnly: true,
                 decoration: const InputDecoration(
@@ -201,7 +202,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             isLoading: controller.isScanning.value,
             hintText: 'Scan Item / Batch',
             controller: controller.barcodeController,
-            activeRoute: AppRoutes.PACKING_SLIP_FORM, // Add this
+            activeRoute: AppRoutes.PACKING_SLIP_FORM,
           )),
       ],
     );
