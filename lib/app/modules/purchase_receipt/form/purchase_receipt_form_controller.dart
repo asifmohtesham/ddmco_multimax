@@ -303,8 +303,10 @@ class PurchaseReceiptFormController extends GetxController {
     }
     if (barcode.isEmpty) return;
 
+    // --- UX FIX: Clear scanner immediately when handling sheet scans ---
     if (isItemSheetOpen.value) {
-      // Batch Logic: Handle 3-char suffix scan for 8-digit EAN items
+      barcodeController.clear();
+
       String batchToUse = barcode;
       if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode) && RegExp(r'^\d{8}$').hasMatch(currentItemCode)) {
         batchToUse = '$currentItemCode-$barcode';
@@ -314,8 +316,10 @@ class PurchaseReceiptFormController extends GetxController {
       validateBatch(batchToUse);
       return;
     }
+    // ------------------------------------------------------------------
 
     isScanning.value = true;
+    // ... (rest of main scan logic remains unchanged) ...
     String itemCode = barcode;
     String? batchNo;
 
@@ -604,10 +608,9 @@ class PurchaseReceiptFormController extends GetxController {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
+    // ... (item creation logic unchanged) ...
     final batch = bsBatchController.text;
-
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
     final index = currentItems.indexWhere((i) => i.name == uniqueId);
 
@@ -662,12 +665,13 @@ class PurchaseReceiptFormController extends GetxController {
     );
 
     Get.back();
+    barcodeController.clear(); // --- UX FIX: Ensure scanner is clear ---
 
     if (mode == 'new') {
       savePurchaseReceipt();
     } else {
       isDirty.value = true;
-      await savePurchaseReceipt(); // Auto-save
+      await savePurchaseReceipt();
       GlobalSnackbar.success(message: index != -1 ? 'Item updated' : 'Item added');
     }
   }

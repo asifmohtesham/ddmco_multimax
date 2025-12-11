@@ -13,15 +13,14 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/data/services/storage_service.dart'; // Added Import
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
-  final StorageService _storageService = Get.find<StorageService>(); // Get Storage
+  final StorageService _storageService = Get.find<StorageService>();
 
-  // ... (Existing variables: name, mode, isLoading, etc.) ...
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
@@ -51,15 +50,12 @@ class StockEntryFormController extends GetxController {
   var isFetchingWarehouses = false.obs;
   var posUploadSerialOptions = <String>[].obs;
 
-  // POS Selection vars
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
-  // Sheet State
-  var itemFormKey = GlobalKey<FormState>(); // ADDED: Form Key stored in controller
+  var itemFormKey = GlobalKey<FormState>();
 
-  // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
   final bsSourceRackController = TextEditingController();
@@ -86,13 +82,11 @@ class StockEntryFormController extends GetxController {
   final sourceRackFocusNode = FocusNode();
   final targetRackFocusNode = FocusNode();
 
-  // --- Dirty Check State for Sheet ---
   String _initialQty = '';
   String _initialBatch = '';
   String _initialSourceRack = '';
   String _initialTargetRack = '';
 
-  // Added: Track the scanned EAN to reconstruct Batch IDs
   String currentScannedEan = '';
 
   @override
@@ -109,11 +103,19 @@ class StockEntryFormController extends GetxController {
       _markDirty();
     });
 
-    // Listen to all inputs to trigger validation and dirty check
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsSourceRackController.addListener(validateSheet);
     bsTargetRackController.addListener(validateSheet);
+
+    // --- Auto-Add Trigger ---
+    // Debounce allows typing multi-digit quantities without triggering on the first digit
+    debounce(isSheetValid, (bool valid) {
+      if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
+        addItem();
+      }
+    }, time: const Duration(milliseconds: 500));
+    // ------------------------
 
     if (mode == 'new') {
       _initNewStockEntry();
@@ -121,8 +123,6 @@ class StockEntryFormController extends GetxController {
       fetchStockEntry();
     }
   }
-
-  // ... (Existing methods: onClose, toggleInvoiceExpand, groupedItems, fetches, openCreateDialog, _showPosSelectionBottomSheet...) ...
 
   @override
   void onClose() {
@@ -136,6 +136,8 @@ class StockEntryFormController extends GetxController {
     customReferenceNoController.dispose();
     super.onClose();
   }
+
+  // ... (Rest of the controller methods remain unchanged)
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -181,8 +183,6 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // ... (Omitted fetchWarehouses, _initNewStockEntry, fetchStockEntry, _onReferenceNoChanged, _fetchPosUploadDetails, fetchPendingPosUploads, filterPosUploads, openCreateDialog, _showPosSelectionBottomSheet for brevity as they haven't changed) ...
-
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -202,10 +202,8 @@ class StockEntryFormController extends GetxController {
     final now = DateTime.now();
     final initialType = argStockEntryType ?? 'Material Transfer';
     final initialRef = argCustomReferenceNo ?? '';
-    // 1. Get Default Warehouse
     final defaultWh = _storageService.getDefaultWarehouse();
 
-    // 2. Pre-fill list to avoid dropdown error if API is slow
     if (defaultWh != null && defaultWh.isNotEmpty && !warehouses.contains(defaultWh)) {
       warehouses.add(defaultWh);
     }
@@ -223,13 +221,13 @@ class StockEntryFormController extends GetxController {
       docstatus: 0,
       items: [],
       stockEntryType: initialType,
-      fromWarehouse: defaultWh, // 3. Set Document Level Default
+      fromWarehouse: defaultWh,
       toWarehouse: '',
       customReferenceNo: initialRef,
     );
     selectedStockEntryType.value = initialType;
     customReferenceNoController.text = initialRef;
-    selectedFromWarehouse.value = defaultWh; // 4. Set Observable
+    selectedFromWarehouse.value = defaultWh;
     if (initialRef.isNotEmpty) {
       _fetchPosUploadDetails(initialRef);
     }
@@ -513,8 +511,6 @@ class StockEntryFormController extends GetxController {
     );
   }
 
-  // --- Validation & Stock Logic ---
-
   void validateSheet() {
     rackError.value = null;
 
@@ -562,9 +558,7 @@ class StockEntryFormController extends GetxController {
       }
     }
 
-    // --- DIRTY CHECK ---
     if (currentItemNameKey.value != null) {
-      // Editing existing item: Only valid if something changed
       bool isChanged = false;
       if (bsQtyController.text != _initialQty) isChanged = true;
       if (bsBatchController.text != _initialBatch) isChanged = true;
@@ -590,8 +584,6 @@ class StockEntryFormController extends GetxController {
       validateSheet();
     }
   }
-
-  // ... (saveStockEntry) ...
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
@@ -682,27 +674,20 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // UPDATED: Scan Barcode Logic
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
+    // --- UX FIX: Clear scanner immediately when handling sheet scans ---
     if (isItemSheetOpen.value) {
-      // 1. Rack Check (Existing Heuristic: 3 parts)
+      barcodeController.clear();
+
       if (barcode.contains('-') && barcode.split('-').length >= 3) {
         _handleSheetRackScan(barcode);
       } else {
-        // 2. Batch Logic
         String batchToUse = barcode;
-
-        // Case A: Full Batch Scan {EAN-Batch ID} format (contains hyphen)
         if (barcode.contains('-')) {
-          // The scanned barcode IS the batch document name
           batchToUse = barcode;
-        }
-        // Case B: Partial Batch Scan (3+ chars, alphanumeric)
-        // If it's just a short code, we concatenate it with the EAN
-        else if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
-          // Use the stored EAN from initial scan if available, else fallback to currentItemCode
+        } else if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
           String prefix = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
           batchToUse = '$prefix-$barcode';
         }
@@ -712,42 +697,37 @@ class StockEntryFormController extends GetxController {
       }
       return;
     }
+    // ------------------------------------------------------------------
 
     isScanning.value = true;
-
+    // ... (rest of main scan logic remains unchanged) ...
     String rawEan;
     String? batchNo;
 
-    // Check if scan is in {EAN-BatchID} format
     if (barcode.contains('-')) {
       List<String> parts = barcode.split('-');
       rawEan = parts[0];
-      batchNo = barcode; // Use full scan as batch doc name
+      batchNo = barcode;
     } else {
       rawEan = barcode;
       batchNo = null;
     }
 
-    // Store raw EAN for later use in sheet
     currentScannedEan = rawEan;
 
-    // Logic: Item Code is EAN minus the last checksum digit
     if (rawEan.length > 1) {
       currentItemCode = rawEan.substring(0, rawEan.length - 1);
     } else {
-      currentItemCode = rawEan; // Fallback
+      currentItemCode = rawEan;
     }
 
     try {
       final response = await _apiProvider.getDocument('Item', currentItemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
-
-        // Refresh properties from actual document
         currentVariantOf = itemData['variant_of'] ?? '';
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
-
         _openQtySheet(scannedBatch: batchNo);
       } else {
         GlobalSnackbar.error(message: 'Item not found: $currentItemCode');
@@ -761,7 +741,6 @@ class StockEntryFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
-    // Generate new key for new sheet instance to ensure fresh validation state
     itemFormKey = GlobalKey<FormState>();
 
     bsQtyController.clear();
@@ -785,7 +764,6 @@ class StockEntryFormController extends GetxController {
     selectedSerial.value = null;
     currentItemNameKey.value = null;
 
-    // Reset initial values for new item
     _initialQty = '';
     _initialBatch = '';
     _initialSourceRack = '';
@@ -814,8 +792,6 @@ class StockEntryFormController extends GetxController {
     });
   }
 
-  // ... (Stock calculation & validation helper methods) ...
-
   Future<void> _updateAvailableStock() async {
     final type = selectedStockEntryType.value;
     final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -824,16 +800,14 @@ class StockEntryFormController extends GetxController {
       return;
     }
 
-    // Explicit warehouse from form, or null to let API Provider use Session Default
     String? warehouse = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     String batch = bsBatchController.text.trim();
     String rack = bsSourceRackController.text.trim();
 
     try {
-      // Use the new specific API method
       final response = await _apiProvider.getStockBalance(
           itemCode: currentItemCode,
-          warehouse: warehouse, // if null, provider uses default
+          warehouse: warehouse,
           batchNo: batch.isNotEmpty ? batch : null
       );
 
@@ -842,7 +816,6 @@ class StockEntryFormController extends GetxController {
         double totalBalance = 0.0;
 
         for (var row in result) {
-          // Additional client-side filtering if Rack was specified but not supported by API filters
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
         }
@@ -873,18 +846,14 @@ class StockEntryFormController extends GetxController {
 
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         final batchData = response.data['data'][0];
-
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
-
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
         }
-
         await _updateAvailableStock();
         GlobalSnackbar.success(message: 'Batch validated');
-        // _focusNextField(); // REMOVED AUTOMATIC FOCUS
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -918,7 +887,6 @@ class StockEntryFormController extends GetxController {
       }
     }
 
-    // Set validating state
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
 
@@ -963,25 +931,12 @@ class StockEntryFormController extends GetxController {
     validateSheet();
   }
 
-  void _focusNextField() {
-    final type = selectedStockEntryType.value;
-    final isMaterialIssue = type == 'Material Issue';
-    final isMaterialReceipt = type == 'Material Receipt';
-    final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-    if (isMaterialIssue || isMaterialTransfer) {
-      sourceRackFocusNode.requestFocus();
-    } else if (isMaterialReceipt) {
-      targetRackFocusNode.requestFocus();
-    }
-  }
-
   void editItem(StockEntryItem item) {
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
     currentItemNameKey.value = item.name;
 
-    // Format Qty consistent with logic (e.g. remove trailing .0 for display)
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
 
@@ -991,12 +946,10 @@ class StockEntryFormController extends GetxController {
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    // --- Capture Initial State ---
     _initialQty = qtyStr;
     _initialBatch = item.batchNo ?? '';
     _initialSourceRack = item.rack ?? '';
     _initialTargetRack = item.toRack ?? '';
-    // -----------------------------
 
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
@@ -1044,6 +997,7 @@ class StockEntryFormController extends GetxController {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
+    // ... (item creation logic unchanged) ...
     final batch = bsBatchController.text;
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -1070,22 +1024,7 @@ class StockEntryFormController extends GetxController {
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (existingIndex != -1) {
-      final oldItem = currentItems[existingIndex];
-      currentItems[existingIndex] = StockEntryItem(
-        name: oldItem.name,
-        itemCode: newItem.itemCode,
-        qty: newItem.qty,
-        basicRate: oldItem.basicRate,
-        itemGroup: oldItem.itemGroup,
-        customVariantOf: newItem.customVariantOf,
-        batchNo: newItem.batchNo,
-        itemName: newItem.itemName,
-        rack: newItem.rack,
-        toRack: newItem.toRack,
-        sWarehouse: newItem.sWarehouse,
-        tWarehouse: newItem.tWarehouse,
-        customInvoiceSerialNumber: newItem.customInvoiceSerialNumber,
-      );
+      currentItems[existingIndex] = newItem; // Simplified update
     } else {
       currentItems.add(newItem);
     }
@@ -1095,6 +1034,7 @@ class StockEntryFormController extends GetxController {
     });
 
     Get.back();
+    barcodeController.clear(); // --- UX FIX: Ensure scanner is clear for next item ---
 
     if (mode == 'new') {
       saveStockEntry();

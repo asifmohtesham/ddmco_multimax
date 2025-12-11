@@ -173,6 +173,7 @@ class DeliveryNoteFormController extends GetxController {
   // --- Core CRUD Logic (Local + Save on Demand) ---
 
   Future<void> submitSheet() async {
+    // ... logic unchanged ...
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rack = bsRackController.text;
     final batch = bsBatchController.text;
@@ -184,13 +185,12 @@ class DeliveryNoteFormController extends GetxController {
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    Get.back(); // Close sheet
+    Get.back();
+    barcodeController.clear(); // --- UX FIX: Ensure scanner is clear ---
     _markDirty();
 
-    // Auto-save
     await saveDeliveryNote();
 
-    // Provide feedback
     if(editingItemName.value == null) {
       GlobalSnackbar.success(message: 'Item added to list. Remember to Save.');
     }
@@ -654,6 +654,9 @@ class DeliveryNoteFormController extends GetxController {
 
       isScanning.value = false;
       isAddingItem.value = true;
+
+      // Clear before opening sheet to be clean
+      barcodeController.clear();
 
       initBottomSheet(itemCode, itemName, batchNo, maxQty);
 
