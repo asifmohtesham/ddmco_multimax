@@ -47,7 +47,7 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // ... (Fetch, Filter, Sort, Expand logic unchanged) ...
+  // ... (Existing Fetch, Filter, Sort, Expand logic unchanged) ...
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchStockEntries(isLoadMore: false, clear: true);
@@ -142,21 +142,49 @@ class StockEntryController extends GetxController {
     }
   }
 
+  // --- UPDATED POS FETCHING LOGIC (API SIDE FILTER) ---
   Future<void> fetchPendingPosUploads() async {
     isFetchingPosUploads.value = true;
     try {
-      // Fetch only 'Pending' POS Uploads
-      final response = await _posUploadProvider.getPosUploads(
+      // API Call 1: Fetch items starting with KX
+      final kxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
-          filters: {'status': 'Pending'},
+          filters: {
+            'status': ['in', ['Pending', 'In Progress']],
+            'name': ['like', 'KX%']
+          },
           orderBy: 'modified desc'
       );
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final List<dynamic> data = response.data['data'];
-        _allFetchedPosUploads = data.map((json) => PosUpload.fromJson(json)).toList();
-        posUploadsForSelection.value = _allFetchedPosUploads;
+      // API Call 2: Fetch items starting with MX
+      final mxFuture = _posUploadProvider.getPosUploads(
+          limit: 50,
+          filters: {
+            'status': ['in', ['Pending', 'In Progress']],
+            'name': ['like', 'MX%']
+          },
+          orderBy: 'modified desc'
+      );
+
+      final results = await Future.wait([kxFuture, mxFuture]);
+
+      final List<PosUpload> mergedList = [];
+
+      for (var response in results) {
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final List<dynamic> data = response.data['data'];
+          mergedList.addAll(data.map((json) => PosUpload.fromJson(json)));
+        }
       }
+
+      // Deduplicate (using name as key) & Sort
+      final uniqueMap = {for (var item in mergedList) item.name: item};
+      final sortedList = uniqueMap.values.toList()
+        ..sort((a, b) => b.modified.compareTo(a.modified));
+
+      _allFetchedPosUploads = sortedList;
+      posUploadsForSelection.value = _allFetchedPosUploads;
+
     } catch (e) {
       Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
     } finally {
@@ -176,7 +204,6 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // Moved from Screen
   void openCreateDialog() {
     Get.bottomSheet(
       Container(
@@ -197,7 +224,7 @@ class StockEntryController extends GetxController {
                   child: Icon(Icons.outbond, color: Colors.white),
                 ),
                 title: const Text('Material Issue'),
-                subtitle: const Text('Requires Reference No from POS Upload'),
+                subtitle: const Text('From POS Upload (KX/MX only)'),
                 onTap: () {
                   Get.back();
                   _showPosSelectionBottomSheet();
@@ -250,21 +277,15 @@ class StockEntryController extends GetxController {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Select POS Upload',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
+                      Text('Select POS Upload', style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
                     ],
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     onChanged: filterPosUploads,
                     decoration: InputDecoration(
-                      labelText: 'Search Pending Uploads',
+                      labelText: 'Search (KX/MX Only)',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
@@ -277,30 +298,79 @@ class StockEntryController extends GetxController {
                       if (isFetchingPosUploads.value) {
                         return const Center(child: CircularProgressIndicator());
                       }
-
                       if (posUploadsForSelection.isEmpty) {
-                        return const Center(child: Text('No Pending POS Uploads found.'));
+                        return const Center(child: Text('No matching POS Uploads found.'));
                       }
 
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final pos = posUploadsForSelection[index];
-                          return ListTile(
-                            title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${pos.customer} • ${pos.date}'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Get.back();
-                              Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                                'name': '',
-                                'mode': 'new',
-                                'stockEntryType': 'Material Issue',
-                                'customReferenceNo': pos.name
-                              });
-                            },
+                          // --- UPDATED UI with Status, Total Qty, Date ---
+                          return Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.grey.shade200)
+                            ),
+                            child: InkWell(
+                              onTap: () {
+                                Get.back();
+                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                                  'name': '',
+                                  'mode': 'new',
+                                  'stockEntryType': 'Material Issue',
+                                  'customReferenceNo': pos.name
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                              color: Colors.orange.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.orange.shade200)
+                                          ),
+                                          child: Text(pos.status, style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(pos.customer, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.inventory_2_outlined, size: 14, color: Colors.grey),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(pos.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           );
                         },
                       );
