@@ -303,8 +303,14 @@ class PurchaseReceiptFormController extends GetxController {
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
-      bsBatchController.text = barcode;
-      validateBatch(barcode);
+      // Batch Logic: Handle 3-char suffix scan for 8-digit EAN items
+      String batchToUse = barcode;
+      if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode) && RegExp(r'^\d{8}$').hasMatch(currentItemCode)) {
+        batchToUse = '$currentItemCode-$barcode';
+      }
+
+      bsBatchController.text = batchToUse;
+      validateBatch(batchToUse);
       return;
     }
 

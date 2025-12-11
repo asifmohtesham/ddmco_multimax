@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -668,18 +670,30 @@ class StockEntryFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
+
     if (isItemSheetOpen.value) {
+      // Rack Detection Heuristic: contains hyphens and has multiple parts (e.g. WH-ZONE-RACK)
       if (barcode.contains('-') && barcode.split('-').length >= 3) {
         _handleSheetRackScan(barcode);
       } else {
-        bsBatchController.text = barcode;
-        validateBatch(barcode);
+        // Batch Logic: Handle 3-char suffix scan for 8-digit EAN items
+        String batchToUse = barcode;
+        log(batchToUse);
+        if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode) && RegExp(r'^\d{8}$').hasMatch(currentItemCode)) {
+          batchToUse = '$currentItemCode-$barcode';
+        }
+
+        bsBatchController.text = batchToUse;
+        validateBatch(batchToUse);
       }
       return;
     }
+
     isScanning.value = true;
+    // ... (rest of the function remains unchanged)
     String itemCode;
     String? batchNo;
+
     if (barcode.contains('-')) {
       final parts = barcode.split('-');
       final ean = parts.first;
@@ -690,6 +704,7 @@ class StockEntryFormController extends GetxController {
       itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
       batchNo = null;
     }
+
     try {
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -698,6 +713,7 @@ class StockEntryFormController extends GetxController {
         currentVariantOf = itemData['variant_of'];
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
+
         _openQtySheet(scannedBatch: batchNo);
       } else {
         GlobalSnackbar.error(message: 'Item not found');
