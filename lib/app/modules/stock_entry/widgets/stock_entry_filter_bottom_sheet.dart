@@ -24,15 +24,41 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   @override
   void initState() {
     super.initState();
-    purposeController = TextEditingController(text: controller.activeFilters['purpose']);
-    referenceController = TextEditingController(text: controller.activeFilters['custom_reference_no']);
+
+    // UPDATED: Use helper to extract string from filter list ['like', '%val%']
+    purposeController = TextEditingController(text: _extractFilterValue('purpose'));
+    referenceController = TextEditingController(text: _extractFilterValue('custom_reference_no'));
+
     selectedDocstatus = controller.activeFilters['docstatus'];
     dateRangeController = TextEditingController();
 
-    // Attempt to parse existing date filter if it exists (simple check)
-    if (controller.activeFilters.containsKey('creation') && controller.activeFilters['creation'] is List) {
-      // Logic to pre-fill date text if needed, usually skipped for simplicity in reset
+    // Pre-fill date range text if exists
+    if (controller.activeFilters.containsKey('creation') &&
+        controller.activeFilters['creation'] is List &&
+        controller.activeFilters['creation'][0] == 'between') {
+
+      final dates = controller.activeFilters['creation'][1] as List;
+      if (dates.length >= 2) {
+        dateRangeController.text = '${dates[0]} - ${dates[1]}';
+        // Parse back to objects if you want the picker to start there (optional for display)
+        try {
+          startDate = DateTime.parse(dates[0]);
+          endDate = DateTime.parse(dates[1]);
+        } catch (_) {}
+      }
     }
+  }
+
+  // NEW HELPER METHOD
+  String _extractFilterValue(String key) {
+    final val = controller.activeFilters[key];
+    // Check if it's the list format ['like', '%value%']
+    if (val is List && val.isNotEmpty && val[0] == 'like') {
+      return val[1].toString().replaceAll('%', '');
+    }
+    // Handle direct string if ever stored that way
+    if (val is String) return val;
+    return '';
   }
 
   @override
