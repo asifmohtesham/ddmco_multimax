@@ -155,7 +155,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               onDecrement: () => controller.adjustSheetQty(-1),
               onChanged: (_) => controller.checkForChanges(),
               label: 'Quantity',
-              helperText: controller.bsMaxQty.value > 0
+              // Passing formatted info text
+              infoText: controller.bsMaxQty.value > 0
                   ? 'Max Available: ${controller.bsMaxQty.value}'
                   : null,
             )),

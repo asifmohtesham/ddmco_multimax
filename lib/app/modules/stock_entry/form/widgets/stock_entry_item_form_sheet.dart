@@ -200,12 +200,16 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             const SizedBox(height: 16),
 
             // Quantity Input
-            QuantityInputWidget(
+            Obx(() => QuantityInputWidget(
               controller: controller.bsQtyController,
               onIncrement: () => controller.adjustSheetQty(1),
               onDecrement: () => controller.adjustSheetQty(-1),
               label: 'Quantity',
-            ),
+              // Passing formatted info text
+              infoText: controller.bsMaxQty.value > 0
+                  ? 'Stock Balance: ${controller.bsMaxQty.value}'
+                  : null,
+            )),
 
             const SizedBox(height: 24),
 

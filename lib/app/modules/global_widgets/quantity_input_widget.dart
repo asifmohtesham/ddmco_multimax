@@ -6,7 +6,8 @@ class QuantityInputWidget extends StatelessWidget {
   final VoidCallback onDecrement;
   final String label;
   final bool isReadOnly;
-  final String? helperText;
+  /// Additional context like "Available: 50" or "Ordered: 10"
+  final String? infoText;
   final Color color;
   final Function(String)? onChanged;
 
@@ -17,7 +18,7 @@ class QuantityInputWidget extends StatelessWidget {
     required this.onDecrement,
     this.label = 'Quantity',
     this.isReadOnly = false,
-    this.helperText,
+    this.infoText,
     this.color = Colors.black87,
     this.onChanged,
   });
@@ -27,17 +28,42 @@ class QuantityInputWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Header Row: Label + Info Badge
         Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
+          padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+              if (infoText != null && infoText!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.shade100),
+                  ),
+                  child: Text(
+                    infoText!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
+
+        // Input Field Container
         Container(
           decoration: BoxDecoration(
             color: isReadOnly ? Colors.grey.shade50 : Colors.white,
@@ -54,17 +80,11 @@ class QuantityInputWidget extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   onChanged: onChanged,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     hintText: '0',
-                    helperText: helperText,
-                    helperStyle: TextStyle(
-                      fontSize: 11,
-                      color: (helperText != null && helperText!.contains('Available'))
-                          ? Colors.orange
-                          : Colors.grey,
-                    ),
+                    isDense: true,
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Required';
@@ -111,7 +131,7 @@ class QuantityInputWidget extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(0), // Squared corners for middle buttons if needed, or keeping default
+          borderRadius: BorderRadius.circular(0),
           onTap: onPressed,
           child: Icon(icon, color: Colors.grey.shade700),
         ),

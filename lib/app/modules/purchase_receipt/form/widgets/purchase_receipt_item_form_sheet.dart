@@ -156,13 +156,17 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
               const SizedBox(height: 16),
 
               // REFACTORED: Quantity Input
-              QuantityInputWidget(
+              Obx(() => QuantityInputWidget(
                 controller: controller.bsQtyController,
                 onIncrement: () => controller.adjustSheetQty(1),
                 onDecrement: () => controller.adjustSheetQty(-1),
                 isReadOnly: !isEditable,
                 label: 'Quantity',
-              ),
+                // Showing PO quantity if available
+                infoText: controller.currentPurchaseOrderQty.value > 0
+                    ? 'PO Ordered: ${controller.currentPurchaseOrderQty.value}'
+                    : null,
+              )),
 
               const SizedBox(height: 24),
 

@@ -68,6 +68,8 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
                 onIncrement: () => controller.adjustSheetQty(1),
                 onDecrement: () => controller.adjustSheetQty(-1),
                 label: 'Quantity',
+                // No specific info text needed for PO creation
+                infoText: null,
               ),
 
               const SizedBox(height: 16),

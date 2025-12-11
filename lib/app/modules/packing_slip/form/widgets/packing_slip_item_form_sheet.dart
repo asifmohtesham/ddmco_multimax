@@ -61,8 +61,9 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
               controller: controller.bsQtyController,
               onIncrement: () => controller.adjustQty(1),
               onDecrement: () => controller.adjustQty(-1),
-              label: '', // Label handled by context or kept hidden for this layout
-              helperText: 'Remaining to pack: ${controller.bsMaxQty.value.toStringAsFixed(2)}',
+              label: 'Quantity to Pack',
+              // Passing formatted info text
+              infoText: 'Remaining: ${controller.bsMaxQty.value.toStringAsFixed(2)}',
             )),
 
             const SizedBox(height: 24),
