@@ -20,7 +20,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart'; // Import
+import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
@@ -41,13 +41,12 @@ class HomeController extends GetxController {
   var isLoadingStats = true.obs;
   var isLoadingUsers = true.obs;
 
-  // --- Timeline State (Refactored) ---
-  var timelineViewMode = 'Daily'.obs; // Options: 'Hourly', 'Daily', 'Weekly'
+  // --- Timeline State ---
+  var timelineViewMode = 'Daily'.obs;
   var isLoadingTimeline = true.obs;
   var timelineData = <TimelinePoint>[].obs;
 
   var selectedDailyDate = DateTime.now().obs;
-
   var selectedWeeklyRange = DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 28)),
       end: DateTime.now()
@@ -66,6 +65,7 @@ class HomeController extends GetxController {
   var isScanning = false.obs;
   var isRackScanning = false.obs;
 
+  // Fulfillment
   var isFetchingFulfillmentList = false.obs;
   var fulfillmentPosUploads = <PosUpload>[].obs;
   var fulfillmentSearchQuery = ''.obs;
@@ -169,8 +169,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- Updated Timeline Logic ---
-
+  // --- Timeline Logic ---
   void toggleTimelineView(String mode) {
     if (timelineViewMode.value == mode) return;
     timelineViewMode.value = mode;
@@ -197,11 +196,9 @@ class HomeController extends GetxController {
       DateTime endDate;
       Map<String, TimelinePoint> buckets = {};
 
-      // 1. Configure Date Range & Buckets based on Mode
       if (timelineViewMode.value == 'Weekly') {
         startDate = selectedWeeklyRange.value.start;
         endDate = selectedWeeklyRange.value.end;
-        // Build Weekly Buckets
         DateTime current = startDate;
         while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
           final key = '${current.year}-${current.month}-W${_getWeekOfMonth(current)}';
@@ -212,20 +209,16 @@ class HomeController extends GetxController {
           current = current.add(const Duration(days: 7));
         }
       } else if (timelineViewMode.value == 'Hourly') {
-        // Hourly: Specific single day
         startDate = selectedDailyDate.value;
         endDate = startDate.add(const Duration(hours: 23, minutes: 59));
-        // Build Hourly Buckets (00 to 23)
         for (int i = 0; i < 24; i++) {
           final key = i.toString();
           final label = '${i.toString().padLeft(2, '0')}:00';
           buckets[key] = TimelinePoint(label: label, date: startDate);
         }
       } else {
-        // Daily: Last 7 days
         endDate = selectedDailyDate.value;
         startDate = endDate.subtract(const Duration(days: 6));
-        // Build Daily Buckets
         for (int i = 0; i < 7; i++) {
           final date = endDate.subtract(Duration(days: (6 - i)));
           final key = DateFormat('yyyy-MM-dd').format(date);
@@ -234,15 +227,10 @@ class HomeController extends GetxController {
         }
       }
 
-      // 2. Fetch Data (Filters)
       final dateStr = DateFormat('yyyy-MM-dd').format(startDate);
-      final filters = {
-        'owner': email,
-        'docstatus': ['<', 2]
-      };
+      final filters = {'owner': email, 'docstatus': ['<', 2]};
 
       if (timelineViewMode.value == 'Hourly') {
-        // Specific day range for API efficiency
         filters['creation'] = ['between', [
           DateFormat('yyyy-MM-dd 00:00:00').format(startDate),
           DateFormat('yyyy-MM-dd 23:59:59').format(startDate)
@@ -261,12 +249,9 @@ class HomeController extends GetxController {
       final seList = _extractList(results[1]);
       final prList = _extractList(results[2]);
 
-      // 3. Fill Buckets
       void fillBucket(List<dynamic> list, String type) {
         for (var item in list) {
           final date = DateTime.parse(item['creation']);
-
-          // Strict filtering for Daily/Weekly (Hourly handled by API filter mostly)
           if (timelineViewMode.value != 'Hourly' && date.isAfter(endDate.add(const Duration(days: 1)))) continue;
 
           String key;
@@ -310,35 +295,99 @@ class HomeController extends GetxController {
     }
   }
 
-  // ... (Helpers _getWeekOfMonth, _safeParseDouble, _extractList, _getCountFromResponse)
-  int _getWeekOfMonth(DateTime date) {
-    int week = ((date.day - 1) / 7).floor() + 1;
-    return week > 4 ? 4 : week;
-  }
-  double _safeParseDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-  List<dynamic> _extractList(Response response) {
-    if (response.statusCode == 200 && response.data['data'] != null) {
-      return response.data['data'] as List;
+  // --- Scan & Item Sheet Logic ---
+  Future<void> onScan(String code) async {
+    if (code.isEmpty) return;
+    isScanning.value = true;
+    try {
+      // 1. Rack Check
+      if (code.split('-').length >= 3) {
+        await _handleRackScan(code);
+        return;
+      }
+
+      // 2. Item Scan Logic
+      String itemCode = code;
+
+      // Try to find if code is a Barcode or Name
+      // Use "like" to cover potential partial matches or assume direct match
+      final response = await _itemProvider.getItems(
+        limit: 1,
+        filters: {'name': ['like', '%$code%']},
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+        itemCode = response.data['data'][0]['name'];
+      }
+
+      // 3. Setup Controller and Show Sheet
+      // We manually Put the controller since we are not navigating to the page via Get.toNamed
+      final itemFormController = Get.put(ItemFormController());
+      itemFormController.loadItem(itemCode);
+
+      // Clear the scanner input field now that we have consumed the scan
+      barcodeController.clear();
+
+      await Get.bottomSheet(
+        FractionallySizedBox(
+          heightFactor: 0.9,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: const ItemFormScreen(),
+          ),
+        ),
+        isScrollControlled: true,
+        enableDrag: true,
+        backgroundColor: Colors.white,
+      );
+
+      // Clean up controller after sheet closes
+      Get.delete<ItemFormController>();
+
+    } catch (e) {
+      GlobalSnackbar.error(title: 'Scan Error', message: 'Could not process scan: $e');
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
     }
-    return [];
-  }
-  int _getCountFromResponse(dynamic response) {
-    if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
-      return (response.data['data'] as List).length;
-    }
-    return 0;
   }
 
-  // ... (Fulfillment & Scan logic unchanged) ...
-  // Methods: fetchFulfillmentPosUploads, filterFulfillmentList, handleFulfillmentSelection, onScan, _handleRackScan
+  Future<void> _handleRackScan(String rackCode) async {
+    isRackScanning.value = true;
+    try {
+      final parts = rackCode.split('-');
+      if (parts.length < 3) throw Exception('Invalid Rack Format');
+      final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
+      final response = await _itemProvider.getWarehouseStock(warehouse);
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> data = response.data['message']['result'];
+        final rackItems = data.where((row) {
+          final rowRack = row['rack']?.toString() ?? '';
+          return rowRack == rackCode || rowRack == parts.last;
+        }).toList();
 
+        barcodeController.clear(); // Clear scanner
+
+        if (rackItems.isEmpty) {
+          GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
+        } else {
+          Get.bottomSheet(
+            RackContentsSheet(rackId: rackCode, items: rackItems),
+            isScrollControlled: true,
+          );
+        }
+      } else {
+        GlobalSnackbar.error(message: 'Failed to fetch stock for warehouse $warehouse');
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
+    } finally {
+      isRackScanning.value = false;
+    }
+  }
+
+  // --- Fulfillment Logic ---
   Future<void> fetchFulfillmentPosUploads() async {
-    // same as provided previously
     isFetchingFulfillmentList.value = true;
     try {
       final response = await _posUploadProvider.getPosUploads(
@@ -366,7 +415,6 @@ class HomeController extends GetxController {
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
     if (name.startsWith('KX') || name.startsWith('MX')) {
-      // Stock Entry Logic
       try {
         final res = await _stockEntryProvider.getStockEntries(limit: 1, filters: {'custom_reference_no': posUpload.name});
         if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
@@ -376,7 +424,6 @@ class HomeController extends GetxController {
         }
       } catch(e) { GlobalSnackbar.error(message: 'Error processing Stock Entry'); }
     } else {
-      // Delivery Note Logic
       try {
         final res = await _deliveryNoteProvider.getDeliveryNotes(limit: 1, filters: {'po_no': posUpload.name});
         if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
@@ -388,19 +435,46 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> onScan(String code) async {
-    // Logic remains same...
+  // Helpers
+  int _getWeekOfMonth(DateTime date) {
+    int week = ((date.day - 1) / 7).floor() + 1;
+    return week > 4 ? 4 : week;
   }
-
-  Future<void> _handleRackScan(String rackCode) async {
-    // Logic remains same...
+  double _safeParseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+  List<dynamic> _extractList(Response response) {
+    if (response.statusCode == 200 && response.data['data'] != null) {
+      return response.data['data'] as List;
+    }
+    return [];
+  }
+  int _getCountFromResponse(dynamic response) {
+    if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+      return (response.data['data'] as List).length;
+    }
+    return 0;
   }
 
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
+
   void _updateActiveScreenForRoute(String route) {
-    // Switch logic same as provided...
+    switch (route) {
+      case AppRoutes.HOME: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 0; break;
+      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4; break;
+      case AppRoutes.STOCK_ENTRY: activeScreen.value = ActiveScreen.stockEntry; selectedDrawerIndex.value = 1; break;
+      case AppRoutes.DELIVERY_NOTE: activeScreen.value = ActiveScreen.deliveryNote; selectedDrawerIndex.value = 2; break;
+      case AppRoutes.PACKING_SLIP: activeScreen.value = ActiveScreen.packingSlip; selectedDrawerIndex.value = 3; break;
+      case AppRoutes.POS_UPLOAD: activeScreen.value = ActiveScreen.posUpload; selectedDrawerIndex.value = 5; break;
+      case AppRoutes.TODO: activeScreen.value = ActiveScreen.todo; selectedDrawerIndex.value = 6; break;
+      case AppRoutes.ITEM: activeScreen.value = ActiveScreen.item; selectedDrawerIndex.value = 7; break;
+    }
   }
+
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
     Get.back();
