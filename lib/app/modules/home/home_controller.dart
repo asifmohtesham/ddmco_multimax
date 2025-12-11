@@ -340,26 +340,32 @@ class HomeController extends GetxController {
 
   Future<void> _handleRackScan(String rackCode) async {
     isRackScanning.value = true;
+    barcodeController.clear(); // Clear immediately for UX
     try {
       final parts = rackCode.split('-');
       if (parts.length < 3) throw Exception('Invalid Rack Format');
       final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
+
+      // Call provider which now uses "Stock Balance - Custom"
       final response = await _itemProvider.getWarehouseStock(warehouse);
+
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
+
+        // Filter results for the specific scanned rack
         final rackItems = data.where((row) {
           final rowRack = row['rack']?.toString() ?? '';
-          return rowRack == rackCode || rowRack == parts.last;
+          return rowRack == rackCode;
         }).toList();
-
-        barcodeController.clear(); // Clear scanner
 
         if (rackItems.isEmpty) {
           GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         } else {
+          // Open the updated RackContentsSheet
           Get.bottomSheet(
             RackContentsSheet(rackId: rackCode, items: rackItems),
             isScrollControlled: true,
+            backgroundColor: Colors.transparent,
           );
         }
       } else {

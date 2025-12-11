@@ -220,12 +220,13 @@ class RackBalanceSheet extends StatelessWidget {
   }
 }
 
-// --- NEW WIDGET FOR RACK SCAN ---
+// --- REDESIGNED WIDGET FOR RACK SCAN ---
 class RackContentsSheet extends StatelessWidget {
   final String rackId;
   final List<dynamic> items;
 
-  const RackContentsSheet({super.key, required this.rackId, required this.items});
+  const RackContentsSheet(
+      {super.key, required this.rackId, required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -234,108 +235,144 @@ class RackContentsSheet extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
       ),
-      child: DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+      child: SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Rack Contents', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          const Text('Rack Contents', style: TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 4),
                           Text(
-                              rackId,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)
+                            rackId,
+                            style: Theme
+                                .of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
-                    ),
-                    IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
-                  ],
+                      IconButton(
+                        onPressed: () => Get.back(),
+                        icon: const Icon(Icons.close),
+                        style: IconButton.styleFrom(backgroundColor: Colors.grey
+                            .shade100),
+                      ),
+                    ],
+                  ),
                 ),
-                const Divider(),
+                const Divider(height: 1),
+
+                // List
                 Expanded(
                   child: ListView.separated(
                     controller: scrollController,
+                    padding: const EdgeInsets.all(16.0),
                     itemCount: items.length,
                     separatorBuilder: (c, i) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      // Note: Fields depend on report output structure
-                      final qty = (item['bal_qty'] as num?)?.toDouble() ?? 0.0;
-                      final batch = item['batch_no']?.toString();
-                      final itemCode = item['item_code']?.toString() ?? 'Unknown';
-                      final itemName = item['item_name']?.toString(); // Might need fetch if not in report
 
-                      return Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                      // Extract Data with Fallbacks
+                      final double qty = (item['bal_qty'] as num?)
+                          ?.toDouble() ?? 0.0;
+                      final String itemCode = item['item_code'] ?? 'Unknown';
+                      final String itemName = item['item_name'] ?? itemCode;
+                      final String? itemGroup = item['item_group'];
+                      final String? variantOf = item['variant_of'];
+                      final String? batchNo = item['batch_no'];
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            )
+                          ],
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.all(12.0),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              CircleAvatar(
-                                radius: 20,
-                                backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                                child: Icon(Icons.inventory, color: Theme.of(context).primaryColor, size: 20),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      itemCode,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'monospace'),
+                              // Row 1: Item Name & Qty
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      itemName,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    if (itemName != null)
-                                      Text(itemName, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                                    const SizedBox(height: 6),
-                                    if (batch != null && batch.isNotEmpty)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                            color: Colors.purple.shade50,
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: Colors.purple.shade100)
-                                        ),
-                                        child: Text(
-                                            batch,
-                                            style: TextStyle(fontSize: 11, color: Colors.purple.shade800, fontWeight: FontWeight.bold)
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        qty.toStringAsFixed(2),
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                            color: Theme
+                                                .of(context)
+                                                .primaryColor
                                         ),
                                       ),
-                                  ],
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    qty.toStringAsFixed(2),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                      const Text('Qty', style: TextStyle(
+                                          fontSize: 10, color: Colors.grey)),
+                                    ],
                                   ),
-                                  const Text('Qty', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                ],
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              // Row 2: Item Code & Badges (Group/Variant/Batch)
+                              Text(itemCode, style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  color: Colors.black87)),
+                              const SizedBox(height: 8),
+
+                              Wrap(
+                                spacing: 6.0,
+                                runSpacing: 6.0,
+                                children: [
+                                  if (itemGroup != null)
+                                    _buildInfoPill(Icons.category, itemGroup,
+                                        Colors.blueGrey),
+                                  if (variantOf != null)
+                                    _buildInfoPill(
+                                        Icons.style, variantOf, Colors.teal),
+                                  if (batchNo != null)
+                                    _buildInfoPill(
+                                        Icons.qr_code, batchNo, Colors.purple,
+                                        isMono: true),
                                 ],
                               )
                             ],
@@ -346,9 +383,36 @@ class RackContentsSheet extends StatelessWidget {
                   ),
                 ),
               ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoPill(IconData icon, String text, MaterialColor color, {bool isMono = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.shade100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color.shade700),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              color: color.shade900,
+              fontWeight: FontWeight.w600,
+              fontFamily: isMono ? 'monospace' : null,
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

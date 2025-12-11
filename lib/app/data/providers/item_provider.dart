@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/services/storage_service.dart'; // Added
 
 class ItemProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -72,9 +73,25 @@ class ItemProvider {
     return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
   }
 
-  // NEW: Fetch Stock Balance by Warehouse (used for Rack lookup)
+  // UPDATED: Fetch Stock Balance by Warehouse using Custom Report for richer details
   Future<Response> getWarehouseStock(String warehouse) async {
-    return _apiProvider.getReport('Stock Balance', filters: {'warehouse': warehouse});
+    // Get session defaults
+    final storage = Get.find<StorageService>();
+    final company = storage.getCompany();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = {
+      "company": company,
+      "from_date": today,
+      "to_date": today,
+      "warehouse": warehouse,
+      "valuation_field_type": "Currency",
+      "show_variant_attributes": 1,
+      "show_dimension_wise_stock": 1,
+      // "rack": [] // Not passing rack here as we filter locally for exact match
+    };
+
+    return _apiProvider.getReport('Stock Balance', filters: filters);
   }
 
   Future<Response> getStockLedger(String itemCode, {DateTime? fromDate, DateTime? toDate}) async {
