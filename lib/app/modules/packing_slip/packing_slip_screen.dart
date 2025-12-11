@@ -53,93 +53,6 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     );
   }
 
-  void _showDNSelectionBottomSheet(BuildContext context) {
-    controller.fetchDeliveryNotesForSelection();
-
-    Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Select Delivery Note',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: controller.filterDeliveryNotes,
-                    decoration: const InputDecoration(
-                      labelText: 'Search Delivery Notes',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Obx(() {
-                      if (controller.isFetchingDNs.value) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (controller.deliveryNotesForSelection.isEmpty) {
-                        return const Center(child: Text('No Delivery Notes found.'));
-                      }
-
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: controller.deliveryNotesForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
-                        itemBuilder: (context, index) {
-                          final dn = controller.deliveryNotesForSelection[index];
-                          final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
-                          final title = hasPO ? dn.poNo! : dn.name;
-                          final subtitle = hasPO
-                              ? '${dn.name} • ${dn.customer}'
-                              : dn.customer;
-
-                          return ListTile(
-                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Get.back();
-                              controller.initiatePackingSlipCreation(dn);
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,7 +65,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           ),
         ],
       ),
-      drawer: const AppNavDrawer(), //
+      drawer: const AppNavDrawer(),
       body: Column(
         children: [
           // 1. Search Box
@@ -211,8 +124,11 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                       final groupKey = groupKeys[index];
                       final slips = grouped[groupKey]!;
 
-                      // Extract Customer from first slip
-                      final customerName = slips.isNotEmpty ? slips.first.customer : null;
+                      // Extract Customer: Priority to Object -> Then Controller Map
+                      String? customerName = slips.isNotEmpty ? slips.first.customer : null;
+                      if ((customerName == null || customerName.isEmpty) && slips.isNotEmpty) {
+                        customerName = controller.getCustomerName(slips.first.customPoNo);
+                      }
 
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
@@ -239,16 +155,31 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                                         Text(
                                           groupKey,
                                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                         if (customerName != null && customerName.isNotEmpty)
-                                          Text(
-                                            customerName,
-                                            style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade700),
-                                            overflow: TextOverflow.ellipsis,
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2.0),
+                                            child: Row(
+                                              children: [
+                                                const Icon(Icons.person, size: 12, color: Colors.blueGrey),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    customerName,
+                                                    style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w500),
+                                                    overflow: TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
@@ -285,7 +216,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: controller.openCreateDialog, // Call controller method
+        onPressed: controller.openCreateDialog,
         child: const Icon(Icons.add),
       ),
     );
@@ -341,7 +272,7 @@ class PackingSlipListTile extends StatelessWidget {
                     const Icon(Icons.timer_outlined, size: 12, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
-                      FormattingHelper.getTimeTaken(slip.creation, slip.modified), // UPDATED: Show duration
+                      FormattingHelper.getTimeTaken(slip.creation, slip.modified),
                       style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
                     ),
                   ],
