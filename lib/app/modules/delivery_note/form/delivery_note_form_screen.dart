@@ -1,17 +1,14 @@
-import 'dart:developer';
-
+//
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:collection/collection.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
-import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart'; // Added
-import 'package:multimax/app/data/utils/formatting_helper.dart'; // Added for currency
-import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});
@@ -36,6 +33,25 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               ],
             );
           }),
+          actions: [
+            // Save Button Logic
+            Obx(() {
+              // Hide if document is submitted/cancelled
+              if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+
+              return controller.isSaving.value
+                  ? const Center(
+                  child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  )
+              )
+                  : IconButton(
+                icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
+                onPressed: controller.isDirty.value ? controller.saveDeliveryNote : null,
+              );
+            }),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Details'),
@@ -220,13 +236,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               isLoading: controller.isScanning.value,
               isSuccess: controller.isAddingItem.value,
               controller: controller.barcodeController,
-              activeRoute: AppRoutes.DELIVERY_NOTE_FORM, // Add this
+              activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
             );
           }
           return BarcodeInputWidget(
             onScan: (code) => controller.addItemFromBarcode(code),
             controller: controller.barcodeController,
-            activeRoute: AppRoutes.DELIVERY_NOTE_FORM, // Add this
+            activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
           );
         }),
         SingleChildScrollView(
@@ -249,7 +265,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            // Access the expandedInvoice value here to ensure Obx subscription
             final currentExpandedKey = controller.expandedInvoice.value;
 
             final posUpload = controller.posUpload.value;
@@ -337,303 +352,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           controller.setFilter(label);
         }
       },
-    );
-  }
-}
-
-class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
-  final ScrollController? scrollController;
-
-  const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
-
-  @override
-  Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: Form(
-          key: formKey,
-          child: Obx(() {
-            final isEditing = controller.editingItemName.value != null;
-            // The logic: if editing, disable button if NOT dirty. If adding, disable if invalid.
-            // Also always disable if saving or loading batch.
-            final canSubmit = !controller.isSaving.value &&
-                !controller.bsIsLoadingBatch.value &&
-                controller.bsIsBatchValid.value &&
-                controller.bsInvoiceSerialNo.value != null &&
-                (!isEditing || controller.isFormDirty.value);
-
-            return ListView(
-              controller: scrollController, // Hook up the scroll controller
-              shrinkWrap: true,
-              children: [
-                // Header: Owner and Created
-                if (isEditing)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Row(
-                      children: [
-                        Text(
-                          '${controller.bsItemOwner.value ?? 'Unknown'} • ${controller.getRelativeTime(controller.bsItemCreation.value)}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${controller.currentItemCode}: ${controller.currentItemName}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Get.back(),
-                      icon: const Icon(Icons.close),
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                DropdownButtonFormField<String>(
-                  value: controller.bsInvoiceSerialNo.value,
-                  items: controller.bsAvailableInvoiceSerialNos.map((serial) {
-                    return DropdownMenuItem(value: serial, child: Text('Serial #$serial'));
-                  }).toList(),
-                  onChanged: (value) {
-                    controller.bsInvoiceSerialNo.value = value;
-                    controller.checkForChanges();
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Invoice Serial No',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) => value == null ? 'Required' : null,
-                ),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: controller.bsBatchController,
-                  readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
-                  autofocus: !controller.bsIsBatchReadOnly.value && !isEditing,
-                  decoration: InputDecoration(
-                    labelText: 'Batch No',
-                    border: const OutlineInputBorder(),
-                    errorText: controller.bsBatchError.value,
-                    suffixIcon: controller.bsIsLoadingBatch.value
-                        ? const Padding(
-                      padding: EdgeInsets.all(12.0),
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      ),
-                    )
-                        : (controller.bsIsBatchReadOnly.value
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : IconButton(
-                      icon: const Icon(Icons.check),
-                      onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
-                    )),
-                  ),
-                  onChanged: (_) => controller.checkForChanges(),
-                  onFieldSubmitted: (val) {
-                    if (!controller.bsIsBatchReadOnly.value && !controller.bsIsLoadingBatch.value) {
-                      controller.validateAndFetchBatch(val);
-                    }
-                  },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    if (!controller.bsIsBatchValid.value) return 'Batch is not valid';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: controller.bsRackController,
-                  focusNode: controller.bsRackFocusNode,
-                  decoration: const InputDecoration(labelText: 'Source Rack', border: OutlineInputBorder()),
-                  onChanged: (_) => controller.checkForChanges(),
-                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: controller.bsQtyController,
-                  decoration: InputDecoration(
-                    labelText: 'Quantity (Max: ${controller.bsMaxQty.value})',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove),
-                          onPressed: () => controller.adjustSheetQty(-6),
-                        ),
-                        Container(width: 1, height: 24, color: Colors.grey.shade400),
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () => controller.adjustSheetQty(6),
-                        ),
-                      ],
-                    ),
-                  ),
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  onChanged: (_) => controller.checkForChanges(),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    final qty = double.tryParse(value);
-                    if (qty == null) return 'Invalid number';
-                    if (qty <= 0) return 'Must be > 0';
-                    if (qty % 6 != 0) return 'Must be a multiple of 6';
-                    if (qty > controller.bsMaxQty.value && controller.bsMaxQty.value > 0) return 'Exceeds balance';
-                    return null;
-                  },
-                ),
-
-                if (isEditing) ...[
-                  const SizedBox(height: 24),
-                  const Text('Additional Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 8),
-
-                  // Image Tile with Full Screen View
-                  if (controller.bsItemImage.value != null && controller.bsItemImage.value!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16.0),
-                      child: InkWell(
-                        onTap: () {
-                          final imageUrl = 'https://erp.multimax.cloud${controller.bsItemImage.value}';
-                          Get.dialog(
-                            Stack(
-                              children: [
-                                InteractiveViewer(
-                                  child: Center(
-                                    child: Image.network(imageUrl),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 30,
-                                  right: 20,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                                    onPressed: () => Get.back(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            barrierColor: Colors.black.withValues(alpha: 0.9),
-                          );
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8.0),
-                          child: Stack(
-                            alignment: Alignment.topLeft,
-                            children: [
-                              Image.network(
-                                'https://erp.multimax.cloud${controller.bsItemImage.value}',
-                                // height: MediaQuery.of(context).size.height * 0.5,
-                                width: MediaQuery.of(context).size.width * 0.5,
-                                fit: BoxFit.scaleDown,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  // height: MediaQuery.of(context).size.height * 0.5,
-                                  width: MediaQuery.of(context).size.width * 0.5,
-                                  color: Colors.grey.shade200,
-                                  alignment: Alignment.center,
-                                  child: const Text('Image load failed', style: TextStyle(color: Colors.grey)),
-                                ),
-                              ),
-                              Container(
-                                color: Colors.black26,
-                                child: const Icon(Icons.zoom_in, color: Colors.white, size: 40),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // Compact Grid for Details
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 12,
-                    children: [
-                      _buildCompactDetailItem('Item Group', controller.bsItemGroup.value),
-                      _buildCompactDetailItem('Variant Of', controller.bsItemCustomVariantOf.value),
-                      _buildCompactDetailItem('Stock', controller.bsItemCompanyTotalStock.value?.toStringAsFixed(2)),
-                      _buildCompactDetailItem('Packed Qty', controller.bsItemPackedQty.value?.toStringAsFixed(2)),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  // Footer: Modified info
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'Last modified by ${controller.bsItemModifiedBy.value ?? 'Unknown'} • ${controller.getRelativeTime(controller.bsItemModified.value)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: canSubmit ? () {
-                      if (formKey.currentState!.validate()) {
-                        controller.submitSheet();
-                      }
-                    } : null,
-                    style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                    ),
-                    child: controller.isSaving.value
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(isEditing ? 'Update Item' : 'Add Item'),
-                  ),
-                ),
-              ],
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompactDetailItem(String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink();
-    return SizedBox(
-      width: 150, // Fixed width for column-like look
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 }

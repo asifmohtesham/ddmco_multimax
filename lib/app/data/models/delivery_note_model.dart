@@ -1,3 +1,4 @@
+//
 class DeliveryNote {
   final String name;
   final String customer;
@@ -34,20 +35,28 @@ class DeliveryNote {
     return DeliveryNote(
       name: json['name'] ?? '',
       customer: json['customer'] ?? '',
-      grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
+      grandTotal: _parseDouble(json['grand_total']),
       postingDate: json['posting_date'] ?? '',
       modified: json['modified'] ?? '',
-      // Default to current time if creation is null
-      creation: json['creation'] ?? DateTime.now().toString(), 
-      // Default to 'Not Saved' to indicate local/unsynced state
-      status: json['status'] ?? 'Not Saved', 
+      creation: json['creation'] ?? DateTime.now().toString(),
+      status: json['status'] ?? 'Draft',
       currency: json['currency'] ?? 'AED',
       poNo: json['po_no'],
-      totalQty: (json['total_qty'] as num?)?.toDouble() ?? 0.0,
-      // Default to 0 (Draft) which allows editing
-      docstatus: json['docstatus'] as int? ?? 0, 
+      totalQty: _parseDouble(json['total_qty']),
+      docstatus: _parseInt(json['docstatus']),
       items: items,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'customer': customer,
+      'posting_date': postingDate,
+      'currency': currency,
+      'po_no': poNo,
+      'docstatus': docstatus,
+      'items': items.map((e) => e.toJson()).toList(),
+    };
   }
 
   DeliveryNote copyWith({
@@ -78,6 +87,22 @@ class DeliveryNote {
       docstatus: docstatus ?? this.docstatus,
       items: items ?? this.items,
     );
+  }
+
+  // --- Safe Parsing Helpers ---
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  static int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 }
 
@@ -130,9 +155,9 @@ class DeliveryNoteItem {
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
     return DeliveryNoteItem(
       name: json['name'],
-      itemCode: json['item_code'],
-      qty: (json['qty'] as num).toDouble(),
-      rate: (json['rate'] as num).toDouble(),
+      itemCode: json['item_code'] ?? '',
+      qty: DeliveryNote._parseDouble(json['qty']),
+      rate: DeliveryNote._parseDouble(json['rate']),
       itemName: json['item_name'],
       countryOfOrigin: json['country_of_origin'],
       uom: json['uom'],
@@ -143,12 +168,12 @@ class DeliveryNoteItem {
       creation: json['creation'],
       modifiedBy: json['modified_by'],
       modified: json['modified'],
-      idx: json['idx'] as int?,
+      idx: DeliveryNote._parseInt(json['idx']),
       customVariantOf: json['custom_variant_of'],
       itemGroup: json['item_group'],
       image: json['image'],
-      packedQty: (json['packed_qty'] as num?)?.toDouble(),
-      companyTotalStock: (json['company_total_stock'] as num?)?.toDouble(),
+      packedQty: DeliveryNote._parseDouble(json['packed_qty']),
+      companyTotalStock: DeliveryNote._parseDouble(json['company_total_stock']),
     );
   }
 
@@ -157,15 +182,13 @@ class DeliveryNoteItem {
       'item_code': itemCode,
       'qty': qty,
       'rate': rate,
-      // 'item_name': itemName, // Usually not updated by client unless allowed
-      // 'country_of_origin': countryOfOrigin,
-      // 'uom': uom,
+      'uom': uom,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'rack': rack,
       'batch_no': batchNo,
     };
-    // Include 'name' only if it exists (for updating existing rows)
-    if (name != null) {
+    // Include 'name' only if it exists and is NOT a local temp ID
+    if (name != null && !name!.startsWith('local_')) {
       data['name'] = name;
     }
     return data;

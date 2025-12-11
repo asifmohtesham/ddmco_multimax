@@ -1,19 +1,19 @@
+//
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'dart:developer';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-
 import 'delivery_note_form_screen.dart';
+import 'widgets/delivery_note_item_form_sheet.dart'; // Ensure this import is correct
 
 class DeliveryNoteFormController extends GetxController {
-  // ... (Existing variables remain unchanged) ...
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -27,6 +27,10 @@ class DeliveryNoteFormController extends GetxController {
   var isScanning = false.obs;
   var isAddingItem = false.obs;
   var isSaving = false.obs;
+
+  var isDirty = false.obs;
+  String _originalJson = '';
+
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload = Rx<PosUpload?>(null);
 
@@ -36,7 +40,6 @@ class DeliveryNoteFormController extends GetxController {
 
   var itemFilter = 'All'.obs;
 
-  // New State for UX Feedback
   var recentlyAddedItemCode = ''.obs;
   var recentlyAddedSerial = ''.obs;
   final ScrollController scrollController = ScrollController();
@@ -63,6 +66,7 @@ class DeliveryNoteFormController extends GetxController {
   String _initialQty = '';
   String? _initialSerial;
 
+  // Temp Item Data
   var bsItemOwner = RxnString();
   var bsItemCreation = RxnString();
   var bsItemModifiedBy = RxnString();
@@ -98,26 +102,36 @@ class DeliveryNoteFormController extends GetxController {
     super.onClose();
   }
 
-  // ... (Existing init methods: _createNewDeliveryNote, fetchDeliveryNote, fetchPosUpload) ...
+  void _markDirty() {
+    if (!isLoading.value && !isDirty.value && deliveryNote.value?.docstatus == 0) {
+      isDirty.value = true;
+    }
+  }
+
   void _createNewDeliveryNote() async {
     isLoading.value = true;
+    final now = DateTime.now();
     deliveryNote.value = DeliveryNote(
       name: 'New Delivery Note',
       customer: posUploadCustomer ?? '',
       grandTotal: 0.0,
-      postingDate: DateTime.now().toString().split(' ')[0],
+      postingDate: now.toString().split(' ')[0],
       modified: '',
-      creation: DateTime.now().toString(),
-      status: 'Not Saved',
-      currency: 'USD',
+      creation: now.toString(),
+      status: 'Draft',
+      currency: 'AED',
       items: [],
       poNo: posUploadNameArg,
       totalQty: 0.0,
       docstatus: 0,
     );
+
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
     }
+
+    isDirty.value = true;
+    _originalJson = '';
     isLoading.value = false;
   }
 
@@ -128,6 +142,9 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
+        _originalJson = jsonEncode(note.toJson());
+        isDirty.value = false;
+
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -135,7 +152,7 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Failed to fetch delivery note');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load initial data: ${e.toString()}');
+      GlobalSnackbar.error(message: 'Failed to load data: $e');
     } finally {
       isLoading.value = false;
     }
@@ -148,11 +165,178 @@ class DeliveryNoteFormController extends GetxController {
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to fetch linked POS Upload: $e');
+      print('Failed to fetch linked POS Upload: $e');
     }
   }
 
-  // ... (Toggle methods) ...
+  // --- Core CRUD Logic (Local + Save on Demand) ---
+
+  Future<void> submitSheet() async {
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    final rack = bsRackController.text;
+    final batch = bsBatchController.text;
+    final invoiceSerial = bsInvoiceSerialNo.value;
+
+    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
+      _updateItemLocally(editingItemName.value!, qty, rack, batch, invoiceSerial);
+    } else {
+      _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
+    }
+
+    Get.back(); // Close sheet
+    _markDirty();
+
+    // Provide feedback
+    if(editingItemName.value == null) {
+      GlobalSnackbar.success(message: 'Item added to list. Remember to Save.');
+    }
+  }
+
+  void _updateItemLocally(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    final index = currentItems.indexWhere((item) => item.name == itemNameID);
+
+    if (index != -1) {
+      final existingItem = currentItems[index];
+      currentItems[index] = existingItem.copyWith(
+          qty: qty,
+          rack: rack,
+          batchNo: batchNo,
+          customInvoiceSerialNumber: invoiceSerial
+      );
+
+      deliveryNote.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+    }
+  }
+
+  void _addItemLocally(String itemCode, String itemName, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    final serial = invoiceSerial ?? '0';
+
+    // Generate temp ID for local tracking
+    final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+
+    final newItem = DeliveryNoteItem(
+      name: tempId,
+      itemCode: itemCode,
+      qty: qty,
+      rate: 0.0,
+      rack: rack,
+      batchNo: batchNo,
+      customInvoiceSerialNumber: serial,
+      itemName: itemName,
+      creation: DateTime.now().toString(),
+    );
+
+    currentItems.add(newItem);
+
+    deliveryNote.update((val) {
+      val?.items.assignAll(currentItems);
+    });
+
+    _triggerItemFeedback(itemCode, serial);
+  }
+
+  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text('Remove ${item.itemCode} from this note?'),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Get.back();
+              _deleteItemLocally(item);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteItemLocally(DeliveryNoteItem item) {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    currentItems.remove(item);
+
+    deliveryNote.update((val) {
+      val?.items.assignAll(currentItems);
+    });
+
+    _markDirty();
+    GlobalSnackbar.success(message: 'Item removed');
+  }
+
+  Future<void> saveDeliveryNote() async {
+    if (isSaving.value) return;
+    isSaving.value = true;
+
+    try {
+      final String docName = deliveryNote.value?.name ?? '';
+      final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
+
+      final Map<String, dynamic> data = deliveryNote.value!.toJson();
+
+      // Ensure creation fields are set for new doc
+      if (isNew) {
+        data['customer'] = deliveryNote.value!.customer;
+        data['posting_date'] = deliveryNote.value!.postingDate;
+        if (deliveryNote.value!.poNo != null) data['po_no'] = deliveryNote.value!.poNo;
+        data['docstatus'] = 0;
+      }
+
+      final response = isNew
+          ? await _apiProvider.createDocument('Delivery Note', data)
+          : await _apiProvider.updateDocument('Delivery Note', docName, data);
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final savedNote = DeliveryNote.fromJson(response.data['data']);
+        deliveryNote.value = savedNote;
+        _originalJson = jsonEncode(savedNote.toJson());
+        isDirty.value = false;
+
+        GlobalSnackbar.success(message: 'Delivery Note Saved');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: 'Save failed: ${e.message}');
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Save failed: $e');
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  // --- UX & Helper Methods ---
+
+  void _triggerItemFeedback(String itemCode, String serial) {
+    recentlyAddedItemCode.value = itemCode;
+    recentlyAddedSerial.value = serial;
+    expandedInvoice.value = serial;
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final contextKey = itemKeys[serial];
+      if (contextKey?.currentContext != null) {
+        Scrollable.ensureVisible(
+          contextKey!.currentContext!,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
+
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemCode.value = '';
+      recentlyAddedSerial.value = '';
+    });
+  }
+
   void toggleExpand(String itemCode) {
     expandedItemCode.value = expandedItemCode.value == itemCode ? '' : itemCode;
   }
@@ -161,7 +345,46 @@ class DeliveryNoteFormController extends GetxController {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
 
-  // ... (Bottom Sheet Logic: bsAvailableInvoiceSerialNos, initBottomSheet, checkForChanges, getRelativeTime) ...
+  // ... (Keep existing methods: setFilter, filter logic, initBottomSheet, getRelativeTime, validateAndFetchBatch, adjustSheetQty, editItem, addItemFromBarcode) ...
+  // Ensure these methods call _addItemLocally or _updateItemLocally instead of _saveDocumentAndReflect
+
+  Map<String, List<DeliveryNoteItem>> get groupedItems {
+    if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
+      return {};
+    }
+    return groupBy(deliveryNote.value!.items, (DeliveryNoteItem item) {
+      return item.customInvoiceSerialNumber ?? '0';
+    });
+  }
+
+  int get allCount => posUpload.value?.items.length ?? 0;
+
+  int get completedCount {
+    if (posUpload.value == null) return 0;
+    final groups = groupedItems;
+    return posUpload.value!.items.where((posItem) {
+      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final dnItems = groups[serialNumber] ?? [];
+      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
+      return cumulativeQty >= posItem.quantity;
+    }).length;
+  }
+
+  int get pendingCount {
+    if (posUpload.value == null) return 0;
+    final groups = groupedItems;
+    return posUpload.value!.items.where((posItem) {
+      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final dnItems = groups[serialNumber] ?? [];
+      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
+      return cumulativeQty < posItem.quantity;
+    }).length;
+  }
+
+  void setFilter(String filter) {
+    itemFilter.value = filter;
+  }
+
   List<String> get bsAvailableInvoiceSerialNos {
     if (posUpload.value == null) return [];
     return posUpload.value!.items
@@ -170,7 +393,6 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
-    // ... Implementation identical to original, just ensuring cleaner context ...
     currentItemCode = itemCode;
     currentItemName = itemName;
 
@@ -260,7 +482,6 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   String getRelativeTime(String? dateString) {
-    // ... Same implementation ...
     if (dateString == null || dateString.isEmpty) return 'N/A';
     try {
       final date = DateTime.parse(dateString);
@@ -276,8 +497,6 @@ class DeliveryNoteFormController extends GetxController {
       return dateString.split(' ')[0];
     }
   }
-
-  // ... (Methods using apiProvider need to be careful to not break) ...
 
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
@@ -453,189 +672,5 @@ class DeliveryNoteFormController extends GetxController {
       isAddingItem.value = false;
       barcodeController.clear();
     }
-  }
-
-  Future<void> submitSheet() async {
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
-    final rack = bsRackController.text;
-    final batch = bsBatchController.text;
-    final invoiceSerial = bsInvoiceSerialNo.value;
-
-    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
-      await _updateExistingItem(editingItemName.value!, qty, rack, batch, invoiceSerial);
-    } else {
-      await _addItemToDeliveryNote(currentItemCode, qty, rack, batch, invoiceSerial);
-    }
-  }
-
-  Future<void> _updateExistingItem(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) async {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    final index = currentItems.indexWhere((item) => item.name == itemNameID);
-
-    if (index != -1) {
-      final existingItem = currentItems[index];
-      final updatedItem = existingItem.copyWith(
-          qty: qty,
-          rack: rack,
-          batchNo: batchNo,
-          customInvoiceSerialNumber: invoiceSerial
-      );
-      currentItems[index] = updatedItem;
-      await _saveDocumentAndReflect(currentItems, updatedItem.itemCode, updatedItem.customInvoiceSerialNumber ?? '0');
-    } else {
-      GlobalSnackbar.error(message: 'Item to update not found');
-    }
-  }
-
-  Future<void> _addItemToDeliveryNote(String itemCode, double qty, String rack, String? batchNo, String? invoiceSerial) async {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    final serial = invoiceSerial ?? '0';
-
-    final existingItemIndex = currentItems.indexWhere((item) =>
-    item.itemCode == itemCode &&
-        item.batchNo == batchNo &&
-        item.rack == rack &&
-        item.customInvoiceSerialNumber == serial);
-
-    if (existingItemIndex != -1) {
-      final existingItem = currentItems[existingItemIndex];
-      final updatedItem = existingItem.copyWith(qty: existingItem.qty + qty);
-      currentItems[existingItemIndex] = updatedItem;
-    } else {
-      final newItem = DeliveryNoteItem(
-        itemCode: itemCode,
-        qty: qty,
-        rate: 0.0,
-        rack: rack,
-        batchNo: batchNo,
-        customInvoiceSerialNumber: serial,
-        itemName: currentItemName,
-      );
-      currentItems.add(newItem);
-    }
-    await _saveDocumentAndReflect(currentItems, itemCode, serial);
-  }
-
-  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text('Are you sure you want to delete ${item.itemCode}?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Get.back();
-              _deleteItem(item);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteItem(DeliveryNoteItem item) async {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    currentItems.remove(item);
-    await _saveDocumentAndReflect(currentItems, item.itemCode, item.customInvoiceSerialNumber ?? '0');
-  }
-
-  Future<void> _saveDocumentAndReflect(List<DeliveryNoteItem> updatedItems, String itemCode, String serial) async {
-    isSaving.value = true;
-    try {
-      final String docName = deliveryNote.value?.name ?? '';
-      final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
-
-      final Map<String, dynamic> data = {
-        'items': updatedItems.map((e) => e.toJson()).toList(),
-      };
-
-      if (isNew) {
-        data['customer'] = deliveryNote.value!.customer;
-        data['posting_date'] = deliveryNote.value!.postingDate;
-        if (deliveryNote.value!.poNo != null) data['po_no'] = deliveryNote.value!.poNo;
-        data['docstatus'] = 0;
-      }
-
-      final response = isNew
-          ? await _apiProvider.createDocument('Delivery Note', data)
-          : await _apiProvider.updateDocument('Delivery Note', docName, data);
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        deliveryNote.value = DeliveryNote.fromJson(response.data['data']);
-        if (Get.isBottomSheetOpen == true) Get.back();
-        GlobalSnackbar.success(message: 'Document saved');
-        _triggerItemFeedback(itemCode, serial);
-      } else {
-        throw Exception('Failed to save document. Status: ${response.statusCode}');
-      }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to save: $e');
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  void _triggerItemFeedback(String itemCode, String serial) {
-    recentlyAddedItemCode.value = itemCode;
-    recentlyAddedSerial.value = serial;
-    expandedInvoice.value = serial;
-
-    Future.delayed(const Duration(milliseconds: 300), () {
-      final contextKey = itemKeys[serial];
-      if (contextKey?.currentContext != null) {
-        Scrollable.ensureVisible(
-          contextKey!.currentContext!,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-          alignment: 0.1,
-        );
-      }
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      recentlyAddedItemCode.value = '';
-      recentlyAddedSerial.value = '';
-    });
-  }
-
-  // ... (groupedItems, counts, setFilter) ...
-  Map<String, List<DeliveryNoteItem>> get groupedItems {
-    if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
-      return {};
-    }
-    return groupBy(deliveryNote.value!.items, (DeliveryNoteItem item) {
-      return item.customInvoiceSerialNumber ?? '0';
-    });
-  }
-
-  int get allCount => posUpload.value?.items.length ?? 0;
-
-  int get completedCount {
-    if (posUpload.value == null) return 0;
-    final groups = groupedItems;
-    return posUpload.value!.items.where((posItem) {
-      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final dnItems = groups[serialNumber] ?? [];
-      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
-      return cumulativeQty >= posItem.quantity;
-    }).length;
-  }
-
-  int get pendingCount {
-    if (posUpload.value == null) return 0;
-    final groups = groupedItems;
-    return posUpload.value!.items.where((posItem) {
-      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final dnItems = groups[serialNumber] ?? [];
-      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
-      return cumulativeQty < posItem.quantity;
-    }).length;
-  }
-
-  void setFilter(String filter) {
-    itemFilter.value = filter;
   }
 }
