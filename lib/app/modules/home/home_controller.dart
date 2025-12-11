@@ -20,6 +20,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart'; // Import
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
@@ -88,6 +89,13 @@ class HomeController extends GetxController {
   void onClose() {
     barcodeController.dispose();
     super.onClose();
+  }
+
+  void openSessionDefaults() {
+    Get.bottomSheet(
+      const SessionDefaultsBottomSheet(),
+      isScrollControlled: true,
+    );
   }
 
   Future<void> _initDashboard() async {

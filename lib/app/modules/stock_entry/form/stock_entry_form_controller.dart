@@ -806,27 +806,32 @@ class StockEntryFormController extends GetxController {
       bsMaxQty.value = 999999.0;
       return;
     }
+
+    // Explicit warehouse from form, or null to let API Provider use Session Default
     String? warehouse = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     String batch = bsBatchController.text.trim();
     String rack = bsSourceRackController.text.trim();
 
     try {
-      final filters = {
-        'item_code': currentItemCode,
-        'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-        'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      };
-      final response = await _apiProvider.getReport('Stock Balance', filters: filters);
+      // Use the new specific API method
+      final response = await _apiProvider.getStockBalance(
+          itemCode: currentItemCode,
+          warehouse: warehouse, // can be null
+          batchNo: batch.isNotEmpty ? batch : null
+      );
+
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
         double totalBalance = 0.0;
+
         for (var row in result) {
-          if (warehouse != null && warehouse.isNotEmpty && row['warehouse'] != warehouse) continue;
-          if (batch.isNotEmpty && row['batch_no'] != null && row['batch_no'] != batch) continue;
+          // Additional client-side filtering if Rack was specified but not supported by API filters
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
         }
+
         bsMaxQty.value = totalBalance;
+
         if (rack.isNotEmpty && totalBalance <= 0) {
           GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack');
           isSourceRackValid.value = false;
@@ -834,6 +839,9 @@ class StockEntryFormController extends GetxController {
       }
     } catch (e) {
       print('Failed to fetch stock balance: $e');
+      GlobalSnackbar.error(message: e.toString().contains('Session Defaults')
+          ? 'Please set Session Defaults in Dashboard'
+          : 'Failed to fetch stock');
     }
   }
 

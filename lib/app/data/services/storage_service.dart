@@ -10,6 +10,10 @@ class StorageService {
   static const String _tokenKey = 'apiToken';
   static const String _baseUrlKey = 'baseUrl';
 
+  // Session Defaults Keys
+  static const String _companyKey = 'session_company';
+  static const String _warehouseKey = 'session_default_warehouse';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -26,6 +30,9 @@ class StorageService {
   Future<void> clearUserData() async {
     await _box.remove(_userKey);
     await _box.remove(_tokenKey);
+    // Optional: Clear session defaults on logout?
+    // await _box.remove(_companyKey);
+    // await _box.remove(_warehouseKey);
     printInfo(info: "User data cleared from local storage.");
   }
 
@@ -45,5 +52,23 @@ class StorageService {
 
   String? getBaseUrl() {
     return _box.read<String>(_baseUrlKey);
+  }
+
+  // --- Session Defaults ---
+  Future<void> saveSessionDefaults(String company, String warehouse) async {
+    await _box.write(_companyKey, company);
+    await _box.write(_warehouseKey, warehouse);
+  }
+
+  String getCompany() {
+    return _box.read<String>(_companyKey) ?? 'Multimax'; // Default fallback
+  }
+
+  String? getDefaultWarehouse() {
+    return _box.read<String>(_warehouseKey);
+  }
+
+  bool hasSessionDefaults() {
+    return _box.hasData(_companyKey) && _box.hasData(_warehouseKey);
   }
 }
