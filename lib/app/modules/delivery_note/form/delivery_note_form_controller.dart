@@ -464,9 +464,9 @@ class DeliveryNoteFormController extends GetxController {
       if (batchNo != null && maxQty > 0) {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
-        Future.delayed(const Duration(milliseconds: 100), () {
-          bsRackFocusNode.requestFocus();
-        });
+        // Future.delayed(const Duration(milliseconds: 100), () {
+        //   bsRackFocusNode.requestFocus();
+        // });
       } else {
         bsIsBatchValid.value = false;
         bsIsBatchReadOnly.value = false;

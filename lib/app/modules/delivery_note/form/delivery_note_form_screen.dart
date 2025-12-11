@@ -228,26 +228,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   Widget _buildItemsView() {
     return Column(
       children: [
-        Obx(() {
-          if (controller.isScanning.value || controller.isAddingItem.value) {
-            // Keep showing visual feedback if busy
-            return BarcodeInputWidget(
-              onScan: (code) {}, // No-op when busy
-              isLoading: controller.isScanning.value,
-              isSuccess: controller.isAddingItem.value,
-              controller: controller.barcodeController,
-              activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
-            );
-          }
-          return BarcodeInputWidget(
-            onScan: (code) => controller.addItemFromBarcode(code),
-            controller: controller.barcodeController,
-            activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
-          );
-        }),
+        // 1. Filters (Moved to Top)
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Obx(() => Row(
             children: [
               _buildFilterChip('All', controller.allCount),
@@ -258,7 +242,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             ],
           )),
         ),
-        const Divider(),
+        const Divider(height: 1),
+
+        // 2. Item List (Middle - Expanded)
         Expanded(
           child: Obx(() {
             if (controller.isLoading.value && controller.posUpload.value == null) {
@@ -275,7 +261,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 return const Center(child: Text('No items to display.'));
               }
               return ListView.builder(
-                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 0.0, bottom: 80.0),
+                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
                 itemCount: deliveryNoteItems.length,
                 itemBuilder: (context, index) {
                   final item = deliveryNoteItems[index];
@@ -307,7 +293,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
             return ListView.builder(
               controller: controller.scrollController,
-              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 0.0, bottom: 80.0),
+              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
               itemCount: filteredItems.length,
               itemBuilder: (context, index) {
                 final posItem = filteredItems[index];
@@ -339,6 +325,27 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             );
           }),
         ),
+
+        // 3. Scanner (Moved to Bottom)
+        // Only show if document is editable (Draft status)
+        Obx(() {
+          if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+
+          if (controller.isScanning.value || controller.isAddingItem.value) {
+            return BarcodeInputWidget(
+              onScan: (code) {}, // No-op when busy
+              isLoading: controller.isScanning.value,
+              isSuccess: controller.isAddingItem.value,
+              controller: controller.barcodeController,
+              activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
+            );
+          }
+          return BarcodeInputWidget(
+            onScan: (code) => controller.addItemFromBarcode(code),
+            controller: controller.barcodeController,
+            activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
+          );
+        }),
       ],
     );
   }
