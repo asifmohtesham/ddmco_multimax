@@ -8,7 +8,8 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
-import 'package:multimax/app/data/providers/user_provider.dart'; // Added
+import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/providers/stock_entry_provider.dart'; // Added Import
 
 class HomeBinding extends Bindings {
   @override
@@ -22,7 +23,8 @@ class HomeBinding extends Bindings {
     Get.lazyPut<ItemProvider>(() => ItemProvider());
     Get.lazyPut<WorkOrderProvider>(() => WorkOrderProvider());
     Get.lazyPut<JobCardProvider>(() => JobCardProvider());
-    Get.lazyPut<UserProvider>(() => UserProvider()); // Added
+    Get.lazyPut<UserProvider>(() => UserProvider());
+    Get.lazyPut<StockEntryProvider>(() => StockEntryProvider()); // Added Missing Dependency
 
     Get.lazyPut<HomeController>(() => HomeController());
   }

@@ -7,6 +7,7 @@ import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart'; // Added for formatting
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -130,47 +131,146 @@ class HomeScreen extends GetView<HomeController> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
         ),
         child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text('Select a module to manage or create documents.', style: TextStyle(color: Colors.grey)),
-              const SizedBox(height: 24),
-              _buildActionTile(
-                  context,
-                  'Purchase Receipt',
-                  Icons.receipt_long_outlined,
-                  Colors.green,
-                      () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})
-              ),
-              _buildActionTile(
-                  context,
-                  'Stock Entry',
-                  Icons.compare_arrows_outlined,
-                  Colors.orange,
-                      () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})
-              ),
-              _buildActionTile(
-                  context,
-                  'Delivery Note',
-                  Icons.local_shipping_outlined,
-                  Colors.blue,
-                      () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})
-              ),
-              _buildActionTile(
-                  context,
-                  'Packing Slip',
-                  Icons.assignment_return_outlined,
-                  Colors.purple,
-                      () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})
-              ),
-              const SizedBox(height: 16),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('Select a module to manage or create documents.', style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 24),
+                // NEW Fulfilment Tile
+                _buildActionTile(
+                    context,
+                    'Fulfilment',
+                    Icons.shopping_bag_outlined,
+                    Colors.deepPurple,
+                        () => _showFulfillmentSelectionSheet(context)
+                ),
+                _buildActionTile(
+                    context,
+                    'Purchase Receipt',
+                    Icons.receipt_long_outlined,
+                    Colors.green,
+                        () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})
+                ),
+                _buildActionTile(
+                    context,
+                    'Stock Entry',
+                    Icons.compare_arrows_outlined,
+                    Colors.orange,
+                        () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})
+                ),
+                _buildActionTile(
+                    context,
+                    'Delivery Note',
+                    Icons.local_shipping_outlined,
+                    Colors.blue,
+                        () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})
+                ),
+                _buildActionTile(
+                    context,
+                    'Packing Slip',
+                    Icons.assignment_return_outlined,
+                    Colors.purple,
+                        () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),
+      isScrollControlled: true, // <--- Added property
+    );
+  }
+
+  void _showFulfillmentSelectionSheet(BuildContext context) {
+    controller.fetchFulfillmentPosUploads();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Select POS Upload', style: Theme.of(context).textTheme.titleLarge),
+                        IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: TextField(
+                      onChanged: controller.filterFulfillmentList,
+                      decoration: const InputDecoration(
+                        hintText: 'Search uploads...',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                        filled: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingFulfillmentList.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (controller.fulfillmentPosUploads.isEmpty) {
+                        return const Center(child: Text('No Pending/In Progress Uploads found.'));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: controller.fulfillmentPosUploads.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        itemBuilder: (context, index) {
+                          final pos = controller.fulfillmentPosUploads[index];
+                          return ListTile(
+                            title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(pos.customer),
+                                Text(FormattingHelper.getRelativeTime(pos.modified), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              ],
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200),
+                              ),
+                              child: Text(pos.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800)),
+                            ),
+                            onTap: () => controller.handleFulfillmentSelection(pos),
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 

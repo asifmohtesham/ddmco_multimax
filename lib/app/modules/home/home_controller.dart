@@ -16,7 +16,11 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
-
+// Added Imports for Fulfillment Logic
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
@@ -27,6 +31,11 @@ class HomeController extends GetxController {
   final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
+
+  // Added Providers for Fulfillment
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+  final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
+  final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -65,6 +74,12 @@ class HomeController extends GetxController {
   // Rack Scan State
   var isRackScanning = false.obs;
 
+  // --- Fulfillment State ---
+  var isFetchingFulfillmentList = false.obs;
+  var fulfillmentPosUploads = <PosUpload>[].obs;
+  var fulfillmentSearchQuery = ''.obs;
+  List<PosUpload> _allFulfillmentUploads = [];
+
   List<BottomNavigationBarItem> get homeBottomBarItems => [
     const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
     const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
@@ -85,9 +100,10 @@ class HomeController extends GetxController {
     super.onClose();
   }
 
+  // ... (Existing _initDashboard, fetchUsers, onUserFilterChanged, fetchDashboardData methods) ...
+
   Future<void> _initDashboard() async {
     await fetchUsers();
-
     if (selectedFilterUser.value == null) {
       final myEmail = _authController.currentUser.value?.email;
       if (myEmail != null) {
@@ -101,7 +117,6 @@ class HomeController extends GetxController {
     fetchPerformanceData();
   }
 
-  // ... (Fetch Users, Dashboard Data, Performance Data methods same as before) ...
   Future<void> fetchUsers() async {
     isLoadingUsers.value = true;
     try {
@@ -161,6 +176,8 @@ class HomeController extends GetxController {
     }
   }
 
+  // ... (Existing toggleTimelineView, onDailyDateChanged, onWeeklyRangeChanged, fetchPerformanceData) ...
+
   void toggleTimelineView(bool weekly) {
     if (isWeeklyView.value == weekly) return;
     isWeeklyView.value = weekly;
@@ -178,6 +195,7 @@ class HomeController extends GetxController {
   }
 
   Future<void> fetchPerformanceData() async {
+    // ... (logic from original file) ...
     isLoadingTimeline.value = true;
     try {
       final email = selectedFilterUser.value?.email ?? _authController.currentUser.value?.email;
@@ -263,6 +281,7 @@ class HomeController extends GetxController {
     }
   }
 
+  // Helpers for timeline...
   int _getWeekOfMonth(DateTime date) {
     int week = ((date.day - 1) / 7).floor() + 1;
     return week > 4 ? 4 : week;
@@ -289,23 +308,120 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // --- Scan & Item Sheet Logic ---
-  Future<void> onScan(String code) async {
-    if (code.isEmpty) return;
-    isScanning.value = true;
+  // --- Fulfillment Logic ---
 
+  Future<void> fetchFulfillmentPosUploads() async {
+    isFetchingFulfillmentList.value = true;
+    fulfillmentSearchQuery.value = '';
     try {
-      // 1. Check if Rack Code (e.g., KA-WH-DXB1-1A)
-      // Checks for pattern with 3 hyphens
-      if (code.split('-').length >= 4) {
-        await _handleRackScan(code);
-        return; // Exit after handling rack
+      final response = await _posUploadProvider.getPosUploads(
+          limit: 100,
+          filters: {
+            'status': ['in', ['Pending', 'In Progress']]
+          },
+          orderBy: 'modified desc'
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        _allFulfillmentUploads = data.map((json) => PosUpload.fromJson(json)).toList();
+        fulfillmentPosUploads.assignAll(_allFulfillmentUploads);
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Failed to fetch fulfillment list: $e');
+    } finally {
+      isFetchingFulfillmentList.value = false;
+    }
+  }
+
+  void filterFulfillmentList(String query) {
+    fulfillmentSearchQuery.value = query;
+    if (query.isEmpty) {
+      fulfillmentPosUploads.assignAll(_allFulfillmentUploads);
+    } else {
+      fulfillmentPosUploads.assignAll(_allFulfillmentUploads.where((doc) {
+        return doc.name.toLowerCase().contains(query.toLowerCase()) ||
+            doc.customer.toLowerCase().contains(query.toLowerCase());
+      }).toList());
+    }
+  }
+
+  Future<void> handleFulfillmentSelection(PosUpload posUpload) async {
+    Get.back(); // Close bottom sheet
+    GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
+
+    final String name = posUpload.name.toUpperCase();
+
+    if (name.startsWith('KX') || name.startsWith('MX')) {
+      // --- Case 1: Stock Entry (Material Issue) ---
+      try {
+        final response = await _stockEntryProvider.getStockEntries(
+          limit: 1,
+          filters: {'custom_reference_no': posUpload.name},
+        );
+
+        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+          // Document exists -> Open it
+          final existingDoc = response.data['data'][0];
+          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+            'name': existingDoc['name'],
+            'mode': 'edit',
+          });
+        } else {
+          // Document does not exist -> Create new
+          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+            'name': '',
+            'mode': 'new',
+            'stockEntryType': 'Material Issue',
+            'customReferenceNo': posUpload.name
+          });
+        }
+      } catch (e) {
+        GlobalSnackbar.error(message: 'Error finding linked Stock Entry');
       }
 
-      // 2. Identify Item Code
+    } else {
+      // --- Case 2: Delivery Note ---
+      try {
+        final response = await _deliveryNoteProvider.getDeliveryNotes(
+          limit: 1,
+          filters: {'po_no': posUpload.name},
+        );
+
+        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+          // Document exists -> Open it
+          final existingDoc = response.data['data'][0];
+          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+            'name': existingDoc['name'],
+            'mode': 'edit',
+          });
+        } else {
+          // Document does not exist -> Create new
+          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+            'name': '',
+            'mode': 'new',
+            'posUploadCustomer': posUpload.customer,
+            'posUploadName': posUpload.name,
+          });
+        }
+      } catch (e) {
+        GlobalSnackbar.error(message: 'Error finding linked Delivery Note');
+      }
+    }
+  }
+
+  // --- Scan & Item Sheet Logic (Existing) ---
+  Future<void> onScan(String code) async {
+    // ... (Existing Logic)
+    if (code.isEmpty) return;
+    isScanning.value = true;
+    try {
+      if (code.split('-').length >= 4) {
+        await _handleRackScan(code);
+        return;
+      }
       bool isEan = RegExp(r'^\d{8,}$').hasMatch(code);
       String itemCode = code;
-
       if (isEan) {
         final searchCode = code.length > 7 ? code.substring(0, 7) : code;
         final response = await _itemProvider.getItems(limit: 1, filters: {'item_code': searchCode});
@@ -316,12 +432,8 @@ class HomeController extends GetxController {
           return;
         }
       }
-
-      // 3. Initialize Controller & Load Data
       final itemFormController = Get.put(ItemFormController());
       itemFormController.loadItem(itemCode);
-
-      // 4. Open Bottom Sheet with Full Form (All Tabs)
       await Get.bottomSheet(
         FractionallySizedBox(
           heightFactor: 0.9,
@@ -333,10 +445,7 @@ class HomeController extends GetxController {
         isScrollControlled: true,
         enableDrag: true,
       );
-
-      // Cleanup
       Get.delete<ItemFormController>();
-
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
@@ -346,38 +455,22 @@ class HomeController extends GetxController {
   }
 
   Future<void> _handleRackScan(String rackCode) async {
+    // ... (Existing Logic)
     isRackScanning.value = true;
     try {
-      // Parse Warehouse from Rack ID: KA-WH-DXB1-1A -> WH-DXB1 - KA
-      // Convention assumed: 1A is rack, previous parts form warehouse
       final parts = rackCode.split('-');
-      if (parts.length < 3) {
-        throw Exception('Invalid Rack Format');
-      }
-
-      // Attempt to construct warehouse name based on convention
+      if (parts.length < 3) throw Exception('Invalid Rack Format');
       final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
-
-      // Fetch Stock Balance for this Warehouse
       final response = await _itemProvider.getWarehouseStock(warehouse);
-
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-
-        // Filter rows matching exactly the scanned rack
-        // Assuming 'rack' field in report matches last part or full scanned code?
-        // Usually rack field in ERPNext report contains just the Rack ID (e.g. "1A" or "KA-WH-DXB1-1A" depending on config).
-        // Let's filter loosely by checking if the report row's rack matches our scan or contains it.
-
         final rackItems = data.where((row) {
           final rowRack = row['rack']?.toString() ?? '';
           return rowRack == rackCode || rowRack == parts.last;
         }).toList();
-
         if (rackItems.isEmpty) {
           GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         } else {
-          // Open Rack Contents Sheet
           Get.bottomSheet(
             RackContentsSheet(rackId: rackCode, items: rackItems),
             isScrollControlled: true,
@@ -406,7 +499,6 @@ class HomeController extends GetxController {
         activeScreen.value = ActiveScreen.home;
         selectedDrawerIndex.value = 0;
         break;
-    // ... same cases as before
       case AppRoutes.PURCHASE_RECEIPT:
         activeScreen.value = ActiveScreen.purchaseReceipt;
         selectedDrawerIndex.value = 4;
