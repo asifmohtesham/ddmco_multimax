@@ -53,14 +53,15 @@ class HomeScreen extends GetView<HomeController> {
                     _buildUserContextCard(context),
                     const SizedBox(height: 16),
                     Obx(() => PerformanceTimelineCard(
-                      isWeekly: controller.isWeeklyView.value,
+                      viewMode: controller.timelineViewMode.value, // Changed
                       onToggleView: controller.toggleTimelineView,
                       data: controller.timelineData,
                       isLoading: controller.isLoadingTimeline.value,
-                      selectedDate: controller.isWeeklyView.value
-                          ? null
-                          : controller.selectedDailyDate.value,
-                      selectedRange: controller.isWeeklyView.value
+                      // Pass selected date for both Daily and Hourly modes
+                      selectedDate: controller.timelineViewMode.value != 'Weekly'
+                          ? controller.selectedDailyDate.value
+                          : null,
+                      selectedRange: controller.timelineViewMode.value == 'Weekly'
                           ? controller.selectedWeeklyRange.value
                           : null,
                       onDateChanged: controller.onDailyDateChanged,

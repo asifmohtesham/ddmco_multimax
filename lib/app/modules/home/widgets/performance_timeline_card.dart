@@ -3,12 +3,12 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 class PerformanceTimelineCard extends StatelessWidget {
-  final bool isWeekly;
-  final Function(bool) onToggleView;
+  final String viewMode; // 'Hourly', 'Daily', 'Weekly'
+  final Function(String) onToggleView;
   final List<TimelinePoint> data;
   final bool isLoading;
 
-  // Daily Date
+  // Daily/Hourly Date
   final DateTime? selectedDate;
   final Function(DateTime)? onDateChanged;
 
@@ -18,7 +18,7 @@ class PerformanceTimelineCard extends StatelessWidget {
 
   const PerformanceTimelineCard({
     super.key,
-    required this.isWeekly,
+    required this.viewMode,
     required this.onToggleView,
     required this.data,
     required this.isLoading,
@@ -39,28 +39,26 @@ class PerformanceTimelineCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header with Toggle & Date Picker
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const Text('Items Managed & Fulfilled', style: TextStyle(fontSize: 12, color: Colors.grey)),
-
-                      const SizedBox(height: 8),
-
-                      // DATE PICKER LOGIC
-                      if (!isWeekly && selectedDate != null)
-                        _buildDatePicker(context),
-
-                      if (isWeekly && selectedRange != null)
-                        _buildRangePicker(context),
-                    ],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('Items Managed & Fulfilled', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                    if (viewMode == 'Weekly' && selectedRange != null)
+                      _buildRangePicker(context)
+                    else if (selectedDate != null)
+                      _buildDatePicker(context),
+                  ],
                 ),
+                const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
@@ -69,8 +67,9 @@ class PerformanceTimelineCard extends StatelessWidget {
                   padding: const EdgeInsets.all(2),
                   child: Row(
                     children: [
-                      _buildToggleBtn('Daily', !isWeekly),
-                      _buildToggleBtn('Weekly', isWeekly),
+                      _buildToggleBtn('Hourly', viewMode == 'Hourly'),
+                      _buildToggleBtn('Daily', viewMode == 'Daily'),
+                      _buildToggleBtn('Weekly', viewMode == 'Weekly'),
                     ],
                   ),
                 ),
@@ -88,8 +87,8 @@ class PerformanceTimelineCard extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(
                   height: 180,
-                  // Ensure min width matches parent to avoid shrinking if few items
-                  width: data.length > 5 ? data.length * 60.0 : MediaQuery.of(context).size.width - 64,
+                  // Adjust width based on data points to ensure scrollability for hourly
+                  width: data.length > 7 ? data.length * 50.0 : MediaQuery.of(context).size.width - 64,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -198,27 +197,31 @@ class PerformanceTimelineCard extends StatelessWidget {
   }
 
   Widget _buildToggleBtn(String label, bool isActive) {
-    return GestureDetector(
-      onTap: () => onToggleView(label == 'Weekly'),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 2)] : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            color: isActive ? Colors.black : Colors.grey,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onToggleView(label),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 2)] : null,
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? Colors.black : Colors.grey,
+            ),
           ),
         ),
       ),
     );
   }
 
+  // ... (Legend & Bar Builder remain same) ...
   Widget _buildLegendItem(Color color, String label) {
     return Row(
       children: [
@@ -230,7 +233,6 @@ class PerformanceTimelineCard extends StatelessWidget {
   }
 
   Widget _buildBarColumn(BuildContext context, TimelinePoint point) {
-    // Calculate relative heights (simple stacking)
     double maxTotal = 0;
     for (var p in data) {
       if (p.total > maxTotal) maxTotal = p.total;
@@ -242,15 +244,12 @@ class PerformanceTimelineCard extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        // Tooltip or Value
         if (point.total > 0)
           Text(
-            NumberFormat('#,###.##').format(point.total),
+            NumberFormat.compact().format(point.total),
             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
           ),
         const SizedBox(height: 4),
-
-        // Stacked Bar
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Column(
@@ -269,11 +268,6 @@ class PerformanceTimelineCard extends StatelessWidget {
           point.label,
           style: const TextStyle(fontSize: 10, color: Colors.grey),
         ),
-        if (point.customerCount > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 2.0),
-            child: Icon(Icons.person, size: 10, color: Theme.of(context).primaryColor),
-          ),
       ],
     );
   }
