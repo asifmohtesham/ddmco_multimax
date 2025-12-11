@@ -195,7 +195,7 @@ class HomeController extends GetxController {
       final filters = {'owner': email, 'docstatus': ['<', 2], 'creation': ['>=', dateStr]};
       final results = await Future.wait([
         _apiProvider.getDocumentList('Delivery Note', filters: filters, fields: ['creation', 'total_qty', 'customer'], limit: 100),
-        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty', 'total_qty'], limit: 100),
+        _apiProvider.getDocumentList('Stock Entry', filters: filters, fields: ['creation', 'custom_total_qty'], limit: 100),
         _apiProvider.getDocumentList('Purchase Receipt', filters: filters, fields: ['creation', 'total_qty'], limit: 100),
       ]);
       final dnList = _extractList(results[0]);
@@ -237,7 +237,6 @@ class HomeController extends GetxController {
               qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'SE') {
               qty = _safeParseDouble(item['custom_total_qty']);
-              if (qty == 0) qty = _safeParseDouble(item['total_qty']);
             } else if (type == 'PR') {
               qty = _safeParseDouble(item['total_qty']);
             }
