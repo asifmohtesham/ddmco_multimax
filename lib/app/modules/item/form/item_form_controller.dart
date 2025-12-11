@@ -286,14 +286,16 @@ class ItemFormController extends GetxController {
 
   void copyLink(String? relativeUrl) {
     if (relativeUrl == null) return;
-    final fullUrl = 'https://erp.multimax.cloud$relativeUrl';
+    // USE GLOBAL URL
+    final fullUrl = '${_apiProvider.baseUrl}$relativeUrl';
     Clipboard.setData(ClipboardData(text: fullUrl));
     GlobalSnackbar.success(message: 'Link copied to clipboard');
   }
 
   Future<void> shareFile(String? relativeUrl, String? fileName) async {
     if (relativeUrl == null || fileName == null) return;
-    final fullUrl = 'https://erp.multimax.cloud$relativeUrl';
+    // USE GLOBAL URL
+    final fullUrl = '${_apiProvider.baseUrl}$relativeUrl';
 
     Get.dialog(
       const Center(child: CircularProgressIndicator()),

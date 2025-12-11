@@ -9,10 +9,16 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  bool _dioInitialized = false;
+  // Global Default URL
+  static const String defaultBaseUrl = "https://erp.multimax.cloud";
+
+  bool _dioInitialised = false;
   late Dio _dio;
   late CookieJar _cookieJar;
-  String _baseUrl = "https://erp.multimax.cloud";
+  String _baseUrl = defaultBaseUrl;
+
+  // Expose the current base URL for UI usage (e.g. Images)
+  String get baseUrl => _baseUrl;
 
   ApiProvider() {
     _initDio();
@@ -20,13 +26,13 @@ class ApiProvider {
 
   void setBaseUrl(String url) {
     _baseUrl = url;
-    if (_dioInitialized) {
+    if (_dioInitialised) {
       _dio.options.baseUrl = _baseUrl;
     }
   }
 
   Future<void> _initDio() async {
-    if (_dioInitialized) return;
+    if (_dioInitialised) return;
     if (Get.isRegistered<StorageService>()) {
       final storedUrl = Get.find<StorageService>().getBaseUrl();
       if (storedUrl != null && storedUrl.isNotEmpty) {
@@ -43,13 +49,13 @@ class ApiProvider {
     ));
     _dio.interceptors.add(CookieManager(_cookieJar));
     _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
-    _dioInitialized = true;
+    _dioInitialised = true;
   }
 
   // --- Auth Methods ---
 
   Future<Response> login(String email, String password) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     try {
       final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password});
       return response;
@@ -63,7 +69,7 @@ class ApiProvider {
   }
 
   Future<Response> loginWithFrappe(String username, String password) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
       return await _dio.post('/api/method/login', data: formData, options: Options(contentType: Headers.formUrlEncodedContentType));
@@ -73,38 +79,38 @@ class ApiProvider {
   }
 
   Future<bool> hasSessionCookies() async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
 
   Future<void> clearSessionCookies() async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
   }
 
   Future<Response> logoutApiCall() async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/logout');
   }
 
   Future<Response> getLoggedUser() async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/frappe.auth.get_logged_user');
   }
 
   Future<Response> getUserDetails(String email) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/User/$email');
   }
 
   Future<Response> resetPassword(String email) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/frappe.core.doctype.user.user.reset_password', data: {'user': email}, options: Options(contentType: Headers.formUrlEncodedContentType));
   }
 
   Future<Response> changePassword(String oldPassword, String newPassword) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/frappe.core.doctype.user.user.update_password',
         data: {'old_password': oldPassword, 'new_password': newPassword, 'logout_all_sessions': 0},
         options: Options(contentType: Headers.formUrlEncodedContentType)
@@ -114,7 +120,7 @@ class ApiProvider {
   // --- Core Fetching Methods ---
 
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
   }
 
@@ -125,7 +131,7 @@ class ApiProvider {
     Map<String, dynamic>? filters,
     String orderBy = 'modified desc',
   }) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
 
     final String endpoint = '/api/resource/$doctype';
     final queryParameters = {
@@ -157,22 +163,22 @@ class ApiProvider {
   }
 
   Future<Response> getDocument(String doctype, String name) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/$doctype/$name');
   }
 
   Future<Response> createDocument(String doctype, Map<String, dynamic> data) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/resource/$doctype', data: data);
   }
 
   Future<Response> updateDocument(String doctype, String name, Map<String, dynamic> data) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
 
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
-    if (!_dioInitialized) await _initDio();
+    if (!_dioInitialised) await _initDio();
 
     // Default Filters
     final Map<String, dynamic> defaultFilters = {};

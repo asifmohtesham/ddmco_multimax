@@ -34,7 +34,7 @@ class LoginController extends GetxController {
       if (savedUrl != null) {
         serverUrlController.text = savedUrl;
       } else {
-        serverUrlController.text = "https://erp.multimax.cloud"; // Default
+        serverUrlController.text = ApiProvider.defaultBaseUrl; // Changed
       }
     }
   }
@@ -59,10 +59,7 @@ class LoginController extends GetxController {
       // Update Provider temporarily to test connection
       _apiProvider.setBaseUrl(url);
 
-      // Simple health check (fetching a public endpoint or login check)
-      // Since we don't have a guaranteed public health endpoint, we try the login endpoint which should respond 200 or 401, but certainly reachable.
-      // Alternatively, we just save it. But let's try to get a response.
-      // A get request to /api/method/ping is standard in Frappe
+      // Simple health check
       final dio = Dio();
       dio.options.connectTimeout = const Duration(seconds: 5);
       final response = await dio.get('$url/api/method/ping');
@@ -72,7 +69,7 @@ class LoginController extends GetxController {
           await Get.find<StorageService>().saveBaseUrl(url);
         }
         serverUrlController.text = url;
-        Get.back(); // Close bottom sheet
+        Get.back();
         GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
       } else {
         throw Exception('Invalid response from server');
@@ -80,7 +77,6 @@ class LoginController extends GetxController {
 
     } catch (e) {
       GlobalSnackbar.error(title: 'Connection Failed', message: 'Could not connect to server: $url');
-      // Revert to old url in provider if needed, or keep as is since the user wants to change it.
     } finally {
       isCheckingConnection.value = false;
     }
@@ -164,7 +160,7 @@ class LoginController extends GetxController {
     try {
       final response = await _apiProvider.resetPassword(emailController.text.trim());
       if (response.statusCode == 200) {
-        Get.back(); // Close dialog if open
+        Get.back();
         GlobalSnackbar.success(message: 'Password reset instructions sent to your email');
       } else {
         GlobalSnackbar.error(message: 'Failed to send reset link');

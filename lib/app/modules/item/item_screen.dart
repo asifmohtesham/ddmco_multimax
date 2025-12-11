@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
+import 'package:multimax/app/data/providers/api_provider.dart'; // Added
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -17,6 +18,7 @@ class ItemScreen extends StatefulWidget {
 class _ItemScreenState extends State<ItemScreen> {
   final ItemController controller = Get.find();
   final _scrollController = ScrollController();
+  final String _baseUrl = Get.find<ApiProvider>().baseUrl; // Get Base URL
 
   @override
   void initState() {
@@ -56,7 +58,7 @@ class _ItemScreenState extends State<ItemScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Item Master'), // ERPNext Terminology
+        title: const Text('Item Master'),
         actions: [
           IconButton(
             icon: Obx(() => Icon(
@@ -73,10 +75,9 @@ class _ItemScreenState extends State<ItemScreen> {
           )),
         ],
       ),
-      drawer: const AppNavDrawer(), //
+      drawer: const AppNavDrawer(),
       body: Column(
         children: [
-          // Filter Summary Bar
           Obx(() {
             if (controller.activeFilters.isEmpty && controller.showImagesOnly.value) return const SizedBox.shrink();
 
@@ -157,7 +158,7 @@ class _ItemScreenState extends State<ItemScreen> {
           return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
         }
         final item = items[index];
-        return ItemCard(item: item);
+        return ItemCard(item: item, baseUrl: _baseUrl);
       },
     );
   }
@@ -178,7 +179,7 @@ class _ItemScreenState extends State<ItemScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         final item = items[index];
-        return ItemCard(item: item);
+        return ItemCard(item: item, baseUrl: _baseUrl);
       },
     );
   }
@@ -186,8 +187,9 @@ class _ItemScreenState extends State<ItemScreen> {
 
 class ItemCard extends GetView<ItemController> {
   final Item item;
+  final String baseUrl; // Passed down
 
-  const ItemCard({super.key, required this.item});
+  const ItemCard({super.key, required this.item, required this.baseUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -198,7 +200,7 @@ class ItemCard extends GetView<ItemController> {
       return Card(
         margin: isGrid ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
         clipBehavior: Clip.antiAlias,
-        elevation: 1, // Flatter, modern look
+        elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
         child: InkWell(
           onTap: () {
@@ -211,13 +213,11 @@ class ItemCard extends GetView<ItemController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image Section
               if (isGrid)
                 Expanded(child: _buildImage(context))
               else if (isExpanded)
                 SizedBox(height: 200, width: double.infinity, child: _buildImage(context)),
 
-              // Content Section
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
@@ -228,7 +228,6 @@ class ItemCard extends GetView<ItemController> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Thumbnail in list view collapsed state
                           if (item.image != null && item.image!.isNotEmpty)
                             Container(
                               width: 40, height: 40,
@@ -261,8 +260,8 @@ class ItemCard extends GetView<ItemController> {
   Widget _buildImage(BuildContext context) {
     if (item.image != null && item.image!.isNotEmpty) {
       return Image.network(
-        'https://erp.multimax.cloud${item.image}',
-        fit: BoxFit.contain, // Contain preserves aspect ratio better for products
+        '$baseUrl${item.image}', // Used baseUrl
+        fit: BoxFit.contain,
         errorBuilder: (c, o, s) => Container(color: Colors.grey.shade50, child: const Icon(Icons.broken_image_outlined, color: Colors.grey)),
       );
     }
@@ -338,7 +337,6 @@ class ItemCard extends GetView<ItemController> {
         const Text('Actual Stock', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 8),
 
-        // Stock List Handling
         controller.isLoadingStock.value
             ? const LinearProgressIndicator(minHeight: 2)
             : (stockList == null || stockList.isEmpty)
