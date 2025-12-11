@@ -41,9 +41,10 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             label: 'Batch No',
             color: Colors.purple,
             child: TextFormField(
+              key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
               readOnly: controller.bsIsBatchReadOnly.value,
-              autofocus: false,
+              autofocus: false, // DISABLED AUTOFOCUS
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -103,8 +104,10 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                           label: 'Source Rack',
                           color: Colors.orange,
                           child: TextFormField(
+                            key: const ValueKey('source_rack_field'),
                             controller: controller.bsSourceRackController,
-                            focusNode: controller.sourceRackFocusNode,
+                            // focusNode: controller.sourceRackFocusNode, // Removed FocusNode usage
+                            autofocus: false, // DISABLED AUTOFOCUS
                             decoration: InputDecoration(
                               hintText: 'Rack',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -136,8 +139,10 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                           label: 'Target Rack',
                           color: Colors.green,
                           child: TextFormField(
+                            key: const ValueKey('target_rack_field'),
                             controller: controller.bsTargetRackController,
-                            focusNode: controller.targetRackFocusNode,
+                            // focusNode: controller.targetRackFocusNode, // Removed FocusNode usage
+                            autofocus: false, // DISABLED AUTOFOCUS
                             decoration: InputDecoration(
                               hintText: 'Rack',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

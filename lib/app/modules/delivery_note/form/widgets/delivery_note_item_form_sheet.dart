@@ -72,7 +72,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             child: TextFormField(
               controller: controller.bsBatchController,
               readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
-              autofocus: !controller.bsIsBatchReadOnly.value && !isEditing,
+              autofocus: false, // DISABLED AUTOFOCUS
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -113,7 +113,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             color: Colors.orange,
             child: TextFormField(
               controller: controller.bsRackController,
-              focusNode: controller.bsRackFocusNode,
+              // focusNode: controller.bsRackFocusNode,
+              autofocus: false, // DISABLED AUTOFOCUS
               decoration: InputDecoration(
                 hintText: 'Source Rack',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

@@ -46,9 +46,9 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             child: TextFormField(
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
-              focusNode: controller.batchFocusNode,
+              // focusNode: controller.batchFocusNode,
               readOnly: !isEditable || controller.bsIsBatchReadOnly.value,
-              autofocus: isEditable && !controller.bsIsBatchReadOnly.value && !isEditing,
+              autofocus: false, // DISABLED AUTOFOCUS
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -82,7 +82,8 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
             child: TextFormField(
               key: const ValueKey('rack_field'),
               controller: controller.bsRackController,
-              focusNode: controller.targetRackFocusNode,
+              // focusNode: controller.targetRackFocusNode,
+              autofocus: false, // DISABLED AUTOFOCUS
               readOnly: !isEditable || controller.isTargetRackValid.value,
               decoration: InputDecoration(
                 hintText: 'Rack',

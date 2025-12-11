@@ -459,7 +459,7 @@ class PurchaseReceiptFormController extends GetxController {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
 
-      _focusNextField();
+      // _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Error validating batch');
       bsIsBatchValid.value = false;
@@ -474,9 +474,9 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
     validateSheet();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      batchFocusNode.requestFocus();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   batchFocusNode.requestFocus();
+    // });
   }
 
   Future<void> validateRack(String rack) async {
@@ -519,9 +519,9 @@ class PurchaseReceiptFormController extends GetxController {
     if (!isEditable) return;
     isTargetRackValid.value = false;
     validateSheet();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      targetRackFocusNode.requestFocus();
-    });
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   targetRackFocusNode.requestFocus();
+    // });
   }
 
   void _focusNextField() {

@@ -7,22 +7,21 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String title;
   final String itemCode;
   final String itemName;
-  final String? itemSubtext; // e.g., variant info
-  final List<Widget> customFields; // Specific fields like Batch, Rack, Rate
+  final String? itemSubtext;
+  final List<Widget> customFields;
 
-  // Quantity Props
   final TextEditingController qtyController;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final String? qtyInfoText;
   final bool isQtyReadOnly;
 
-  // Actions
   final VoidCallback onSubmit;
-  final VoidCallback? onDelete; // If null, delete button is hidden
+  final VoidCallback? onDelete;
 
   // State
   final bool isSaveEnabled;
+  final RxBool? isSaveEnabledRx; // Added Reactive support
   final bool isSaving;
   final bool isLoading;
 
@@ -42,13 +41,13 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.onSubmit,
     this.onDelete,
     this.isSaveEnabled = true,
+    this.isSaveEnabledRx, // Added
     this.isSaving = false,
     this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Local form key for validation
     final formKey = GlobalKey<FormState>();
 
     return SafeArea(
@@ -99,7 +98,7 @@ class GlobalItemFormSheet extends StatelessWidget {
               ),
               const Divider(height: 24),
 
-              // --- Custom Fields (Batch, Rack, etc.) ---
+              // --- Custom Fields ---
               ...customFields.map((w) => Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
                 child: w,
@@ -120,28 +119,34 @@ class GlobalItemFormSheet extends StatelessWidget {
               // --- Action Buttons ---
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (isSaveEnabled && !isSaving && !isLoading)
-                      ? () {
-                    if (formKey.currentState!.validate()) {
-                      onSubmit();
+                child: Obx(() {
+                  // Use Rx value if provided, else fall back to static bool
+                  final bool enabled = isSaveEnabledRx?.value ?? isSaveEnabled;
+                  final bool canPress = enabled && !isSaving && !isLoading;
+
+                  return ElevatedButton(
+                    onPressed: canPress
+                        ? () {
+                      if (formKey.currentState!.validate()) {
+                        onSubmit();
+                      }
                     }
-                  }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: isSaveEnabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: isSaveEnabled ? 2 : 0,
-                  ),
-                  child: isSaving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text(
-                    title, // "Add Item" or "Update Item" usually passed as title
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: enabled ? 2 : 0,
+                    ),
+                    child: isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(
+                      title,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  );
+                }),
               ),
 
               // --- Delete Button ---
@@ -168,7 +173,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
-  /// Helper method for consistent input styling across screens
   static Widget buildInputGroup({required String label, required Color color, required Widget child, Color? bgColor}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

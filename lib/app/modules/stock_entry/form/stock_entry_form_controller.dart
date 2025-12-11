@@ -839,13 +839,12 @@ class StockEntryFormController extends GetxController {
 
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
-
     isValidatingBatch.value = true;
     try {
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
-      }, fields: ['name', 'custom_packaging_qty']); // Added custom_packaging_qty to fields
+      }, fields: ['name', 'custom_packaging_qty']);
 
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         final batchData = response.data['data'][0];
@@ -853,16 +852,14 @@ class StockEntryFormController extends GetxController {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
 
-        // Auto-set Quantity from Batch Packaging Qty
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
         }
 
-        // Update stock limit based on this batch
         await _updateAvailableStock();
-
         GlobalSnackbar.success(message: 'Batch validated');
+        // _focusNextField(); // REMOVED AUTOMATIC FOCUS
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
