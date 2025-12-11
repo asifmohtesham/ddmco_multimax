@@ -46,14 +46,6 @@ class QuantityInputWidget extends StatelessWidget {
           ),
           child: Row(
             children: [
-              if (!isReadOnly)
-                _buildButton(
-                  icon: Icons.remove,
-                  onPressed: onDecrement,
-                )
-              else
-                const SizedBox(width: 48), // Spacer to keep alignment if read-only
-
               Expanded(
                 child: TextFormField(
                   controller: controller,
@@ -64,7 +56,7 @@ class QuantityInputWidget extends StatelessWidget {
                   onChanged: onChanged,
                   decoration: InputDecoration(
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     hintText: '0',
                     helperText: helperText,
                     helperStyle: TextStyle(
@@ -83,13 +75,28 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
               ),
 
-              if (!isReadOnly)
+              if (!isReadOnly) ...[
+                // Vertical Divider
+                Container(
+                  height: 48,
+                  width: 1,
+                  color: Colors.grey.shade300,
+                ),
+                _buildButton(
+                  icon: Icons.remove,
+                  onPressed: onDecrement,
+                ),
+                // Vertical Divider between buttons
+                Container(
+                  height: 48,
+                  width: 1,
+                  color: Colors.grey.shade300,
+                ),
                 _buildButton(
                   icon: Icons.add,
                   onPressed: onIncrement,
-                )
-              else
-                const SizedBox(width: 48),
+                ),
+              ],
             ],
           ),
         ),
@@ -104,7 +111,7 @@ class QuantityInputWidget extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(0), // Squared corners for middle buttons if needed, or keeping default
           onTap: onPressed,
           child: Icon(icon, color: Colors.grey.shade700),
         ),
