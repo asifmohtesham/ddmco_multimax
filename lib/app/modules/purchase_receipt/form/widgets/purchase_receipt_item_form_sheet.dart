@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController> {
   final ScrollController? scrollController;
@@ -11,7 +12,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
   @override
   Widget build(BuildContext context) {
     final formKey = GlobalKey<FormState>();
-    final bool isEditable = controller.isEditable; // Check editability once
+    final bool isEditable = controller.isEditable;
 
     return SafeArea(
       child: Container(
@@ -87,7 +88,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                   key: const ValueKey('batch_field'),
                   controller: controller.bsBatchController,
                   focusNode: controller.batchFocusNode,
-                  // If not editable (doc submitted), always readonly. Else use validation logic.
                   readOnly: !isEditable || controller.bsIsBatchReadOnly.value,
                   autofocus: isEditable && !controller.bsIsBatchReadOnly.value && controller.currentItemNameKey.value == null,
                   decoration: InputDecoration(
@@ -109,7 +109,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                       color: Colors.purple,
                       onSubmit: () => controller.validateBatch(controller.bsBatchController.text),
                       onReset: controller.resetBatchValidation,
-                    ) : null, // Hide icon if not editable
+                    ) : null,
                   ),
                   onFieldSubmitted: isEditable ? (value) => controller.validateBatch(value) : null,
                 ),
@@ -149,49 +149,24 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
                     ) : null,
                   ),
                   onChanged: isEditable ? (val) => controller.onRackChanged(val) : null,
-                  // FIX: Removed extra 'false' argument
                   onFieldSubmitted: isEditable ? (val) => controller.validateRack(val) : null,
                 ),
               )),
 
               const SizedBox(height: 16),
 
-              // Quantity Input
-              _buildInputGroup(
+              // REFACTORED: Quantity Input
+              QuantityInputWidget(
+                controller: controller.bsQtyController,
+                onIncrement: () => controller.adjustSheetQty(1),
+                onDecrement: () => controller.adjustSheetQty(-1),
+                isReadOnly: !isEditable,
                 label: 'Quantity',
-                color: Colors.black87,
-                child: Row(
-                  children: [
-                    if (isEditable) _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
-                    Expanded(
-                      child: TextFormField(
-                        key: const ValueKey('qty_field'),
-                        controller: controller.bsQtyController,
-                        readOnly: !isEditable,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Required';
-                          final qty = double.tryParse(value);
-                          if (qty == null) return 'Invalid number';
-                          if (qty <= 0) return 'Must be > 0';
-                          return null;
-                        },
-                      ),
-                    ),
-                    if (isEditable) _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
-                  ],
-                ),
               ),
 
               const SizedBox(height: 24),
 
-              // Submit Button (Hide if not editable)
+              // Submit Button
               if (isEditable)
                 Obx(() => SizedBox(
                   width: double.infinity,
@@ -244,25 +219,6 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
           child: child,
         ),
       ],
-    );
-  }
-
-  Widget _buildQtyButton(IconData icon, VoidCallback onPressed) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Icon(icon, size: 20),
-        ),
-      ),
     );
   }
 

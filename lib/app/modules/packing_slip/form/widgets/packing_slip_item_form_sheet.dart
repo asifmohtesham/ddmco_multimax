@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
   const PackingSlipItemFormSheet({super.key});
@@ -55,45 +56,13 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
 
             const SizedBox(height: 24),
 
-            // Quantity Input
-            Center(
-              child: Container(
-                width: 200,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: Row(
-                  children: [
-                    _buildQtyBtn(Icons.remove, () => controller.adjustQty(-1)),
-                    Expanded(
-                      child: TextFormField(
-                        controller: controller.bsQtyController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                    _buildQtyBtn(Icons.add, () => controller.adjustQty(1)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-            Obx(() => Center(
-              child: Text(
-                'Remaining to pack: ${controller.bsMaxQty.value.toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: controller.bsMaxQty.value == 0 ? Colors.green : Colors.orange,
-                    fontWeight: FontWeight.w600
-                ),
-              ),
+            // REFACTORED: Quantity Input
+            Obx(() => QuantityInputWidget(
+              controller: controller.bsQtyController,
+              onIncrement: () => controller.adjustQty(1),
+              onDecrement: () => controller.adjustQty(-1),
+              label: '', // Label handled by context or kept hidden for this layout
+              helperText: 'Remaining to pack: ${controller.bsMaxQty.value.toStringAsFixed(2)}',
             )),
 
             const SizedBox(height: 24),
@@ -138,20 +107,6 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
         SizedBox(width: 80, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12))),
         Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
       ],
-    );
-  }
-
-  Widget _buildQtyBtn(IconData icon, VoidCallback onTap) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Icon(icon, color: Colors.grey.shade700),
-        ),
-      ),
     );
   }
 }

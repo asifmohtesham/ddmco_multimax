@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
   final ScrollController? scrollController;
@@ -20,7 +21,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           controller: scrollController,
           shrinkWrap: true,
           children: [
-            // ... (Header code remains same) ...
+            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -55,7 +56,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             ),
             const Divider(height: 24),
 
-            // ... (Batch No field code remains same) ...
+            // Batch No
             Obx(() => _buildInputGroup(
               label: 'Batch No',
               color: Colors.purple,
@@ -89,7 +90,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 16),
 
-            // ... (Invoice Serial field code remains same) ...
+            // Invoice Serial
             Obx(() {
               if (controller.posUploadSerialOptions.isEmpty) return const SizedBox.shrink();
               return Padding(
@@ -183,7 +184,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                     ],
                   ),
 
-                  // NEW: Display specific Rack Error if it exists
+                  // Display Rack Error
                   if (controller.rackError.value != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8.0, left: 4.0),
@@ -198,28 +199,12 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 16),
 
-            // ... (Quantity and Submit button code remains same) ...
-            _buildInputGroup(
+            // REFACTORED: Quantity Input
+            QuantityInputWidget(
+              controller: controller.bsQtyController,
+              onIncrement: () => controller.adjustSheetQty(1),
+              onDecrement: () => controller.adjustSheetQty(-1),
               label: 'Quantity',
-              color: Colors.black87,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.bsQtyController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
-                  _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
-                ],
-              ),
             ),
 
             const SizedBox(height: 24),
@@ -265,25 +250,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           child: child,
         ),
       ],
-    );
-  }
-
-  Widget _buildQtyButton(IconData icon, VoidCallback onPressed) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Icon(icon, size: 20),
-        ),
-      ),
     );
   }
 }

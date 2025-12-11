@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
   final ScrollController? scrollController;
@@ -61,49 +62,12 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
               ),
               const Divider(height: 24),
 
-              // Quantity Input
-              // NOTE: No Obx here to prevent focus loss
-              _buildInputGroup(
+              // REFACTORED: Quantity Input
+              QuantityInputWidget(
+                controller: controller.bsQtyController,
+                onIncrement: () => controller.adjustSheetQty(1),
+                onDecrement: () => controller.adjustSheetQty(-1),
                 label: 'Quantity',
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove),
-                      onPressed: () => controller.adjustSheetQty(-1),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.grey.shade100,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    Expanded(
-                      child: TextFormField(
-                        key: const ValueKey('po_qty_field'),
-                        controller: controller.bsQtyController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Required';
-                          final qty = double.tryParse(value);
-                          if (qty == null || qty <= 0) return 'Invalid';
-                          return null;
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () => controller.adjustSheetQty(1),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.grey.shade100,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ],
-                ),
               ),
 
               const SizedBox(height: 16),
@@ -178,7 +142,6 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
                   width: double.infinity,
                   child: TextButton.icon(
                     onPressed: () {
-                      // Find item object locally or pass it, here simplified:
                       final item = controller.purchaseOrder.value!.items.firstWhere((i) => i.name == controller.currentItemNameKey);
                       Get.back();
                       controller.deleteItem(item);

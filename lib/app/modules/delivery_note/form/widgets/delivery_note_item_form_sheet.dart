@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   final ScrollController? scrollController;
@@ -51,10 +52,9 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ),
             const Divider(height: 24),
 
-            // --- Invoice Serial No (Dropdown) ---
+            // --- Invoice Serial No ---
             Obx(() {
               if (controller.bsAvailableInvoiceSerialNos.isEmpty) return const SizedBox.shrink();
-
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
                 child: _buildInputGroup(
@@ -78,7 +78,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               );
             }),
 
-            // --- Batch No (Input + Validation) ---
+            // --- Batch No ---
             Obx(() => _buildInputGroup(
               label: 'Batch No',
               color: Colors.purple,
@@ -122,7 +122,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
 
             const SizedBox(height: 16),
 
-            // --- Rack (Input) ---
+            // --- Rack ---
             _buildInputGroup(
               label: 'Rack',
               color: Colors.orange,
@@ -148,34 +148,17 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
 
             const SizedBox(height: 16),
 
-            // --- Quantity (Counter) ---
-            _buildInputGroup(
+            // --- REFACTORED: Quantity Input ---
+            Obx(() => QuantityInputWidget(
+              controller: controller.bsQtyController,
+              onIncrement: () => controller.adjustSheetQty(1),
+              onDecrement: () => controller.adjustSheetQty(-1),
+              onChanged: (_) => controller.checkForChanges(),
               label: 'Quantity',
-              color: Colors.black87,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.bsQtyController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                        // Show max qty hint if applicable
-                        helperText: controller.bsMaxQty.value > 0
-                            ? 'Max Available: ${controller.bsMaxQty.value}'
-                            : null,
-                      ),
-                      onChanged: (_) => controller.checkForChanges(),
-                    ),
-                  ),
-                  _buildQtyButton(Icons.remove, () => controller.adjustSheetQty(-1)),
-                  _buildQtyButton(Icons.add, () => controller.adjustSheetQty(1)),
-                ],
-              ),
-            ),
+              helperText: controller.bsMaxQty.value > 0
+                  ? 'Max Available: ${controller.bsMaxQty.value}'
+                  : null,
+            )),
 
             const SizedBox(height: 24),
 
@@ -210,8 +193,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     width: double.infinity,
                     child: TextButton.icon(
                       onPressed: () {
-                        Get.back(); // Close sheet
-                        // Lookup item by name and trigger delete confirmation
+                        Get.back();
                         final item = controller.deliveryNote.value?.items
                             .firstWhereOrNull((i) => i.name == controller.editingItemName.value);
                         if (item != null) {
@@ -250,25 +232,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           child: child,
         ),
       ],
-    );
-  }
-
-  Widget _buildQtyButton(IconData icon, VoidCallback onPressed) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Icon(icon, size: 20),
-        ),
-      ),
     );
   }
 }
