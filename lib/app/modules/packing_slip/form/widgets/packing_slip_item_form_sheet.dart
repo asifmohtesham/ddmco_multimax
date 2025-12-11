@@ -13,7 +13,7 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
 
       return GlobalItemFormSheet(
         formKey: controller.itemFormKey, // PASSED KEY
-        scrollController: null, // Basic bottom sheet, not scrollable dragger needed here
+        scrollController: null,
         title: isEditing ? 'Edit Pack Item' : 'Pack Item',
         itemCode: controller.currentItemCode ?? '-',
         itemName: controller.currentItemName ?? '-',
@@ -23,7 +23,10 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
         onDecrement: () => controller.adjustQty(-1),
         qtyInfoText: 'Remaining: ${controller.bsMaxQty.value.toStringAsFixed(2)}',
 
-        isSaveEnabled: true,
+        // Pass the validation observable for Dirty Check
+        isSaveEnabledRx: controller.isSheetValid,
+        isSaveEnabled: true, // Used as fallback or if not Rx
+
         onSubmit: controller.addItemToSlip,
         onDelete: isEditing ? controller.deleteCurrentItem : null,
 
@@ -49,7 +52,6 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
                       ],
                     ),
                   ),
-                // Add other details here if needed
               ],
             ),
           ),
