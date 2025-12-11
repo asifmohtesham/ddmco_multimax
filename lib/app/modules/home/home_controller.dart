@@ -92,10 +92,7 @@ class HomeController extends GetxController {
   }
 
   void openSessionDefaults() {
-    Get.bottomSheet(
-      const SessionDefaultsBottomSheet(),
-      isScrollControlled: true,
-    );
+    Get.bottomSheet(const SessionDefaultsBottomSheet(), isScrollControlled: true);
   }
 
   Future<void> _initDashboard() async {

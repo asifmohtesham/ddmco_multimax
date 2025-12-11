@@ -13,11 +13,13 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/data/services/storage_service.dart'; // Added Import
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
+  final StorageService _storageService = Get.find<StorageService>(); // Get Storage
 
   // ... (Existing variables: name, mode, isLoading, etc.) ...
   String name = Get.arguments['name'];
@@ -197,6 +199,14 @@ class StockEntryFormController extends GetxController {
     final now = DateTime.now();
     final initialType = argStockEntryType ?? 'Material Transfer';
     final initialRef = argCustomReferenceNo ?? '';
+    // 1. Get Default Warehouse
+    final defaultWh = _storageService.getDefaultWarehouse();
+
+    // 2. Pre-fill list to avoid dropdown error if API is slow
+    if (defaultWh != null && defaultWh.isNotEmpty && !warehouses.contains(defaultWh)) {
+      warehouses.add(defaultWh);
+    }
+
     stockEntry.value = StockEntry(
       name: 'New Stock Entry',
       purpose: initialType,
@@ -210,12 +220,13 @@ class StockEntryFormController extends GetxController {
       docstatus: 0,
       items: [],
       stockEntryType: initialType,
-      fromWarehouse: '',
+      fromWarehouse: defaultWh, // 3. Set Document Level Default
       toWarehouse: '',
       customReferenceNo: initialRef,
     );
     selectedStockEntryType.value = initialType;
     customReferenceNoController.text = initialRef;
+    selectedFromWarehouse.value = defaultWh; // 4. Set Observable
     if (initialRef.isNotEmpty) {
       _fetchPosUploadDetails(initialRef);
     }
@@ -816,7 +827,7 @@ class StockEntryFormController extends GetxController {
       // Use the new specific API method
       final response = await _apiProvider.getStockBalance(
           itemCode: currentItemCode,
-          warehouse: warehouse, // can be null
+          warehouse: warehouse, // if null, provider uses default
           batchNo: batch.isNotEmpty ? batch : null
       );
 

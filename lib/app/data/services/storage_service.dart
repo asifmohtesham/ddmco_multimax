@@ -30,9 +30,6 @@ class StorageService {
   Future<void> clearUserData() async {
     await _box.remove(_userKey);
     await _box.remove(_tokenKey);
-    // Optional: Clear session defaults on logout?
-    // await _box.remove(_companyKey);
-    // await _box.remove(_warehouseKey);
     printInfo(info: "User data cleared from local storage.");
   }
 

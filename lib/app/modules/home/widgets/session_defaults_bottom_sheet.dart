@@ -30,30 +30,30 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
 
   Future<void> _loadData() async {
     try {
-      // 1. Fetch Data
       final companies = await _apiProvider.getList('Company');
       final warehouses = await _apiProvider.getList('Warehouse');
 
-      // 2. Load Saved Defaults
       final savedCompany = _storageService.getCompany();
       final savedWarehouse = _storageService.getDefaultWarehouse();
 
-      setState(() {
-        _companies = companies;
-        _warehouses = warehouses;
-        _selectedCompany = savedCompany;
-        _selectedWarehouse = savedWarehouse;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _companies = companies;
+          _warehouses = warehouses;
+          _selectedCompany = savedCompany;
+          _selectedWarehouse = savedWarehouse;
+          _isLoading = false;
+        });
 
-      // Auto-select if only one option exists
-      if (_companies.length == 1 && _selectedCompany == null) {
-        setState(() => _selectedCompany = _companies.first);
+        if (_companies.length == 1 && _selectedCompany == null) {
+          setState(() => _selectedCompany = _companies.first);
+        }
       }
-
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load defaults data');
-      setState(() => _isLoading = false);
+      if (mounted) {
+        GlobalSnackbar.error(message: 'Failed to load defaults data');
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -90,7 +90,6 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
             ),
             const Divider(),
             const SizedBox(height: 16),
-
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
             else
@@ -98,26 +97,16 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
                 children: [
                   DropdownButtonFormField<String>(
                     value: _selectedCompany,
-                    decoration: const InputDecoration(
-                      labelText: 'Company',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.business),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Company', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)),
                     items: _companies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                     onChanged: (val) => setState(() => _selectedCompany = val),
-                    validator: (val) => val == null ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _selectedWarehouse,
-                    decoration: const InputDecoration(
-                      labelText: 'Default Source Warehouse',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.store),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Default Source Warehouse', border: OutlineInputBorder(), prefixIcon: Icon(Icons.store)),
                     items: _warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
                     onChanged: (val) => setState(() => _selectedWarehouse = val),
-                    validator: (val) => val == null ? 'Required' : null,
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
