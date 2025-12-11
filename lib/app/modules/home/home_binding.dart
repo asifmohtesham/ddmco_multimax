@@ -11,11 +11,13 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart'; // Added Import
+import 'package:multimax/app/data/services/scan_service.dart'; // Added
 
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
     Get.put(DataWedgeService(), permanent: true);
+    Get.put(ScanService(), permanent: true); // Added ScanService
 
     Get.lazyPut<DeliveryNoteProvider>(() => DeliveryNoteProvider());
     Get.lazyPut<PackingSlipProvider>(() => PackingSlipProvider());

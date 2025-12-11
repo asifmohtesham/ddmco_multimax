@@ -9,11 +9,15 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_form_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final ScanService _scanService = Get.find<ScanService>();
+
   var itemFormKey = GlobalKey<FormState>(); // ADDED
 
   String name = Get.arguments['name'];
@@ -298,59 +302,54 @@ class PurchaseReceiptFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
-      GlobalSnackbar.warning(message: 'Document is submitted and cannot be edited.');
+      GlobalSnackbar.warning(message: 'Document is submitted.');
       return;
     }
     if (barcode.isEmpty) return;
 
-    // --- UX FIX: Clear scanner immediately when handling sheet scans ---
+    // --- Sheet Context ---
     if (isItemSheetOpen.value) {
       barcodeController.clear();
+      // Pass current item code for short-batch logic
+      final result = await _scanService.processScan(barcode, contextItemCode: currentItemCode);
 
-      String batchToUse = barcode;
-      if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode) && RegExp(r'^\d{8}$').hasMatch(currentItemCode)) {
-        batchToUse = '$currentItemCode-$barcode';
+      if (result.type == ScanType.rack && result.rackId != null) {
+        // Handle rack if PR supports it directly via scan
+        bsRackController.text = result.rackId!;
+        validateRack(result.rackId!);
+      } else if (result.batchNo != null) {
+        bsBatchController.text = result.batchNo!;
+        validateBatch(result.batchNo!);
+      } else {
+        GlobalSnackbar.error(message: result.message ?? 'Invalid input for this field');
       }
-
-      bsBatchController.text = batchToUse;
-      validateBatch(batchToUse);
       return;
     }
-    // ------------------------------------------------------------------
 
+    // --- Main Context ---
     isScanning.value = true;
-    // ... (rest of main scan logic remains unchanged) ...
-    String itemCode = barcode;
-    String? batchNo;
-
-    if (barcode.contains('-')) {
-      final parts = barcode.split('-');
-      itemCode = parts.first;
-      batchNo = parts.length > 1 ? parts.sublist(1).join('-') : null;
-    }
-
     try {
-      final response = await _apiProvider.getDocument('Item', itemCode);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final itemData = response.data['data'];
-        currentItemCode = itemData['item_code'];
-        currentVariantOf = itemData['variant_of'] ?? '';
-        currentItemName = itemData['item_name'];
-        currentUom = itemData['stock_uom'] ?? 'Nos';
+      final result = await _scanService.processScan(barcode);
+
+      if (result.isSuccess && result.itemData != null) {
+        final itemData = result.itemData!;
+        currentItemCode = itemData.itemCode;
+        currentVariantOf = itemData.variantOf ?? '';
+        currentItemName = itemData.itemName;
+        currentUom = itemData.stockUom ?? 'Nos';
 
         currentOwner = '';
         currentCreation = '';
         currentModified = '';
         currentModifiedBy = '';
         currentItemIdx.value = 0;
-
         currentPurchaseOrderQty.value = 0.0;
         currentPoItem = '';
         currentPoName = '';
 
-        _openQtySheet(scannedBatch: batchNo);
+        _openQtySheet(scannedBatch: result.batchNo);
       } else {
-        GlobalSnackbar.error(message: 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan failed: $e');

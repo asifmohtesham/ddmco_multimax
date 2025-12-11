@@ -11,11 +11,13 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'delivery_note_form_screen.dart';
 import 'widgets/delivery_note_item_form_sheet.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final ScanService _scanService = Get.find<ScanService>();
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];

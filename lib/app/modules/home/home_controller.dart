@@ -21,6 +21,8 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
 
@@ -34,6 +36,7 @@ class HomeController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
+  final ScanService _scanService = Get.find<ScanService>();
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -300,52 +303,35 @@ class HomeController extends GetxController {
     if (code.isEmpty) return;
     isScanning.value = true;
     try {
-      // 1. Rack Check
-      if (code.split('-').length >= 3) {
-        await _handleRackScan(code);
-        return;
-      }
+      final result = await _scanService.processScan(code);
 
-      // 2. Item Scan Logic
-      String itemCode = code;
+      if (result.type == ScanType.rack && result.rackId != null) {
+        await _handleRackScan(result.rackId!);
+      } else if (result.isSuccess && result.itemData != null) {
+        final itemCode = result.itemData!.itemCode; // Validated Item Code
 
-      // Try to find if code is a Barcode or Name
-      // Use "like" to cover potential partial matches or assume direct match
-      final response = await _itemProvider.getItems(
-        limit: 1,
-        filters: {'name': ['like', '%${code.substring(0,code.length-1)}%']},
-      );
+        final itemFormController = Get.put(ItemFormController());
+        itemFormController.loadItem(itemCode);
+        barcodeController.clear();
 
-      if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-        itemCode = response.data['data'][0]['name'];
-      }
-
-      // 3. Setup Controller and Show Sheet
-      // We manually Put the controller since we are not navigating to the page via Get.toNamed
-      final itemFormController = Get.put(ItemFormController());
-      itemFormController.loadItem(itemCode);
-
-      // Clear the scanner input field now that we have consumed the scan
-      barcodeController.clear();
-
-      await Get.bottomSheet(
-        FractionallySizedBox(
-          heightFactor: 0.9,
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: const ItemFormScreen(),
+        await Get.bottomSheet(
+          FractionallySizedBox(
+            heightFactor: 0.9,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              child: const ItemFormScreen(),
+            ),
           ),
-        ),
-        isScrollControlled: true,
-        enableDrag: true,
-        backgroundColor: Colors.white,
-      );
-
-      // Clean up controller after sheet closes
-      Get.delete<ItemFormController>();
-
+          isScrollControlled: true,
+          enableDrag: true,
+          backgroundColor: Colors.white,
+        );
+        Get.delete<ItemFormController>();
+      } else {
+        GlobalSnackbar.error(title: 'Not Found', message: result.message ?? 'Item not found');
+      }
     } catch (e) {
-      GlobalSnackbar.error(title: 'Scan Error', message: 'Could not process scan: $e');
+      GlobalSnackbar.error(title: 'Scan Error', message: '$e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();

@@ -14,12 +14,15 @@ import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_f
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final StorageService _storageService = Get.find<StorageService>();
+  final ScanService _scanService = Get.find<ScanService>(); // Get Service
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -677,63 +680,68 @@ class StockEntryFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
-    // --- UX FIX: Clear scanner immediately when handling sheet scans ---
+    // --- Context Handling ---
+    // If sheet is open, we pass the current item code to allow short-batch logic
+    String? contextItem = isItemSheetOpen.value ? currentItemCode : null;
+
+    // Use stored EAN from initial scan if available for better reconstruction,
+    // otherwise use the loaded item code.
+    if (contextItem != null && currentScannedEan.isNotEmpty) {
+      contextItem = currentScannedEan.substring(0, currentScannedEan.length - 1); // remove checksum to match stored
+      // Actually, ScanService expects Item Code (no checksum), which currentItemCode is.
+      // But if we want to concat with EAN, we might need the EAN.
+      // Let's stick to the Item Code as the prefix source for consistency with the prompt's rules
+      // "concatenate the EAN-{3+ Batch ID}".
+      // If currentItemCode IS the EAN minus checksum, then we are good.
+      contextItem = currentItemCode;
+    }
+
     if (isItemSheetOpen.value) {
+      // Clear scanner immediately
       barcodeController.clear();
 
-      if (barcode.contains('-') && barcode.split('-').length >= 3) {
-        _handleSheetRackScan(barcode);
-      } else {
-        String batchToUse = barcode;
-        if (barcode.contains('-')) {
-          batchToUse = barcode;
-        } else if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
-          String prefix = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-          batchToUse = '$prefix-$barcode';
-        }
+      // Process with Context
+      final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
 
-        bsBatchController.text = batchToUse;
-        validateBatch(batchToUse);
+      if (result.type == ScanType.rack && result.rackId != null) {
+        _handleSheetRackScan(result.rackId!);
+      } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
+        // Populate Batch
+        bsBatchController.text = result.batchNo!;
+        validateBatch(result.batchNo!);
+      } else if (result.type == ScanType.error) {
+        GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       }
       return;
     }
-    // ------------------------------------------------------------------
 
+    // --- Main Screen Scan ---
     isScanning.value = true;
-    // ... (rest of main scan logic remains unchanged) ...
-    String rawEan;
-    String? batchNo;
-
-    if (barcode.contains('-')) {
-      List<String> parts = barcode.split('-');
-      rawEan = parts[0];
-      batchNo = barcode;
-    } else {
-      rawEan = barcode;
-      batchNo = null;
-    }
-
-    currentScannedEan = rawEan;
-
-    if (rawEan.length > 1) {
-      currentItemCode = rawEan.substring(0, rawEan.length - 1);
-    } else {
-      currentItemCode = rawEan;
-    }
 
     try {
-      final response = await _apiProvider.getDocument('Item', currentItemCode);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final itemData = response.data['data'];
-        currentVariantOf = itemData['variant_of'] ?? '';
-        currentItemName = itemData['item_name'];
-        currentUom = itemData['stock_uom'] ?? 'Nos';
-        _openQtySheet(scannedBatch: batchNo);
+      final result = await _scanService.processScan(barcode);
+
+      if (result.isSuccess && result.itemData != null) {
+        // Store raw EAN parts if needed for later
+        if (result.rawCode.contains('-')) {
+          currentScannedEan = result.rawCode.split('-')[0];
+        } else {
+          currentScannedEan = result.rawCode;
+        }
+
+        // Populate Data
+        final itemData = result.itemData!;
+        currentItemCode = itemData.itemCode;
+        currentVariantOf = itemData.variantOf ?? '';
+        currentItemName = itemData.itemName;
+        currentUom = itemData.stockUom ?? 'Nos';
+
+        _openQtySheet(scannedBatch: result.batchNo);
       } else {
-        GlobalSnackbar.error(message: 'Item not found: $currentItemCode');
+        GlobalSnackbar.error(message: result.message ?? 'Scan failed');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Scan failed: $e');
+      GlobalSnackbar.error(message: 'Scan processing error: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();
