@@ -450,21 +450,27 @@ class PurchaseReceiptFormController extends GetxController {
 
     bsIsLoadingBatch.value = true;
     try {
+      // Fetch Batch with custom_packaging_qty
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
-      });
+      }, fields: ['name', 'custom_packaging_qty']);
 
       bsIsBatchValid.value = true;
       bsIsBatchReadOnly.value = true;
 
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+        final batchData = response.data['data'][0];
         GlobalSnackbar.success(message: 'Existing Batch found');
+
+        // Auto-set Quantity
+        final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+        if (pkgQty > 0) {
+          bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
+        }
       } else {
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
-
-      // _focusNextField();
     } catch (e) {
       GlobalSnackbar.error(message: 'Error validating batch');
       bsIsBatchValid.value = false;
@@ -663,7 +669,7 @@ class PurchaseReceiptFormController extends GetxController {
       items: currentItems,
     );
 
-    Get.back();
+    Get.back(); // Close Bottom Sheet automatically
     barcodeController.clear(); // --- UX FIX: Ensure scanner is clear ---
 
     if (mode == 'new') {

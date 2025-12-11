@@ -187,7 +187,7 @@ class DeliveryNoteFormController extends GetxController {
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    Get.back();
+    Get.back(); // Close Bottom Sheet automatically
     barcodeController.clear();
     _markDirty();
 
@@ -465,14 +465,25 @@ class DeliveryNoteFormController extends GetxController {
     bsIsLoadingBatch.value = true;
     bsBatchError.value = null;
     try {
-      try {
-        await _apiProvider.getDocument('Batch', batchNo);
-      } catch (e) {
-        final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': currentItemCode});
-        if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
-          throw Exception('Batch not found');
-        }
+      // 1. Fetch Batch Details (Check existence + get qty)
+      final batchResponse = await _apiProvider.getDocumentList('Batch',
+          filters: {'name': batchNo, 'item': currentItemCode},
+          fields: ['name', 'custom_packaging_qty']
+      );
+
+      if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
+        throw Exception('Batch not found');
       }
+
+      final batchData = batchResponse.data['data'][0];
+
+      // Auto-set Quantity
+      final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+      if (pkgQty > 0) {
+        bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
+      }
+
+      // 2. Fetch Balance
       final balanceResponse = await _apiProvider.getBatchWiseBalance(currentItemCode, batchNo);
       double fetchedQty = 0.0;
       if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -482,8 +493,10 @@ class DeliveryNoteFormController extends GetxController {
           fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
         }
       }
+
       bsMaxQty.value = fetchedQty;
       bsIsLoadingBatch.value = false;
+
       if (fetchedQty > 0) {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;

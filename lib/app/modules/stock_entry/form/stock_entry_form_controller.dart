@@ -847,6 +847,7 @@ class StockEntryFormController extends GetxController {
     if (batch.isEmpty) return;
     isValidatingBatch.value = true;
     try {
+      // Fetch Batch with custom_packaging_qty
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
@@ -856,10 +857,13 @@ class StockEntryFormController extends GetxController {
         final batchData = response.data['data'][0];
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
+
+        // Auto-set Quantity from Batch Packaging Qty
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
         }
+
         await _updateAvailableStock();
         GlobalSnackbar.success(message: 'Batch validated');
       } else {
@@ -1041,7 +1045,7 @@ class StockEntryFormController extends GetxController {
       val?.items.assignAll(currentItems);
     });
 
-    Get.back();
+    Get.back(); // Close Bottom Sheet automatically
     barcodeController.clear(); // --- UX FIX: Ensure scanner is clear for next item ---
 
     if (mode == 'new') {
