@@ -12,6 +12,7 @@ class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  var itemFormKey = GlobalKey<FormState>(); // ADDED
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
 
@@ -232,6 +233,7 @@ class PurchaseOrderFormController extends GetxController {
     required double qty,
     String? rowId,
   }) {
+    itemFormKey = GlobalKey<FormState>(); // Reset Key
     currentItemCode = code;
     currentItemName = name;
     currentUom = uom;

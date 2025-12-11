@@ -56,6 +56,9 @@ class StockEntryFormController extends GetxController {
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
+  // Sheet State
+  var itemFormKey = GlobalKey<FormState>(); // ADDED: Form Key stored in controller
+
   // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
@@ -758,6 +761,9 @@ class StockEntryFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
+    // Generate new key for new sheet instance to ensure fresh validation state
+    itemFormKey = GlobalKey<FormState>();
+
     bsQtyController.clear();
     bsBatchController.clear();
     bsSourceRackController.clear();
@@ -838,7 +844,7 @@ class StockEntryFormController extends GetxController {
         for (var row in result) {
           // Additional client-side filtering if Rack was specified but not supported by API filters
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
-          totalBalance += (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+          totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
         }
 
         bsMaxQty.value = totalBalance;

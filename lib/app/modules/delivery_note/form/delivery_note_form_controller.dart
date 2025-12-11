@@ -18,6 +18,7 @@ class DeliveryNoteFormController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  var itemFormKey = GlobalKey<FormState>(); // ADDED
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
@@ -396,6 +397,7 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
+    itemFormKey = GlobalKey<FormState>(); // Reset Key
     currentItemCode = itemCode;
     currentItemName = itemName;
 

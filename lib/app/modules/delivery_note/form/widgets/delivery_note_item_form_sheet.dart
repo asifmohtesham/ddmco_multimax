@@ -17,6 +17,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           (controller.isFormDirty.value || !isEditing);
 
       return GlobalItemFormSheet(
+        formKey: controller.itemFormKey, // PASSED KEY
         scrollController: scrollController,
         title: isEditing ? 'Update Item' : 'Add Item',
         itemCode: controller.currentItemCode,

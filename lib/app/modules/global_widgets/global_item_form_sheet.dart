@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 
 class GlobalItemFormSheet extends StatelessWidget {
+  final GlobalKey<FormState> formKey; // State moved to Controller
   final ScrollController? scrollController;
   final String title;
   final String itemCode;
@@ -27,6 +28,7 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   const GlobalItemFormSheet({
     super.key,
+    required this.formKey,
     required this.scrollController,
     required this.title,
     required this.itemCode,
@@ -46,38 +48,54 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.isLoading = false,
   });
 
+  Widget _buildSaveButton(BuildContext context, bool enabled) {
+    final bool canPress = enabled && !isSaving && !isLoading;
+
+    return ElevatedButton(
+      onPressed: canPress
+          ? () {
+        if (formKey.currentState!.validate()) {
+          onSubmit();
+        }
+      }
+          : null,
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: enabled ? 2 : 0,
+      ),
+      child: isSaving
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : Text(
+        title,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  static Widget buildInputGroup({required String label, required Color color, required Widget child, Color? bgColor}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
+          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: bgColor ?? color.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-
-    // Helper widget builder to avoid code duplication
-    Widget buildSaveButton(bool enabled) {
-      final bool canPress = enabled && !isSaving && !isLoading;
-
-      return ElevatedButton(
-        onPressed: canPress
-            ? () {
-          if (formKey.currentState!.validate()) {
-            onSubmit();
-          }
-        }
-            : null,
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: enabled ? 2 : 0,
-        ),
-        child: isSaving
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      );
-    }
-
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(16.0),
@@ -148,8 +166,8 @@ class GlobalItemFormSheet extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: isSaveEnabledRx != null
-                    ? Obx(() => buildSaveButton(isSaveEnabledRx!.value))
-                    : buildSaveButton(isSaveEnabled),
+                    ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                    : _buildSaveButton(context, isSaveEnabled),
               ),
 
               // --- Delete Button ---
@@ -173,25 +191,6 @@ class GlobalItemFormSheet extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  static Widget buildInputGroup({required String label, required Color color, required Widget child, Color? bgColor}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
-          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: bgColor ?? color.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: child,
-        ),
-      ],
     );
   }
 }

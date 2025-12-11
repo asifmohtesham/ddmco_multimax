@@ -16,6 +16,7 @@ class PackingSlipFormController extends GetxController {
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  var itemFormKey = GlobalKey<FormState>(); // ADDED
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
@@ -235,6 +236,7 @@ class PackingSlipFormController extends GetxController {
   }
 
   void _prepareSheetForAdd(DeliveryNoteItem item) {
+    itemFormKey = GlobalKey<FormState>(); // Reset Key
     isEditing.value = false;
     currentItemNameKey = null;
     _populateItemDetails(item);
@@ -260,6 +262,7 @@ class PackingSlipFormController extends GetxController {
   }
 
   void editItem(PackingSlipItem item) {
+    itemFormKey = GlobalKey<FormState>(); // Reset Key
     final dnItem = linkedDeliveryNote.value?.items.firstWhereOrNull((d) => d.name == item.dnDetail);
     if (dnItem == null) return;
 

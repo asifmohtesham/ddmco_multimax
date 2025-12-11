@@ -14,6 +14,7 @@ class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  var itemFormKey = GlobalKey<FormState>(); // ADDED
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -356,6 +357,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
+    itemFormKey = GlobalKey<FormState>(); // Reset Key
     bsQtyController.clear();
     bsBatchController.clear();
     bsRackController.clear();

@@ -15,6 +15,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
     final bool isEditing = controller.currentItemNameKey != null;
 
     return GlobalItemFormSheet(
+      formKey: controller.itemFormKey, // PASSED KEY
       scrollController: scrollController,
       title: isEditing ? 'Update Item' : 'Add to Order',
       itemCode: controller.currentItemCode ?? '',

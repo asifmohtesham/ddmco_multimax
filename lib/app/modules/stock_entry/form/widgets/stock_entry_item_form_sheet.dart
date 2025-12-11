@@ -10,11 +10,12 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine static values once
     final isEditing = controller.currentItemNameKey.value != null;
     final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
     return GlobalItemFormSheet(
+      key: ValueKey(controller.currentItemNameKey.value ?? 'new'), // Optional: helps Flutter ID the widget
+      formKey: controller.itemFormKey, // PASSED KEY
       scrollController: scrollController,
       title: isEditing ? 'Update Item' : 'Add Item',
       itemCode: controller.currentItemCode,
@@ -24,17 +25,11 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
       qtyController: controller.bsQtyController,
       onIncrement: () => controller.adjustSheetQty(1),
       onDecrement: () => controller.adjustSheetQty(-1),
-      // Use Obx only for the dynamic text string if needed,
-      // or pass null if stock balance updates aren't critical during typing.
-      // Here we assume stock balance is fetched once on item load/batch validation.
       qtyInfoText: null,
 
-      // Pass the RxBool directly so the button rebuilds internally without rebuilding the form
       isSaveEnabledRx: controller.isSheetValid,
       isSaveEnabled: docStatus == 0,
 
-      // Loading state can be passed as Rx in future refactor,
-      // for now, individual fields show their loading indicators.
       isLoading: false,
 
       onSubmit: controller.addItem,
@@ -51,9 +46,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           child: TextFormField(
             key: const ValueKey('batch_field'),
             controller: controller.bsBatchController,
-            // Readonly only when validated
             readOnly: controller.bsIsBatchValid.value,
-            autofocus: true,
+            autofocus: false,
             decoration: InputDecoration(
               hintText: 'Enter or scan batch',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -85,9 +79,9 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
           ),
         )),
 
-        // Invoice Serial (Static List, no Obx needed around the field itself if list is constant per item load)
+        // Invoice Serial
         if (controller.posUploadSerialOptions.isNotEmpty)
-          GlobalItemFormSheet.buildInputGroup(
+          Obx(() => GlobalItemFormSheet.buildInputGroup( // Wrapped in Obx
             label: 'Invoice Serial No',
             color: Colors.blueGrey,
             child: DropdownButtonFormField<String>(
@@ -101,7 +95,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               }).toList(),
               onChanged: (value) => controller.selectedSerial.value = value,
             ),
-          ),
+          )),
 
         // Rack Fields
         Builder(builder: (context) {

@@ -12,6 +12,7 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
       final isEditing = controller.isEditing.value;
 
       return GlobalItemFormSheet(
+        formKey: controller.itemFormKey, // PASSED KEY
         scrollController: null, // Basic bottom sheet, not scrollable dragger needed here
         title: isEditing ? 'Edit Pack Item' : 'Pack Item',
         itemCode: controller.currentItemCode ?? '-',

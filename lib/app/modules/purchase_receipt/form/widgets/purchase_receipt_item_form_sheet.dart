@@ -15,6 +15,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
       final bool isEditing = controller.currentItemNameKey.value != null;
 
       return GlobalItemFormSheet(
+        formKey: controller.itemFormKey, // PASSED KEY
         scrollController: scrollController,
         title: isEditing ? (isEditable ? 'Update Item' : 'View Item') : 'Add Item',
         itemCode: controller.currentItemCode,
