@@ -186,6 +186,9 @@ class DeliveryNoteFormController extends GetxController {
     Get.back(); // Close sheet
     _markDirty();
 
+    // Auto-save
+    await saveDeliveryNote();
+
     // Provide feedback
     if(editingItemName.value == null) {
       GlobalSnackbar.success(message: 'Item added to list. Remember to Save.');

@@ -248,7 +248,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
     }
 
     return IconButton(
-      icon: const Icon(Icons.check),
+      icon: const Icon(Icons.arrow_forward), // Changed from Icons.check
       onPressed: onSubmit,
       color: Colors.grey,
     );

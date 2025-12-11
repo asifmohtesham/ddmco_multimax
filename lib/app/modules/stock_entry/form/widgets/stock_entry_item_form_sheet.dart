@@ -63,7 +63,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               child: TextFormField(
                 controller: controller.bsBatchController,
                 readOnly: controller.bsIsBatchReadOnly.value,
-                autofocus: false, // DISABLED AUTOFOCUS
+                autofocus: false,
                 decoration: InputDecoration(
                   hintText: 'Enter or scan batch',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -145,7 +145,10 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                                 ),
                                 suffixIcon: controller.isSourceRackValid.value
                                     ? const Icon(Icons.check_circle, color: Colors.orange, size: 20)
-                                    : null,
+                                    : IconButton(
+                                  icon: const Icon(Icons.arrow_forward, color: Colors.orange),
+                                  onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
+                                ),
                               ),
                               onFieldSubmitted: (val) => controller.validateRack(val, true),
                             ),
@@ -175,7 +178,10 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                                 ),
                                 suffixIcon: controller.isTargetRackValid.value
                                     ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-                                    : null,
+                                    : IconButton(
+                                  icon: const Icon(Icons.arrow_forward, color: Colors.green),
+                                  onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
+                                ),
                               ),
                               onFieldSubmitted: (val) => controller.validateRack(val, false),
                             ),
@@ -205,7 +211,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               onIncrement: () => controller.adjustSheetQty(1),
               onDecrement: () => controller.adjustSheetQty(-1),
               label: 'Quantity',
-              // Passing formatted info text
               infoText: controller.bsMaxQty.value > 0
                   ? 'Stock Balance: ${controller.bsMaxQty.value}'
                   : null,

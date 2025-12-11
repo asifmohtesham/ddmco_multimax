@@ -741,7 +741,7 @@ class StockEntryFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
-  void addItem() {
+  void addItem() async {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
@@ -797,10 +797,13 @@ class StockEntryFormController extends GetxController {
 
     Get.back();
 
+    // Auto-save logic
     if (mode == 'new') {
       saveStockEntry();
     } else {
       isDirty.value = true;
+      // Trigger save immediately if not new
+      await saveStockEntry();
       GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
     }
   }

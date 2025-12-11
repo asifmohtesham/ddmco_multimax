@@ -590,7 +590,7 @@ class PurchaseReceiptFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
-  void addItem() {
+  void addItem() async {
     if (!isEditable) return;
 
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
@@ -659,6 +659,7 @@ class PurchaseReceiptFormController extends GetxController {
       savePurchaseReceipt();
     } else {
       isDirty.value = true;
+      await savePurchaseReceipt(); // Auto-save
       GlobalSnackbar.success(message: index != -1 ? 'Item updated' : 'Item added');
     }
   }

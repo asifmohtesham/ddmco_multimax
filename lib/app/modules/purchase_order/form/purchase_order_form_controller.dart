@@ -268,7 +268,7 @@ class PurchaseOrderFormController extends GetxController {
     // Listener will update observable
   }
 
-  void submitItem() {
+  void submitItem() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rate = double.tryParse(bsRateController.text) ?? 0;
 
@@ -323,6 +323,9 @@ class PurchaseOrderFormController extends GetxController {
 
     Get.back();
     _checkForChanges();
+
+    // Auto-save
+    await savePurchaseOrder();
   }
 
   void deleteItem(PurchaseOrderItem item) {
