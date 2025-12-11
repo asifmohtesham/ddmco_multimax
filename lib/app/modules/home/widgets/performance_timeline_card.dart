@@ -45,13 +45,27 @@ class PerformanceTimelineCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        Text('Items Managed & Fulfilled', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
+                    // Wrapped in Expanded to prevent overflow
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Performance',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          Text(
+                            'Items Managed & Fulfilled',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8), // Spacing between title and picker
                     if (viewMode == 'Weekly' && selectedRange != null)
                       _buildRangePicker(context)
                     else if (selectedDate != null)
@@ -141,14 +155,18 @@ class PerformanceTimelineCard extends StatelessWidget {
           children: [
             Icon(Icons.calendar_today, size: 14, color: Theme.of(context).primaryColor),
             const SizedBox(width: 6),
-            Text(
-              DateFormat('d MMM yyyy').format(selectedDate!),
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor
+            Flexible( // Added Flexible to handle small screens
+              child: Text(
+                DateFormat('d MMM yyyy').format(selectedDate!),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).primaryColor
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 4),
             const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
           ],
         ),
@@ -181,14 +199,18 @@ class PerformanceTimelineCard extends StatelessWidget {
           children: [
             Icon(Icons.date_range, size: 14, color: Theme.of(context).primaryColor),
             const SizedBox(width: 6),
-            Text(
-              '${DateFormat('d MMM').format(selectedRange!.start)} - ${DateFormat('d MMM').format(selectedRange!.end)}',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor
+            Flexible( // Added Flexible
+              child: Text(
+                '${DateFormat('d MMM').format(selectedRange!.start)} - ${DateFormat('d MMM').format(selectedRange!.end)}',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).primaryColor
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 4),
             const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
           ],
         ),
