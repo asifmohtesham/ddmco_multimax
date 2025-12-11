@@ -874,7 +874,13 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<void> validateRack(String rack, bool isSource) async {
-    if (rack.isEmpty) return;
+    if (rack.isEmpty) {
+      if (isSource) isSourceRackValid.value = false;
+      else isTargetRackValid.value = false;
+      validateSheet();
+      return;
+    }
+
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -886,6 +892,8 @@ class StockEntryFormController extends GetxController {
         }
       }
     }
+
+    // Set validating state
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
 
@@ -898,6 +906,7 @@ class StockEntryFormController extends GetxController {
         } else {
           isTargetRackValid.value = true;
         }
+        GlobalSnackbar.success(message: 'Rack Validated');
       } else {
         if (isSource) isSourceRackValid.value = false;
         else isTargetRackValid.value = false;
@@ -911,6 +920,22 @@ class StockEntryFormController extends GetxController {
       else isValidatingTargetRack.value = false;
       validateSheet();
     }
+  }
+
+  void resetSourceRackValidation() {
+    isSourceRackValid.value = false;
+    validateSheet();
+  }
+
+  void resetTargetRackValidation() {
+    isTargetRackValid.value = false;
+    validateSheet();
+  }
+
+  void resetBatchValidation() {
+    bsIsBatchValid.value = false;
+    bsIsBatchReadOnly.value = false;
+    validateSheet();
   }
 
   void _focusNextField() {

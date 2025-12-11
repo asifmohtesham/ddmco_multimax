@@ -21,7 +21,7 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   // State
   final bool isSaveEnabled;
-  final RxBool? isSaveEnabledRx; // Added Reactive support
+  final RxBool? isSaveEnabledRx;
   final bool isSaving;
   final bool isLoading;
 
@@ -41,7 +41,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.onSubmit,
     this.onDelete,
     this.isSaveEnabled = true,
-    this.isSaveEnabledRx, // Added
+    this.isSaveEnabledRx,
     this.isSaving = false,
     this.isLoading = false,
   });
@@ -49,6 +49,34 @@ class GlobalItemFormSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final formKey = GlobalKey<FormState>();
+
+    // Helper widget builder to avoid code duplication
+    Widget buildSaveButton(bool enabled) {
+      final bool canPress = enabled && !isSaving && !isLoading;
+
+      return ElevatedButton(
+        onPressed: canPress
+            ? () {
+          if (formKey.currentState!.validate()) {
+            onSubmit();
+          }
+        }
+            : null,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: enabled ? 2 : 0,
+        ),
+        child: isSaving
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            : Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      );
+    }
 
     return SafeArea(
       child: Container(
@@ -119,34 +147,9 @@ class GlobalItemFormSheet extends StatelessWidget {
               // --- Action Buttons ---
               SizedBox(
                 width: double.infinity,
-                child: Obx(() {
-                  // Use Rx value if provided, else fall back to static bool
-                  final bool enabled = isSaveEnabledRx?.value ?? isSaveEnabled;
-                  final bool canPress = enabled && !isSaving && !isLoading;
-
-                  return ElevatedButton(
-                    onPressed: canPress
-                        ? () {
-                      if (formKey.currentState!.validate()) {
-                        onSubmit();
-                      }
-                    }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: enabled ? 2 : 0,
-                    ),
-                    child: isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(
-                      title,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  );
-                }),
+                child: isSaveEnabledRx != null
+                    ? Obx(() => buildSaveButton(isSaveEnabledRx!.value))
+                    : buildSaveButton(isSaveEnabled),
               ),
 
               // --- Delete Button ---
