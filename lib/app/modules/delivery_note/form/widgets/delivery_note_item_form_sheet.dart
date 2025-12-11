@@ -17,7 +17,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           (controller.isFormDirty.value || !isEditing);
 
       return GlobalItemFormSheet(
-        formKey: controller.itemFormKey, // PASSED KEY
+        formKey: controller.itemFormKey,
         scrollController: scrollController,
         title: isEditing ? 'Update Item' : 'Add Item',
         itemCode: controller.currentItemCode,
@@ -108,14 +108,16 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ),
           ),
 
-          // Rack
-          GlobalItemFormSheet.buildInputGroup(
+          // Rack (Refactored)
+          Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
+            bgColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
             child: TextFormField(
               controller: controller.bsRackController,
               // focusNode: controller.bsRackFocusNode,
-              autofocus: false, // DISABLED AUTOFOCUS
+              autofocus: false,
+              readOnly: controller.bsIsRackValid.value, // Readonly if valid
               decoration: InputDecoration(
                 hintText: 'Source Rack',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -128,10 +130,27 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   borderSide: const BorderSide(color: Colors.orange, width: 2),
                 ),
                 prefixIcon: const Icon(Icons.shelves, color: Colors.orange),
+                filled: true,
+                fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : Colors.white,
+                suffixIcon: controller.isValidatingRack.value
+                    ? const Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
+                )
+                    : (controller.bsIsRackValid.value
+                    ? IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.orange),
+                  onPressed: controller.resetRackValidation,
+                )
+                    : IconButton(
+                  icon: const Icon(Icons.arrow_forward, color: Colors.orange),
+                  onPressed: () => controller.validateRack(controller.bsRackController.text),
+                )),
               ),
               onChanged: (_) => controller.checkForChanges(),
+              onFieldSubmitted: (val) => controller.validateRack(val),
             ),
-          ),
+          )),
         ],
       );
     });
