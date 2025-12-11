@@ -313,7 +313,7 @@ class HomeController extends GetxController {
       // Use "like" to cover potential partial matches or assume direct match
       final response = await _itemProvider.getItems(
         limit: 1,
-        filters: {'name': ['like', '%$code%']},
+        filters: {'name': ['like', '%${code.substring(0,code.length-1)}%']},
       );
 
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
