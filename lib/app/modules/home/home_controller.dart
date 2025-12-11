@@ -307,26 +307,19 @@ class HomeController extends GetxController {
 
       if (result.type == ScanType.rack && result.rackId != null) {
         await _handleRackScan(result.rackId!);
-      } else if (result.isSuccess && result.itemData != null) {
-        final itemCode = result.itemData!.itemCode; // Validated Item Code
-
-        final itemFormController = Get.put(ItemFormController());
-        itemFormController.loadItem(itemCode);
+      } else if (result.isSuccess && result.type == ScanType.item && result.itemData != null) {
+        _openItemDetailSheet(result.itemData!.itemCode);
+      } else if (result.type == ScanType.multiple && result.candidates != null) {
+        // Open Disambiguation Sheet
         barcodeController.clear();
-
-        await Get.bottomSheet(
-          FractionallySizedBox(
-            heightFactor: 0.9,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              child: const ItemFormScreen(),
-            ),
+        Get.bottomSheet(
+          MultiItemSelectionSheet(
+            items: result.candidates!,
+            onItemSelected: (item) => _openItemDetailSheet(item.itemCode),
           ),
           isScrollControlled: true,
-          enableDrag: true,
-          backgroundColor: Colors.white,
+          backgroundColor: Colors.transparent,
         );
-        Get.delete<ItemFormController>();
       } else {
         GlobalSnackbar.error(title: 'Not Found', message: result.message ?? 'Item not found');
       }
@@ -336,6 +329,26 @@ class HomeController extends GetxController {
       isScanning.value = false;
       barcodeController.clear();
     }
+  }
+
+  void _openItemDetailSheet(String itemCode) async {
+    final itemFormController = Get.put(ItemFormController());
+    itemFormController.loadItem(itemCode);
+    barcodeController.clear();
+
+    await Get.bottomSheet(
+      FractionallySizedBox(
+        heightFactor: 0.9,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: const ItemFormScreen(),
+        ),
+      ),
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.white,
+    );
+    Get.delete<ItemFormController>();
   }
 
   Future<void> _handleRackScan(String rackCode) async {

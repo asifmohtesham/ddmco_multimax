@@ -1,6 +1,6 @@
 import 'package:multimax/app/data/models/item_model.dart';
 
-enum ScanType { item, batch, rack, unknown, error }
+enum ScanType { item, batch, rack, unknown, error, multiple }
 
 class ScanResult {
   final ScanType type;
@@ -11,8 +11,9 @@ class ScanResult {
   final String? batchNo;
   final String? rackId;
 
-  // Enriched Data (from API)
+  // Enriched Data
   final Item? itemData;
+  final List<Item>? candidates; // For multiple search results
 
   // Error Info
   final String? message;
@@ -24,6 +25,7 @@ class ScanResult {
     this.batchNo,
     this.rackId,
     this.itemData,
+    this.candidates,
     this.message,
   });
 

@@ -1,5 +1,5 @@
-import 'package:get/get.dart';
-import 'package:dio/dio.dart'; // Added for DioException
+import 'package:get/get.dart' hide Response;
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
@@ -17,24 +17,17 @@ class ScanService extends GetxService {
       return ScanResult(type: ScanType.rack, rawCode: barcode, rackId: barcode);
     }
 
-    // 2. BATCH CONTEXT LOGIC (Short Code / Prefix Logic)
+    // 2. BATCH CONTEXT LOGIC
     if (contextItemCode != null) {
       String? extractedSuffix;
-
-      // Handle "SHIPMENT-24-{ID}" (Check longer prefix first)
       if (barcode.startsWith('SHIPMENT-24-')) {
-        extractedSuffix = barcode.substring('SHIPMENT-24-'.length, barcode.length - 2);
-      }
-      // Handle "SHIPMENT-{ID}"
-      else if (barcode.startsWith('SHIPMENT-')) {
+        extractedSuffix = barcode.substring('SHIPMENT-24-'.length);
+      } else if (barcode.startsWith('SHIPMENT-')) {
         extractedSuffix = barcode.substring('SHIPMENT-'.length);
-      }
-      // Handle Simple Alphanumeric (3+ chars, no hyphens)
-      else if (!barcode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
+      } else if (!barcode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
         extractedSuffix = barcode;
       }
 
-      // If valid suffix found, construct full batch: {ItemCode}-{Suffix}
       if (extractedSuffix != null && extractedSuffix.isNotEmpty) {
         final fullBatchNo = '$contextItemCode-$extractedSuffix';
         return ScanResult(
@@ -46,54 +39,87 @@ class ScanService extends GetxService {
       }
     }
 
-    // 3. ITEM / FULL BATCH PARSING
+    // 3. ITEM PARSING
     String parsedItemCode = barcode;
     String? parsedBatchNo;
 
     if (barcode.contains('-')) {
-      // Format: {EAN}-{BatchID} -> The scanned barcode IS the batch document name
       final parts = barcode.split('-');
-      parsedItemCode = parts.first.substring(0, parts.first.length - 1);
+      parsedItemCode = parts.first;
       parsedBatchNo = barcode;
     } else {
-      // Pure EAN / Item Code logic
       if (barcode.length > 7 && RegExp(r'^\d+$').hasMatch(barcode)) {
-        parsedItemCode = barcode.substring(0, barcode.length - 1); // Strip checksum
+        parsedItemCode = barcode.substring(0, barcode.length - 1);
       } else {
         parsedItemCode = barcode;
       }
     }
 
-    // 4. API VERIFICATION
+    // 4. API VERIFICATION & SEARCH
     try {
-      final response = await _apiProvider.getDocument('Item', parsedItemCode);
+      // Step A: Try Exact Match
+      try {
+        final response = await _apiProvider.getDocument('Item', parsedItemCode);
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final item = Item.fromJson(response.data['data']);
+          return ScanResult(
+            type: parsedBatchNo != null ? ScanType.batch : ScanType.item,
+            rawCode: barcode,
+            itemCode: item.itemCode,
+            batchNo: parsedBatchNo,
+            itemData: item,
+          );
+        }
+      } catch (e) {
+        // Ignore 404 here, fall through to search
+      }
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final item = Item.fromJson(response.data['data']);
+      // Step B: Fallback Search (Variant Of OR Item Code like)
+      // Note: We use the raw barcode for search, not the stripped one, to allow partial text search.
 
+      final searchFields = ['item_code', 'variant_of', 'item_name'];
+      // Using 'OR' logic by fetching multiple lists and merging (Frappe REST API is restrictive on OR filters in one call without custom scripts)
+
+      final futures = <Future<Response>>[];
+      futures.add(_apiProvider.getDocumentList('Item', filters: {'item_code': ['like', '%$barcode%']}, limit: 10));
+      futures.add(_apiProvider.getDocumentList('Item', filters: {'variant_of': ['like', '%$barcode%']}, limit: 10));
+
+      final results = await Future.wait(futures);
+      final Map<String, Item> mergedItems = {};
+
+      for (var response in results) {
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          for (var json in response.data['data']) {
+            final item = Item.fromJson(json);
+            mergedItems[item.itemCode] = item;
+          }
+        }
+      }
+
+      if (mergedItems.isNotEmpty) {
+        final candidates = mergedItems.values.toList();
+        if (candidates.length == 1) {
+          return ScanResult(
+            type: ScanType.item,
+            rawCode: barcode,
+            itemCode: candidates.first.itemCode,
+            itemData: candidates.first,
+          );
+        }
         return ScanResult(
-          type: parsedBatchNo != null ? ScanType.batch : ScanType.item,
+          type: ScanType.multiple,
           rawCode: barcode,
-          itemCode: item.itemCode,
-          batchNo: parsedBatchNo,
-          itemData: item,
-        );
-      } else {
-        return ScanResult(
-            type: ScanType.error,
-            rawCode: barcode,
-            message: "Item not found: $parsedItemCode"
+          candidates: candidates,
         );
       }
+
+      return ScanResult(
+          type: ScanType.error,
+          rawCode: barcode,
+          message: "Item not found"
+      );
+
     } on DioException catch (e) {
-      // Gracefully handle 404 from API
-      if (e.response?.statusCode == 404) {
-        return ScanResult(
-            type: ScanType.error,
-            rawCode: barcode,
-            message: "Item not found in database"
-        );
-      }
       return ScanResult(
           type: ScanType.error,
           rawCode: barcode,

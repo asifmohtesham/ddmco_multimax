@@ -417,3 +417,111 @@ class RackContentsSheet extends StatelessWidget {
     );
   }
 }
+
+// --- NEW: Multi-Item Selection Sheet ---
+class MultiItemSelectionSheet extends StatelessWidget {
+  final List<Item> items;
+  final Function(Item) onItemSelected;
+
+  const MultiItemSelectionSheet({
+    super.key,
+    required this.items,
+    required this.onItemSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      ),
+      child: SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Select Item', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text('${items.length} Matches Found', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: items.length,
+                    separatorBuilder: (c, i) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return InkWell(
+                        onTap: () {
+                          Get.back(); // Close this sheet
+                          onItemSelected(item); // Open detail sheet
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade200),
+                            boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Text(item.itemCode, style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.black87)),
+                                  if (item.variantOf != null) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(4)),
+                                      child: Text('Var: ${item.variantOf}', style: TextStyle(fontSize: 10, color: Colors.teal.shade800, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ]
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  const Icon(Icons.category, size: 12, color: Colors.grey),
+                                  const SizedBox(width: 4),
+                                  Text(item.itemGroup, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
