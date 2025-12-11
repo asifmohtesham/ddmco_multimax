@@ -87,6 +87,9 @@ class StockEntryFormController extends GetxController {
   String _initialSourceRack = '';
   String _initialTargetRack = '';
 
+  // Added: Track the scanned EAN to reconstruct Batch IDs
+  String currentScannedEan = '';
+
   @override
   void onInit() {
     super.onInit();
@@ -547,7 +550,7 @@ class StockEntryFormController extends GetxController {
       }
     }
 
-    // --- DIRTY CHECK (Added) ---
+    // --- DIRTY CHECK ---
     if (currentItemNameKey.value != null) {
       // Editing existing item: Only valid if something changed
       bool isChanged = false;
@@ -561,7 +564,6 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
-    // ---------------------------
 
     isSheetValid.value = true;
   }
@@ -577,7 +579,7 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // ... (saveStockEntry, _handleSheetRackScan, scanBarcode remain same) ...
+  // ... (saveStockEntry) ...
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
@@ -668,19 +670,29 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  // UPDATED: Scan Barcode Logic
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
-      // Rack Detection Heuristic: contains hyphens and has multiple parts (e.g. WH-ZONE-RACK)
+      // 1. Rack Check (Existing Heuristic: 3 parts)
       if (barcode.contains('-') && barcode.split('-').length >= 3) {
         _handleSheetRackScan(barcode);
       } else {
-        // Batch Logic: Handle 3-char suffix scan for 8-digit EAN items
+        // 2. Batch Logic
         String batchToUse = barcode;
-        log(batchToUse);
-        if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode) && RegExp(r'^\d{8}$').hasMatch(currentItemCode)) {
-          batchToUse = '$currentItemCode-$barcode';
+
+        // Case A: Full Batch Scan {EAN-Batch ID} format (contains hyphen)
+        if (barcode.contains('-')) {
+          // The scanned barcode IS the batch document name
+          batchToUse = barcode;
+        }
+        // Case B: Partial Batch Scan (3+ chars, alphanumeric)
+        // If it's just a short code, we concatenate it with the EAN
+        else if (RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
+          // Use the stored EAN from initial scan if available, else fallback to currentItemCode
+          String prefix = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+          batchToUse = '$prefix-$barcode';
         }
 
         bsBatchController.text = batchToUse;
@@ -690,33 +702,43 @@ class StockEntryFormController extends GetxController {
     }
 
     isScanning.value = true;
-    // ... (rest of the function remains unchanged)
-    String itemCode;
+
+    String rawEan;
     String? batchNo;
 
+    // Check if scan is in {EAN-BatchID} format
     if (barcode.contains('-')) {
-      final parts = barcode.split('-');
-      final ean = parts.first;
-      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo = parts.join('-');
+      List<String> parts = barcode.split('-');
+      rawEan = parts[0];
+      batchNo = barcode; // Use full scan as batch doc name
     } else {
-      final ean = barcode;
-      itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
+      rawEan = barcode;
       batchNo = null;
     }
 
+    // Store raw EAN for later use in sheet
+    currentScannedEan = rawEan;
+
+    // Logic: Item Code is EAN minus the last checksum digit
+    if (rawEan.length > 1) {
+      currentItemCode = rawEan.substring(0, rawEan.length - 1);
+    } else {
+      currentItemCode = rawEan; // Fallback
+    }
+
     try {
-      final response = await _apiProvider.getDocument('Item', itemCode);
+      final response = await _apiProvider.getDocument('Item', currentItemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final itemData = response.data['data'];
-        currentItemCode = itemData['item_code'];
-        currentVariantOf = itemData['variant_of'];
+
+        // Refresh properties from actual document
+        currentVariantOf = itemData['variant_of'] ?? '';
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
 
         _openQtySheet(scannedBatch: batchNo);
       } else {
-        GlobalSnackbar.error(message: 'Item not found');
+        GlobalSnackbar.error(message: 'Item not found: $currentItemCode');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan failed: $e');
