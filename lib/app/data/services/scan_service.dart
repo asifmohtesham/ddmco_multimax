@@ -57,7 +57,8 @@ class ScanService extends GetxService {
 
     // 4. API VERIFICATION & SEARCH
     try {
-      // Step A: Try Exact Match
+      // Step A: Try Exact Match (Direct Scan)
+      // If the user scanned a specific barcode, we assume they want THAT item directly.
       try {
         final response = await _apiProvider.getDocument('Item', parsedItemCode);
         if (response.statusCode == 200 && response.data['data'] != null) {
@@ -75,10 +76,8 @@ class ScanService extends GetxService {
       }
 
       // Step B: Fallback Search (Variant Of OR Item Code like)
-      // Note: We use the raw barcode for search, not the stripped one, to allow partial text search.
-
-      final searchFields = ['item_code', 'variant_of', 'item_name'];
-      // Using 'OR' logic by fetching multiple lists and merging (Frappe REST API is restrictive on OR filters in one call without custom scripts)
+      // This path is for partial searches or "Variant Of" lookups.
+      // We always return 'multiple' type here to force the catalogue view.
 
       final futures = <Future<Response>>[];
       futures.add(_apiProvider.getDocumentList('Item', filters: {'item_code': ['like', '%$barcode%']}, limit: 10));
@@ -98,14 +97,7 @@ class ScanService extends GetxService {
 
       if (mergedItems.isNotEmpty) {
         final candidates = mergedItems.values.toList();
-        if (candidates.length == 1) {
-          return ScanResult(
-            type: ScanType.item,
-            rawCode: barcode,
-            itemCode: candidates.first.itemCode,
-            itemData: candidates.first,
-          );
-        }
+        // UPDATED: Always return ScanType.multiple for search results to show the list/catalogue
         return ScanResult(
           type: ScanType.multiple,
           rawCode: barcode,
@@ -120,17 +112,12 @@ class ScanService extends GetxService {
       );
 
     } on DioException catch (e) {
-      return ScanResult(
-          type: ScanType.error,
-          rawCode: barcode,
-          message: "Network Error: ${e.message}"
-      );
+      if (e.response?.statusCode == 404) {
+        return ScanResult(type: ScanType.error, rawCode: barcode, message: "Item not found in database");
+      }
+      return ScanResult(type: ScanType.error, rawCode: barcode, message: "Network Error: ${e.message}");
     } catch (e) {
-      return ScanResult(
-          type: ScanType.error,
-          rawCode: barcode,
-          message: "Error: $e"
-      );
+      return ScanResult(type: ScanType.error, rawCode: barcode, message: "Error: $e");
     }
   }
 }

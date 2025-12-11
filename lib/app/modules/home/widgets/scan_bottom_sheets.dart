@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class ItemDetailSheet extends StatelessWidget {
@@ -418,7 +419,7 @@ class RackContentsSheet extends StatelessWidget {
   }
 }
 
-// --- NEW: Multi-Item Selection Sheet ---
+// --- UPDATED: Multi-Item Selection Sheet (Catalogue View) ---
 class MultiItemSelectionSheet extends StatelessWidget {
   final List<Item> items;
   final Function(Item) onItemSelected;
@@ -431,6 +432,9 @@ class MultiItemSelectionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get Base URL for images
+    final String baseUrl = Get.find<ApiProvider>().baseUrl;
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -438,14 +442,14 @@ class MultiItemSelectionSheet extends StatelessWidget {
       ),
       child: SafeArea(
         child: DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
+          initialChildSize: 0.8, // Taller for catalogue
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
           expand: false,
           builder: (context, scrollController) {
             return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
@@ -454,8 +458,8 @@ class MultiItemSelectionSheet extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Select Item', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          Text('${items.length} Matches Found', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                          const Text('Catalogue Search', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text('${items.length} Items Found', style: Theme.of(context).textTheme.titleLarge),
                         ],
                       ),
                       IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
@@ -463,53 +467,126 @@ class MultiItemSelectionSheet extends StatelessWidget {
                   ),
                 ),
                 const Divider(height: 1),
+
+                // Catalogue Grid
                 Expanded(
-                  child: ListView.separated(
+                  child: GridView.builder(
                     controller: scrollController,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.70, // Optimized for card content
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
                     itemCount: items.length,
-                    separatorBuilder: (c, i) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      return InkWell(
+                      final imageUrl = item.image != null ? '$baseUrl${item.image}' : null;
+
+                      return GestureDetector(
                         onTap: () {
-                          Get.back(); // Close this sheet
-                          onItemSelected(item); // Open detail sheet
+                          Get.back();
+                          onItemSelected(item);
                         },
                         child: Container(
-                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.grey.shade200),
-                            boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+                            boxShadow: [
+                              BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))
+                            ],
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Text(item.itemCode, style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.black87)),
-                                  if (item.variantOf != null) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(4)),
-                                      child: Text('Var: ${item.variantOf}', style: TextStyle(fontSize: 10, color: Colors.teal.shade800, fontWeight: FontWeight.bold)),
+                              // Image Section
+                              Expanded(
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                      child: imageUrl != null
+                                          ? Image.network(
+                                        imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                                      )
+                                          : _buildPlaceholder(),
                                     ),
-                                  ]
-                                ],
+                                    if (imageUrl != null)
+                                      Positioned(
+                                        right: 8,
+                                        top: 8,
+                                        child: GestureDetector(
+                                          onTap: () => _showEnlargedImage(imageUrl),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(alpha: 0.6),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  const Icon(Icons.category, size: 12, color: Colors.grey),
-                                  const SizedBox(width: 4),
-                                  Text(item.itemGroup, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                ],
-                              )
+
+                              // Info Section
+                              Padding(
+                                padding: const EdgeInsets.all(10.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.itemName,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.itemCode,
+                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.blueGrey),
+                                    ),
+                                    const SizedBox(height: 6),
+
+                                    if (item.variantOf != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 4.0),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(4)),
+                                          child: Text(
+                                            'Var: ${item.variantOf}',
+                                            style: TextStyle(fontSize: 10, color: Colors.teal.shade800, fontWeight: FontWeight.bold),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.category_outlined, size: 12, color: Colors.grey),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            item.itemGroup,
+                                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -520,6 +597,47 @@ class MultiItemSelectionSheet extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      color: Colors.grey.shade100,
+      child: Center(
+        child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade300, size: 40),
+      ),
+    );
+  }
+
+  void _showEnlargedImage(String url) {
+    Get.dialog(
+      Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(url),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                onPressed: () => Get.back(),
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                style: IconButton.styleFrom(backgroundColor: Colors.black45),
+              ),
+            ),
+          ],
         ),
       ),
     );
