@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:dio/dio.dart'; // Added for DioException
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
@@ -6,33 +7,43 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 class ScanService extends GetxService {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  /// [contextItemCode]: Pass this if a BottomSheet is open and we have an active item context.
-  /// This enables the "short batch code" logic (concatenating EAN + short code).
   Future<ScanResult> processScan(String barcode, {String? contextItemCode}) async {
     if (barcode.isEmpty) {
       return ScanResult(type: ScanType.error, rawCode: barcode, message: "Empty barcode");
     }
 
     // 1. RACK DETECTION
-    // Heuristic: contains hyphens and has multiple parts (e.g. WH-ZONE-RACK)
-    if (barcode.contains('-') && barcode.split('-').length >= 3) {
+    if (barcode.contains('-') && barcode.split('-').length >= 3 && !barcode.startsWith('SHIPMENT')) {
       return ScanResult(type: ScanType.rack, rawCode: barcode, rackId: barcode);
     }
 
-    // 2. BATCH CONTEXT LOGIC (Short Code)
-    // If we are in a sheet (contextItemCode exists) and scan is simple alphanumeric (3+ chars)
-    if (contextItemCode != null &&
-        !barcode.contains('-') &&
-        RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
+    // 2. BATCH CONTEXT LOGIC (Short Code / Prefix Logic)
+    if (contextItemCode != null) {
+      String? extractedSuffix;
 
-      // Construct the full batch ID
-      final fullBatchNo = '$contextItemCode-$barcode';
-      return ScanResult(
-          type: ScanType.batch,
-          rawCode: barcode,
-          itemCode: contextItemCode,
-          batchNo: fullBatchNo
-      );
+      // Handle "SHIPMENT-24-{ID}" (Check longer prefix first)
+      if (barcode.startsWith('SHIPMENT-24-')) {
+        extractedSuffix = barcode.substring('SHIPMENT-24-'.length, barcode.length - 2);
+      }
+      // Handle "SHIPMENT-{ID}"
+      else if (barcode.startsWith('SHIPMENT-')) {
+        extractedSuffix = barcode.substring('SHIPMENT-'.length);
+      }
+      // Handle Simple Alphanumeric (3+ chars, no hyphens)
+      else if (!barcode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
+        extractedSuffix = barcode;
+      }
+
+      // If valid suffix found, construct full batch: {ItemCode}-{Suffix}
+      if (extractedSuffix != null && extractedSuffix.isNotEmpty) {
+        final fullBatchNo = '$contextItemCode-$extractedSuffix';
+        return ScanResult(
+            type: ScanType.batch,
+            rawCode: barcode,
+            itemCode: contextItemCode,
+            batchNo: fullBatchNo
+        );
+      }
     }
 
     // 3. ITEM / FULL BATCH PARSING
@@ -40,16 +51,14 @@ class ScanService extends GetxService {
     String? parsedBatchNo;
 
     if (barcode.contains('-')) {
-      // Format: {EAN}-{BatchID}
-      // The scanned barcode IS the batch document name
+      // Format: {EAN}-{BatchID} -> The scanned barcode IS the batch document name
       final parts = barcode.split('-');
-      parsedItemCode = parts.first; // EAN is the first part
+      parsedItemCode = parts.first.substring(0, parts.first.length - 1);
       parsedBatchNo = barcode;
     } else {
-      // Pure EAN / Item Code
-      // Logic: Item Code is EAN minus the last checksum digit if length > 7 (standard EAN8/13)
+      // Pure EAN / Item Code logic
       if (barcode.length > 7 && RegExp(r'^\d+$').hasMatch(barcode)) {
-        parsedItemCode = barcode.substring(0, barcode.length - 1);
+        parsedItemCode = barcode.substring(0, barcode.length - 1); // Strip checksum
       } else {
         parsedItemCode = barcode;
       }
@@ -76,11 +85,25 @@ class ScanService extends GetxService {
             message: "Item not found: $parsedItemCode"
         );
       }
+    } on DioException catch (e) {
+      // Gracefully handle 404 from API
+      if (e.response?.statusCode == 404) {
+        return ScanResult(
+            type: ScanType.error,
+            rawCode: barcode,
+            message: "Item not found in database"
+        );
+      }
+      return ScanResult(
+          type: ScanType.error,
+          rawCode: barcode,
+          message: "Network Error: ${e.message}"
+      );
     } catch (e) {
       return ScanResult(
           type: ScanType.error,
           rawCode: barcode,
-          message: "Network Error: $e"
+          message: "Error: $e"
       );
     }
   }
