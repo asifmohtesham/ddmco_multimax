@@ -63,7 +63,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               child: TextFormField(
                 controller: controller.bsBatchController,
                 readOnly: controller.bsIsBatchReadOnly.value,
-                autofocus: !controller.bsIsBatchReadOnly.value,
+                autofocus: false, // DISABLED AUTOFOCUS
                 decoration: InputDecoration(
                   hintText: 'Enter or scan batch',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -199,7 +199,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
             const SizedBox(height: 16),
 
-            // REFACTORED: Quantity Input
+            // Quantity Input
             QuantityInputWidget(
               controller: controller.bsQtyController,
               onIncrement: () => controller.adjustSheetQty(1),

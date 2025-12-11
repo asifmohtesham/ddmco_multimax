@@ -416,12 +416,37 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  void _handleSheetRackScan(String code) {
+    final type = selectedStockEntryType.value;
+
+    if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
+      if (bsSourceRackController.text.isEmpty) {
+        bsSourceRackController.text = code;
+        validateRack(code, true);
+      } else {
+        bsTargetRackController.text = code;
+        validateRack(code, false);
+      }
+    } else if (type == 'Material Issue') {
+      bsSourceRackController.text = code;
+      validateRack(code, true);
+    } else if (type == 'Material Receipt') {
+      bsTargetRackController.text = code;
+      validateRack(code, false);
+    }
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
-      bsBatchController.text = barcode;
-      validateBatch(barcode);
+      // Rack Detection Heuristic: contains hyphens and has multiple parts (e.g. WH-ZONE-RACK)
+      if (barcode.contains('-') && barcode.split('-').length >= 3) {
+        _handleSheetRackScan(barcode);
+      } else {
+        bsBatchController.text = barcode;
+        validateBatch(barcode);
+      }
       return;
     }
 
@@ -588,7 +613,7 @@ class StockEntryFormController extends GetxController {
         await _updateAvailableStock();
 
         GlobalSnackbar.success(message: 'Batch validated');
-        _focusNextField();
+        // _focusNextField();
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
