@@ -17,7 +17,7 @@ class StockEntryFormController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
 
-  // ... (Existing variables: name, mode, isLoading, etc. - keep them) ...
+  // ... (Existing variables: name, mode, isLoading, etc.) ...
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
@@ -47,13 +47,12 @@ class StockEntryFormController extends GetxController {
   var isFetchingWarehouses = false.obs;
   var posUploadSerialOptions = <String>[].obs;
 
-  // --- Added Variables to Fix Errors ---
+  // POS Selection vars
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
-  // ------------------------------------
 
-  // ... (Rest of existing variables: Bottom Sheet State, etc.) ...
+  // Bottom Sheet State
   final bsQtyController = TextEditingController();
   final bsBatchController = TextEditingController();
   final bsSourceRackController = TextEditingController();
@@ -80,12 +79,18 @@ class StockEntryFormController extends GetxController {
   final sourceRackFocusNode = FocusNode();
   final targetRackFocusNode = FocusNode();
 
+  // --- Dirty Check State for Sheet ---
+  String _initialQty = '';
+  String _initialBatch = '';
+  String _initialSourceRack = '';
+  String _initialTargetRack = '';
+
   @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
     fetchStockEntryTypes();
-    // ... (rest of onInit)
+
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
@@ -93,6 +98,8 @@ class StockEntryFormController extends GetxController {
       _onReferenceNoChanged();
       _markDirty();
     });
+
+    // Listen to all inputs to trigger validation and dirty check
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsSourceRackController.addListener(validateSheet);
@@ -105,7 +112,7 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // ... (Existing methods: onClose, toggleInvoiceExpand, groupedItems, fetches...) ...
+  // ... (Existing methods: onClose, toggleInvoiceExpand, groupedItems, fetches, openCreateDialog, _showPosSelectionBottomSheet...) ...
 
   @override
   void onClose() {
@@ -164,6 +171,8 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  // ... (Omitted fetchWarehouses, _initNewStockEntry, fetchStockEntry, _onReferenceNoChanged, _fetchPosUploadDetails, fetchPendingPosUploads, filterPosUploads, openCreateDialog, _showPosSelectionBottomSheet for brevity as they haven't changed) ...
+
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -183,7 +192,6 @@ class StockEntryFormController extends GetxController {
     final now = DateTime.now();
     final initialType = argStockEntryType ?? 'Material Transfer';
     final initialRef = argCustomReferenceNo ?? '';
-
     stockEntry.value = StockEntry(
       name: 'New Stock Entry',
       purpose: initialType,
@@ -201,14 +209,11 @@ class StockEntryFormController extends GetxController {
       toWarehouse: '',
       customReferenceNo: initialRef,
     );
-
     selectedStockEntryType.value = initialType;
     customReferenceNoController.text = initialRef;
-
     if (initialRef.isNotEmpty) {
       _fetchPosUploadDetails(initialRef);
     }
-
     isLoading.value = false;
     isDirty.value = false;
   }
@@ -224,7 +229,6 @@ class StockEntryFormController extends GetxController {
         selectedToWarehouse.value = entry.toWarehouse;
         customReferenceNoController.text = entry.customReferenceNo ?? '';
         selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
-
         if (entry.customReferenceNo != null && entry.customReferenceNo!.isNotEmpty) {
           _fetchPosUploadDetails(entry.customReferenceNo!);
         }
@@ -263,11 +267,9 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // --- UPDATED POS FETCHING LOGIC (API SIDE FILTER) ---
   Future<void> fetchPendingPosUploads() async {
     isFetchingPosUploads.value = true;
     try {
-      // API Call 1: Fetch items starting with KX (Pending OR In Progress)
       final kxFuture = _posProvider.getPosUploads(
           limit: 50,
           filters: {
@@ -276,8 +278,6 @@ class StockEntryFormController extends GetxController {
           },
           orderBy: 'modified desc'
       );
-
-      // API Call 2: Fetch items starting with MX (Pending OR In Progress)
       final mxFuture = _posProvider.getPosUploads(
           limit: 50,
           filters: {
@@ -286,25 +286,19 @@ class StockEntryFormController extends GetxController {
           },
           orderBy: 'modified desc'
       );
-
       final results = await Future.wait([kxFuture, mxFuture]);
-
       final List<PosUpload> mergedList = [];
-
       for (var response in results) {
         if (response.statusCode == 200 && response.data['data'] != null) {
           final List<dynamic> data = response.data['data'];
           mergedList.addAll(data.map((json) => PosUpload.fromJson(json)));
         }
       }
-
       final uniqueMap = {for (var item in mergedList) item.name: item};
       final sortedList = uniqueMap.values.toList()
         ..sort((a, b) => b.modified.compareTo(a.modified));
-
       _allFetchedPosUploads = sortedList;
       posUploadsForSelection.value = _allFetchedPosUploads;
-
     } catch (e) {
       Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
     } finally {
@@ -324,6 +318,184 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  void openCreateDialog() {
+    // ... (Implementation same as previous)
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Create Stock Entry', style: Get.textTheme.titleLarge),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.outbond, color: Colors.white),
+                ),
+                title: const Text('Material Issue'),
+                subtitle: const Text('From POS Upload (KX/MX only)'),
+                onTap: () {
+                  Get.back();
+                  _showPosSelectionBottomSheet();
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.transform, color: Colors.white),
+                ),
+                title: const Text('Material Transfer'),
+                subtitle: const Text('Internal Transfer'),
+                onTap: () {
+                  Get.back();
+                  Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                    'name': '',
+                    'mode': 'new',
+                    'stockEntryType': 'Material Transfer',
+                    'customReferenceNo': ''
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPosSelectionBottomSheet() {
+    // ... (Implementation same as previous)
+    fetchPendingPosUploads();
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select POS Upload', style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: filterPosUploads,
+                    decoration: InputDecoration(
+                      labelText: 'Search (KX/MX Only)',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingPosUploads.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (posUploadsForSelection.isEmpty) {
+                        return const Center(child: Text('No matching POS Uploads found.'));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: posUploadsForSelection.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final pos = posUploadsForSelection[index];
+                          return Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                            child: InkWell(
+                              onTap: () {
+                                Get.back();
+                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                                  'name': '',
+                                  'mode': 'new',
+                                  'stockEntryType': 'Material Issue',
+                                  'customReferenceNo': pos.name
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                              color: Colors.orange.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.orange.shade200)
+                                          ),
+                                          child: Text(pos.status, style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(pos.customer, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.inventory_2_outlined, size: 14, color: Colors.grey),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(pos.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   // --- Validation & Stock Logic ---
 
   void validateSheet() {
@@ -335,7 +507,6 @@ class StockEntryFormController extends GetxController {
       return;
     }
 
-    // New: Check against max allowed stock
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) {
       isSheetValid.value = false;
       return;
@@ -374,13 +545,28 @@ class StockEntryFormController extends GetxController {
       }
     }
 
+    // --- DIRTY CHECK (Added) ---
+    if (currentItemNameKey.value != null) {
+      // Editing existing item: Only valid if something changed
+      bool isChanged = false;
+      if (bsQtyController.text != _initialQty) isChanged = true;
+      if (bsBatchController.text != _initialBatch) isChanged = true;
+      if (bsSourceRackController.text != _initialSourceRack) isChanged = true;
+      if (bsTargetRackController.text != _initialTargetRack) isChanged = true;
+
+      if (!isChanged) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+    // ---------------------------
+
     isSheetValid.value = true;
   }
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta);
-    // Clamp between 0 and max available stock (if defined)
     final double upperLimit = bsMaxQty.value > 0 ? bsMaxQty.value : 999999.0;
 
     if (newVal >= 0 && newVal <= upperLimit) {
@@ -389,9 +575,10 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  // ... (saveStockEntry, _handleSheetRackScan, scanBarcode remain same) ...
+
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
-
     if (selectedStockEntryType.value == 'Material Transfer') {
       if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
         GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
@@ -402,9 +589,7 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
-
     isSaving.value = true;
-
     final Map<String, dynamic> data = {
       'stock_entry_type': selectedStockEntryType.value,
       'posting_date': stockEntry.value?.postingDate,
@@ -413,7 +598,6 @@ class StockEntryFormController extends GetxController {
       'to_warehouse': selectedToWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
     };
-
     final itemsJson = stockEntry.value?.items.map((i) {
       final json = i.toJson();
       if (json['name'] != null && json['name'].toString().startsWith('local_')) {
@@ -424,9 +608,7 @@ class StockEntryFormController extends GetxController {
       }
       return json;
     }).toList() ?? [];
-
     data['items'] = itemsJson;
-
     try {
       if (mode == 'new') {
         final response = await _provider.createStockEntry(data);
@@ -467,7 +649,6 @@ class StockEntryFormController extends GetxController {
 
   void _handleSheetRackScan(String code) {
     final type = selectedStockEntryType.value;
-
     if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
@@ -487,9 +668,7 @@ class StockEntryFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
-
     if (isItemSheetOpen.value) {
-      // Rack Detection Heuristic: contains hyphens and has multiple parts (e.g. WH-ZONE-RACK)
       if (barcode.contains('-') && barcode.split('-').length >= 3) {
         _handleSheetRackScan(barcode);
       } else {
@@ -498,12 +677,9 @@ class StockEntryFormController extends GetxController {
       }
       return;
     }
-
     isScanning.value = true;
-
     String itemCode;
     String? batchNo;
-
     if (barcode.contains('-')) {
       final parts = barcode.split('-');
       final ean = parts.first;
@@ -514,7 +690,6 @@ class StockEntryFormController extends GetxController {
       itemCode = ean.length > 7 ? ean.substring(0, 7) : ean;
       batchNo = null;
     }
-
     try {
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -523,7 +698,6 @@ class StockEntryFormController extends GetxController {
         currentVariantOf = itemData['variant_of'];
         currentItemName = itemData['item_name'];
         currentUom = itemData['stock_uom'] ?? 'Nos';
-
         _openQtySheet(scannedBatch: batchNo);
       } else {
         GlobalSnackbar.error(message: 'Item not found');
@@ -544,7 +718,7 @@ class StockEntryFormController extends GetxController {
 
     derivedSourceWarehouse.value = null;
     derivedTargetWarehouse.value = null;
-    bsMaxQty.value = 0.0; // Reset max qty
+    bsMaxQty.value = 0.0;
 
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
@@ -557,6 +731,12 @@ class StockEntryFormController extends GetxController {
 
     selectedSerial.value = null;
     currentItemNameKey.value = null;
+
+    // Reset initial values for new item
+    _initialQty = '';
+    _initialBatch = '';
+    _initialSourceRack = '';
+    _initialTargetRack = '';
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -581,25 +761,18 @@ class StockEntryFormController extends GetxController {
     });
   }
 
-  // --- UPDATED STOCK CALCULATION LOGIC ---
+  // ... (Stock calculation & validation helper methods) ...
 
   Future<void> _updateAvailableStock() async {
-    // Only check if it's a source transaction (Issue or Transfer)
     final type = selectedStockEntryType.value;
     final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
     if (!isSourceOp) {
-      bsMaxQty.value = 999999.0; // No limit for receipt
+      bsMaxQty.value = 999999.0;
       return;
     }
-
-    // Determine constraints
     String? warehouse = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     String batch = bsBatchController.text.trim();
     String rack = bsSourceRackController.text.trim();
-
-    // If we don't have basic warehouse info, we can't check efficiently yet, or assume global stock?
-    // Usually Stock Balance report requires at least Item Code.
 
     try {
       final filters = {
@@ -607,36 +780,20 @@ class StockEntryFormController extends GetxController {
         'from_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'to_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
       };
-
-      // We use the generic Stock Balance report
       final response = await _apiProvider.getReport('Stock Balance', filters: filters);
-
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
-
-        // Client-side filtering to find the specific stock
         double totalBalance = 0.0;
-
         for (var row in result) {
-          // Filter by Warehouse
           if (warehouse != null && warehouse.isNotEmpty && row['warehouse'] != warehouse) continue;
-
-          // Filter by Batch (if entered)
           if (batch.isNotEmpty && row['batch_no'] != null && row['batch_no'] != batch) continue;
-
-          // Filter by Rack (if entered and row has rack data)
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
-
-          // Add to balance
           totalBalance += (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
         }
-
         bsMaxQty.value = totalBalance;
-
-        // If rack was specific and balance is 0, warn user
         if (rack.isNotEmpty && totalBalance <= 0) {
           GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack');
-          isSourceRackValid.value = false; // Invalidate rack
+          isSourceRackValid.value = false;
         }
       }
     } catch (e) {
@@ -646,23 +803,17 @@ class StockEntryFormController extends GetxController {
 
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
-
     isValidatingBatch.value = true;
     try {
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
       });
-
       if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
-
-        // Update stock limit based on this batch
         await _updateAvailableStock();
-
         GlobalSnackbar.success(message: 'Batch validated');
-        // _focusNextField();
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -678,7 +829,6 @@ class StockEntryFormController extends GetxController {
 
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) return;
-
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -690,7 +840,6 @@ class StockEntryFormController extends GetxController {
         }
       }
     }
-
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
 
@@ -699,7 +848,6 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          // Validate Stock in this Rack immediately
           await _updateAvailableStock();
         } else {
           isTargetRackValid.value = true;
@@ -724,7 +872,6 @@ class StockEntryFormController extends GetxController {
     final isMaterialIssue = type == 'Material Issue';
     final isMaterialReceipt = type == 'Material Receipt';
     final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
     if (isMaterialIssue || isMaterialTransfer) {
       sourceRackFocusNode.requestFocus();
     } else if (isMaterialReceipt) {
@@ -738,11 +885,22 @@ class StockEntryFormController extends GetxController {
     currentItemName = item.itemName ?? '';
     currentItemNameKey.value = item.name;
 
-    bsQtyController.text = item.qty.toString();
+    // Format Qty consistent with logic (e.g. remove trailing .0 for display)
+    String qtyStr = item.qty.toString();
+    if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
+
+    bsQtyController.text = qtyStr;
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
+
+    // --- Capture Initial State ---
+    _initialQty = qtyStr;
+    _initialBatch = item.batchNo ?? '';
+    _initialSourceRack = item.rack ?? '';
+    _initialTargetRack = item.toRack ?? '';
+    // -----------------------------
 
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
@@ -753,9 +911,7 @@ class StockEntryFormController extends GetxController {
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
     if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
 
-    // Check stock for the item being edited to set constraints
     _updateAvailableStock();
-
     validateSheet();
 
     isItemSheetOpen.value = true;
@@ -781,11 +937,9 @@ class StockEntryFormController extends GetxController {
   void deleteItem(String uniqueName) {
     final currentItems = stockEntry.value?.items.toList() ?? [];
     currentItems.removeWhere((i) => i.name == uniqueName);
-
     stockEntry.update((val) {
       val?.items.assignAll(currentItems);
     });
-
     isDirty.value = true;
     GlobalSnackbar.success(message: 'Item removed');
   }
@@ -846,202 +1000,12 @@ class StockEntryFormController extends GetxController {
 
     Get.back();
 
-    // Auto-save logic
     if (mode == 'new') {
       saveStockEntry();
     } else {
       isDirty.value = true;
-      // Trigger save immediately if not new
       await saveStockEntry();
       GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
     }
-  }
-
-  // Moved from Screen
-  void openCreateDialog() {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Create Stock Entry', style: Get.textTheme.titleLarge),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
-                  child: Icon(Icons.outbond, color: Colors.white),
-                ),
-                title: const Text('Material Issue'),
-                subtitle: const Text('Requires Reference No from POS Upload'),
-                onTap: () {
-                  Get.back();
-                  _showPosSelectionBottomSheet();
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.transform, color: Colors.white),
-                ),
-                title: const Text('Material Transfer'),
-                subtitle: const Text('Internal Transfer'),
-                onTap: () {
-                  Get.back();
-                  Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                    'name': '',
-                    'mode': 'new',
-                    'stockEntryType': 'Material Transfer',
-                    'customReferenceNo': ''
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showPosSelectionBottomSheet() {
-    fetchPendingPosUploads();
-
-    Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Select POS Upload',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: filterPosUploads,
-                    decoration: InputDecoration(
-                      labelText: 'Search Pending Uploads',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Obx(() {
-                      if (isFetchingPosUploads.value) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (posUploadsForSelection.isEmpty) {
-                        return const Center(child: Text('No matching Pending POS Uploads found.'));
-                      }
-
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final pos = posUploadsForSelection[index];
-                          // Enhanced Card UI
-                          return Card(
-                            elevation: 1,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-                            child: InkWell(
-                              onTap: () {
-                                Get.back();
-                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                                  'name': '',
-                                  'mode': 'new',
-                                  'stockEntryType': 'Material Issue',
-                                  'customReferenceNo': pos.name
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                        // Simple status pill
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                              color: Colors.orange.shade50,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: Colors.orange.shade200)
-                                          ),
-                                          child: Text(pos.status, style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
-                                        )
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(pos.customer, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    const SizedBox(height: 8),
-                                    const Divider(height: 1),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.inventory_2_outlined, size: 14, color: Colors.grey),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
-                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                            ),
-                                          ],
-                                        ),
-                                        Text(pos.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      isScrollControlled: true,
-    );
   }
 }
