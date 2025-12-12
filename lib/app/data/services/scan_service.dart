@@ -22,17 +22,18 @@ class ScanService extends GetxService {
     if (contextItemCode != null) {
       String? extractedSuffix;
 
-      // Handle "SHIPMENT-24-{BatchID}-..."
+      // Handle "SHIPMENT-24-{BatchID}-..." (e.g. SHIPMENT-24-7M6-1 -> 7M6)
       if (barcode.startsWith('SHIPMENT-24-')) {
         final raw = barcode.substring('SHIPMENT-24-'.length);
+        // Take only the part before the next hyphen
         extractedSuffix = raw.split('-').first;
       }
-      // Handle "SHIPMENT-{BatchID}-..."
+      // Handle "SHIPMENT-{BatchID}-..." (e.g. SHIPMENT-7M6 -> 7M6)
       else if (barcode.startsWith('SHIPMENT-')) {
         final raw = barcode.substring('SHIPMENT-'.length);
         extractedSuffix = raw.split('-').first;
       }
-      // Handle Simple Alphanumeric (3+ chars, no hyphens)
+      // Handle Simple Alphanumeric (3+ chars, no hyphens, e.g. 7M6)
       else if (!barcode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
         extractedSuffix = barcode;
       }
@@ -56,16 +57,7 @@ class ScanService extends GetxService {
     if (barcode.contains('-')) {
       // Format: {EAN}-{BatchID} -> The scanned barcode IS the batch document name
       final parts = barcode.split('-');
-      final String prefix = parts.first;
-
-      // UX Fix: If the prefix looks like an EAN (8+ digits), strip the checksum digit to get Item Code
-      // This handles cases like `20014643-BATCH` -> Item `2001464`
-      if (prefix.length > 7 && RegExp(r'^\d+$').hasMatch(prefix)) {
-        parsedItemCode = prefix.substring(0, prefix.length - 1);
-      } else {
-        parsedItemCode = prefix;
-      }
-
+      parsedItemCode = parts.first;
       parsedBatchNo = barcode;
     } else {
       // Pure EAN / Item Code logic
@@ -125,15 +117,16 @@ class ScanService extends GetxService {
       return ScanResult(
           type: ScanType.error,
           rawCode: barcode,
-          message: "Item not found: $parsedItemCode"
+          message: "Item not found"
       );
 
     } on DioException catch (e) {
+      // 1. Gracefully handle 404
       if (e.response?.statusCode == 404) {
         return ScanResult(
             type: ScanType.error,
             rawCode: barcode,
-            message: "Item not found in database: $parsedItemCode"
+            message: "Item not found in database"
         );
       }
       return ScanResult(
