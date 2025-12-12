@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:flutter/services.dart'; // For HapticFeedback
+import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
+  // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
       title: title,
@@ -48,7 +49,6 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    // Close existing to prevent stacking clutter
     if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
 
     if (shouldVibrate) HapticFeedback.lightImpact();
@@ -70,6 +70,8 @@ class GlobalSnackbar {
           color: Colors.black87,
           fontSize: 14,
         ),
+        maxLines: 4, // Prevents overflow
+        overflow: TextOverflow.ellipsis,
       ),
       backgroundColor: Colors.white,
       icon: Icon(icon, color: color, size: 28),

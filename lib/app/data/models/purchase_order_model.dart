@@ -52,7 +52,7 @@ class PurchaseOrder {
 }
 
 class PurchaseOrderItem {
-  final String? name; // name is null for new items
+  final String? name;
   final String itemCode;
   final String itemName;
   final double qty;
@@ -61,6 +61,7 @@ class PurchaseOrderItem {
   final double amount;
   final String? uom;
   final String? description;
+  final String? scheduleDate; // Added Field
 
   PurchaseOrderItem({
     this.name,
@@ -72,6 +73,7 @@ class PurchaseOrderItem {
     required this.amount,
     this.uom,
     this.description,
+    this.scheduleDate, // Added
   });
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
@@ -85,6 +87,7 @@ class PurchaseOrderItem {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       uom: json['uom'],
       description: json['description'],
+      scheduleDate: json['schedule_date'], // Added
     );
   }
 
@@ -95,6 +98,7 @@ class PurchaseOrderItem {
       'rate': rate,
       'uom': uom,
       'description': description,
+      'schedule_date': scheduleDate, // Added
     };
     if (name != null) data['name'] = name;
     return data;

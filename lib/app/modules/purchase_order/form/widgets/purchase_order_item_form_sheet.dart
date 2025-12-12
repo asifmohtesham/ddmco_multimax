@@ -15,7 +15,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
     final bool isEditing = controller.currentItemNameKey != null;
 
     return GlobalItemFormSheet(
-      formKey: controller.itemFormKey, // PASSED KEY
+      formKey: controller.itemFormKey,
       scrollController: scrollController,
       title: isEditing ? 'Update Item' : 'Add to Order',
       itemCode: controller.currentItemCode ?? '',
@@ -25,7 +25,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
       onIncrement: () => controller.adjustSheetQty(1),
       onDecrement: () => controller.adjustSheetQty(-1),
 
-      isSaveEnabled: true, // PO items generally always valid if qty > 0 which Global handles via validation
+      isSaveEnabled: true,
       onSubmit: controller.submitItem,
       onDelete: isEditing
           ? () {
@@ -35,6 +35,35 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
           : null,
 
       customFields: [
+        // Reqd By Date Input
+        GlobalItemFormSheet.buildInputGroup(
+          label: 'Reqd by Date',
+          color: Colors.orange,
+          child: TextFormField(
+            controller: controller.bsScheduleDateController,
+            readOnly: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.calendar_today, size: 18),
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            ),
+            onTap: () async {
+              final DateTime? picked = await showDatePicker(
+                context: context,
+                initialDate: DateTime.now(),
+                firstDate: DateTime.now(),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+              );
+              if (picked != null) {
+                controller.bsScheduleDateController.text = DateFormat('yyyy-MM-dd').format(picked);
+              }
+            },
+            validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
         // Rate Input
         GlobalItemFormSheet.buildInputGroup(
           label: 'Rate',
@@ -58,7 +87,7 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderFormController> {
 
         const SizedBox(height: 16),
 
-        // Amount Display (Reactive)
+        // Amount Display
         Obx(() => Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

@@ -7,14 +7,14 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_form_sheet.dart';
-import 'package:multimax/app/data/services/scan_service.dart'; // Added
-import 'package:multimax/app/data/models/scan_result_model.dart'; // Added
-import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart'; // Added for MultiItemSelectionSheet
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  final ScanService _scanService = Get.find<ScanService>(); // Injected ScanService
+  final ScanService _scanService = Get.find<ScanService>();
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
@@ -24,53 +24,44 @@ class PurchaseOrderFormController extends GetxController {
   var isSaving = false.obs;
   var isScanning = false.obs;
 
-  // Dirty Check
   var isDirty = false.obs;
   String _originalJson = '';
 
   var purchaseOrder = Rx<PurchaseOrder?>(null);
 
-  // Form Controllers
   final supplierController = TextEditingController();
   final dateController = TextEditingController();
   final barcodeController = TextEditingController();
 
-  // Suppliers Data
   var suppliers = <String>[].obs;
   var isFetchingSuppliers = false.obs;
 
-  // Sheet State
+  // Item Sheet State
   var isItemSheetOpen = false.obs;
   final bsQtyController = TextEditingController();
   final bsRateController = TextEditingController();
+  final bsScheduleDateController = TextEditingController(); // Added
 
-  // Sheet Observables (For realtime calculation without rebuilding inputs)
   var sheetQty = 0.0.obs;
   var sheetRate = 0.0.obs;
 
   double get sheetAmount => sheetQty.value * sheetRate.value;
 
-  // Temp Item State
   String? currentItemCode;
   String? currentItemName;
   String? currentUom;
-  String? currentItemNameKey; // Row ID
+  String? currentItemNameKey;
 
-  // Helper
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
 
   @override
   void onInit() {
     super.onInit();
-
-    // Fetch Suppliers List
     fetchSuppliers();
 
-    // Document Listeners
     supplierController.addListener(_checkForChanges);
     dateController.addListener(_checkForChanges);
 
-    // Sheet Listeners (Sync Text -> Observable)
     bsQtyController.addListener(() {
       sheetQty.value = double.tryParse(bsQtyController.text) ?? 0.0;
     });
@@ -92,9 +83,11 @@ class PurchaseOrderFormController extends GetxController {
     barcodeController.dispose();
     bsQtyController.dispose();
     bsRateController.dispose();
+    bsScheduleDateController.dispose(); // Dispose
     super.onClose();
   }
 
+  // ... (fetchSuppliers, _initNewPO, fetchPO, _updateOriginalState, _checkForChanges unchanged) ...
   Future<void> fetchSuppliers() async {
     isFetchingSuppliers.value = true;
     try {
@@ -161,7 +154,6 @@ class PurchaseOrderFormController extends GetxController {
       isDirty.value = true;
       return;
     }
-
     final tempPO = PurchaseOrder(
       name: purchaseOrder.value!.name,
       supplier: supplierController.text,
@@ -174,12 +166,9 @@ class PurchaseOrderFormController extends GetxController {
       creation: purchaseOrder.value!.creation,
       items: purchaseOrder.value!.items,
     );
-
     final currentJson = jsonEncode(tempPO.toJson());
     isDirty.value = currentJson != _originalJson;
   }
-
-  // --- Item Logic ---
 
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
@@ -190,9 +179,7 @@ class PurchaseOrderFormController extends GetxController {
     if (isItemSheetOpen.value) return;
 
     isScanning.value = true;
-
     try {
-      // Use Standardized Scan Service
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
@@ -201,11 +188,10 @@ class PurchaseOrderFormController extends GetxController {
           code: item.itemCode,
           name: item.itemName,
           uom: item.stockUom ?? 'Nos',
-          rate: 0.0, // Fetch from Price List if API available
+          rate: 0.0,
           qty: 1.0,
         );
       } else if (result.type == ScanType.multiple && result.candidates != null) {
-        // Show Catalogue for ambiguous results
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -241,7 +227,8 @@ class PurchaseOrderFormController extends GetxController {
         uom: item.uom ?? '',
         rate: item.rate,
         qty: item.qty,
-        rowId: item.name
+        rowId: item.name,
+        scheduleDate: item.scheduleDate // Pass existing date
     );
   }
 
@@ -252,8 +239,9 @@ class PurchaseOrderFormController extends GetxController {
     required double rate,
     required double qty,
     String? rowId,
+    String? scheduleDate,
   }) {
-    itemFormKey = GlobalKey<FormState>(); // Reset Key
+    itemFormKey = GlobalKey<FormState>();
     currentItemCode = code;
     currentItemName = name;
     currentUom = uom;
@@ -261,8 +249,9 @@ class PurchaseOrderFormController extends GetxController {
 
     bsQtyController.text = qty.toStringAsFixed(0);
     bsRateController.text = rate.toStringAsFixed(2);
+    // Set default date to today if new
+    bsScheduleDateController.text = scheduleDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    // Sync Observables
     sheetQty.value = qty;
     sheetRate.value = rate;
 
@@ -270,7 +259,7 @@ class PurchaseOrderFormController extends GetxController {
 
     Get.bottomSheet(
       DraggableScrollableSheet(
-        initialChildSize: 0.5,
+        initialChildSize: 0.6, // Increased height for new field
         minChildSize: 0.4,
         maxChildSize: 0.9,
         builder: (context, scrollController) {
@@ -287,7 +276,6 @@ class PurchaseOrderFormController extends GetxController {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta).clamp(0.0, 999999.0);
     bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-    // Listener will update observable
   }
 
   void submitItem() async {
@@ -298,10 +286,23 @@ class PurchaseOrderFormController extends GetxController {
 
     final currentItems = purchaseOrder.value?.items.toList() ?? [];
 
+    // Create Item object
+    final newItem = PurchaseOrderItem(
+      name: currentItemNameKey,
+      itemCode: currentItemCode!,
+      itemName: currentItemName!,
+      qty: qty,
+      receivedQty: 0.0, // Should preserve if editing? Simplified for now.
+      rate: rate,
+      amount: qty * rate,
+      uom: currentUom,
+      scheduleDate: bsScheduleDateController.text, // Save Date
+    );
+
     if (currentItemNameKey != null) {
-      // Edit Existing
       final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
       if (index != -1) {
+        // Merge with existing to preserve other fields
         final existing = currentItems[index];
         currentItems[index] = PurchaseOrderItem(
           name: existing.name,
@@ -313,20 +314,11 @@ class PurchaseOrderFormController extends GetxController {
           amount: qty * rate,
           uom: existing.uom,
           description: existing.description,
+          scheduleDate: bsScheduleDateController.text, // Update Date
         );
       }
     } else {
-      // Add New
-      currentItems.add(PurchaseOrderItem(
-        name: null,
-        itemCode: currentItemCode!,
-        itemName: currentItemName!,
-        qty: qty,
-        receivedQty: 0.0,
-        rate: rate,
-        amount: qty * rate,
-        uom: currentUom,
-      ));
+      currentItems.add(newItem);
     }
 
     final oldPO = purchaseOrder.value!;
@@ -345,17 +337,14 @@ class PurchaseOrderFormController extends GetxController {
 
     Get.back();
     _checkForChanges();
-
-    // Auto-save
     await savePurchaseOrder();
   }
 
   void deleteItem(PurchaseOrderItem item) {
     if (!isEditable) return;
-
     final currentItems = purchaseOrder.value?.items.toList() ?? [];
     currentItems.remove(item);
-
+    // Update PO value logic same as submitItem...
     final oldPO = purchaseOrder.value!;
     purchaseOrder.value = PurchaseOrder(
       name: oldPO.name,
@@ -369,7 +358,6 @@ class PurchaseOrderFormController extends GetxController {
       creation: oldPO.creation,
       items: currentItems,
     );
-
     _checkForChanges();
     GlobalSnackbar.success(message: 'Item removed');
   }
@@ -377,7 +365,6 @@ class PurchaseOrderFormController extends GetxController {
   Future<void> savePurchaseOrder() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
-
     isSaving.value = true;
 
     final data = {
@@ -395,7 +382,6 @@ class PurchaseOrderFormController extends GetxController {
         final saved = PurchaseOrder.fromJson(response.data['data']);
         purchaseOrder.value = saved;
         _updateOriginalState(saved);
-
         GlobalSnackbar.success(message: 'Purchase Order Saved');
       } else {
         GlobalSnackbar.error(message: 'Failed to save');
