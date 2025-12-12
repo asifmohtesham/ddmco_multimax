@@ -2,7 +2,7 @@
     package="com.ddmco.multimax">
 
     <application
-        android:label="multimax"
+        android:label="Multimax"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
