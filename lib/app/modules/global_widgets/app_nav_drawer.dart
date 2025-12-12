@@ -12,6 +12,7 @@ class AppNavDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final HomeController homeController = Get.find<HomeController>();
     final AuthenticationController authController = Get.find<AuthenticationController>();
+    final String currentRoute = Get.currentRoute;
 
     return SafeArea(
       child: Drawer(
@@ -90,13 +91,13 @@ class AppNavDrawer extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.dashboard_rounded,
                     title: 'Dashboard',
-                    isSelected: homeController.selectedDrawerIndex.value == 0,
+                    isSelected: currentRoute == AppRoutes.HOME,
                     onTap: homeController.goToHome,
                   ),
                   _DrawerItem(
                     icon: Icons.check_circle_outline_rounded,
                     title: 'To Do',
-                    isSelected: homeController.selectedDrawerIndex.value == 6,
+                    isSelected: currentRoute == AppRoutes.TODO,
                     onTap: homeController.goToToDo,
                   ),
 
@@ -109,40 +110,47 @@ class AppNavDrawer extends StatelessWidget {
                   _ModuleGroup(
                     title: 'Stock',
                     icon: Icons.inventory_2_rounded,
+                    initiallyExpanded: [
+                      AppRoutes.ITEM,
+                      AppRoutes.BATCH,
+                      AppRoutes.STOCK_ENTRY,
+                      AppRoutes.DELIVERY_NOTE,
+                      AppRoutes.PACKING_SLIP
+                    ].contains(currentRoute),
                     roles: const ['Stock Manager', 'Stock User', 'Item Manager', 'Sales User'],
                     children: [
                       _DrawerItem(
                         title: 'Item Master',
                         icon: Icons.category_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 7,
+                        isSelected: currentRoute == AppRoutes.ITEM,
                         onTap: homeController.goToItem,
                         roles: const ['Stock Manager', 'Item Manager'],
                       ),
                       _DrawerItem(
                         title: 'Batch',
                         icon: Icons.qr_code_scanner_rounded, // or Icons.layers
-                        isSelected: homeController.selectedDrawerIndex.value == 10, // New Index
+                        isSelected: currentRoute == AppRoutes.BATCH,
                         onTap: homeController.goToBatch,
                         roles: const ['Stock Manager', 'Stock User'],
                       ),
                       _DrawerItem(
                         title: 'Stock Entry',
                         icon: Icons.compare_arrows_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 1,
+                        isSelected: currentRoute == AppRoutes.STOCK_ENTRY,
                         onTap: homeController.goToStockEntry,
                         roles: const ['Stock Manager', 'Stock User'],
                       ),
                       _DrawerItem(
                         title: 'Delivery Note',
                         icon: Icons.local_shipping_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 2,
+                        isSelected: currentRoute == AppRoutes.DELIVERY_NOTE,
                         onTap: homeController.goToDeliveryNote,
                         roles: const ['Stock Manager', 'Stock User', 'Sales User'],
                       ),
                       _DrawerItem(
                         title: 'Packing Slip',
                         icon: Icons.assignment_return_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 3,
+                        isSelected: currentRoute == AppRoutes.PACKING_SLIP,
                         onTap: homeController.goToPackingSlip,
                         roles: const ['Stock Manager', 'Stock User'],
                       ),
@@ -153,12 +161,16 @@ class AppNavDrawer extends StatelessWidget {
                   _ModuleGroup(
                     title: 'Buying',
                     icon: Icons.shopping_bag_rounded,
+                    initiallyExpanded: [
+                      AppRoutes.PURCHASE_ORDER,
+                      AppRoutes.PURCHASE_RECEIPT
+                    ].contains(currentRoute),
                     roles: const ['Stock Manager', 'Purchase User'],
                     children: [
                       _DrawerItem(
                         title: 'Purchase Order',
                         icon: Icons.description_rounded,
-                        isSelected: false,
+                        isSelected: currentRoute == AppRoutes.PURCHASE_ORDER,
                         onTap: () {
                           Get.back();
                           Get.toNamed(AppRoutes.PURCHASE_ORDER);
@@ -167,7 +179,7 @@ class AppNavDrawer extends StatelessWidget {
                       _DrawerItem(
                         title: 'Purchase Receipt',
                         icon: Icons.receipt_long_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 4,
+                        isSelected: currentRoute == AppRoutes.PURCHASE_RECEIPT,
                         onTap: homeController.goToPurchaseReceipt,
                       ),
                     ],
@@ -177,12 +189,17 @@ class AppNavDrawer extends StatelessWidget {
                   _ModuleGroup(
                     title: 'Manufacturing',
                     icon: Icons.precision_manufacturing_rounded,
+                    initiallyExpanded: [
+                      AppRoutes.BOM,
+                      AppRoutes.WORK_ORDER,
+                      AppRoutes.JOB_CARD
+                    ].contains(currentRoute),
                     roles: const ['Manufacturing Manager', 'Production Manager', 'System Manager'],
                     children: [
                       _DrawerItem(
                         title: 'Bill of Materials',
                         icon: Icons.account_tree_rounded,
-                        isSelected: false,
+                        isSelected: currentRoute == AppRoutes.BOM,
                         onTap: () {
                           Get.back();
                           Get.toNamed(AppRoutes.BOM);
@@ -191,13 +208,13 @@ class AppNavDrawer extends StatelessWidget {
                       _DrawerItem(
                         title: 'Work Order',
                         icon: Icons.assignment_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 8,
+                        isSelected: currentRoute == AppRoutes.WORK_ORDER,
                         onTap: homeController.goToWorkOrder,
                       ),
                       _DrawerItem(
                         title: 'Job Card',
                         icon: Icons.assignment_ind_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 9,
+                        isSelected: currentRoute == AppRoutes.JOB_CARD,
                         onTap: homeController.goToJobCard,
                       ),
                     ],
@@ -207,12 +224,15 @@ class AppNavDrawer extends StatelessWidget {
                   _ModuleGroup(
                     title: 'Selling',
                     icon: Icons.storefront_rounded,
+                    initiallyExpanded: [
+                      AppRoutes.POS_UPLOAD
+                    ].contains(currentRoute),
                     roles: const ['Sales User', 'Accounts User', 'Stock Manager'],
                     children: [
                       _DrawerItem(
                         title: 'POS Upload',
                         icon: Icons.cloud_upload_rounded,
-                        isSelected: homeController.selectedDrawerIndex.value == 5,
+                        isSelected: currentRoute == AppRoutes.POS_UPLOAD,
                         onTap: homeController.goToPosUpload,
                       ),
                     ],
@@ -253,12 +273,14 @@ class _ModuleGroup extends StatelessWidget {
   final IconData icon;
   final List<String> roles;
   final List<Widget> children;
+  final bool initiallyExpanded;
 
   const _ModuleGroup({
     required this.title,
     required this.icon,
     required this.roles,
     required this.children,
+    this.initiallyExpanded = false,
   });
 
   @override
@@ -268,6 +290,7 @@ class _ModuleGroup extends StatelessWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
           leading: Icon(icon, color: Colors.grey.shade700, size: 22),
           title: Text(
             title,
