@@ -119,6 +119,13 @@ class AppNavDrawer extends StatelessWidget {
                         roles: const ['Stock Manager', 'Item Manager'],
                       ),
                       _DrawerItem(
+                        title: 'Batch',
+                        icon: Icons.qr_code_scanner_rounded, // or Icons.layers
+                        isSelected: homeController.selectedDrawerIndex.value == 10, // New Index
+                        onTap: homeController.goToBatch,
+                        roles: const ['Stock Manager', 'Stock User'],
+                      ),
+                      _DrawerItem(
                         title: 'Stock Entry',
                         icon: Icons.compare_arrows_rounded,
                         isSelected: homeController.selectedDrawerIndex.value == 1,

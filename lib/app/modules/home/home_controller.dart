@@ -24,8 +24,7 @@ import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item }
-
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -474,13 +473,16 @@ class HomeController extends GetxController {
   void _updateActiveScreenForRoute(String route) {
     switch (route) {
       case AppRoutes.HOME: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 0; break;
-      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4; break;
       case AppRoutes.STOCK_ENTRY: activeScreen.value = ActiveScreen.stockEntry; selectedDrawerIndex.value = 1; break;
       case AppRoutes.DELIVERY_NOTE: activeScreen.value = ActiveScreen.deliveryNote; selectedDrawerIndex.value = 2; break;
       case AppRoutes.PACKING_SLIP: activeScreen.value = ActiveScreen.packingSlip; selectedDrawerIndex.value = 3; break;
+      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4; break;
       case AppRoutes.POS_UPLOAD: activeScreen.value = ActiveScreen.posUpload; selectedDrawerIndex.value = 5; break;
       case AppRoutes.TODO: activeScreen.value = ActiveScreen.todo; selectedDrawerIndex.value = 6; break;
       case AppRoutes.ITEM: activeScreen.value = ActiveScreen.item; selectedDrawerIndex.value = 7; break;
+      case AppRoutes.WORK_ORDER: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 8; break; // Assuming Work Order uses index 8
+      case AppRoutes.JOB_CARD: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 9; break;  // Assuming Job Card uses index 9
+      case AppRoutes.BATCH: activeScreen.value = ActiveScreen.batch; selectedDrawerIndex.value = 10; break;
     }
   }
 
@@ -500,4 +502,5 @@ class HomeController extends GetxController {
   void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
   void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER);
   void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD);
+  void goToBatch() => changeDrawerPage(10, AppRoutes.BATCH);
 }

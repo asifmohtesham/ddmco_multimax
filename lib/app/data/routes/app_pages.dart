@@ -42,8 +42,11 @@ import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
-
 import 'app_routes.dart';
+import 'package:multimax/app/modules/batch/batch_binding.dart';
+import 'package:multimax/app/modules/batch/batch_screen.dart';
+import 'package:multimax/app/modules/batch/form/batch_form_binding.dart';
+import 'package:multimax/app/modules/batch/form/batch_form_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -168,6 +171,17 @@ class AppPages {
       name: AppRoutes.JOB_CARD,
       page: () => const JobCardScreen(),
       binding: JobCardBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.BATCH,
+      page: () => const BatchScreen(),
+      binding: BatchBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.BATCH_FORM,
+      page: () => const BatchFormScreen(),
+      binding: BatchFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
   ];
 }
