@@ -138,9 +138,11 @@ class _ItemScreenState extends State<ItemScreen> {
 
               return RefreshIndicator(
                 onRefresh: () => controller.fetchItems(clear: true),
-                child: Obx(() => controller.isGridView.value
-                    ? _buildGridView(controller.items)
-                    : _buildListView(controller.items)),
+                child: SafeArea(
+                  child: Obx(() => controller.isGridView.value
+                      ? _buildGridView(controller.items)
+                      : _buildListView(controller.items)),
+                ),
               );
             }),
           ),
