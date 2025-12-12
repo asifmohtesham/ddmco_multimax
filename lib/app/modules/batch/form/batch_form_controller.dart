@@ -24,8 +24,8 @@ class BatchFormController extends GetxController {
   var isLoading = true.obs;
   var isSaving = false.obs;
   var isExporting = false.obs;
-  var isDirty = false.obs; // Tracks form changes
-  String _originalJson = ''; // Stores initial state
+  var isDirty = false.obs;
+  String _originalJson = '';
 
   var batch = Rx<Batch?>(null);
 
@@ -40,6 +40,7 @@ class BatchFormController extends GetxController {
   // New State
   var generatedBatchId = ''.obs;
   var itemBarcode = ''.obs;
+  var itemVariantOf = ''.obs;
 
   // Selection Lists
   var isFetchingItems = false.obs;
@@ -54,7 +55,6 @@ class BatchFormController extends GetxController {
   void onInit() {
     super.onInit();
 
-    // Attach Listeners for Dirty Check
     itemController.addListener(_checkForChanges);
     descriptionController.addListener(_checkForChanges);
     mfgDateController.addListener(_checkForChanges);
@@ -88,11 +88,9 @@ class BatchFormController extends GetxController {
       modified: '',
     );
 
-    // Default Values
     mfgDateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
     customPackagingQtyController.text = '12';
 
-    // New documents are dirty by default to allow saving immediately
     isDirty.value = true;
     _originalJson = '';
 
@@ -107,7 +105,6 @@ class BatchFormController extends GetxController {
         final b = Batch.fromJson(response.data['data']);
         batch.value = b;
 
-        // Populate Fields
         itemController.text = b.item;
         descriptionController.text = b.description ?? '';
         mfgDateController.text = b.manufacturingDate ?? '';
@@ -116,12 +113,10 @@ class BatchFormController extends GetxController {
         customPurchaseOrderController.text = b.customPurchaseOrder ?? '';
         generatedBatchId.value = b.name;
 
-        // Fetch item details to show barcode if editing
         if(b.item.isNotEmpty) {
           _fetchItemDetails(b.item, generateId: false);
         }
 
-        // Save original state for dirty check
         _originalJson = jsonEncode(_getCurrentFormData());
         isDirty.value = false;
       }
@@ -132,14 +127,11 @@ class BatchFormController extends GetxController {
     }
   }
 
-  // --- Change Detection Logic ---
-
   void _checkForChanges() {
     if (mode == 'new') {
       isDirty.value = true;
       return;
     }
-    // Compare current form data with original JSON
     final currentJson = jsonEncode(_getCurrentFormData());
     isDirty.value = currentJson != _originalJson;
   }
@@ -154,8 +146,6 @@ class BatchFormController extends GetxController {
       'purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
     };
   }
-
-  // --- Search & Selection Logic ---
 
   Future<void> searchItems(String query) async {
     isFetchingItems.value = true;
@@ -187,7 +177,7 @@ class BatchFormController extends GetxController {
 
   void selectItem(Map<String, dynamic> itemData) {
     itemController.text = itemData['item_code'];
-    Get.back(); // Close sheet
+    Get.back();
     _fetchItemDetails(itemData['item_code'], generateId: true);
   }
 
@@ -214,6 +204,9 @@ class BatchFormController extends GetxController {
 
         itemBarcode.value = barcode;
 
+        // Extract Variant Of
+        itemVariantOf.value = data['variant_of'] ?? '';
+
         if (generateId && !isEditMode) {
           _generateBatchId(barcode);
         }
@@ -232,10 +225,8 @@ class BatchFormController extends GetxController {
     generatedBatchId.value = '$ean-$randomId';
   }
 
-  // --- Save Logic ---
-
   Future<void> saveBatch() async {
-    if (!isDirty.value && isEditMode) return; // Prevent saving if no changes
+    if (!isDirty.value && isEditMode) return;
 
     if (itemController.text.isEmpty) {
       GlobalSnackbar.warning(message: 'Item Code is required');
@@ -285,8 +276,6 @@ class BatchFormController extends GetxController {
     }
   }
 
-  // --- QR Export Logic ---
-
   Future<void> exportQrAsPng() async {
     if (generatedBatchId.value.isEmpty) return;
 
@@ -335,43 +324,96 @@ class BatchFormController extends GetxController {
     try {
       final pdf = pw.Document();
 
+      // Label Size: 51mm x 26mm
+      final pageFormat = PdfPageFormat(51 * PdfPageFormat.mm, 26 * PdfPageFormat.mm);
+
+      // Determine Data to Display
+      // Use Variant Of if available, else Item Code
+      final String variant = itemVariantOf.value.isNotEmpty ? itemVariantOf.value : itemController.text;
+      final String barcodeData = itemBarcode.value.isNotEmpty ? itemBarcode.value : itemController.text;
+
       pdf.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
+          pageFormat: pageFormat,
+          margin: const pw.EdgeInsets.all(2 * PdfPageFormat.mm),
           build: (pw.Context context) {
-            return pw.Center(
-              child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                children: [
-                  pw.BarcodeWidget(
-                    barcode: pw.Barcode.qrCode(),
-                    data: generatedBatchId.value,
-                    width: 200,
-                    height: 200,
+            return pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                // Column 1: 65% Width
+                pw.Expanded(
+                  flex: 65,
+                  child: pw.Column(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      // Variant Of Field / Item Code
+                      pw.Text(
+                        variant,
+                        style: pw.TextStyle(
+                          fontSize: 7,
+                          fontWeight: pw.FontWeight.bold,
+                          font: pw.Font.courierBold(), // Monospace
+                        ),
+                        maxLines: 2,
+                        overflow: pw.TextOverflow.visible,
+                      ),
+                      pw.SizedBox(height: 8),
+
+                      // Barcode Symbol (Code128 used for versatility)
+                      // Increased height by approx 25% (from default ~25 to 32)
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.ean8(),
+                        data: barcodeData,
+                        height: 42,
+                        drawText: true, // Draws text with descender-like visual
+                        textStyle: pw.TextStyle(
+                          font: pw.Font.courierBold(), // Consolas/Monospace equivalent
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
                   ),
-                  pw.SizedBox(height: 20),
-                  pw.Text(
-                    generatedBatchId.value,
-                    style: pw.TextStyle(
-                      font: pw.Font.courier(),
-                      fontSize: 24,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
+                ),
+                pw.SizedBox(width: 4),
+
+                // Column 2: 35% Width
+                pw.Expanded(
+                  flex: 35,
+                  child: pw.Column(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      pw.AspectRatio(
+                        aspectRatio: 1,
+                        child: pw.BarcodeWidget(
+                          barcode: pw.Barcode.qrCode(errorCorrectLevel: pw.BarcodeQRCorrectionLevel.high),
+                          data: generatedBatchId.value,
+                          drawText: false, // QR usually better without auto-text
+                        ),
+                      ),
+                      pw.SizedBox(height: 2),
+                      // QR Caption (Batch ID)
+                      pw.Text(
+                        generatedBatchId.value,
+                        style: pw.TextStyle(
+                          font: pw.Font.courierBold(), // Monospace
+                          fontSize: 6,
+                        ),
+                        maxLines: 2,
+                        overflow: pw.TextOverflow.visible,
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ],
                   ),
-                  pw.SizedBox(height: 10),
-                  pw.Text(
-                    itemController.text,
-                    style: const pw.TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
+                ),
+              ],
             );
           },
         ),
       );
 
       final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/${generatedBatchId.value}.pdf');
+      final file = File('${tempDir.path}/${generatedBatchId.value}_label.pdf');
       await file.writeAsBytes(await pdf.save());
 
       await Share.shareXFiles(

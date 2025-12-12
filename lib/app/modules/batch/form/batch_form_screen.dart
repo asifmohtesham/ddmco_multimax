@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:barcode_widget/barcode_widget.dart'; // Add this to pubspec.yaml
 import 'dart:ui';
 
 class BatchFormScreen extends GetView<BatchFormController> {
@@ -14,7 +15,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
       appBar: AppBar(
         title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
         actions: [
-          // Export Button: Only visible if the document is saved (Edit Mode)
+          // Export Button
           Obx(() {
             if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty) {
               return PopupMenuButton<String>(
@@ -52,9 +53,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
               ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
               : IconButton(
             icon: const Icon(Icons.save),
-            // Disable if not dirty
             onPressed: controller.isDirty.value ? controller.saveBatch : null,
-            // Visual feedback for disabled state (optional, if theme doesn't handle it well)
             color: controller.isDirty.value ? Colors.white : Colors.white38,
           )
           ),
@@ -69,37 +68,14 @@ class BatchFormScreen extends GetView<BatchFormController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Generated Batch ID & QR ---
+              // --- Label Preview Section ---
               if (controller.generatedBatchId.value.isNotEmpty)
                 Center(
                   child: Column(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
-                        ),
-                        child: QrImageView(
-                          data: controller.generatedBatchId.value,
-                          version: QrVersions.auto,
-                          size: 150.0,
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        controller.generatedBatchId.value,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'monospace',
-                          fontFeatures: [FontFeature.slashedZero()],
-                          letterSpacing: 1.5,
-                        ),
-                      ),
+                      const Text('Label Preview', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 8),
+                      _buildLabelPreview(context),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -108,7 +84,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
               _buildSectionTitle('Primary Details'),
               const SizedBox(height: 12),
 
-              // Item Code (Searchable)
+              // Item Code
               GestureDetector(
                 onTap: controller.isEditMode ? null : () => _showItemPicker(context),
                 child: AbsorbPointer(
@@ -127,27 +103,9 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 ),
               ),
 
-              // Barcode Display
-              if (controller.itemBarcode.value.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12.0),
-                  child: TextFormField(
-                    key: ValueKey(controller.itemBarcode.value),
-                    initialValue: controller.itemBarcode.value,
-                    readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Item Barcode (EAN)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.qr_code),
-                      filled: true,
-                      fillColor: Color(0xFFF5F5F5),
-                    ),
-                  ),
-                ),
-
               const SizedBox(height: 16),
 
-              // Purchase Order (Searchable)
+              // Purchase Order
               GestureDetector(
                 onTap: () => _showPOPicker(context),
                 child: AbsorbPointer(
@@ -226,6 +184,99 @@ class BatchFormScreen extends GetView<BatchFormController> {
     );
   }
 
+  Widget _buildLabelPreview(BuildContext context) {
+    // Logic to mimic PDF generation
+    final String variant = controller.itemVariantOf.value.isNotEmpty
+        ? controller.itemVariantOf.value
+        : controller.itemController.text;
+
+    final String barcodeData = controller.itemBarcode.value.isNotEmpty
+        ? controller.itemBarcode.value
+        : controller.itemController.text;
+
+    // Aspect Ratio 51mm / 26mm ~= 1.96
+    return AspectRatio(
+      aspectRatio: 51 / 26,
+      child: Container(
+        width: 300, // Fixed visual width, height auto by aspect ratio
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade300, width: 1),
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+        ),
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          children: [
+            // Column 1: 65% Width (Variant + EAN)
+            Expanded(
+              flex: 65,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    variant,
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12),
+                    maxLines: 2,
+                    overflow: TextOverflow.visible,
+                  ),
+                  const Spacer(),
+                  // EAN Barcode
+                  SizedBox(
+                    height: 120,
+                    width: double.infinity,
+                    child: BarcodeWidget(
+                      barcode: Barcode.ean8(drawSpacers: false),
+                      data: barcodeData.isNotEmpty ? barcodeData : 'UNKNOWN',
+                      drawText: true,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontFamily: 'monospace',
+                        fontFeatures: [FontFeature.slashedZero(),],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Column 2: 35% Width (QR + Batch ID)
+            Expanded(
+              flex: 35,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: QrImageView(
+                      data: controller.generatedBatchId.value,
+                      version: QrVersions.auto,
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    controller.generatedBatchId.value,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.bold,
+                      fontFeatures: [FontFeature.slashedZero()],
+                    ),
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
@@ -234,9 +285,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
   }
 
   // --- Picker Bottom Sheets ---
-
   void _showItemPicker(BuildContext context) {
-    controller.searchItems(''); // Reset/Init
+    controller.searchItems('');
     Get.bottomSheet(
       Container(
         height: MediaQuery.of(context).size.height * 0.7,
@@ -282,7 +332,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
   }
 
   void _showPOPicker(BuildContext context) {
-    controller.searchPurchaseOrders(''); // Reset/Init
+    controller.searchPurchaseOrders('');
     Get.bottomSheet(
       Container(
         height: MediaQuery.of(context).size.height * 0.7,
