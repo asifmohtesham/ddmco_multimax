@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
-import 'package:qr_flutter/qr_flutter.dart'; // Add to pubspec.yaml
+import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui';
 
 class BatchFormScreen extends GetView<BatchFormController> {
@@ -52,7 +52,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
               ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
               : IconButton(
             icon: const Icon(Icons.save),
-            onPressed: controller.saveBatch,
+            color: controller.isDirty.value ? Colors.white : Colors.white38, // Visual feedback
+            onPressed: controller.isDirty.value ? controller.saveBatch : null, // Disable if clean
           )
           ),
         ],
@@ -232,8 +233,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
     );
   }
 
-  // --- Picker Bottom Sheets ---
-
+  // ... (Picker Bottom Sheets remain unchanged) ...
   void _showItemPicker(BuildContext context) {
     controller.searchItems(''); // Reset/Init
     Get.bottomSheet(

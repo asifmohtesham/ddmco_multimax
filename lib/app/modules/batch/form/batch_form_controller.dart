@@ -1,4 +1,5 @@
 // app/modules/batch/form/batch_form_controller.dart
+import 'dart:convert'; // Added
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -9,10 +10,10 @@ import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:qr_flutter/qr_flutter.dart'; // Add qr_flutter to pubspec.yaml
-import 'package:pdf/pdf.dart';               // Add pdf to pubspec.yaml
-import 'package:pdf/widgets.dart' as pw;     // Add pdf to pubspec.yaml
-import 'package:share_plus/share_plus.dart'; // Add share_plus to pubspec.yaml
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 
 class BatchFormController extends GetxController {
   final BatchProvider _provider = Get.find<BatchProvider>();
@@ -23,6 +24,9 @@ class BatchFormController extends GetxController {
   var isLoading = true.obs;
   var isSaving = false.obs;
   var isExporting = false.obs;
+  var isDirty = false.obs; // Added
+  String _originalJson = ''; // Added
+
   var batch = Rx<Batch?>(null);
 
   // Form Controllers
@@ -49,6 +53,15 @@ class BatchFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
+    // Attach Listeners for Dirty Check
+    itemController.addListener(_checkForChanges);
+    descriptionController.addListener(_checkForChanges);
+    mfgDateController.addListener(_checkForChanges);
+    expDateController.addListener(_checkForChanges);
+    customPackagingQtyController.addListener(_checkForChanges);
+    customPurchaseOrderController.addListener(_checkForChanges);
+
     if (isEditMode) {
       fetchBatch();
     } else {
@@ -79,6 +92,8 @@ class BatchFormController extends GetxController {
     mfgDateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
     customPackagingQtyController.text = '12';
 
+    isDirty.value = true; // New docs are dirty by default
+    _originalJson = '';
     isLoading.value = false;
   }
 
@@ -103,12 +118,36 @@ class BatchFormController extends GetxController {
         if(b.item.isNotEmpty) {
           _fetchItemDetails(b.item, generateId: false);
         }
+
+        // Set Original State
+        _originalJson = jsonEncode(_getCurrentFormData());
+        isDirty.value = false;
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to load batch: $e');
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void _checkForChanges() {
+    if (mode == 'new') {
+      isDirty.value = true;
+      return;
+    }
+    final currentJson = jsonEncode(_getCurrentFormData());
+    isDirty.value = currentJson != _originalJson;
+  }
+
+  Map<String, dynamic> _getCurrentFormData() {
+    return {
+      'item': itemController.text,
+      'description': descriptionController.text,
+      'manufacturing_date': mfgDateController.text.isEmpty ? null : mfgDateController.text,
+      'expiry_date': expDateController.text.isEmpty ? null : expDateController.text,
+      'custom_packaging_qty': double.tryParse(customPackagingQtyController.text) ?? 0.0,
+      'purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
+    };
   }
 
   // --- Search & Selection Logic ---
@@ -191,27 +230,22 @@ class BatchFormController extends GetxController {
   // --- Save Logic ---
 
   Future<void> saveBatch() async {
+    if (!isDirty.value && isEditMode) return; // Prevent saving if no changes
+
     if (itemController.text.isEmpty) {
       GlobalSnackbar.warning(message: 'Item Code is required');
       return;
     }
 
     isSaving.value = true;
-    final data = {
-      'item': itemController.text,
-      'description': descriptionController.text,
-      'manufacturing_date': mfgDateController.text.isEmpty ? null : mfgDateController.text,
-      'expiry_date': expDateController.text.isEmpty ? null : expDateController.text,
-      'custom_packaging_qty': double.tryParse(customPackagingQtyController.text) ?? 0.0,
-      'purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
-    };
+    final data = _getCurrentFormData();
 
     try {
       if (isEditMode) {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
           GlobalSnackbar.success(message: 'Batch updated successfully');
-          fetchBatch();
+          fetchBatch(); // Will refresh and reset dirty state
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }
