@@ -10,6 +10,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
 
 class PackingSlipFormController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
@@ -352,18 +353,20 @@ class PackingSlipFormController extends GetxController {
 
   Future<void> deleteCurrentItem() async {
     if (currentItemNameKey == null) return;
-    Get.back();
-    Get.dialog(AlertDialog(title: const Text('Remove Item'), content: const Text('Remove from package?'), actions: [
-      TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-      ElevatedButton(onPressed: () async {
-        Get.back();
+    Get.back(); // Close the Item Form Sheet first
+
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Are you sure you want to remove this item from the package?',
+      confirmText: 'Remove',
+      onConfirm: () async {
         final currentItems = packingSlip.value?.items.toList() ?? [];
         currentItems.removeWhere((i) => i.name == currentItemNameKey);
         packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
         _checkForChanges();
         if (isDirty.value) await savePackingSlip();
-      }, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Remove', style: TextStyle(color: Colors.white))),
-    ]));
+      },
+    );
   }
 
   Future<void> savePackingSlip() async {

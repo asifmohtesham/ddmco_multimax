@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -625,15 +626,24 @@ class PurchaseReceiptFormController extends GetxController {
   void deleteItem(String uniqueName) {
     if (!isEditable) return;
 
-    final currentItems = purchaseReceipt.value?.items.toList() ?? [];
-    currentItems.removeWhere((i) => i.name == uniqueName);
+    final item = purchaseReceipt.value?.items.firstWhereOrNull((i) => i.name == uniqueName);
+    if (item == null) return;
 
-    purchaseReceipt.update((val) {
-      val?.items.assignAll(currentItems);
-    });
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Remove ${item.itemCode} from the receipt?',
+      onConfirm: () {
+        final currentItems = purchaseReceipt.value?.items.toList() ?? [];
+        currentItems.removeWhere((i) => i.name == uniqueName);
 
-    isDirty.value = true;
-    GlobalSnackbar.success(message: 'Item removed');
+        purchaseReceipt.update((val) {
+          val?.items.assignAll(currentItems);
+        });
+
+        isDirty.value = true;
+        GlobalSnackbar.success(message: 'Item removed');
+      },
+    );
   }
 
   // Add method

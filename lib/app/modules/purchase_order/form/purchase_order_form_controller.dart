@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
@@ -342,24 +343,31 @@ class PurchaseOrderFormController extends GetxController {
 
   void deleteItem(PurchaseOrderItem item) {
     if (!isEditable) return;
-    final currentItems = purchaseOrder.value?.items.toList() ?? [];
-    currentItems.remove(item);
-    // Update PO value logic same as submitItem...
-    final oldPO = purchaseOrder.value!;
-    purchaseOrder.value = PurchaseOrder(
-      name: oldPO.name,
-      supplier: supplierController.text,
-      transactionDate: dateController.text,
-      grandTotal: currentItems.fold(0.0, (sum, i) => sum + i.amount),
-      currency: oldPO.currency,
-      status: oldPO.status,
-      docstatus: oldPO.docstatus,
-      modified: oldPO.modified,
-      creation: oldPO.creation,
-      items: currentItems,
+
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Remove ${item.itemCode} from the order?',
+      onConfirm: () {
+        final currentItems = purchaseOrder.value?.items.toList() ?? [];
+        currentItems.remove(item);
+
+        final oldPO = purchaseOrder.value!;
+        purchaseOrder.value = PurchaseOrder(
+          name: oldPO.name,
+          supplier: supplierController.text,
+          transactionDate: dateController.text,
+          grandTotal: currentItems.fold(0.0, (sum, i) => sum + i.amount),
+          currency: oldPO.currency,
+          status: oldPO.status,
+          docstatus: oldPO.docstatus,
+          modified: oldPO.modified,
+          creation: oldPO.creation,
+          items: currentItems,
+        );
+        _checkForChanges();
+        GlobalSnackbar.success(message: 'Item removed');
+      },
     );
-    _checkForChanges();
-    GlobalSnackbar.success(message: 'Item removed');
   }
 
   Future<void> savePurchaseOrder() async {

@@ -16,6 +16,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
@@ -1021,13 +1022,22 @@ class StockEntryFormController extends GetxController {
   }
 
   void deleteItem(String uniqueName) {
-    final currentItems = stockEntry.value?.items.toList() ?? [];
-    currentItems.removeWhere((i) => i.name == uniqueName);
-    stockEntry.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-    isDirty.value = true;
-    GlobalSnackbar.success(message: 'Item removed');
+    final item = stockEntry.value?.items.firstWhereOrNull((i) => i.name == uniqueName);
+    if (item == null) return;
+
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
+      onConfirm: () {
+        final currentItems = stockEntry.value?.items.toList() ?? [];
+        currentItems.removeWhere((i) => i.name == uniqueName);
+        stockEntry.update((val) {
+          val?.items.assignAll(currentItems);
+        });
+        isDirty.value = true;
+        GlobalSnackbar.success(message: 'Item removed');
+      },
+    );
   }
 
   void triggerHighlight(String uniqueId) {

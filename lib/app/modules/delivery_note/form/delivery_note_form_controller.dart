@@ -14,6 +14,7 @@ import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -258,22 +259,10 @@ class DeliveryNoteFormController extends GetxController {
   // ... [Existing Methods: confirmAndDeleteItem, _deleteItemLocally, saveDeliveryNote, _triggerItemFeedback, toggleExpand, etc.] ...
 
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text('Remove ${item.itemCode} from this note?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Get.back();
-              _deleteItemLocally(item);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    GlobalDialog.showConfirmation(
+      title: 'Delete Item?',
+      message: 'Are you sure you want to remove ${item.itemCode} from this note?',
+      onConfirm: () => _deleteItemLocally(item),
     );
   }
 
