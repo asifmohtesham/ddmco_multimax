@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
-import 'dart:ui'; // For font features
+import 'package:qr_flutter/qr_flutter.dart'; // Add to pubspec.yaml
+import 'dart:ui';
 
 class BatchFormScreen extends GetView<BatchFormController> {
   const BatchFormScreen({super.key});
@@ -13,6 +14,40 @@ class BatchFormScreen extends GetView<BatchFormController> {
       appBar: AppBar(
         title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
         actions: [
+          // Export Button (Only visible if Batch ID exists)
+          Obx(() {
+            if (controller.generatedBatchId.value.isNotEmpty) {
+              return PopupMenuButton<String>(
+                icon: controller.isExporting.value
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.share),
+                onSelected: (value) {
+                  if (value == 'png') controller.exportQrAsPng();
+                  if (value == 'pdf') controller.exportQrAsPdf();
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'png',
+                    child: ListTile(
+                      leading: Icon(Icons.image, color: Colors.blue),
+                      title: Text('Export PNG'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'pdf',
+                    child: ListTile(
+                      leading: Icon(Icons.picture_as_pdf, color: Colors.red),
+                      title: Text('Export PDF (Vector)'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+
           Obx(() => controller.isSaving.value
               ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
               : IconButton(
@@ -37,23 +72,19 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   child: Column(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.grey.shade300),
                           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
                         ),
-                        // Using QR Server API to render QR Code reliably without extra packages
-                        child: Image.network(
-                          'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${controller.generatedBatchId.value}',
-                          width: 120,
-                          height: 120,
-                          loadingBuilder: (c, child, progress) {
-                            if (progress == null) return child;
-                            return const SizedBox(width: 120, height: 120, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
-                          },
-                          errorBuilder: (c, o, s) => const SizedBox(width: 120, height: 120, child: Icon(Icons.qr_code_2, size: 60, color: Colors.grey)),
+                        // Replaced Network Image with QrImageView for consistency & speed
+                        child: QrImageView(
+                          data: controller.generatedBatchId.value,
+                          version: QrVersions.auto,
+                          size: 150.0,
+                          backgroundColor: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 12),

@@ -1,11 +1,18 @@
 // app/modules/batch/form/batch_form_controller.dart
+import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart'; // Add qr_flutter to pubspec.yaml
+import 'package:pdf/pdf.dart';               // Add pdf to pubspec.yaml
+import 'package:pdf/widgets.dart' as pw;     // Add pdf to pubspec.yaml
+import 'package:share_plus/share_plus.dart'; // Add share_plus to pubspec.yaml
 
 class BatchFormController extends GetxController {
   final BatchProvider _provider = Get.find<BatchProvider>();
@@ -15,6 +22,7 @@ class BatchFormController extends GetxController {
 
   var isLoading = true.obs;
   var isSaving = false.obs;
+  var isExporting = false.obs;
   var batch = Rx<Batch?>(null);
 
   // Form Controllers
@@ -150,14 +158,13 @@ class BatchFormController extends GetxController {
       if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
 
-        // Extract Barcode (Assuming 'barcodes' child table or 'barcode' field)
+        // Extract Barcode
         String barcode = '';
         if (data['barcodes'] != null && (data['barcodes'] as List).isNotEmpty) {
           barcode = data['barcodes'][0]['barcode'] ?? '';
         } else if (data['barcode'] != null) {
           barcode = data['barcode'];
         } else {
-          // Fallback to Item Code if no EAN
           barcode = itemCode;
         }
 
@@ -173,8 +180,7 @@ class BatchFormController extends GetxController {
   }
 
   void _generateBatchId(String ean) {
-    // Generate Random 6-char String (Alphanumeric)
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed I, 1, 0, O for clarity
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rnd = Random();
     final randomId = String.fromCharCodes(Iterable.generate(
         6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
@@ -210,9 +216,8 @@ class BatchFormController extends GetxController {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }
       } else {
-        // Explicitly set the name (Batch ID) for new documents if API allows manual naming
-        data['batch_id'] = generatedBatchId.value; // ERPNext often uses 'batch_id' or 'name' depending on naming series
-        data['name'] = generatedBatchId.value; // Attempt to force name
+        data['batch_id'] = generatedBatchId.value;
+        data['name'] = generatedBatchId.value;
 
         final response = await _provider.createBatch(data);
         if (response.statusCode == 200) {
@@ -238,6 +243,107 @@ class BatchFormController extends GetxController {
     );
     if (picked != null) {
       controller.text = DateFormat('yyyy-MM-dd').format(picked);
+    }
+  }
+
+  // --- QR Export Logic ---
+
+  Future<void> exportQrAsPng() async {
+    if (generatedBatchId.value.isEmpty) return;
+
+    isExporting.value = true;
+    try {
+      final qrValidationResult = QrValidator.validate(
+        data: generatedBatchId.value,
+        version: QrVersions.auto,
+        errorCorrectionLevel: QrErrorCorrectLevel.L,
+      );
+
+      if (qrValidationResult.isValid) {
+        final qrCode = qrValidationResult.qrCode!;
+        final painter = QrPainter.withQr(
+          qr: qrCode,
+          color: const Color(0xFF000000),
+          emptyColor: const Color(0xFFFFFFFF),
+          gapless: true,
+        );
+
+        // High resolution export
+        final pic = painter.toPicture(1024);
+        final img = await pic.toImage(1024, 1024);
+        final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+        final buffer = byteData!.buffer.asUint8List();
+
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/${generatedBatchId.value}.png');
+        await file.writeAsBytes(buffer);
+
+        await Share.shareXFiles(
+            [XFile(file.path)],
+            text: 'Batch QR Code: ${generatedBatchId.value}'
+        );
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Failed to export PNG: $e');
+    } finally {
+      isExporting.value = false;
+    }
+  }
+
+  Future<void> exportQrAsPdf() async {
+    if (generatedBatchId.value.isEmpty) return;
+
+    isExporting.value = true;
+    try {
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Center(
+              child: pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: generatedBatchId.value,
+                    width: 200,
+                    height: 200,
+                  ),
+                  pw.SizedBox(height: 20),
+                  pw.Text(
+                    generatedBatchId.value,
+                    style: pw.TextStyle(
+                      font: pw.Font.courier(), // Monospace for PDF
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Text(
+                    itemController.text,
+                    style: const pw.TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/${generatedBatchId.value}.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Batch Label: ${generatedBatchId.value}'
+      );
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Failed to export PDF: $e');
+    } finally {
+      isExporting.value = false;
     }
   }
 }

@@ -46,6 +46,8 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus: ^7.0.0
+  qr_flutter:
+  pdf:
 
 dev_dependencies:
   flutter_test:
