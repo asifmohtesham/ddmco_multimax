@@ -16,14 +16,14 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class StockEntryFormController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final StorageService _storageService = Get.find<StorageService>();
-  final ScanService _scanService = Get.find<ScanService>(); // Get Service
+  final ScanService _scanService = Get.find<ScanService>();
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -35,6 +35,7 @@ class StockEntryFormController extends GetxController {
   var isScanning = false.obs;
   var isSaving = false.obs;
   var isDirty = false.obs;
+  var isAddingItem = false.obs; // Added for feedback state
   var stockEntry = Rx<StockEntry?>(null);
 
   var posUpload = Rx<PosUpload?>(null);
@@ -116,31 +117,14 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.addListener(validateSheet);
     bsTargetRackController.addListener(validateSheet);
 
-    // Add Listener for Invoice Serial
     ever(selectedSerial, (_) => validateSheet());
 
-    // --- UPDATED Auto-Add Trigger (Delay increased to 1s) ---
+    // Auto-Add Trigger with Debounce
     debounce(isSheetValid, (bool valid) {
       if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
         addItem();
       }
-    }, time: const Duration(seconds: 1)); // CHANGED to 1 second
-    // ------------------------
-
-    if (mode == 'new') {
-      _initNewStockEntry();
-    } else {
-      fetchStockEntry();
-    }
-
-    // --- Auto-Add Trigger ---
-    // Debounce allows typing multi-digit quantities without triggering on the first digit
-    debounce(isSheetValid, (bool valid) {
-      if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
-        addItem();
-      }
-    }, time: const Duration(milliseconds: 500));
-    // ------------------------
+    }, time: const Duration(seconds: 1));
 
     if (mode == 'new') {
       _initNewStockEntry();
@@ -162,7 +146,7 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
-  // ... (Rest of the controller methods remain unchanged)
+  // ... [Existing methods: toggleInvoiceExpand, groupedItems, _markDirty, fetchStockEntryTypes, fetchWarehouses, _initNewStockEntry, fetchStockEntry, _onReferenceNoChanged, _fetchPosUploadDetails, fetchPendingPosUploads, filterPosUploads, openCreateDialog, _showPosSelectionBottomSheet] ...
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -583,14 +567,12 @@ class StockEntryFormController extends GetxController {
       }
     }
 
-    // --- UPDATED: Invoice Serial Check ---
     if (type == 'Material Issue') {
       if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
         isSheetValid.value = false;
         return;
       }
     }
-    // -------------------------------------
 
     if (currentItemNameKey.value != null) {
       bool isChanged = false;
@@ -711,27 +693,20 @@ class StockEntryFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
-    // --- Context Handling ---
     String? contextItem;
 
-    // UX: If sheet is open, we want to use the originally scanned Full EAN (with checksum)
-    // to construct the batch number, as per requirement (20014643-7M6).
-    // If currentScannedEan is empty (e.g. manual entry), fallback to currentItemCode.
     if (isItemSheetOpen.value) {
       contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
     }
 
     if (isItemSheetOpen.value) {
-      // Clear scanner immediately
       barcodeController.clear();
 
-      // Process with Context
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
 
       if (result.type == ScanType.rack && result.rackId != null) {
         _handleSheetRackScan(result.rackId!);
       } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
-        // Populate Batch
         bsBatchController.text = result.batchNo!;
         validateBatch(result.batchNo!);
       } else if (result.type == ScanType.error) {
@@ -740,22 +715,18 @@ class StockEntryFormController extends GetxController {
       return;
     }
 
-    // --- Main Screen Scan ---
     isScanning.value = true;
 
     try {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
-        // Store raw EAN (with checksum) for later use in Batch generation
-        // If the scan was a full batch (EAN-BATCH), split it.
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
           currentScannedEan = result.rawCode;
         }
 
-        // Populate Data
         final itemData = result.itemData!;
         currentItemCode = itemData.itemCode;
         currentVariantOf = itemData.variantOf ?? '';
@@ -873,7 +844,6 @@ class StockEntryFormController extends GetxController {
     if (batch.isEmpty) return;
     isValidatingBatch.value = true;
     try {
-      // Fetch Batch with custom_packaging_qty
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
@@ -884,7 +854,6 @@ class StockEntryFormController extends GetxController {
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
 
-        // Auto-set Quantity from Batch Packaging Qty
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
@@ -1041,9 +1010,8 @@ class StockEntryFormController extends GetxController {
   }
 
   void triggerHighlight(String uniqueId) {
-    recentlyAddedItemName.value = uniqueId; // uniqueId corresponds to item.name
+    recentlyAddedItemName.value = uniqueId;
 
-    // Scroll Logic
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
         final key = itemKeys[uniqueId];
@@ -1064,10 +1032,19 @@ class StockEntryFormController extends GetxController {
   }
 
   void addItem() async {
+    if (isAddingItem.value) return; // Prevent double trigger
+
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
-    // ... (item creation logic unchanged) ...
+    isAddingItem.value = true;
+
+    // Hide keyboard to prevent UI glitches during close
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    // Feedback Delay
+    await Future.delayed(const Duration(milliseconds: 500));
+
     final batch = bsBatchController.text;
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -1094,7 +1071,7 @@ class StockEntryFormController extends GetxController {
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (existingIndex != -1) {
-      currentItems[existingIndex] = newItem; // Simplified update
+      currentItems[existingIndex] = newItem;
     } else {
       currentItems.add(newItem);
     }
@@ -1104,9 +1081,11 @@ class StockEntryFormController extends GetxController {
     });
 
     Get.back(); // Close Bottom Sheet automatically
-    barcodeController.clear(); // --- UX FIX: Ensure scanner is clear for next item ---
 
-    // ADDED: Trigger Highlight
+    // Reset flags
+    isAddingItem.value = false;
+    barcodeController.clear();
+
     triggerHighlight(uniqueId);
 
     if (mode == 'new') {

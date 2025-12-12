@@ -14,9 +14,9 @@ class BatchFormScreen extends GetView<BatchFormController> {
       appBar: AppBar(
         title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
         actions: [
-          // Export Button (Only visible if Batch ID exists)
+          // Export Button: Only visible if the document is saved (Edit Mode)
           Obx(() {
-            if (controller.generatedBatchId.value.isNotEmpty) {
+            if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty) {
               return PopupMenuButton<String>(
                 icon: controller.isExporting.value
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -52,8 +52,10 @@ class BatchFormScreen extends GetView<BatchFormController> {
               ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
               : IconButton(
             icon: const Icon(Icons.save),
-            color: controller.isDirty.value ? Colors.white : Colors.white38, // Visual feedback
-            onPressed: controller.isDirty.value ? controller.saveBatch : null, // Disable if clean
+            // Disable if not dirty
+            onPressed: controller.isDirty.value ? controller.saveBatch : null,
+            // Visual feedback for disabled state (optional, if theme doesn't handle it well)
+            color: controller.isDirty.value ? Colors.white : Colors.white38,
           )
           ),
         ],
@@ -80,7 +82,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                           border: Border.all(color: Colors.grey.shade300),
                           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
                         ),
-                        // Replaced Network Image with QrImageView for consistency & speed
                         child: QrImageView(
                           data: controller.generatedBatchId.value,
                           version: QrVersions.auto,
@@ -95,7 +96,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'monospace',
-                          // Font features to differentiate 0 and O
                           fontFeatures: [FontFeature.slashedZero()],
                           letterSpacing: 1.5,
                         ),
@@ -233,7 +233,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
     );
   }
 
-  // ... (Picker Bottom Sheets remain unchanged) ...
+  // --- Picker Bottom Sheets ---
+
   void _showItemPicker(BuildContext context) {
     controller.searchItems(''); // Reset/Init
     Get.bottomSheet(

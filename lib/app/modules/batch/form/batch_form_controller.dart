@@ -1,5 +1,5 @@
 // app/modules/batch/form/batch_form_controller.dart
-import 'dart:convert'; // Added
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -24,8 +24,8 @@ class BatchFormController extends GetxController {
   var isLoading = true.obs;
   var isSaving = false.obs;
   var isExporting = false.obs;
-  var isDirty = false.obs; // Added
-  String _originalJson = ''; // Added
+  var isDirty = false.obs; // Tracks form changes
+  String _originalJson = ''; // Stores initial state
 
   var batch = Rx<Batch?>(null);
 
@@ -92,8 +92,10 @@ class BatchFormController extends GetxController {
     mfgDateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
     customPackagingQtyController.text = '12';
 
-    isDirty.value = true; // New docs are dirty by default
+    // New documents are dirty by default to allow saving immediately
+    isDirty.value = true;
     _originalJson = '';
+
     isLoading.value = false;
   }
 
@@ -119,7 +121,7 @@ class BatchFormController extends GetxController {
           _fetchItemDetails(b.item, generateId: false);
         }
 
-        // Set Original State
+        // Save original state for dirty check
         _originalJson = jsonEncode(_getCurrentFormData());
         isDirty.value = false;
       }
@@ -130,11 +132,14 @@ class BatchFormController extends GetxController {
     }
   }
 
+  // --- Change Detection Logic ---
+
   void _checkForChanges() {
     if (mode == 'new') {
       isDirty.value = true;
       return;
     }
+    // Compare current form data with original JSON
     final currentJson = jsonEncode(_getCurrentFormData());
     isDirty.value = currentJson != _originalJson;
   }
@@ -245,7 +250,7 @@ class BatchFormController extends GetxController {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
           GlobalSnackbar.success(message: 'Batch updated successfully');
-          fetchBatch(); // Will refresh and reset dirty state
+          fetchBatch();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }
@@ -302,7 +307,6 @@ class BatchFormController extends GetxController {
           gapless: true,
         );
 
-        // High resolution export
         final pic = painter.toPicture(1024);
         final img = await pic.toImage(1024, 1024);
         final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
@@ -349,7 +353,7 @@ class BatchFormController extends GetxController {
                   pw.Text(
                     generatedBatchId.value,
                     style: pw.TextStyle(
-                      font: pw.Font.courier(), // Monospace for PDF
+                      font: pw.Font.courier(),
                       fontSize: 24,
                       fontWeight: pw.FontWeight.bold,
                     ),

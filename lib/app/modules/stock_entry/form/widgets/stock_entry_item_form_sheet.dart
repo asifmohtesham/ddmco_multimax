@@ -30,7 +30,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
       isSaveEnabledRx: controller.isSheetValid,
       isSaveEnabled: docStatus == 0,
 
-      isLoading: false,
+      // Use the isAddingItem observable for loading state
+      isLoading: controller.isAddingItem.value,
 
       onSubmit: controller.addItem,
       onDelete: isEditing
