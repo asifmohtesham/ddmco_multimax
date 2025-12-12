@@ -13,207 +13,232 @@ class StockEntryItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.08),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12.0),
-        child: InkWell(
-          onTap: () => controller.editItem(item), // Changed to pass item
-          child: Column(
-            children: [
-              // Header Section: Code, Name, Actions
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 12,
-                      backgroundColor: Colors.blue.shade50,
-                      child: Text(
-                        '${index + 1}',
-                        style: TextStyle(color: Colors.blue.shade900, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.itemCode,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: Colors.black87,
-                              fontFeatures: [FontFeature.slashedZero()],
-                            ),
-                          ),
-                          if (item.itemName != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2.0),
-                              child: Text(
-                                item.itemName!,
-                                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    // Actions: Edit and Delete
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-                          onPressed: () => controller.editItem(item),
-                          tooltip: 'Edit Item',
-                        ),
-                        // Only show delete if there is more than 1 item
-                        Obx(() {
-                          if ((controller.stockEntry.value?.items.length ?? 0) > 1) {
-                            return IconButton(
-                              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
-                              onPressed: () {
-                                if (item.name != null) {
-                                  controller.deleteItem(item.name!);
-                                }
-                              },
-                              tooltip: 'Remove Item',
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+    return Obx(() {
+      final isHighlighted = controller.recentlyAddedItemName.value == item.name;
 
-              // Content Section: Badges & Flow & Qty
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Wrap(
-                          spacing: 8.0,
-                          runSpacing: 8.0,
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+        decoration: BoxDecoration(
+          color: isHighlighted ? Colors.yellow.shade100 : Colors.white, // Highlight Color
+          borderRadius: BorderRadius.circular(12.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withValues(alpha: 0.08),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          border: Border.all(color: isHighlighted ? Colors.orange : Colors.grey.shade200), // Optional border highlight
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.0),
+          child: InkWell(
+            onTap: () => controller.editItem(item), // Changed to pass item
+            child: Column(
+              children: [
+                // Header Section: Code, Name, Actions
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                  decoration: BoxDecoration(
+                    color: isHighlighted ? Colors.yellow.shade50 : Colors.grey.shade50, // Slight tint for header too
+                    border: Border(bottom: BorderSide(color: Colors.grey
+                        .shade200)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: Colors.blue.shade50,
+                        child: Text(
+                          '${index + 1}',
+                          style: TextStyle(color: Colors.blue.shade900,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (item.batchNo != null && item.batchNo!.isNotEmpty)
-                              _buildBadge(
-                                  icon: Icons.qr_code,
-                                  label: item.batchNo!,
-                                  color: Colors.purple,
-                                  isMono: true
+                            Text(
+                              item.itemCode,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Colors.black87,
+                                fontFeatures: [FontFeature.slashedZero()],
                               ),
-                            if (item.customVariantOf != null && item.customVariantOf!.isNotEmpty)
-                              _buildBadge(
-                                  icon: Icons.style,
-                                  label: item.customVariantOf!,
-                                  color: Colors.teal
+                            ),
+                            if (item.itemName != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2.0),
+                                child: Text(
+                                  item.itemName!,
+                                  style: TextStyle(color: Colors.grey.shade600,
+                                      fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                           ],
                         ),
-                        Text(
-                          item.qty.toString(),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black),
-                        ),
-                      ],
-                    ),
+                      ),
+                      // Actions: Edit and Delete
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                                Icons.edit, size: 20, color: Colors.blue),
+                            onPressed: () => controller.editItem(item),
+                            tooltip: 'Edit Item',
+                          ),
+                          // Only show delete if there is more than 1 item
+                          Obx(() {
+                            if ((controller.stockEntry.value?.items.length ??
+                                0) > 1) {
+                              return IconButton(
+                                icon: const Icon(
+                                    Icons.delete, size: 20, color: Colors.red),
+                                onPressed: () {
+                                  if (item.name != null) {
+                                    controller.deleteItem(item.name!);
+                                  }
+                                },
+                                tooltip: 'Remove Item',
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
 
-                    const SizedBox(height: 12),
-
-                    // Visual Warehouse Flow
-                    Obx(() {
-                      final type = controller.selectedStockEntryType.value;
-                      final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-                      final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
-                      if (!showSource && !showTarget) return const SizedBox.shrink();
-
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: IntrinsicHeight(
-                          child: Row(
+                // Content Section: Badges & Flow & Qty
+                Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Wrap(
+                            spacing: 8.0,
+                            runSpacing: 8.0,
                             children: [
-                              if (showSource)
-                                Expanded(
-                                  child: _buildLocationBlock(
-                                    label: 'FROM',
-                                    warehouse: item.sWarehouse,
-                                    rack: item.rack,
-                                    color: Colors.orange,
-                                    icon: Icons.outbond,
-                                  ),
+                              if (item.batchNo != null &&
+                                  item.batchNo!.isNotEmpty)
+                                _buildBadge(
+                                    icon: Icons.qr_code,
+                                    label: item.batchNo!,
+                                    color: Colors.purple,
+                                    isMono: true
                                 ),
-
-                              if (showSource && showTarget)
-                                Container(
-                                  width: 1,
-                                  color: Colors.grey.shade200,
-                                  child: Center(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                          color: Colors.grey.shade50,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: Colors.grey.shade300)
-                                      ),
-                                      child: const Icon(Icons.chevron_right, size: 14, color: Colors.grey),
-                                    ),
-                                  ),
-                                ),
-
-                              if (showTarget)
-                                Expanded(
-                                  child: _buildLocationBlock(
-                                    label: 'TO',
-                                    warehouse: item.tWarehouse,
-                                    rack: item.toRack,
-                                    color: Colors.green,
-                                    icon: Icons.move_to_inbox,
-                                  ),
+                              if (item.customVariantOf != null &&
+                                  item.customVariantOf!.isNotEmpty)
+                                _buildBadge(
+                                    icon: Icons.style,
+                                    label: item.customVariantOf!,
+                                    color: Colors.teal
                                 ),
                             ],
                           ),
-                        ),
-                      );
-                    }),
-                  ],
+                          Text(
+                            item.qty.toString(),
+                            style: const TextStyle(fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                                color: Colors.black),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Visual Warehouse Flow
+                      Obx(() {
+                        final type = controller.selectedStockEntryType.value;
+                        final showSource = type == 'Material Issue' ||
+                            type == 'Material Transfer' ||
+                            type == 'Material Transfer for Manufacture';
+                        final showTarget = type == 'Material Receipt' ||
+                            type == 'Material Transfer' ||
+                            type == 'Material Transfer for Manufacture';
+
+                        if (!showSource && !showTarget)
+                          return const SizedBox.shrink();
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              children: [
+                                if (showSource)
+                                  Expanded(
+                                    child: _buildLocationBlock(
+                                      label: 'FROM',
+                                      warehouse: item.sWarehouse,
+                                      rack: item.rack,
+                                      color: Colors.orange,
+                                      icon: Icons.outbond,
+                                    ),
+                                  ),
+
+                                if (showSource && showTarget)
+                                  Container(
+                                    width: 1,
+                                    color: Colors.grey.shade200,
+                                    child: Center(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                            color: Colors.grey.shade50,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: Colors.grey.shade300)
+                                        ),
+                                        child: const Icon(
+                                            Icons.chevron_right, size: 14,
+                                            color: Colors.grey),
+                                      ),
+                                    ),
+                                  ),
+
+                                if (showTarget)
+                                  Expanded(
+                                    child: _buildLocationBlock(
+                                      label: 'TO',
+                                      warehouse: item.tWarehouse,
+                                      rack: item.toRack,
+                                      color: Colors.green,
+                                      icon: Icons.move_to_inbox,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildBadge({required IconData icon, required String label, required MaterialColor color, bool isMono = false}) {

@@ -92,6 +92,7 @@ class PurchaseReceiptFormController extends GetxController {
 
   // Added: Track the scanned EAN to reconstruct Batch IDs correctly
   String currentScannedEan = '';
+  var recentlyAddedItemName = ''.obs;
 
   @override
   void onInit() {
@@ -632,6 +633,14 @@ class PurchaseReceiptFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
+  // Add method
+  void triggerHighlight(String itemName) {
+    recentlyAddedItemName.value = itemName;
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemName.value = '';
+    });
+  }
+
   void addItem() async {
     if (!isEditable) return;
 
@@ -696,6 +705,9 @@ class PurchaseReceiptFormController extends GetxController {
 
     Get.back(); // Close Bottom Sheet automatically
     barcodeController.clear(); // --- UX FIX: Ensure scanner is clear ---
+
+    // ADDED: Trigger Highlight
+    triggerHighlight(uniqueId);
 
     if (mode == 'new') {
       savePurchaseReceipt();

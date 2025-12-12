@@ -91,6 +91,7 @@ class StockEntryFormController extends GetxController {
   String _initialTargetRack = '';
 
   String currentScannedEan = '';
+  var recentlyAddedItemName = ''.obs;
 
   @override
   void onInit() {
@@ -1026,6 +1027,13 @@ class StockEntryFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
+  void triggerHighlight(String itemName) {
+    recentlyAddedItemName.value = itemName;
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemName.value = '';
+    });
+  }
+
   void addItem() async {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
@@ -1068,6 +1076,9 @@ class StockEntryFormController extends GetxController {
 
     Get.back(); // Close Bottom Sheet automatically
     barcodeController.clear(); // --- UX FIX: Ensure scanner is clear for next item ---
+
+    // ADDED: Trigger Highlight
+    triggerHighlight(uniqueId);
 
     if (mode == 'new') {
       saveStockEntry();

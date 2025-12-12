@@ -224,6 +224,8 @@ class DeliveryNoteFormController extends GetxController {
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
       });
+      // ADDED: Trigger feedback on update
+      _triggerItemFeedback(existingItem.itemCode, invoiceSerial ?? '0');
     }
   }
 
