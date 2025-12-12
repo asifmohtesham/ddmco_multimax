@@ -111,6 +111,23 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.addListener(validateSheet);
     bsTargetRackController.addListener(validateSheet);
 
+    // Add Listener for Invoice Serial
+    ever(selectedSerial, (_) => validateSheet());
+
+    // --- UPDATED Auto-Add Trigger (Delay increased to 1s) ---
+    debounce(isSheetValid, (bool valid) {
+      if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
+        addItem();
+      }
+    }, time: const Duration(seconds: 1)); // CHANGED to 1 second
+    // ------------------------
+
+    if (mode == 'new') {
+      _initNewStockEntry();
+    } else {
+      fetchStockEntry();
+    }
+
     // --- Auto-Add Trigger ---
     // Debounce allows typing multi-digit quantities without triggering on the first digit
     debounce(isSheetValid, (bool valid) {
@@ -560,6 +577,15 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
+
+    // --- UPDATED: Invoice Serial Check ---
+    if (type == 'Material Issue') {
+      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+    }
+    // -------------------------------------
 
     if (currentItemNameKey.value != null) {
       bool isChanged = false;

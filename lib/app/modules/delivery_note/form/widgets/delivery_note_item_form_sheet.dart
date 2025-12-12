@@ -12,9 +12,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   Widget build(BuildContext context) {
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
-      final canSubmit = !controller.isSaving.value &&
-          !controller.bsIsLoadingBatch.value &&
-          (controller.isFormDirty.value || !isEditing);
+
+      // Removed old 'canSubmit' logic, relying on reactive isSheetValid
 
       return GlobalItemFormSheet(
         formKey: controller.itemFormKey,
@@ -30,7 +29,10 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ? 'Max Available: ${controller.bsMaxQty.value}'
             : null,
 
-        isSaveEnabled: canSubmit,
+        // UPDATED: Using reactive validation
+        isSaveEnabledRx: controller.isSheetValid,
+        isSaveEnabled: true, // Fallback
+
         isLoading: controller.bsIsLoadingBatch.value,
 
         onSubmit: controller.submitSheet,
@@ -61,10 +63,12 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 }).toList(),
                 onChanged: (value) {
                   controller.bsInvoiceSerialNo.value = value;
-                  controller.checkForChanges();
+                  controller.validateSheet(); // Check immediately
                 },
               ),
             ),
+
+          // ... [Rest of the file remains same: Batch No, Rack, etc.] ...
 
           // Batch No
           GlobalItemFormSheet.buildInputGroup(
@@ -73,7 +77,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             child: TextFormField(
               controller: controller.bsBatchController,
               readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
-              autofocus: false, // DISABLED AUTOFOCUS
+              autofocus: false,
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -99,7 +103,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
                 )),
               ),
-              onChanged: (_) => controller.checkForChanges(),
+              onChanged: (_) => controller.validateSheet(),
               onFieldSubmitted: (val) {
                 if (!controller.bsIsBatchReadOnly.value) {
                   controller.validateAndFetchBatch(val);
@@ -108,16 +112,15 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ),
           ),
 
-          // Rack (Refactored)
+          // Rack
           Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
             bgColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
             child: TextFormField(
               controller: controller.bsRackController,
-              // focusNode: controller.bsRackFocusNode,
               autofocus: false,
-              readOnly: controller.bsIsRackValid.value, // Readonly if valid
+              readOnly: controller.bsIsRackValid.value,
               decoration: InputDecoration(
                 hintText: 'Source Rack',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -147,7 +150,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   onPressed: () => controller.validateRack(controller.bsRackController.text),
                 )),
               ),
-              onChanged: (_) => controller.checkForChanges(),
+              onChanged: (_) => controller.validateSheet(),
               onFieldSubmitted: (val) => controller.validateRack(val),
             ),
           )),

@@ -55,7 +55,7 @@ class DeliveryNoteFormController extends GetxController {
   final bsQtyController = TextEditingController(text: '6');
   final bsRackFocusNode = FocusNode();
 
-  var isItemSheetOpen = false.obs; // Added to track sheet state
+  var isItemSheetOpen = false.obs;
   var bsIsLoadingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
@@ -69,6 +69,8 @@ class DeliveryNoteFormController extends GetxController {
   var bsInvoiceSerialNo = RxnString();
   var editingItemName = RxnString();
   var isFormDirty = false.obs;
+  // Added Validation Observable
+  var isSheetValid = false.obs;
 
   String _initialBatch = '';
   String _initialRack = '';
@@ -89,11 +91,18 @@ class DeliveryNoteFormController extends GetxController {
 
   String currentItemCode = '';
   String currentItemName = '';
-  String currentScannedEan = ''; // Track raw EAN for Batch logic
+  String currentScannedEan = '';
 
   @override
   void onInit() {
     super.onInit();
+
+    // Add Listeners for Validation
+    bsQtyController.addListener(validateSheet);
+    bsBatchController.addListener(validateSheet);
+    bsRackController.addListener(validateSheet);
+    ever(bsInvoiceSerialNo, (_) => validateSheet());
+
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
@@ -111,6 +120,8 @@ class DeliveryNoteFormController extends GetxController {
     scrollController.dispose();
     super.onClose();
   }
+
+  // ... [Existing Methods: _markDirty, _createNewDeliveryNote, fetchDeliveryNote, fetchPosUpload] ...
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && deliveryNote.value?.docstatus == 0) {
@@ -176,8 +187,6 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // --- Core CRUD Logic ---
-
   Future<void> submitSheet() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rack = bsRackController.text;
@@ -190,7 +199,7 @@ class DeliveryNoteFormController extends GetxController {
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    Get.back(); // Close Bottom Sheet automatically
+    Get.back();
     barcodeController.clear();
     _markDirty();
 
@@ -240,6 +249,8 @@ class DeliveryNoteFormController extends GetxController {
     });
     _triggerItemFeedback(itemCode, serial);
   }
+
+  // ... [Existing Methods: confirmAndDeleteItem, _deleteItemLocally, saveDeliveryNote, _triggerItemFeedback, toggleExpand, etc.] ...
 
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
     Get.dialog(
@@ -306,7 +317,6 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // --- UX & Helper Methods ---
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value = serial;
@@ -376,12 +386,49 @@ class DeliveryNoteFormController extends GetxController {
         .toList();
   }
 
+  // --- UPDATED: Validations ---
+
+  void validateSheet() {
+    bool valid = true;
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+
+    // Qty Check
+    if (qty <= 0) valid = false;
+    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
+
+    // Batch Check
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
+
+    // Rack Check (if logic requires it, assuming just needs to be non-empty or valid if entered)
+    // if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
+
+    // Invoice Serial Check (Critical Requirement)
+    if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
+      if (bsAvailableInvoiceSerialNos.isNotEmpty) {
+        valid = false;
+      }
+    }
+
+    // Change Detection
+    bool dirty = false;
+    if (bsBatchController.text != _initialBatch) dirty = true;
+    if (bsRackController.text != _initialRack) dirty = true;
+    if (bsQtyController.text != _initialQty) dirty = true;
+    if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
+    isFormDirty.value = dirty;
+
+    if (editingItemName.value != null && !dirty) valid = false;
+
+    isSheetValid.value = valid;
+  }
+
+  // --- Sheet Init ---
+
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
 
-    // Reset fields
     bsItemOwner.value = null;
     bsItemCreation.value = null;
     bsItemModifiedBy.value = null;
@@ -428,6 +475,7 @@ class DeliveryNoteFormController extends GetxController {
 
       final availableSerials = bsAvailableInvoiceSerialNos;
       if (availableSerials.isNotEmpty) {
+        // Auto-select first if available
         bsInvoiceSerialNo.value = availableSerials.first;
         _initialSerial = availableSerials.first;
       } else {
@@ -443,20 +491,20 @@ class DeliveryNoteFormController extends GetxController {
         bsIsBatchReadOnly.value = false;
       }
     }
+
+    // Initial validation
+    validateSheet();
+
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
-
-    // Set Open State
     isItemSheetOpen.value = true;
   }
 
+  // ... [Existing Methods: validateAndFetchBatch, validateRack, resetRackValidation, adjustSheetQty, editItem, addItemFromBarcode] ...
+
   void checkForChanges() {
-    bool dirty = false;
-    if (bsBatchController.text != _initialBatch) dirty = true;
-    if (bsRackController.text != _initialRack) dirty = true;
-    if (bsQtyController.text != _initialQty) dirty = true;
-    if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
-    isFormDirty.value = dirty;
+    // Replaced by validateSheet logic, keeping for backward compat if called elsewhere
+    validateSheet();
   }
 
   Future<void> validateAndFetchBatch(String batchNo) async {
@@ -506,6 +554,8 @@ class DeliveryNoteFormController extends GetxController {
       bsBatchError.value = 'Invalid Batch';
       bsMaxQty.value = 0.0;
       bsIsBatchValid.value = false;
+    } finally {
+      validateSheet();
     }
   }
 
@@ -526,13 +576,13 @@ class DeliveryNoteFormController extends GetxController {
       GlobalSnackbar.error(message: 'Validation failed: $e');
     } finally {
       isValidatingRack.value = false;
-      checkForChanges();
+      validateSheet();
     }
   }
 
   void resetRackValidation() {
     bsIsRackValid.value = false;
-    checkForChanges();
+    validateSheet();
   }
 
   void adjustSheetQty(double amount) {
@@ -541,7 +591,7 @@ class DeliveryNoteFormController extends GetxController {
     if (newQty < 0) newQty = 0;
     if (newQty > bsMaxQty.value && bsMaxQty.value > 0) newQty = bsMaxQty.value;
     bsQtyController.text = newQty.toStringAsFixed(0);
-    checkForChanges();
+    validateSheet();
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
@@ -576,20 +626,17 @@ class DeliveryNoteFormController extends GetxController {
       ),
       isScrollControlled: true,
     ).then((_) {
-      isItemSheetOpen.value = false; // Reset Open State
+      isItemSheetOpen.value = false;
       isAddingItem.value = false;
       editingItemName.value = null;
     });
   }
 
-  // --- UPDATED: Replaced original addItemFromBarcode with context-aware scanning logic ---
   Future<void> addItemFromBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
-    // 1. If Sheet is Open -> Handle Context Scan (Rack/Batch)
     if (isItemSheetOpen.value) {
       barcodeController.clear();
-      // Pass the item code context to help split EAN-Batch if needed
       final result = await _scanService.processScan(barcode, contextItemCode: currentItemCode);
 
       if (result.type == ScanType.rack && result.rackId != null) {
@@ -604,13 +651,11 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    // 2. Main Logic: Add New Item
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
-        // Store raw EAN for potential batch suffix logic later
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
@@ -618,12 +663,9 @@ class DeliveryNoteFormController extends GetxController {
         }
 
         final itemData = result.itemData!;
-        // Determine quantity if batch info is available
         double maxQty = 0.0;
 
         if (result.batchNo != null) {
-          // ... (Validation logic using ScanService result) ...
-          // Assuming processScan returns valid batch if type is batch
           try {
             final balanceResponse = await _apiProvider.getBatchWiseBalance(itemData.itemCode, result.batchNo!);
             if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
@@ -651,13 +693,10 @@ class DeliveryNoteFormController extends GetxController {
           isScrollControlled: true,
         );
 
-        // Reset when sheet closes
         isItemSheetOpen.value = false;
         isAddingItem.value = false;
 
       } else if (result.type == ScanType.multiple && result.candidates != null) {
-        // Handle multiple results logic if needed (e.g. open MultiItemSelectionSheet)
-        // For now just error
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
       } else {
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
