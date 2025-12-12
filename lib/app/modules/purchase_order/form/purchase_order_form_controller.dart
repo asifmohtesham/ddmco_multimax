@@ -7,12 +7,16 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_form_sheet.dart';
+import 'package:multimax/app/data/services/scan_service.dart'; // Added
+import 'package:multimax/app/data/models/scan_result_model.dart'; // Added
+import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart'; // Added for MultiItemSelectionSheet
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final ScanService _scanService = Get.find<ScanService>(); // Injected ScanService
 
-  var itemFormKey = GlobalKey<FormState>(); // ADDED
+  var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
 
@@ -183,26 +187,42 @@ class PurchaseOrderFormController extends GetxController {
       return;
     }
     if (barcode.isEmpty) return;
-
     if (isItemSheetOpen.value) return;
 
     isScanning.value = true;
-    String itemCode = barcode;
 
     try {
-      final response = await _apiProvider.getDocument('Item', itemCode);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
+      // Use Standardized Scan Service
+      final result = await _scanService.processScan(barcode);
 
+      if (result.isSuccess && result.itemData != null) {
+        final item = result.itemData!;
         _openItemSheet(
-          code: data['item_code'],
-          name: data['item_name'],
-          uom: data['stock_uom'] ?? 'Nos',
-          rate: 0.0,
+          code: item.itemCode,
+          name: item.itemName,
+          uom: item.stockUom ?? 'Nos',
+          rate: 0.0, // Fetch from Price List if API available
           qty: 1.0,
         );
+      } else if (result.type == ScanType.multiple && result.candidates != null) {
+        // Show Catalogue for ambiguous results
+        barcodeController.clear();
+        Get.bottomSheet(
+          MultiItemSelectionSheet(
+            items: result.candidates!,
+            onItemSelected: (item) => _openItemSheet(
+              code: item.itemCode,
+              name: item.itemName,
+              uom: item.stockUom ?? 'Nos',
+              rate: 0.0,
+              qty: 1.0,
+            ),
+          ),
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+        );
       } else {
-        GlobalSnackbar.error(message: 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan failed: $e');
