@@ -2,14 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
 
-class PurchaseOrderFilterBottomSheet extends StatelessWidget {
+class PurchaseOrderFilterBottomSheet extends StatefulWidget {
   const PurchaseOrderFilterBottomSheet({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final PurchaseOrderController controller = Get.find();
-    final supplierController = TextEditingController(text: controller.activeFilters['supplier']);
+  State<PurchaseOrderFilterBottomSheet> createState() => _PurchaseOrderFilterBottomSheetState();
+}
 
+class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBottomSheet> {
+  final PurchaseOrderController controller = Get.find();
+  late TextEditingController supplierController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Safely extract the string value from the filter
+    supplierController = TextEditingController(text: _extractFilterValue('supplier'));
+  }
+
+  @override
+  void dispose() {
+    supplierController.dispose();
+    super.dispose();
+  }
+
+  String _extractFilterValue(String key) {
+    final val = controller.activeFilters[key];
+    // Check if it's the list format ['like', '%value%']
+    if (val is List && val.isNotEmpty && val[0] == 'like') {
+      return val[1].toString().replaceAll('%', '');
+    }
+    // Handle direct string if ever stored that way
+    if (val is String) return val;
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: const BoxDecoration(
@@ -21,11 +50,25 @@ class PurchaseOrderFilterBottomSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Filter Purchase Orders', style: Theme.of(context).textTheme.titleLarge),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Filter Purchase Orders', style: Theme.of(context).textTheme.titleLarge),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Get.back(),
+                ),
+              ],
+            ),
+            const Divider(),
             const SizedBox(height: 16),
             TextFormField(
               controller: supplierController,
-              decoration: const InputDecoration(labelText: 'Supplier', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Supplier',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.business),
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -37,7 +80,8 @@ class PurchaseOrderFilterBottomSheet extends StatelessWidget {
                 controller.applyFilters(filters);
                 Get.back();
               },
-              child: const Text('Apply'),
+              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+              child: const Text('Apply Filters'),
             ),
             TextButton(
               onPressed: () {
