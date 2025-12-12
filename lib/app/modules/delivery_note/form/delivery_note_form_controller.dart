@@ -12,6 +12,8 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'delivery_note_form_screen.dart';
 import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -53,13 +55,14 @@ class DeliveryNoteFormController extends GetxController {
   final bsQtyController = TextEditingController(text: '6');
   final bsRackFocusNode = FocusNode();
 
+  var isItemSheetOpen = false.obs; // Added to track sheet state
   var bsIsLoadingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
   var bsIsBatchReadOnly = false.obs;
 
-  // Rack Validation State (Added)
+  // Rack Validation State
   var bsIsRackValid = false.obs;
   var isValidatingRack = false.obs;
 
@@ -86,6 +89,7 @@ class DeliveryNoteFormController extends GetxController {
 
   String currentItemCode = '';
   String currentItemName = '';
+  String currentScannedEan = ''; // Track raw EAN for Batch logic
 
   @override
   void onInit() {
@@ -114,7 +118,6 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ... (Create & Fetch methods unchanged) ...
   void _createNewDeliveryNote() async {
     isLoading.value = true;
     final now = DateTime.now();
@@ -403,14 +406,10 @@ class DeliveryNoteFormController extends GetxController {
       _initialQty = editingItem.qty.toStringAsFixed(0);
       _initialSerial = editingItem.customInvoiceSerialNumber;
 
-      // Initialize validation states based on existing data
       bsIsBatchValid.value = (editingItem.batchNo != null && editingItem.batchNo!.isNotEmpty);
       bsIsBatchReadOnly.value = bsIsBatchValid.value;
-
-      // Added Rack Validation State initialization
       bsIsRackValid.value = (editingItem.rack != null && editingItem.rack!.isNotEmpty);
 
-      // ... other fields
       bsMaxQty.value = maxQty;
       bsBatchError.value = null;
     } else {
@@ -425,8 +424,7 @@ class DeliveryNoteFormController extends GetxController {
 
       bsMaxQty.value = maxQty;
       bsBatchError.value = null;
-
-      bsIsRackValid.value = false; // Reset Rack Valid
+      bsIsRackValid.value = false;
 
       final availableSerials = bsAvailableInvoiceSerialNos;
       if (availableSerials.isNotEmpty) {
@@ -447,6 +445,9 @@ class DeliveryNoteFormController extends GetxController {
     }
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
+
+    // Set Open State
+    isItemSheetOpen.value = true;
   }
 
   void checkForChanges() {
@@ -458,14 +459,11 @@ class DeliveryNoteFormController extends GetxController {
     isFormDirty.value = dirty;
   }
 
-  // ... (getRelativeTime unchanged) ...
-
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
     bsIsLoadingBatch.value = true;
     bsBatchError.value = null;
     try {
-      // 1. Fetch Batch Details (Check existence + get qty)
       final batchResponse = await _apiProvider.getDocumentList('Batch',
           filters: {'name': batchNo, 'item': currentItemCode},
           fields: ['name', 'custom_packaging_qty']
@@ -476,14 +474,11 @@ class DeliveryNoteFormController extends GetxController {
       }
 
       final batchData = batchResponse.data['data'][0];
-
-      // Auto-set Quantity
       final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
       if (pkgQty > 0) {
         bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
-      // 2. Fetch Balance
       final balanceResponse = await _apiProvider.getBatchWiseBalance(currentItemCode, batchNo);
       double fetchedQty = 0.0;
       if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -514,7 +509,6 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // --- NEW: Rack Validation Logic ---
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) return;
     isValidatingRack.value = true;
@@ -540,7 +534,6 @@ class DeliveryNoteFormController extends GetxController {
     bsIsRackValid.value = false;
     checkForChanges();
   }
-  // ----------------------------------
 
   void adjustSheetQty(double amount) {
     double currentQty = double.tryParse(bsQtyController.text) ?? 0;
@@ -551,7 +544,6 @@ class DeliveryNoteFormController extends GetxController {
     checkForChanges();
   }
 
-  // ... (editItem, addItemFromBarcode using new methods) ...
   Future<void> editItem(DeliveryNoteItem item) async {
     isAddingItem.value = true;
     double fetchedQty = 0.0;
@@ -584,91 +576,96 @@ class DeliveryNoteFormController extends GetxController {
       ),
       isScrollControlled: true,
     ).then((_) {
+      isItemSheetOpen.value = false; // Reset Open State
       isAddingItem.value = false;
       editingItemName.value = null;
     });
   }
 
+  // --- UPDATED: Replaced original addItemFromBarcode with context-aware scanning logic ---
   Future<void> addItemFromBarcode(String barcode) async {
-    // ... logic unchanged ...
-    final RegExp eanRegex = RegExp(r'^\d{8,13}$');
-    final RegExp batchRegex = RegExp(r'^(\d{8,13})-([a-zA-Z0-9]{3,6})$');
+    if (barcode.isEmpty) return;
 
-    String itemCode = '';
-    String? batchNo;
-
-    if (eanRegex.hasMatch(barcode)) {
-      itemCode = barcode;
-      itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
-    } else if (batchRegex.hasMatch(barcode)) {
-      final match = batchRegex.firstMatch(barcode);
-      itemCode = match!.group(1)!;
-      itemCode = itemCode.length == 8 ? itemCode.substring(0,7) : itemCode.substring(0,12);
-      batchNo = barcode;
-    } else {
-      GlobalSnackbar.error(message: 'Invalid barcode format. Expected EAN (8-13 digits) or EAN-BATCH (3-6 chars)');
+    // 1. If Sheet is Open -> Handle Context Scan (Rack/Batch)
+    if (isItemSheetOpen.value) {
       barcodeController.clear();
+      // Pass the item code context to help split EAN-Batch if needed
+      final result = await _scanService.processScan(barcode, contextItemCode: currentItemCode);
+
+      if (result.type == ScanType.rack && result.rackId != null) {
+        bsRackController.text = result.rackId!;
+        validateRack(result.rackId!);
+      } else if (result.batchNo != null) {
+        bsBatchController.text = result.batchNo!;
+        validateAndFetchBatch(result.batchNo!);
+      } else if (result.type == ScanType.error) {
+        GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+      }
       return;
     }
 
+    // 2. Main Logic: Add New Item
     isScanning.value = true;
-
     try {
-      final itemResponse = await _apiProvider.getDocument('Item', itemCode);
-      if (itemResponse.statusCode != 200 || itemResponse.data['data'] == null) {
-        throw Exception('Item not found');
-      }
-      final String itemName = itemResponse.data['data']['item_name'] ?? '';
+      final result = await _scanService.processScan(barcode);
 
-      double maxQty = 0.0;
-
-      if (batchNo != null) {
-        // ... (batch validation logic) ...
-        try {
-          await _apiProvider.getDocument('Batch', batchNo);
-        } catch (e) {
-          final batchResponse = await _apiProvider.getDocumentList('Batch', filters: {'batch_id': batchNo, 'item': itemCode});
-          if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
-            throw Exception('Batch not found');
-          }
+      if (result.isSuccess && result.itemData != null) {
+        // Store raw EAN for potential batch suffix logic later
+        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
+          currentScannedEan = result.rawCode.split('-')[0];
+        } else {
+          currentScannedEan = result.rawCode;
         }
-        try {
-          final balanceResponse = await _apiProvider.getBatchWiseBalance(itemCode, batchNo);
-          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-            final result = balanceResponse.data['message']['result'];
-            if (result is List && result.isNotEmpty) {
-              final row = result.first;
-              maxQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
+
+        final itemData = result.itemData!;
+        // Determine quantity if batch info is available
+        double maxQty = 0.0;
+
+        if (result.batchNo != null) {
+          // ... (Validation logic using ScanService result) ...
+          // Assuming processScan returns valid batch if type is batch
+          try {
+            final balanceResponse = await _apiProvider.getBatchWiseBalance(itemData.itemCode, result.batchNo!);
+            if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
+              final list = balanceResponse.data['message']['result'] as List;
+              if(list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
             }
-          }
-        } catch (e) {
-          maxQty = 6.0;
+          } catch (_) { maxQty = 6.0; }
         }
+
+        isScanning.value = false;
+        isAddingItem.value = true;
+        barcodeController.clear();
+
+        initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
+
+        await Get.bottomSheet(
+          DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            minChildSize: 0.4,
+            maxChildSize: 0.95,
+            builder: (context, scrollController) {
+              return DeliveryNoteItemBottomSheet(scrollController: scrollController);
+            },
+          ),
+          isScrollControlled: true,
+        );
+
+        // Reset when sheet closes
+        isItemSheetOpen.value = false;
+        isAddingItem.value = false;
+
+      } else if (result.type == ScanType.multiple && result.candidates != null) {
+        // Handle multiple results logic if needed (e.g. open MultiItemSelectionSheet)
+        // For now just error
+        GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
+      } else {
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
-
-      isScanning.value = false;
-      isAddingItem.value = true;
-      barcodeController.clear();
-
-      initBottomSheet(itemCode, itemName, batchNo, maxQty);
-
-      await Get.bottomSheet(
-        DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-          },
-        ),
-        isScrollControlled: true,
-      );
-
     } catch (e) {
-      GlobalSnackbar.error(message: 'Validation failed: ${e.toString()}');
+      GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
-      isAddingItem.value = false;
       barcodeController.clear();
     }
   }

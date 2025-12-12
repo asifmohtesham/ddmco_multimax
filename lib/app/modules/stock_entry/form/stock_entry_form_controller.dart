@@ -681,19 +681,13 @@ class StockEntryFormController extends GetxController {
     if (barcode.isEmpty) return;
 
     // --- Context Handling ---
-    // If sheet is open, we pass the current item code to allow short-batch logic
-    String? contextItem = isItemSheetOpen.value ? currentItemCode : null;
+    String? contextItem;
 
-    // Use stored EAN from initial scan if available for better reconstruction,
-    // otherwise use the loaded item code.
-    if (contextItem != null && currentScannedEan.isNotEmpty) {
-      contextItem = currentScannedEan.substring(0, currentScannedEan.length - 1); // remove checksum to match stored
-      // Actually, ScanService expects Item Code (no checksum), which currentItemCode is.
-      // But if we want to concat with EAN, we might need the EAN.
-      // Let's stick to the Item Code as the prefix source for consistency with the prompt's rules
-      // "concatenate the EAN-{3+ Batch ID}".
-      // If currentItemCode IS the EAN minus checksum, then we are good.
-      contextItem = currentItemCode;
+    // UX: If sheet is open, we want to use the originally scanned Full EAN (with checksum)
+    // to construct the batch number, as per requirement (20014643-7M6).
+    // If currentScannedEan is empty (e.g. manual entry), fallback to currentItemCode.
+    if (isItemSheetOpen.value) {
+      contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
     }
 
     if (isItemSheetOpen.value) {
@@ -722,8 +716,9 @@ class StockEntryFormController extends GetxController {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
-        // Store raw EAN parts if needed for later
-        if (result.rawCode.contains('-')) {
+        // Store raw EAN (with checksum) for later use in Batch generation
+        // If the scan was a full batch (EAN-BATCH), split it.
+        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
           currentScannedEan = result.rawCode;

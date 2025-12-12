@@ -90,6 +90,9 @@ class PurchaseReceiptFormController extends GetxController {
   String _initialRack = '';
   String _initialQty = '';
 
+  // Added: Track the scanned EAN to reconstruct Batch IDs correctly
+  String currentScannedEan = '';
+
   @override
   void onInit() {
     super.onInit();
@@ -307,14 +310,20 @@ class PurchaseReceiptFormController extends GetxController {
     }
     if (barcode.isEmpty) return;
 
+    // --- Context Handling ---
+    String? contextItem;
+    if (isItemSheetOpen.value) {
+      // Use full EAN if available, else item code
+      contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+    }
+
     // --- Sheet Context ---
     if (isItemSheetOpen.value) {
       barcodeController.clear();
-      // Pass current item code for short-batch logic
-      final result = await _scanService.processScan(barcode, contextItemCode: currentItemCode);
+
+      final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
 
       if (result.type == ScanType.rack && result.rackId != null) {
-        // Handle rack if PR supports it directly via scan
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if (result.batchNo != null) {
@@ -332,6 +341,13 @@ class PurchaseReceiptFormController extends GetxController {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
+        // Store raw EAN (with checksum)
+        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
+          currentScannedEan = result.rawCode.split('-')[0];
+        } else {
+          currentScannedEan = result.rawCode;
+        }
+
         final itemData = result.itemData!;
         currentItemCode = itemData.itemCode;
         currentVariantOf = itemData.variantOf ?? '';
@@ -383,6 +399,15 @@ class PurchaseReceiptFormController extends GetxController {
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
       validateBatch(scannedBatch);
+    }
+
+    // Ensure we clear previous values to avoid state pollution if opening 'Add' manually
+    if (currentItemNameKey.value == null) {
+      // New Item
+      _initialBatch = '';
+      _initialRack = '';
+      _initialQty = '';
+      // Don't clear currentScannedEan here if it was just set by scanBarcode
     }
 
     isItemSheetOpen.value = true;
