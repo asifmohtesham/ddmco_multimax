@@ -30,7 +30,7 @@ class Batch {
       manufacturingDate: json['manufacturing_date'],
       expiryDate: json['expiry_date'],
       customPackagingQty: (json['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0,
-      customPurchaseOrder: json['purchase_order'],
+      customPurchaseOrder: json['custom_purchase_order'],
       creation: json['creation'] ?? '',
       modified: json['modified'] ?? '',
     );
