@@ -261,12 +261,20 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           child: items.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
               : ListView.separated(
+            controller: controller.scrollController, // ADDED
             padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
             itemCount: items.length,
             separatorBuilder: (context, index) => const SizedBox(height: 0),
             itemBuilder: (context, index) {
               final item = items[index];
-              return PurchaseReceiptItemCard(item: item, index: index);
+              // Register Key
+              if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                controller.itemKeys[item.name!] = GlobalKey();
+              }
+              return Container(
+                key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
+                child: PurchaseReceiptItemCard(item: item, index: index)
+              );
             },
           ),
         ),

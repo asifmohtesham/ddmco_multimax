@@ -93,6 +93,9 @@ class DeliveryNoteFormController extends GetxController {
   String currentItemName = '';
   String currentScannedEan = '';
 
+  final ScrollController highlightScrollController = ScrollController();
+  final Map<String, GlobalKey> highlightItemKeys = {};
+
   @override
   void onInit() {
     super.onInit();
@@ -322,18 +325,37 @@ class DeliveryNoteFormController extends GetxController {
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value = serial;
-    expandedInvoice.value = serial;
-    Future.delayed(const Duration(milliseconds: 300), () {
-      final contextKey = itemKeys[serial];
-      if (contextKey?.currentContext != null) {
-        Scrollable.ensureVisible(
-          contextKey!.currentContext!,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-          alignment: 0.1,
+
+    // If using grouping, expand the group
+    if (serial != '0' && serial.isNotEmpty) {
+      expandedInvoice.value = serial;
+    }
+
+    // Scroll Logic
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Small delay to ensure list rebuilds with the new item/key
+      Future.delayed(const Duration(milliseconds: 100), () {
+        // We need to find the unique ID of the item that matches this code and serial
+        // For simplicity, we iterate visible items or rely on the UI having registered the key via the item.name
+
+        final item = deliveryNote.value?.items.firstWhereOrNull(
+                (i) => i.itemCode == itemCode && (i.customInvoiceSerialNumber ?? '0') == serial
         );
-      }
+
+        if (item != null && item.name != null) {
+          final key = itemKeys[item.name];
+          if (key?.currentContext != null) {
+            Scrollable.ensureVisible(
+              key!.currentContext!,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              alignment: 0.5, // Center the item
+            );
+          }
+        }
+      });
     });
+
     Future.delayed(const Duration(seconds: 2), () {
       recentlyAddedItemCode.value = '';
       recentlyAddedSerial.value = '';

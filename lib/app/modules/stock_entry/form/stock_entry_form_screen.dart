@@ -413,11 +413,18 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               return const Center(child: Text('No items in this entry.'));
             }
             return ListView.separated(
+              controller: controller.scrollController, // ADDED
               padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
               itemCount: entry.items.length,
               separatorBuilder: (context, index) => const SizedBox(height: 0),
               itemBuilder: (context, index) {
                 final item = entry.items[index];
+
+                // Register & Attach Key
+                if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                  controller.itemKeys[item.name!] = GlobalKey();
+                }
+
                 return StockEntryItemCard(item: item, index: index);
               },
             );
@@ -433,6 +440,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     final groupedItems = controller.groupedItems;
 
     return ListView.builder(
+      controller: controller.scrollController, // ADDED
       padding: const EdgeInsets.only(top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
       itemCount: posUpload.items.length,
       itemBuilder: (context, index) {
@@ -458,7 +466,15 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
             onToggle: () => controller.toggleInvoiceExpand(expansionKey),
             children: itemsInGroup.map((item) {
               final globalIndex = entry.items.indexOf(item);
-              return StockEntryItemCard(item: item, index: globalIndex);
+              // Register Key
+              if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                controller.itemKeys[item.name!] = GlobalKey();
+              }
+
+              return Container(
+                key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
+                child: StockEntryItemCard(item: item, index: globalIndex)
+              );
             }).toList(),
           );
         });

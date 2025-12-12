@@ -261,10 +261,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 return const Center(child: Text('No items to display.'));
               }
               return ListView.builder(
+                controller: controller.scrollController, // ADDED
                 padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
                 itemCount: deliveryNoteItems.length,
                 itemBuilder: (context, index) {
                   final item = deliveryNoteItems[index];
+                  // Register Key
+                  if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                    controller.itemKeys[item.name!] = GlobalKey();
+                  }
+
                   return DeliveryNoteItemCard(item: item);
                 },
               );
@@ -318,7 +324,14 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                     totalQty: posItem.quantity,
                     scannedQty: cumulativeQty,
                     onToggle: () => controller.toggleInvoiceExpand(expansionKey),
-                    children: dnItemsForThisPosItem.map((item) => DeliveryNoteItemCard(item: item)).toList(),
+                    children: dnItemsForThisPosItem.map((item) {
+                      // Register Key
+                      if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                        controller.itemKeys[item.name!] = GlobalKey();
+                      }
+
+                      return DeliveryNoteItemCard(item: item);
+                    }).toList(),
                   ),
                 );
               },

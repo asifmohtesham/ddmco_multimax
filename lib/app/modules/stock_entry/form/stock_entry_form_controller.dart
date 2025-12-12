@@ -93,6 +93,9 @@ class StockEntryFormController extends GetxController {
   String currentScannedEan = '';
   var recentlyAddedItemName = ''.obs;
 
+  final ScrollController scrollController = ScrollController();
+  final Map<String, GlobalKey> itemKeys = {};
+
   @override
   void onInit() {
     super.onInit();
@@ -1027,8 +1030,24 @@ class StockEntryFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
-  void triggerHighlight(String itemName) {
-    recentlyAddedItemName.value = itemName;
+  void triggerHighlight(String uniqueId) {
+    recentlyAddedItemName.value = uniqueId; // uniqueId corresponds to item.name
+
+    // Scroll Logic
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        final key = itemKeys[uniqueId];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+            alignment: 0.5,
+          );
+        }
+      });
+    });
+
     Future.delayed(const Duration(seconds: 2), () {
       recentlyAddedItemName.value = '';
     });
