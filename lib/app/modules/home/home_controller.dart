@@ -300,7 +300,11 @@ class HomeController extends GetxController {
 
   // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
+    // 1. Prevent Double Trigger / Re-entry
+    if (isScanning.value) return;
+
     if (code.isEmpty) return;
+
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(code);
