@@ -11,7 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -19,7 +19,7 @@ class PurchaseReceiptFormController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
 
-  var itemFormKey = GlobalKey<FormState>(); // ADDED
+  var itemFormKey = GlobalKey<FormState>();
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -34,10 +34,8 @@ class PurchaseReceiptFormController extends GetxController {
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
   var linkedPurchaseOrder = Rx<PurchaseOrder?>(null);
 
-  // Helper: Document is only editable if it is a Draft (docstatus == 0)
   bool get isEditable => purchaseReceipt.value?.docstatus == 0;
 
-  // Cache for PO Item Quantities
   var poItemQuantities = <String, double>{}.obs;
 
   final supplierController = TextEditingController();
@@ -91,7 +89,6 @@ class PurchaseReceiptFormController extends GetxController {
   String _initialRack = '';
   String _initialQty = '';
 
-  // Added: Track the scanned EAN to reconstruct Batch IDs correctly
   String currentScannedEan = '';
   var recentlyAddedItemName = ''.obs;
 
@@ -120,7 +117,6 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void _markDirty() {
-    // Only mark dirty if document is actually editable
     if (!isLoading.value && !isDirty.value && isEditable) {
       isDirty.value = true;
     }
@@ -140,7 +136,6 @@ class PurchaseReceiptFormController extends GetxController {
     super.onClose();
   }
 
-  // ... (Fetch methods unchanged) ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -248,7 +243,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   Future<void> savePurchaseReceipt() async {
-    if (!isEditable) return; // Prevent save if not draft
+    if (!isEditable) return;
     if (isSaving.value) return;
     isSaving.value = true;
 
@@ -315,14 +310,11 @@ class PurchaseReceiptFormController extends GetxController {
     }
     if (barcode.isEmpty) return;
 
-    // --- Context Handling ---
     String? contextItem;
     if (isItemSheetOpen.value) {
-      // Use full EAN if available, else item code
       contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
     }
 
-    // --- Sheet Context ---
     if (isItemSheetOpen.value) {
       barcodeController.clear();
 
@@ -340,13 +332,11 @@ class PurchaseReceiptFormController extends GetxController {
       return;
     }
 
-    // --- Main Context ---
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
-        // Store raw EAN (with checksum)
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
@@ -381,7 +371,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
-    itemFormKey = GlobalKey<FormState>(); // Reset Key
+    itemFormKey = GlobalKey<FormState>();
     bsQtyController.clear();
     bsBatchController.clear();
     bsRackController.clear();
@@ -406,13 +396,10 @@ class PurchaseReceiptFormController extends GetxController {
       validateBatch(scannedBatch);
     }
 
-    // Ensure we clear previous values to avoid state pollution if opening 'Add' manually
     if (currentItemNameKey.value == null) {
-      // New Item
       _initialBatch = '';
       _initialRack = '';
       _initialQty = '';
-      // Don't clear currentScannedEan here if it was just set by scanBarcode
     }
 
     isItemSheetOpen.value = true;
@@ -433,7 +420,6 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   void validateSheet() {
-    // If viewing a submitted doc, sheet is always valid (but buttons disabled by UI)
     if (!isEditable) {
       isSheetValid.value = true;
       return;
@@ -480,7 +466,6 @@ class PurchaseReceiptFormController extends GetxController {
 
     bsIsLoadingBatch.value = true;
     try {
-      // Fetch Batch with custom_packaging_qty
       final response = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
@@ -493,7 +478,6 @@ class PurchaseReceiptFormController extends GetxController {
         final batchData = response.data['data'][0];
         GlobalSnackbar.success(message: 'Existing Batch found');
 
-        // Auto-set Quantity
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
@@ -515,9 +499,6 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
     validateSheet();
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   batchFocusNode.requestFocus();
-    // });
   }
 
   Future<void> validateRack(String rack) async {
@@ -560,17 +541,6 @@ class PurchaseReceiptFormController extends GetxController {
     if (!isEditable) return;
     isTargetRackValid.value = false;
     validateSheet();
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   targetRackFocusNode.requestFocus();
-    // });
-  }
-
-  void _focusNextField() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (targetRackFocusNode.canRequestFocus) {
-        targetRackFocusNode.requestFocus();
-      }
-    });
   }
 
   void editItem(PurchaseReceiptItem item) {
@@ -646,11 +616,9 @@ class PurchaseReceiptFormController extends GetxController {
     );
   }
 
-  // Add method
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
 
-    // Scroll Logic
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
         final key = itemKeys[uniqueId];
@@ -676,42 +644,65 @@ class PurchaseReceiptFormController extends GetxController {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
-    // ... (item creation logic unchanged) ...
     final batch = bsBatchController.text;
-    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    final currentItems = purchaseReceipt.value?.items.toList() ?? [];
-    final index = currentItems.indexWhere((i) => i.name == uniqueId);
+    final rack = bsRackController.text;
 
+    // Determine Warehouse
     String finalWarehouse = warehouse.value ?? '';
     if (finalWarehouse.isEmpty) finalWarehouse = setWarehouse.value ?? '';
 
-    if (index != -1) {
-      final existing = currentItems[index];
-      currentItems[index] = existing.copyWith(
+    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final currentItems = purchaseReceipt.value?.items.toList() ?? [];
+
+    // 1. Check if explicitly editing
+    final editIndex = currentItems.indexWhere((i) => i.name == uniqueId);
+
+    if (editIndex != -1) {
+      final existing = currentItems[editIndex];
+      currentItems[editIndex] = existing.copyWith(
         qty: qty,
         batchNo: batch,
-        rack: bsRackController.text,
+        rack: rack,
         warehouse: finalWarehouse.isNotEmpty ? finalWarehouse : existing.warehouse,
       );
     } else {
-      currentItems.add(PurchaseReceiptItem(
-        name: uniqueId,
-        owner: currentOwner,
-        creation: DateTime.now().toString(),
-        itemCode: currentItemCode,
-        qty: qty,
-        itemName: currentItemName,
-        batchNo: batch,
-        rack: bsRackController.text,
-        warehouse: finalWarehouse,
-        uom: currentUom,
-        stockUom: currentUom,
-        customVariantOf: currentVariantOf,
-        purchaseOrderItem: currentPoItem.isNotEmpty ? currentPoItem : null,
-        purchaseOrder: currentPoName.isNotEmpty ? currentPoName : null,
-        purchaseOrderQty: currentPurchaseOrderQty.value > 0 ? currentPurchaseOrderQty.value : null,
-        idx: currentItems.length + 1,
-      ));
+      // 2. Check for DUPLICATE (Item + Batch + Rack + Warehouse)
+      final duplicateIndex = currentItems.indexWhere((i) {
+        return i.itemCode == currentItemCode &&
+            (i.batchNo ?? '') == batch &&
+            (i.rack ?? '') == rack &&
+            (i.warehouse) == finalWarehouse;
+      });
+
+      if (duplicateIndex != -1) {
+        // MERGE
+        final existing = currentItems[duplicateIndex];
+        currentItems[duplicateIndex] = existing.copyWith(
+            qty: existing.qty + qty
+        );
+        // Use existing item's ID for highlighting
+        currentItemNameKey.value = existing.name;
+      } else {
+        // ADD NEW
+        currentItems.add(PurchaseReceiptItem(
+          name: uniqueId,
+          owner: currentOwner,
+          creation: DateTime.now().toString(),
+          itemCode: currentItemCode,
+          qty: qty,
+          itemName: currentItemName,
+          batchNo: batch,
+          rack: rack,
+          warehouse: finalWarehouse,
+          uom: currentUom,
+          stockUom: currentUom,
+          customVariantOf: currentVariantOf,
+          purchaseOrderItem: currentPoItem.isNotEmpty ? currentPoItem : null,
+          purchaseOrder: currentPoName.isNotEmpty ? currentPoName : null,
+          purchaseOrderQty: currentPurchaseOrderQty.value > 0 ? currentPurchaseOrderQty.value : null,
+          idx: currentItems.length + 1,
+        ));
+      }
     }
 
     final old = purchaseReceipt.value!;
@@ -732,18 +723,18 @@ class PurchaseReceiptFormController extends GetxController {
       items: currentItems,
     );
 
-    Get.back(); // Close Bottom Sheet automatically
-    barcodeController.clear(); // --- UX FIX: Ensure scanner is clear ---
+    Get.back();
+    barcodeController.clear();
 
-    // ADDED: Trigger Highlight
-    triggerHighlight(uniqueId);
+    // Trigger Highlight with the correct ID (either new or existing)
+    triggerHighlight(currentItemNameKey.value ?? uniqueId);
 
     if (mode == 'new') {
       savePurchaseReceipt();
     } else {
       isDirty.value = true;
       await savePurchaseReceipt();
-      GlobalSnackbar.success(message: index != -1 ? 'Item updated' : 'Item added');
+      GlobalSnackbar.success(message: 'Item updated');
     }
   }
 }

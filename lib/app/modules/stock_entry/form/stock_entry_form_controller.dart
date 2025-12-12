@@ -1,5 +1,4 @@
 import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -35,7 +34,7 @@ class StockEntryFormController extends GetxController {
   var isScanning = false.obs;
   var isSaving = false.obs;
   var isDirty = false.obs;
-  var isAddingItem = false.obs; // Added for feedback state
+  var isAddingItem = false.obs;
   var stockEntry = Rx<StockEntry?>(null);
 
   var posUpload = Rx<PosUpload?>(null);
@@ -145,8 +144,6 @@ class StockEntryFormController extends GetxController {
     customReferenceNoController.dispose();
     super.onClose();
   }
-
-  // ... [Existing methods: toggleInvoiceExpand, groupedItems, _markDirty, fetchStockEntryTypes, fetchWarehouses, _initNewStockEntry, fetchStockEntry, _onReferenceNoChanged, _fetchPosUploadDetails, fetchPendingPosUploads, filterPosUploads, openCreateDialog, _showPosSelectionBottomSheet] ...
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -1032,61 +1029,109 @@ class StockEntryFormController extends GetxController {
   }
 
   void addItem() async {
-    if (isAddingItem.value) return; // Prevent double trigger
+    if (isAddingItem.value) return;
 
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
     isAddingItem.value = true;
-
-    // Hide keyboard to prevent UI glitches during close
     FocusManager.instance.primaryFocus?.unfocus();
-
-    // Feedback Delay
     await Future.delayed(const Duration(milliseconds: 500));
 
     final batch = bsBatchController.text;
-    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final sourceRack = bsSourceRackController.text;
+    final targetRack = bsTargetRackController.text;
 
     final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
     final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
-    final newItem = StockEntryItem(
-      name: uniqueId,
-      itemCode: currentItemCode,
-      qty: qty,
-      basicRate: 0.0,
-      itemGroup: null,
-      customVariantOf: currentVariantOf,
-      batchNo: batch,
-      itemName: currentItemName,
-      rack: bsSourceRackController.text,
-      toRack: bsTargetRackController.text,
-      sWarehouse: sWh,
-      tWarehouse: tWh,
-      customInvoiceSerialNumber: selectedSerial.value,
-    );
-
+    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentItems = stockEntry.value?.items.toList() ?? [];
+
+    // 1. Check if explicitly editing
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (existingIndex != -1) {
-      currentItems[existingIndex] = newItem;
+      final existing = currentItems[existingIndex];
+      // Manually update fields
+      currentItems[existingIndex] = StockEntryItem(
+        name: existing.name,
+        itemCode: existing.itemCode,
+        qty: qty,
+        basicRate: existing.basicRate,
+        itemGroup: existing.itemGroup,
+        customVariantOf: existing.customVariantOf,
+        batchNo: batch,
+        itemName: existing.itemName,
+        rack: sourceRack,
+        toRack: targetRack,
+        sWarehouse: sWh,
+        tWarehouse: tWh,
+        customInvoiceSerialNumber: selectedSerial.value,
+      );
     } else {
-      currentItems.add(newItem);
+      // 2. Check for DUPLICATE (Item + Batch + Source Rack + Target Rack + Serial)
+      final duplicateIndex = currentItems.indexWhere((i) =>
+      i.itemCode == currentItemCode &&
+          (i.batchNo ?? '') == batch &&
+          (i.rack ?? '') == sourceRack &&
+          (i.toRack ?? '') == targetRack &&
+          (i.sWarehouse ?? '') == sWh &&
+          (i.tWarehouse ?? '') == tWh &&
+          (i.customInvoiceSerialNumber ?? '') == (selectedSerial.value ?? '')
+      );
+
+      if (duplicateIndex != -1) {
+        // MERGE
+        final existing = currentItems[duplicateIndex];
+        currentItems[duplicateIndex] = StockEntryItem(
+          name: existing.name,
+          itemCode: existing.itemCode,
+          qty: existing.qty + qty,
+          basicRate: existing.basicRate,
+          itemGroup: existing.itemGroup,
+          customVariantOf: existing.customVariantOf,
+          batchNo: existing.batchNo,
+          itemName: existing.itemName,
+          rack: existing.rack,
+          toRack: existing.toRack,
+          sWarehouse: existing.sWarehouse,
+          tWarehouse: existing.tWarehouse,
+          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+        );
+        // Use existing ID for highlighting
+        currentItemNameKey.value = existing.name;
+      } else {
+        // ADD NEW
+        final newItem = StockEntryItem(
+          name: uniqueId,
+          itemCode: currentItemCode,
+          qty: qty,
+          basicRate: 0.0,
+          itemGroup: null,
+          customVariantOf: currentVariantOf,
+          batchNo: batch,
+          itemName: currentItemName,
+          rack: sourceRack,
+          toRack: targetRack,
+          sWarehouse: sWh,
+          tWarehouse: tWh,
+          customInvoiceSerialNumber: selectedSerial.value,
+        );
+        currentItems.add(newItem);
+      }
     }
 
     stockEntry.update((val) {
       val?.items.assignAll(currentItems);
     });
 
-    Get.back(); // Close Bottom Sheet automatically
+    Get.back();
 
-    // Reset flags
     isAddingItem.value = false;
     barcodeController.clear();
 
-    triggerHighlight(uniqueId);
+    triggerHighlight(currentItemNameKey.value ?? uniqueId);
 
     if (mode == 'new') {
       saveStockEntry();

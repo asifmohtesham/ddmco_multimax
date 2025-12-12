@@ -14,7 +14,7 @@ import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -125,8 +125,6 @@ class DeliveryNoteFormController extends GetxController {
     super.onClose();
   }
 
-  // ... [Existing Methods: _markDirty, _createNewDeliveryNote, fetchDeliveryNote, fetchPosUpload] ...
-
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && deliveryNote.value?.docstatus == 0) {
       isDirty.value = true;
@@ -210,7 +208,7 @@ class DeliveryNoteFormController extends GetxController {
     await saveDeliveryNote();
 
     if(editingItemName.value == null) {
-      GlobalSnackbar.success(message: 'Item added to list. Remember to Save.');
+      GlobalSnackbar.success(message: 'Item added/updated.');
     }
   }
 
@@ -228,7 +226,6 @@ class DeliveryNoteFormController extends GetxController {
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
       });
-      // ADDED: Trigger feedback on update
       _triggerItemFeedback(existingItem.itemCode, invoiceSerial ?? '0');
     }
   }
@@ -236,27 +233,47 @@ class DeliveryNoteFormController extends GetxController {
   void _addItemLocally(String itemCode, String itemName, double qty, String rack, String? batchNo, String? invoiceSerial) {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
-    final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
 
-    final newItem = DeliveryNoteItem(
-      name: tempId,
-      itemCode: itemCode,
-      qty: qty,
-      rate: 0.0,
-      rack: rack,
-      batchNo: batchNo,
-      customInvoiceSerialNumber: serial,
-      itemName: itemName,
-      creation: DateTime.now().toString(),
+    // CHECK FOR DUPLICATE: Item Code + Batch + Rack + Serial
+    final existingIndex = currentItems.indexWhere((item) =>
+    item.itemCode == itemCode &&
+        (item.batchNo ?? '') == (batchNo ?? '') &&
+        (item.rack ?? '') == rack &&
+        (item.customInvoiceSerialNumber ?? '0') == serial
     );
-    currentItems.add(newItem);
-    deliveryNote.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-    _triggerItemFeedback(itemCode, serial);
-  }
 
-  // ... [Existing Methods: confirmAndDeleteItem, _deleteItemLocally, saveDeliveryNote, _triggerItemFeedback, toggleExpand, etc.] ...
+    if (existingIndex != -1) {
+      // MERGE
+      final existing = currentItems[existingIndex];
+      final newQty = existing.qty + qty;
+      currentItems[existingIndex] = existing.copyWith(qty: newQty);
+
+      deliveryNote.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+      _triggerItemFeedback(itemCode, serial);
+
+    } else {
+      // ADD NEW
+      final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      final newItem = DeliveryNoteItem(
+        name: tempId,
+        itemCode: itemCode,
+        qty: qty,
+        rate: 0.0,
+        rack: rack,
+        batchNo: batchNo,
+        customInvoiceSerialNumber: serial,
+        itemName: itemName,
+        creation: DateTime.now().toString(),
+      );
+      currentItems.add(newItem);
+      deliveryNote.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+      _triggerItemFeedback(itemCode, serial);
+    }
+  }
 
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
     GlobalDialog.showConfirmation(
@@ -315,18 +332,12 @@ class DeliveryNoteFormController extends GetxController {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value = serial;
 
-    // If using grouping, expand the group
     if (serial != '0' && serial.isNotEmpty) {
       expandedInvoice.value = serial;
     }
 
-    // Scroll Logic
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Small delay to ensure list rebuilds with the new item/key
       Future.delayed(const Duration(milliseconds: 100), () {
-        // We need to find the unique ID of the item that matches this code and serial
-        // For simplicity, we iterate visible items or rely on the UI having registered the key via the item.name
-
         final item = deliveryNote.value?.items.firstWhereOrNull(
                 (i) => i.itemCode == itemCode && (i.customInvoiceSerialNumber ?? '0') == serial
         );
@@ -338,7 +349,7 @@ class DeliveryNoteFormController extends GetxController {
               key!.currentContext!,
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeInOut,
-              alignment: 0.5, // Center the item
+              alignment: 0.5,
             );
           }
         }
@@ -399,30 +410,20 @@ class DeliveryNoteFormController extends GetxController {
         .toList();
   }
 
-  // --- UPDATED: Validations ---
-
   void validateSheet() {
     bool valid = true;
     final qty = double.tryParse(bsQtyController.text) ?? 0;
 
-    // Qty Check
     if (qty <= 0) valid = false;
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
-
-    // Batch Check
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
 
-    // Rack Check (if logic requires it, assuming just needs to be non-empty or valid if entered)
-    // if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
-
-    // Invoice Serial Check (Critical Requirement)
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
       if (bsAvailableInvoiceSerialNos.isNotEmpty) {
         valid = false;
       }
     }
 
-    // Change Detection
     bool dirty = false;
     if (bsBatchController.text != _initialBatch) dirty = true;
     if (bsRackController.text != _initialRack) dirty = true;
@@ -434,8 +435,6 @@ class DeliveryNoteFormController extends GetxController {
 
     isSheetValid.value = valid;
   }
-
-  // --- Sheet Init ---
 
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
     itemFormKey = GlobalKey<FormState>();
@@ -488,7 +487,6 @@ class DeliveryNoteFormController extends GetxController {
 
       final availableSerials = bsAvailableInvoiceSerialNos;
       if (availableSerials.isNotEmpty) {
-        // Auto-select first if available
         bsInvoiceSerialNo.value = availableSerials.first;
         _initialSerial = availableSerials.first;
       } else {
@@ -505,19 +503,11 @@ class DeliveryNoteFormController extends GetxController {
       }
     }
 
-    // Initial validation
     validateSheet();
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
     isItemSheetOpen.value = true;
-  }
-
-  // ... [Existing Methods: validateAndFetchBatch, validateRack, resetRackValidation, adjustSheetQty, editItem, addItemFromBarcode] ...
-
-  void checkForChanges() {
-    // Replaced by validateSheet logic, keeping for backward compat if called elsewhere
-    validateSheet();
   }
 
   Future<void> validateAndFetchBatch(String batchNo) async {
