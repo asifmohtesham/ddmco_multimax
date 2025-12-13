@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -56,11 +57,11 @@ class DeliveryNoteFormController extends GetxController {
   final bsRackFocusNode = FocusNode();
 
   var isItemSheetOpen = false.obs;
+  var bsIsLoadingBatch = false.obs; // General loading
+  var isValidatingBatch = false.obs; // Specific validation spinner state
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
-  var bsIsLoadingBatch = false.obs; // Kept for sheet loading
-  var isValidatingBatch = false.obs; // NEW: Specific for validation spinner
 
   // Rack Validation State
   var bsIsRackValid = false.obs;
@@ -503,7 +504,7 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
-    isValidatingBatch.value = true; // Start spinner
+    isValidatingBatch.value = true; // Use separate loading state for spinner
     bsBatchError.value = null;
     try {
       final batchResponse = await _apiProvider.getDocumentList('Batch',
@@ -512,8 +513,6 @@ class DeliveryNoteFormController extends GetxController {
       );
 
       if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
-        GlobalSnackbar.error(message: 'Batch not found');
-        bsIsBatchValid.value = false;
         throw Exception('Batch not found');
       }
 
@@ -546,9 +545,12 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Batch has 0 stock');
       }
     } catch (e) {
+      log(name: 'balanceResponse', e.toString());
+
       bsBatchError.value = 'Invalid Batch';
       bsMaxQty.value = 0.0;
       bsIsBatchValid.value = false;
+      GlobalSnackbar.error(message: 'Batch validation failed');
     } finally {
       isValidatingBatch.value = false; // Stop spinner
       validateSheet();

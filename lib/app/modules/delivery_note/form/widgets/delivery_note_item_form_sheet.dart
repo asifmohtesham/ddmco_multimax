@@ -49,7 +49,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         }
             : null,
 
-        // Standardized Global Scan Integration
+        // Standardised Global Scan Integration
         onScan: (code) => controller.scanBarcode(code),
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
@@ -138,6 +138,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             child: Obx(() => TextFormField(
               key: const ValueKey('rack_field'),
               controller: controller.bsRackController,
+              focusNode: controller.bsRackFocusNode, // Added Focus Node Binding
               readOnly: controller.bsIsRackValid.value,
               decoration: InputDecoration(
                 hintText: 'Enter or scan rack',
