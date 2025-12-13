@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -12,7 +13,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:collection/collection.dart'; // Needed for firstWhereOrNull
+import 'package:collection/collection.dart';
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -33,12 +34,12 @@ class PurchaseReceiptFormController extends GetxController {
   var isFormDirty = false.obs;
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
-  var linkedPurchaseOrder = Rx<PurchaseOrder?>(null);
+
+  // Cache for linking scanned items to PO lines
+  final List<Map<String, dynamic>> _cachedPoItems = [];
+  var poItemQuantities = <String, double>{}.obs;
 
   bool get isEditable => purchaseReceipt.value?.docstatus == 0;
-
-  var poItemQuantities = <String, double>{}.obs;
-  final List<Map<String, dynamic>> _cachedPoItems = []; // Cache for PO linking
 
   final supplierController = TextEditingController();
   final postingDateController = TextEditingController();
@@ -64,10 +65,10 @@ class PurchaseReceiptFormController extends GetxController {
 
   var isTargetRackValid = false.obs;
   var isValidatingTargetRack = false.obs;
-  var isValidatingSourceRack = false.obs;
 
   var isSheetValid = false.obs;
 
+  // Item Form State
   var currentOwner = '';
   var currentCreation = '';
   var currentModifiedBy = '';
@@ -77,9 +78,12 @@ class PurchaseReceiptFormController extends GetxController {
   var currentItemName = '';
   var currentUom = '';
   var currentItemIdx = 0.obs;
+
+  // PO Linking State
   var currentPurchaseOrderQty = 0.0.obs;
-  var currentPoItem = '';
-  var currentPoName = '';
+  var currentPoItem = ''; // Unique Name of the PO Item Row
+  var currentPoName = ''; // Name of the PO Document
+  var currentPoRate = 0.0.obs; // Rate from PO
 
   var currentItemNameKey = RxnString();
   var warehouse = RxnString();
@@ -97,7 +101,7 @@ class PurchaseReceiptFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // Add Metadata Observables
+  // Metadata Observables
   var bsItemOwner = RxnString();
   var bsItemCreation = RxnString();
   var bsItemModified = RxnString();
@@ -158,7 +162,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  void _initNewPurchaseReceipt() {
+  Future<void> _initNewPurchaseReceipt() async {
     isLoading.value = true;
     final now = DateTime.now();
     final supplier = Get.arguments['supplier'] ?? '';
@@ -186,7 +190,8 @@ class PurchaseReceiptFormController extends GetxController {
     postingTimeController.text = DateFormat('HH:mm:ss').format(now);
 
     if (poName != null && poName.isNotEmpty) {
-      _fetchLinkedPurchaseOrders([poName]);
+      // Fetch PO details immediately so scanning works
+      await _fetchLinkedPurchaseOrders([poName]);
     }
 
     isLoading.value = false;
@@ -229,6 +234,8 @@ class PurchaseReceiptFormController extends GetxController {
 
   Future<void> _fetchLinkedPurchaseOrders(List<String> poNames) async {
     _cachedPoItems.clear(); // Reset cache
+    poItemQuantities.clear();
+
     for (var poName in poNames) {
       try {
         final response = await _poProvider.getPurchaseOrder(poName);
@@ -237,10 +244,10 @@ class PurchaseReceiptFormController extends GetxController {
           for (var item in po.items) {
             if (item.name != null) {
               poItemQuantities[item.name!] = item.qty;
-              // Cache for linking
+              // Cache item details along with parent PO name
               _cachedPoItems.add({
                 'poName': po.name,
-                'item': item
+                'item': item, // PurchaseOrderItem object
               });
             }
           }
@@ -251,19 +258,21 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
+  /// Links the scanned [itemCode] to a pending Purchase Order Item.
   void _linkToPurchaseOrder(String itemCode) {
-    // Reset
+    // Reset linking fields
     currentPoItem = '';
     currentPoName = '';
     currentPurchaseOrderQty.value = 0.0;
+    currentPoRate.value = 0.0;
 
-    // 1. Try finding an item that is NOT fully received
+    // 1. Priority: Find item where received < qty (Pending)
     var match = _cachedPoItems.firstWhereOrNull((data) {
       final PurchaseOrderItem item = data['item'];
       return item.itemCode == itemCode && item.receivedQty < item.qty;
     });
 
-    // 2. Fallback to any item with matching code
+    // 2. Fallback: Find any item with matching code
     match ??= _cachedPoItems.firstWhereOrNull((data) {
       final PurchaseOrderItem item = data['item'];
       return item.itemCode == itemCode;
@@ -271,9 +280,10 @@ class PurchaseReceiptFormController extends GetxController {
 
     if (match != null) {
       final PurchaseOrderItem item = match['item'];
-      currentPoItem = item.name ?? '';
-      currentPoName = match['poName'];
+      currentPoItem = item.name ?? ''; // The Unique ID (e.g., poi_xxxx)
+      currentPoName = match['poName']; // The Parent Doc Name (e.g., PO-2023-001)
       currentPurchaseOrderQty.value = item.qty;
+      currentPoRate.value = item.rate; // Capture Rate
     }
   }
 
@@ -296,6 +306,7 @@ class PurchaseReceiptFormController extends GetxController {
 
     final itemsJson = purchaseReceipt.value?.items.map((i) {
       final json = i.toJson();
+      // Remove temporary local IDs
       if (json['name'] != null && json['name'].toString().startsWith('local_')) {
         json.remove('name');
       }
@@ -377,6 +388,7 @@ class PurchaseReceiptFormController extends GetxController {
       final result = await _scanService.processScan(barcode);
 
       if (result.isSuccess && result.itemData != null) {
+        // Handle EAN stripping suffix if present
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
@@ -395,8 +407,9 @@ class PurchaseReceiptFormController extends GetxController {
         currentModifiedBy = '';
         currentItemIdx.value = 0;
 
-        // Link to PO Item logic
+        // --- KEY LOGIC: Link Scanned Item to PO ---
         _linkToPurchaseOrder(itemData.itemCode);
+        // ------------------------------------------
 
         _openQtySheet(scannedBatch: result.batchNo);
       } else {
@@ -606,9 +619,11 @@ class PurchaseReceiptFormController extends GetxController {
     currentItemIdx.value = item.idx;
     currentUom = item.uom ?? '';
 
+    // Load PO links from item
     currentPoItem = item.purchaseOrderItem ?? '';
     currentPoName = item.purchaseOrder ?? '';
     currentPurchaseOrderQty.value = getOrderedQty(currentPoItem);
+    // Note: Rate is not usually editable here, and we preserve it in addItem via copyWith
 
     _initialQty = item.qty.toString();
     _initialBatch = item.batchNo ?? '';
@@ -698,7 +713,6 @@ class PurchaseReceiptFormController extends GetxController {
     final batch = bsBatchController.text;
     final rack = bsRackController.text;
 
-    // Determine Warehouse
     String finalWarehouse = warehouse.value ?? '';
     if (finalWarehouse.isEmpty) finalWarehouse = setWarehouse.value ?? '';
 
@@ -717,7 +731,7 @@ class PurchaseReceiptFormController extends GetxController {
         warehouse: finalWarehouse.isNotEmpty ? finalWarehouse : existing.warehouse,
       );
     } else {
-      // 2. Check for DUPLICATE (Item + Batch + Rack + Warehouse)
+      // 2. Check for DUPLICATE
       final duplicateIndex = currentItems.indexWhere((i) {
         return i.itemCode == currentItemCode &&
             (i.batchNo ?? '') == batch &&
@@ -731,9 +745,10 @@ class PurchaseReceiptFormController extends GetxController {
         currentItems[duplicateIndex] = existing.copyWith(
             qty: existing.qty + qty
         );
-        // Use existing item's ID for highlighting
         currentItemNameKey.value = existing.name;
       } else {
+        log(name: 'currentPoItem', currentPoItem);
+        log(name: 'currentPoName', currentPoName);
         // ADD NEW
         currentItems.add(PurchaseReceiptItem(
           name: uniqueId,
@@ -748,9 +763,11 @@ class PurchaseReceiptFormController extends GetxController {
           uom: currentUom,
           stockUom: currentUom,
           customVariantOf: currentVariantOf,
+          // *** Ensure PO link fields are set ***
           purchaseOrderItem: currentPoItem.isNotEmpty ? currentPoItem : null,
           purchaseOrder: currentPoName.isNotEmpty ? currentPoName : null,
           purchaseOrderQty: currentPurchaseOrderQty.value > 0 ? currentPurchaseOrderQty.value : null,
+          rate: currentPoRate.value, // Pass Rate explicitly
           idx: currentItems.length + 1,
         ));
       }
@@ -777,7 +794,6 @@ class PurchaseReceiptFormController extends GetxController {
     Get.back();
     barcodeController.clear();
 
-    // Trigger Highlight with the correct ID (either new or existing)
     triggerHighlight(currentItemNameKey.value ?? uniqueId);
 
     if (mode == 'new') {
