@@ -42,7 +42,8 @@ class BatchProvider {
       filters: {
         'item_code': ['like', '%$query%'],
         'disabled': 0,
-        'has_batch_no': 1 // Only fetch batch-managed items
+        'has_variants': 0,
+        'has_batch_no': 1, // Only fetch batch-managed items
       },
       fields: ['item_code', 'item_name', 'barcodes'], // Fetch barcodes child table or field
       limit: 20,
