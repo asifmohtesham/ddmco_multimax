@@ -192,8 +192,35 @@ class ApiProvider {
     );
   }
 
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo) async {
-    return getStockBalance(itemCode: itemCode, batchNo: batchNo);
+  // Updated to query "Batch-Wise Balance History" with specific filters
+  Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+    final String company = storage.getCompany();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final Map<String, dynamic> filters = {
+      "company": company,
+      "from_date": today,
+      "to_date": today,
+      "item_code": itemCode,
+      "batch_no": batchNo,
+    };
+
+    if (warehouse != null && warehouse.isNotEmpty) {
+      filters["warehouse"] = warehouse;
+    }
+
+    return await _dio.get('/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name': 'Batch-Wise Balance History',
+          'filters': json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters': 'false',
+          '_': DateTime.now().millisecondsSinceEpoch
+        }
+    );
   }
 
   // ---------------------------------------------------------------------------

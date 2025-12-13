@@ -10,17 +10,21 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
-import 'package:multimax/app/data/providers/stock_entry_provider.dart'; // Added Import
-import 'package:multimax/app/data/services/scan_service.dart'; // Added
-import 'package:multimax/app/data/services/permission_service.dart'; // Added
+import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
+    // Core Services - initialized permanently
     Get.put(DataWedgeService(), permanent: true);
-    Get.put(ScanService(), permanent: true); // Added ScanService
-    Get.put(PermissionService()); // Added PermissionService
+    Get.put(ScanService(), permanent: true);
+    Get.put(StorageService(), permanent: true); // Changed from lazyPut to put (permanent)
 
+    Get.put(PermissionService());
+
+    // Providers
     Get.lazyPut<DeliveryNoteProvider>(() => DeliveryNoteProvider());
     Get.lazyPut<PackingSlipProvider>(() => PackingSlipProvider());
     Get.lazyPut<PosUploadProvider>(() => PosUploadProvider());
@@ -29,8 +33,9 @@ class HomeBinding extends Bindings {
     Get.lazyPut<WorkOrderProvider>(() => WorkOrderProvider());
     Get.lazyPut<JobCardProvider>(() => JobCardProvider());
     Get.lazyPut<UserProvider>(() => UserProvider());
-    Get.lazyPut<StockEntryProvider>(() => StockEntryProvider()); // Added Missing Dependency
-    Get.lazyPut<StorageService>(()=>StorageService());
+    Get.lazyPut<StockEntryProvider>(() => StockEntryProvider());
+
+    // Controller
     Get.lazyPut<HomeController>(() => HomeController());
   }
 }

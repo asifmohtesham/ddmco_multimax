@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -252,7 +253,6 @@ class DeliveryNoteFormController extends GetxController {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
-    // CHECK FOR DUPLICATE: Item Code + Batch + Rack + Serial
     final existingIndex = currentItems.indexWhere((item) =>
     item.itemCode == itemCode &&
         (item.batchNo ?? '') == (batchNo ?? '') &&
@@ -261,7 +261,6 @@ class DeliveryNoteFormController extends GetxController {
     );
 
     if (existingIndex != -1) {
-      // MERGE
       final existing = currentItems[existingIndex];
       final newQty = existing.qty + qty;
       currentItems[existingIndex] = existing.copyWith(qty: newQty);
@@ -272,7 +271,6 @@ class DeliveryNoteFormController extends GetxController {
       _triggerItemFeedback(itemCode, serial);
 
     } else {
-      // ADD NEW
       final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = DeliveryNoteItem(
         name: tempId,
@@ -319,7 +317,6 @@ class DeliveryNoteFormController extends GetxController {
       final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
       final Map<String, dynamic> data = deliveryNote.value!.toJson();
 
-      // Explicitly set warehouse in data
       data['set_warehouse'] = setWarehouse.value;
 
       if (isNew) {
@@ -527,7 +524,7 @@ class DeliveryNoteFormController extends GetxController {
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
-    isValidatingBatch.value = false; // Reset spinner state
+    isValidatingBatch.value = false;
     isItemSheetOpen.value = true;
   }
 
@@ -551,7 +548,30 @@ class DeliveryNoteFormController extends GetxController {
         bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
-      final balanceResponse = await _apiProvider.getBatchWiseBalance(currentItemCode, batchNo);
+      // --- Determine Warehouse logic ---
+      // 1. Fallback to set_warehouse
+      String? determinedWarehouse = setWarehouse.value;
+
+      // 2. If Rack is scanned/entered, fetch its warehouse
+      if (bsRackController.text.isNotEmpty) {
+        try {
+          final rackRes = await _apiProvider.getDocument('Rack', bsRackController.text);
+          if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
+            determinedWarehouse = rackRes.data['data']['warehouse'] ?? determinedWarehouse;
+          }
+        } catch (_) {
+          // Ignore rack fetch failure, proceed with default/fallback
+        }
+      }
+      // ----------------------------------
+
+      final balanceResponse = await _apiProvider.getBatchWiseBalance(
+          currentItemCode,
+          batchNo,
+          warehouse: determinedWarehouse // Pass the determined warehouse
+      );
+      log(name: 'balanceResponse', balanceResponse.toString());
+
       double fetchedQty = 0.0;
       if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
         final result = balanceResponse.data['message']['result'];
@@ -579,7 +599,7 @@ class DeliveryNoteFormController extends GetxController {
       bsIsBatchValid.value = false;
       GlobalSnackbar.error(message: 'Batch validation failed');
     } finally {
-      isValidatingBatch.value = false; // Stop spinner
+      isValidatingBatch.value = false;
       validateSheet();
     }
   }
@@ -630,7 +650,23 @@ class DeliveryNoteFormController extends GetxController {
     bsIsLoadingBatch.value = true;
     try {
       if (item.batchNo != null) {
-        final balanceResponse = await _apiProvider.getBatchWiseBalance(item.itemCode, item.batchNo!);
+        // Logic for edit mode: Use item.rack if available, else fallback to setWarehouse
+        String? targetWh = setWarehouse.value;
+        if (item.rack != null && item.rack!.isNotEmpty) {
+          try {
+            final rackRes = await _apiProvider.getDocument('Rack', item.rack!);
+            if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
+              targetWh = rackRes.data['data']['warehouse'];
+            }
+          } catch (_) {}
+        }
+
+        final balanceResponse = await _apiProvider.getBatchWiseBalance(
+            item.itemCode,
+            item.batchNo!,
+            warehouse: targetWh
+        );
+
         if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
           final result = balanceResponse.data['message']['result'];
           if (result is List && result.isNotEmpty) {
@@ -699,7 +735,13 @@ class DeliveryNoteFormController extends GetxController {
 
         if (result.batchNo != null) {
           try {
-            final balanceResponse = await _apiProvider.getBatchWiseBalance(itemData.itemCode, result.batchNo!);
+            // Scan Logic: uses setWarehouse only as we don't have a rack yet
+            final balanceResponse = await _apiProvider.getBatchWiseBalance(
+                itemData.itemCode,
+                result.batchNo!,
+                warehouse: setWarehouse.value
+            );
+
             if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
               final list = balanceResponse.data['message']['result'] as List;
               if(list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
