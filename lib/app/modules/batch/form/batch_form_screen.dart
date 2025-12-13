@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:barcode_widget/barcode_widget.dart'; // Add this to pubspec.yaml
+import 'package:barcode_widget/barcode_widget.dart';
 import 'dart:ui';
 
 class BatchFormScreen extends GetView<BatchFormController> {
@@ -17,7 +17,10 @@ class BatchFormScreen extends GetView<BatchFormController> {
         actions: [
           // Export Button
           Obx(() {
-            if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty) {
+            // FIX: Access the observable unconditionally to satisfy GetX
+            final batchId = controller.generatedBatchId.value;
+
+            if (controller.isEditMode && batchId.isNotEmpty) {
               return PopupMenuButton<String>(
                 icon: controller.isExporting.value
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -50,7 +53,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
           }),
 
           Obx(() => controller.isSaving.value
-              ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
+              ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
               : IconButton(
             icon: const Icon(Icons.save),
             onPressed: controller.isDirty.value ? controller.saveBatch : null,
@@ -185,7 +188,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
   }
 
   Widget _buildLabelPreview(BuildContext context) {
-    // Logic to mimic PDF generation
     final String variant = controller.itemVariantOf.value.isNotEmpty
         ? controller.itemVariantOf.value
         : controller.itemController.text;
@@ -219,7 +221,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     variant,
                     style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12),
                     maxLines: 2,
-                    overflow: TextOverflow.visible,
+                    overflow: TextOverflow.ellipsis, // Changed to ellipsis to prevent overflow
                   ),
                   const Spacer(),
                   // EAN Barcode
@@ -231,9 +233,9 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       data: barcodeData.isNotEmpty ? barcodeData : 'UNKNOWN',
                       drawText: true,
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 10,
                         fontFamily: 'monospace',
-                        fontFeatures: [FontFeature.slashedZero(),],
+                        fontFeatures: [FontFeature.slashedZero()],
                       ),
                     ),
                   ),
@@ -260,13 +262,14 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   Text(
                     controller.generatedBatchId.value,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 8,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.bold,
                       fontFeatures: [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,
                     textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -284,7 +287,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
     );
   }
 
-  // --- Picker Bottom Sheets ---
   void _showItemPicker(BuildContext context) {
     controller.searchItems('');
     Get.bottomSheet(
