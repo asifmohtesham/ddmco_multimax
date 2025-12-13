@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class GlobalItemFormSheet extends StatelessWidget {
-  final GlobalKey<FormState> formKey; // State moved to Controller
+  final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
   final String title;
   final String itemCode;
@@ -26,6 +27,12 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isSaving;
   final bool isLoading;
 
+  // Metadata Fields
+  final String? owner;
+  final String? creation;
+  final String? modified;
+  final String? modifiedBy;
+
   const GlobalItemFormSheet({
     super.key,
     required this.formKey,
@@ -46,6 +53,10 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.isSaveEnabledRx,
     this.isSaving = false,
     this.isLoading = false,
+    this.owner,
+    this.creation,
+    this.modified,
+    this.modifiedBy,
   });
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
@@ -94,6 +105,74 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  Widget _buildMetadataHeader(BuildContext context) {
+    if (owner == null && creation == null && modified == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row 1: Creation
+          if (owner != null || creation != null)
+            Row(
+              children: [
+                if (owner != null) ...[
+                  const Icon(Icons.person_outline, size: 12, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    owner!,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                  ),
+                ],
+                if (owner != null && creation != null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6.0),
+                    child: Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  ),
+                if (creation != null) ...[
+                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Created ${FormattingHelper.getRelativeTime(creation)}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ],
+            ),
+
+          // Row 2: Modification (Only if different from creation roughly)
+          if (modified != null && modified != creation) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                if (modifiedBy != null) ...[
+                  const Icon(Icons.edit_outlined, size: 12, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    modifiedBy!,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                  ),
+                ],
+                if (modifiedBy != null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6.0),
+                    child: Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  ),
+                const Icon(Icons.history, size: 12, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -111,6 +190,7 @@ class GlobalItemFormSheet extends StatelessWidget {
             children: [
               // --- Header ---
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
@@ -132,6 +212,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        // Metadata Header
+                        _buildMetadataHeader(context),
                       ],
                     ),
                   ),

@@ -14,7 +14,7 @@ class StockEntry {
   final String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
-  final double? customTotalQty; // Kept as double for calculation safety
+  final double? customTotalQty;
   final String? customReferenceNo;
   final List<StockEntryItem> items;
 
@@ -44,12 +44,10 @@ class StockEntry {
     return StockEntry(
       name: json['name']?.toString() ?? 'No Name',
       purpose: json['purpose']?.toString() ?? 'No Purpose',
-      // Safe Double Parsing
       totalAmount: _parseDouble(json['total_amount']),
       postingDate: json['posting_date']?.toString() ?? '',
       modified: json['modified']?.toString() ?? '',
       creation: json['creation']?.toString() ?? DateTime.now().toString(),
-      // Safe Int Parsing
       docstatus: _parseInt(json['docstatus']),
       status: _getStatusFromDocstatus(_parseInt(json['docstatus'])),
       owner: json['owner']?.toString(),
@@ -57,12 +55,8 @@ class StockEntry {
       postingTime: json['posting_time']?.toString(),
       fromWarehouse: json['from_warehouse']?.toString(),
       toWarehouse: json['to_warehouse']?.toString(),
-
-      // Safe Nullable Double Parsing
       customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
-
       customReferenceNo: json['custom_reference_no']?.toString(),
-
       items: items,
     );
   }
@@ -91,8 +85,6 @@ class StockEntry {
         return 'Unknown';
     }
   }
-
-  // --- Safe Parsing Helpers ---
 
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
@@ -134,6 +126,11 @@ class StockEntryItem {
   final String? sWarehouse;
   final String? tWarehouse;
   final String? customInvoiceSerialNumber;
+  // Metadata Fields
+  final String? owner;
+  final String? creation;
+  final String? modified;
+  final String? modifiedBy;
 
   StockEntryItem({
     this.name,
@@ -149,16 +146,18 @@ class StockEntryItem {
     this.sWarehouse,
     this.tWarehouse,
     this.customInvoiceSerialNumber,
+    this.owner,
+    this.creation,
+    this.modified,
+    this.modifiedBy,
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
       name: json['name']?.toString(),
       itemCode: json['item_code']?.toString() ?? '',
-      // Safe Double Parsing for Item fields
       qty: StockEntry._parseDouble(json['qty']),
       basicRate: StockEntry._parseDouble(json['basic_rate']),
-
       itemGroup: json['item_group']?.toString(),
       customVariantOf: json['custom_variant_of']?.toString(),
       batchNo: json['batch_no']?.toString(),
@@ -168,6 +167,10 @@ class StockEntryItem {
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      owner: json['owner']?.toString(),
+      creation: json['creation']?.toString(),
+      modified: json['modified']?.toString(),
+      modifiedBy: json['modified_by']?.toString(),
     );
   }
 

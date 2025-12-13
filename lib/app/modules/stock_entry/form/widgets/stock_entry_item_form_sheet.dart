@@ -14,8 +14,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
     final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
     return GlobalItemFormSheet(
-      key: ValueKey(controller.currentItemNameKey.value ?? 'new'), // Optional: helps Flutter ID the widget
-      formKey: controller.itemFormKey, // PASSED KEY
+      key: ValueKey(controller.currentItemNameKey.value ?? 'new'),
+      formKey: controller.itemFormKey,
       scrollController: scrollController,
       title: isEditing ? 'Update Item' : 'Add Item',
       itemCode: controller.currentItemCode,
@@ -30,13 +30,16 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
       isSaveEnabledRx: controller.isSheetValid,
       isSaveEnabled: docStatus == 0,
 
-      // Use the isAddingItem observable for loading state
       isLoading: controller.isAddingItem.value,
 
       onSubmit: controller.addItem,
       onDelete: isEditing
           ? () => controller.deleteItem(controller.currentItemNameKey.value!)
           : null,
+
+      // Pass Metadata to Global Widget
+      owner: controller.bsItemOwner.value,
+      creation: controller.bsItemCreation.value,
 
       customFields: [
         // Batch No
@@ -82,7 +85,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
         // Invoice Serial
         if (controller.posUploadSerialOptions.isNotEmpty)
-          Obx(() => GlobalItemFormSheet.buildInputGroup( // Wrapped in Obx
+          Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Invoice Serial No',
             color: Colors.blueGrey,
             child: DropdownButtonFormField<String>(
@@ -118,7 +121,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                         child: Obx(() => TextFormField(
                           key: const ValueKey('source_rack_field'),
                           controller: controller.bsSourceRackController,
-                          // Readonly when validated
                           readOnly: controller.isSourceRackValid.value,
                           autofocus: false,
                           decoration: InputDecoration(
@@ -162,7 +164,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                         child: Obx(() => TextFormField(
                           key: const ValueKey('target_rack_field'),
                           controller: controller.bsTargetRackController,
-                          // Readonly when validated
                           readOnly: controller.isTargetRackValid.value,
                           autofocus: false,
                           decoration: InputDecoration(
