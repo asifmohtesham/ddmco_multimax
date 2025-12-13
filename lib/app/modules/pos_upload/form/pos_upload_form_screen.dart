@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
-import 'package:intl/intl.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
   const PosUploadFormScreen({super.key});
@@ -46,97 +45,129 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
   Widget _buildDetailsView(BuildContext context, dynamic upload) {
     final totalAmountController = TextEditingController(text: upload.totalAmount?.toString() ?? '0.0');
     final totalQtyController = TextEditingController(text: upload.totalQty?.toString() ?? '0');
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Form(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildReadOnlyField('Name', upload.name),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: upload.customer,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Customer',
-                border: OutlineInputBorder(),
+
+    return Obx(() {
+      // Use exact field names from DocType for permission checks
+      final bool canEditStatus = controller.canEdit('status');
+      final bool canEditAmount = controller.canEdit('total_amount');
+      final bool canEditQty = controller.canEdit('total_qty');
+
+      // Determine if any save action is possible
+      final bool canSave = canEditStatus || canEditAmount || canEditQty;
+
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildReadOnlyField('Name', upload.name),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: upload.customer,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Customer',
+                  border: OutlineInputBorder(),
+                ),
+                items: [upload.customer as String]
+                    .map((label) => DropdownMenuItem(
+                  child: Text(label, overflow: TextOverflow.ellipsis),
+                  value: label,
+                ))
+                    .toList(),
+                onChanged: null,
               ),
-              items: [upload.customer as String]
-                  .map((label) => DropdownMenuItem(
-                        child: Text(label, overflow: TextOverflow.ellipsis),
-                        value: label,
-                      ))
-                  .toList(),
-              selectedItemBuilder: (BuildContext context) {
-                return [upload.customer as String].map<Widget>((String item) {
-                  return Text(item, overflow: TextOverflow.ellipsis);
-                }).toList();
-              },
-              onChanged: null, // Read-only for now unless list is fetched
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              initialValue: upload.date,
-              readOnly: true,
-              decoration: const InputDecoration(
-                labelText: 'Date',
-                border: OutlineInputBorder(),
-                suffixIcon: Icon(Icons.calendar_today),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: upload.date,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Date',
+                  border: OutlineInputBorder(),
+                  suffixIcon: Icon(Icons.calendar_today),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: upload.status,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Status',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+
+              // Status
+              DropdownButtonFormField<String>(
+                value: upload.status,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Status',
+                  border: const OutlineInputBorder(),
+                  filled: !canEditStatus,
+                  fillColor: !canEditStatus ? Colors.grey.shade100 : null,
+                ),
+                items: ['Pending', 'In Progress', 'Cancelled', 'Draft', 'Submitted']
+                    .map((label) => DropdownMenuItem(child: Text(label), value: label))
+                    .toList(),
+                onChanged: canEditStatus ? (value) { /* Controller logic if needed */ } : null,
               ),
-              items: ['Pending', 'In Progress', 'Cancelled', 'Draft', 'Submitted']
-                  .map((label) => DropdownMenuItem(child: Text(label), value: label))
-                  .toList(),
-              onChanged: (value) { /* Handle change in controller if needed */ },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: totalAmountController,
-              decoration: const InputDecoration(
-                labelText: 'Total Amount',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+
+              // Total Amount
+              TextFormField(
+                controller: totalAmountController,
+                readOnly: !canEditAmount,
+                decoration: InputDecoration(
+                  labelText: 'Total Amount',
+                  border: const OutlineInputBorder(),
+                  filled: !canEditAmount,
+                  fillColor: !canEditAmount ? Colors.grey.shade100 : null,
+                  suffixIcon: !canEditAmount ? const Icon(Icons.lock, size: 16, color: Colors.grey) : null,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: totalQtyController,
-              decoration: const InputDecoration(
-                labelText: 'Total Quantity',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+
+              // Total Quantity
+              TextFormField(
+                controller: totalQtyController,
+                readOnly: !canEditQty,
+                decoration: InputDecoration(
+                  labelText: 'Total Quantity',
+                  border: const OutlineInputBorder(),
+                  filled: !canEditQty,
+                  fillColor: !canEditQty ? Colors.grey.shade100 : null,
+                  suffixIcon: !canEditQty ? const Icon(Icons.lock, size: 16, color: Colors.grey) : null,
+                ),
+                keyboardType: TextInputType.number,
               ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: Obx(() => ElevatedButton(
-                onPressed: controller.isSaving.value ? null : () {
-                  final updatedData = {
-                    'total_amount': double.tryParse(totalAmountController.text) ?? 0.0,
-                    'total_qty': double.tryParse(totalQtyController.text) ?? 0.0,
-                  };
-                  controller.updatePosUpload(updatedData);
-                },
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
-                child: controller.isSaving.value 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Update', style: TextStyle(fontSize: 16)),
-              )),
-            ),
-          ],
+              const SizedBox(height: 24),
+
+              if (canSave)
+                SizedBox(
+                  width: double.infinity,
+                  child: Obx(() => ElevatedButton(
+                    onPressed: controller.isSaving.value ? null : () {
+                      final updatedData = <String, dynamic>{};
+
+                      // Dynamically add only editable fields
+                      if (canEditAmount) {
+                        updatedData['total_amount'] = double.tryParse(totalAmountController.text) ?? 0.0;
+                      }
+                      if (canEditQty) {
+                        updatedData['total_qty'] = double.tryParse(totalQtyController.text) ?? 0.0;
+                      }
+                      // Handle status update if needed
+
+                      if (updatedData.isNotEmpty) {
+                        controller.updatePosUpload(updatedData);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
+                    child: controller.isSaving.value
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Update', style: TextStyle(fontSize: 16)),
+                  )),
+                ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildReadOnlyField(String label, String value) {
@@ -190,7 +221,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         Row(
                           children: [
                             CircleAvatar(
-                              radius: 12, 
+                              radius: 12,
                               backgroundColor: Colors.grey.shade200,
                               child: Text('${originalIndex + 1}', style: const TextStyle(fontSize: 10, color: Colors.black)),
                             ),

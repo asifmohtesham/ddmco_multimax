@@ -14,6 +14,10 @@ class StorageService {
   static const String _companyKey = 'session_company';
   static const String _warehouseKey = 'session_default_warehouse';
 
+  // Auto Submit Keys
+  static const String _autoSubmitEnabledKey = 'auto_submit_enabled';
+  static const String _autoSubmitDelayKey = 'auto_submit_delay';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -67,5 +71,19 @@ class StorageService {
 
   bool hasSessionDefaults() {
     return _box.hasData(_companyKey) && _box.hasData(_warehouseKey);
+  }
+
+  // --- Auto Submit Settings ---
+  Future<void> saveAutoSubmitSettings(bool enabled, int delaySeconds) async {
+    await _box.write(_autoSubmitEnabledKey, enabled);
+    await _box.write(_autoSubmitDelayKey, delaySeconds);
+  }
+
+  bool getAutoSubmitEnabled() {
+    return _box.read<bool>(_autoSubmitEnabledKey) ?? true; // Default to true
+  }
+
+  int getAutoSubmitDelay() {
+    return _box.read<int>(_autoSubmitDelayKey) ?? 1; // Default 1 second
   }
 }

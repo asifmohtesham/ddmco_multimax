@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'dart:async'; // Add this import
 
 class StockEntryFormController extends GetxController {
   // ... (Providers and variables remain same)
@@ -105,6 +106,8 @@ class StockEntryFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
+  Timer? _autoSubmitTimer; // Add Timer variable
+
   @override
   void onInit() {
     super.onInit();
@@ -126,11 +129,23 @@ class StockEntryFormController extends GetxController {
 
     ever(selectedSerial, (_) => validateSheet());
 
-    debounce(isSheetValid, (bool valid) {
+    // CHANGED: Replaced debounce with manual Timer to support dynamic delay settings
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+
       if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
-        addItem();
+        final bool autoSubmit = _storageService.getAutoSubmitEnabled();
+        if (autoSubmit) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
+            // Double check validity before submitting
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              addItem();
+            }
+          });
+        }
       }
-    }, time: const Duration(seconds: 1));
+    });
 
     if (mode == 'new') {
       _initNewStockEntry();
@@ -142,6 +157,7 @@ class StockEntryFormController extends GetxController {
   // ... (onClose, fetchWarehouses, fetchStockEntryTypes, _onReferenceNoChanged, _initNewStockEntry, fetchStockEntry unchanged) ...
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel(); // Cancel timer
     barcodeController.dispose();
     bsQtyController.dispose();
     bsBatchController.dispose();

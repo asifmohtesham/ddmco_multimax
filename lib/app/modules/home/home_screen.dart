@@ -19,11 +19,6 @@ class HomeScreen extends GetView<HomeController> {
         title: const Text("Dashboard"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings), // Session Defaults Icon
-            tooltip: 'Session Defaults',
-            onPressed: controller.openSessionDefaults,
-          ),
-          IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh Data',
             onPressed: () {

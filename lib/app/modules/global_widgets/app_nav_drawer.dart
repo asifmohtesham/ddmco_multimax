@@ -16,7 +16,7 @@ class AppNavDrawer extends StatelessWidget {
 
     return SafeArea(
       child: Drawer(
-        elevation: 0, // Remove default elevation for cleaner look
+        elevation: 0,
         backgroundColor: Colors.white,
         child: Column(
           children: [
@@ -27,11 +27,10 @@ class AppNavDrawer extends StatelessWidget {
                 margin: EdgeInsets.zero,
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
-                  // Optional: Add a subtle pattern or gradient here if desired
                   image: const DecorationImage(
                     image: AssetImage('lib/assets/images/logo.jpg'),
                     fit: BoxFit.cover,
-                    opacity: 0.15, // Dim background image for better text contrast
+                    opacity: 0.15,
                   ),
                 ),
                 accountName: Text(
@@ -94,6 +93,7 @@ class AppNavDrawer extends StatelessWidget {
                     isSelected: currentRoute == AppRoutes.HOME,
                     onTap: homeController.goToHome,
                   ),
+                  // ... (Other items like To Do, Stock Module etc. remain the same) ...
                   _DrawerItem(
                     icon: Icons.check_circle_outline_rounded,
                     title: 'To Do',
@@ -106,54 +106,18 @@ class AppNavDrawer extends StatelessWidget {
                     child: Divider(height: 1, color: Colors.grey.shade200),
                   ),
 
-                  // --- STOCK MODULE ---
+                  // Stock, Buying, Manufacturing, Selling Groups (Keep them as is)
                   _ModuleGroup(
                     title: 'Stock',
                     icon: Icons.inventory_2_rounded,
-                    initiallyExpanded: [
-                      AppRoutes.ITEM,
-                      AppRoutes.BATCH,
-                      AppRoutes.STOCK_ENTRY,
-                      AppRoutes.DELIVERY_NOTE,
-                      AppRoutes.PACKING_SLIP
-                    ].contains(currentRoute),
+                    initiallyExpanded: [AppRoutes.ITEM, AppRoutes.BATCH, AppRoutes.STOCK_ENTRY, AppRoutes.DELIVERY_NOTE, AppRoutes.PACKING_SLIP].contains(currentRoute),
                     roles: const ['Stock Manager', 'Stock User', 'Item Manager', 'Sales User'],
                     children: [
-                      _DrawerItem(
-                        title: 'Item Master',
-                        icon: Icons.category_rounded,
-                        isSelected: currentRoute == AppRoutes.ITEM,
-                        onTap: homeController.goToItem,
-                        roles: const ['Stock Manager', 'Item Manager'],
-                      ),
-                      _DrawerItem(
-                        title: 'Batch',
-                        icon: Icons.qr_code_scanner_rounded, // or Icons.layers
-                        isSelected: currentRoute == AppRoutes.BATCH,
-                        onTap: homeController.goToBatch,
-                        roles: const ['Stock Manager', 'Stock User'],
-                      ),
-                      _DrawerItem(
-                        title: 'Stock Entry',
-                        icon: Icons.compare_arrows_rounded,
-                        isSelected: currentRoute == AppRoutes.STOCK_ENTRY,
-                        onTap: homeController.goToStockEntry,
-                        roles: const ['Stock Manager', 'Stock User'],
-                      ),
-                      _DrawerItem(
-                        title: 'Delivery Note',
-                        icon: Icons.local_shipping_rounded,
-                        isSelected: currentRoute == AppRoutes.DELIVERY_NOTE,
-                        onTap: homeController.goToDeliveryNote,
-                        roles: const ['Stock Manager', 'Stock User', 'Sales User'],
-                      ),
-                      _DrawerItem(
-                        title: 'Packing Slip',
-                        icon: Icons.assignment_return_rounded,
-                        isSelected: currentRoute == AppRoutes.PACKING_SLIP,
-                        onTap: homeController.goToPackingSlip,
-                        roles: const ['Stock Manager', 'Stock User'],
-                      ),
+                      _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem, roles: const ['Stock Manager', 'Item Manager']),
+                      _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch, roles: const ['Stock Manager', 'Stock User']),
+                      _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry, roles: const ['Stock Manager', 'Stock User']),
+                      _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote, roles: const ['Stock Manager', 'Stock User', 'Sales User']),
+                      _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip, roles: const ['Stock Manager', 'Stock User']),
                     ],
                   ),
 
@@ -241,6 +205,21 @@ class AppNavDrawer extends StatelessWidget {
               ),
             ),
 
+            // --- NEW SETTINGS ITEM ---
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Divider(height: 1),
+            ),
+            _DrawerItem(
+              icon: Icons.settings,
+              title: 'Settings & Defaults',
+              isSelected: false,
+              onTap: () {
+                Get.back();
+                homeController.openSessionDefaults();
+              },
+            ),
+
             // 3. Footer
             Divider(height: 1, color: Colors.grey.shade200),
             ListTile(
@@ -255,7 +234,7 @@ class AppNavDrawer extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
               child: Text(
-                'Version 1.0.0+1',
+                'Version 1.0.0+2',
                 style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.w500),
               ),
             ),
@@ -266,8 +245,7 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
-// --- Helper Widgets for Cleaner Code ---
-
+// ... (Helper Widgets _ModuleGroup and _DrawerItem remain the same) ...
 class _ModuleGroup extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -292,10 +270,7 @@ class _ModuleGroup extends StatelessWidget {
         child: ExpansionTile(
           initiallyExpanded: initiallyExpanded,
           leading: Icon(icon, color: Colors.grey.shade700, size: 22),
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87),
-          ),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
           childrenPadding: const EdgeInsets.only(bottom: 8),
           iconColor: Theme.of(context).primaryColor,
           textColor: Theme.of(context).primaryColor,
@@ -332,7 +307,7 @@ class _DrawerItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16), // Rounded Pill Shape
+          borderRadius: BorderRadius.circular(16),
           splashColor: primaryColor.withValues(alpha: 0.1),
           highlightColor: primaryColor.withValues(alpha: 0.05),
           child: AnimatedContainer(
@@ -341,47 +316,23 @@ class _DrawerItem extends StatelessWidget {
             decoration: BoxDecoration(
               color: isSelected ? primaryColor.withValues(alpha: 0.1) : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
-              // Subtle border for active items for better definition
-              border: isSelected
-                  ? Border.all(color: primaryColor.withValues(alpha: 0.15), width: 1)
-                  : Border.all(color: Colors.transparent, width: 1),
+              border: isSelected ? Border.all(color: primaryColor.withValues(alpha: 0.15), width: 1) : Border.all(color: Colors.transparent, width: 1),
             ),
             child: ListTile(
               dense: true,
               visualDensity: const VisualDensity(horizontal: 0, vertical: -1),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              leading: Icon(
-                icon,
-                size: 24,
-                color: isSelected ? primaryColor : Colors.grey.shade600,
-              ),
-              title: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? primaryColor : Colors.grey.shade800,
-                  letterSpacing: 0.2, // Improved readability
-                ),
-              ),
-              // Optional: Add a small indicator for selected items
-              trailing: isSelected
-                  ? Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-              )
-                  : null,
+              leading: Icon(icon, size: 24, color: isSelected ? primaryColor : Colors.grey.shade600),
+              title: Text(title, style: TextStyle(fontSize: 14, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: isSelected ? primaryColor : Colors.grey.shade800, letterSpacing: 0.2)),
+              trailing: isSelected ? Container(width: 6, height: 6, decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle)) : null,
             ),
           ),
         ),
       ),
     );
 
-    if (roles != null) {
-      return RoleGuard(roles: roles!, child: item);
-    }
+    if (roles != null) return RoleGuard(roles: roles!, child: item);
     return item;
   }
 }
