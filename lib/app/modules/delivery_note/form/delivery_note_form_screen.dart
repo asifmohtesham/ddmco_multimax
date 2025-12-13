@@ -354,7 +354,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             );
           }
           return BarcodeInputWidget(
-            onScan: (code) => controller.addItemFromBarcode(code),
+            onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
             controller: controller.barcodeController,
             activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
           );

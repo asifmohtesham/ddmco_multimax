@@ -49,7 +49,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             : null,
 
         // Standardized Global Scan Integration
-        onScan: (code) => controller.addItemFromBarcode(code),
+        onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
 

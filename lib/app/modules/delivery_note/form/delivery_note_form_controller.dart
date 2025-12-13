@@ -635,12 +635,16 @@ class DeliveryNoteFormController extends GetxController {
     });
   }
 
-  Future<void> addItemFromBarcode(String barcode) async {
+  // UPDATED: Standardised scanBarcode method
+  Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
       barcodeController.clear();
-      final result = await _scanService.processScan(barcode, contextItemCode: currentItemCode);
+      // Use current scanned EAN or item code as context
+      final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+
+      final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
 
       if (result.type == ScanType.rack && result.rackId != null) {
         bsRackController.text = result.rackId!;
