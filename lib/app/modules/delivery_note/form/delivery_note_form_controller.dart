@@ -56,10 +56,11 @@ class DeliveryNoteFormController extends GetxController {
   final bsRackFocusNode = FocusNode();
 
   var isItemSheetOpen = false.obs;
-  var bsIsLoadingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
+  var bsIsLoadingBatch = false.obs; // Kept for sheet loading
+  var isValidatingBatch = false.obs; // NEW: Specific for validation spinner
 
   // Rack Validation State
   var bsIsRackValid = false.obs;
@@ -496,12 +497,13 @@ class DeliveryNoteFormController extends GetxController {
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
+    isValidatingBatch.value = false; // Reset spinner state
     isItemSheetOpen.value = true;
   }
 
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
-    bsIsLoadingBatch.value = true;
+    isValidatingBatch.value = true; // Start spinner
     bsBatchError.value = null;
     try {
       final batchResponse = await _apiProvider.getDocumentList('Batch',
@@ -511,6 +513,7 @@ class DeliveryNoteFormController extends GetxController {
 
       if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
         GlobalSnackbar.error(message: 'Batch not found');
+        bsIsBatchValid.value = false;
         throw Exception('Batch not found');
       }
 
@@ -531,7 +534,6 @@ class DeliveryNoteFormController extends GetxController {
       }
 
       bsMaxQty.value = fetchedQty;
-      bsIsLoadingBatch.value = false;
 
       if (fetchedQty > 0) {
         bsIsBatchValid.value = true;
@@ -544,13 +546,18 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Batch has 0 stock');
       }
     } catch (e) {
-      bsIsLoadingBatch.value = false;
       bsBatchError.value = 'Invalid Batch';
       bsMaxQty.value = 0.0;
       bsIsBatchValid.value = false;
     } finally {
+      isValidatingBatch.value = false; // Stop spinner
       validateSheet();
     }
+  }
+
+  void resetBatchValidation() {
+    bsIsBatchValid.value = false;
+    validateSheet();
   }
 
   Future<void> validateRack(String rack) async {

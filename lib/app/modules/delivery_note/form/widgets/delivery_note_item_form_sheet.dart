@@ -32,10 +32,11 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ? 'Max Available: ${controller.bsMaxQty.value}'
             : null,
 
+        // Only enable save if the sheet is valid
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: true,
 
-        isLoading: controller.bsIsLoadingBatch.value,
+        isLoading: controller.isValidatingBatch.value,
 
         onSubmit: controller.submitSheet,
         onDelete: isEditing
@@ -48,7 +49,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         }
             : null,
 
-        // Scan Integration
+        // Standardized Global Scan Integration
         onScan: (code) => controller.scanBarcode(code),
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
@@ -76,7 +77,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
-          // Batch No (Strict Validation)
+          // Batch No (Strict Validation Implementation)
           Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',
             color: Colors.purple,
@@ -84,8 +85,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             child: TextFormField(
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
-              // Lock field if valid or loading
-              readOnly: controller.bsIsBatchValid.value || controller.bsIsLoadingBatch.value,
+              // Strictly lock field if valid
+              readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
@@ -100,7 +101,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 ),
                 filled: true,
                 fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
-                suffixIcon: controller.bsIsLoadingBatch.value
+                // Identical Icon Logic to Stock Entry
+                suffixIcon: controller.isValidatingBatch.value
                     ? const Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox(
@@ -110,10 +112,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     : (controller.bsIsBatchValid.value
                     ? IconButton(
                   icon: const Icon(Icons.edit, color: Colors.purple),
-                  onPressed: () {
-                    controller.bsIsBatchValid.value = false;
-                    controller.validateSheet();
-                  },
+                  onPressed: controller.resetBatchValidation,
                   tooltip: 'Edit Batch',
                 )
                     : IconButton(
