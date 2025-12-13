@@ -3,12 +3,15 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+  final UserProvider _userProvider = Get.find<UserProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -34,9 +37,13 @@ class StockEntryController extends GetxController {
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
-  // NEW: Stock Entry Types for Filter (Dynamic Fetch)
+  // Stock Entry Types for Filter
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
+
+  // NEW: Users for Filter
+  var users = <User>[].obs;
+  var isFetchingUsers = false.obs;
 
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
@@ -44,7 +51,8 @@ class StockEntryController extends GetxController {
   void onInit() {
     super.onInit();
     fetchStockEntries();
-    fetchStockEntryTypes(); // Fetch types on init
+    fetchStockEntryTypes();
+    fetchUsers(); // Fetch users on init
   }
 
   @override
@@ -135,11 +143,9 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // NEW: Fetch Stock Entry Types Dynamically
   Future<void> fetchStockEntryTypes() async {
     isFetchingTypes.value = true;
     try {
-      // This calls the method added to StockEntryProvider in the previous step
       final response = await _provider.getStockEntryTypes();
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -150,6 +156,23 @@ class StockEntryController extends GetxController {
       print('Error fetching stock entry types: $e');
     } finally {
       isFetchingTypes.value = false;
+    }
+  }
+
+  // NEW: Fetch Users for Filter
+  Future<void> fetchUsers() async {
+    if (users.isNotEmpty) return;
+    isFetchingUsers.value = true;
+    try {
+      final response = await _userProvider.getUsers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        users.value = data.map((json) => User.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print('Error fetching users: $e');
+    } finally {
+      isFetchingUsers.value = false;
     }
   }
 
