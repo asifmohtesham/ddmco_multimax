@@ -787,16 +787,29 @@ class StockEntryFormController extends GetxController {
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
+
+    // Auto-populate header warehouses from the first item if they are missing
+    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
+      final firstItem = stockEntry.value!.items.first;
+      if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
+        selectedFromWarehouse.value = firstItem.sWarehouse;
+      }
+      if (selectedToWarehouse.value == null && firstItem.tWarehouse != null) {
+        selectedToWarehouse.value = firstItem.tWarehouse;
+      }
+    }
+
     if (selectedStockEntryType.value == 'Material Transfer') {
       if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
         GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
         return;
       }
-      if (selectedFromWarehouse.value == selectedToWarehouse.value) {
-        GlobalSnackbar.error(message: 'Source and Target Warehouses cannot be the same');
-        return;
-      }
+      // if (selectedFromWarehouse.value == selectedToWarehouse.value) {
+      //   GlobalSnackbar.error(message: 'Source and Target Warehouses cannot be the same');
+      //   return;
+      // }
     }
+
     isSaving.value = true;
     final Map<String, dynamic> data = {
       'stock_entry_type': selectedStockEntryType.value,
