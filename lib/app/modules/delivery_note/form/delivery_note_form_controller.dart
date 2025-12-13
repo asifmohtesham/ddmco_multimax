@@ -9,7 +9,6 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'delivery_note_form_screen.dart';
 import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
@@ -61,7 +60,6 @@ class DeliveryNoteFormController extends GetxController {
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
-  var bsIsBatchReadOnly = false.obs;
 
   // Rack Validation State
   var bsIsRackValid = false.obs;
@@ -70,7 +68,6 @@ class DeliveryNoteFormController extends GetxController {
   var bsInvoiceSerialNo = RxnString();
   var editingItemName = RxnString();
   var isFormDirty = false.obs;
-  // Added Validation Observable
   var isSheetValid = false.obs;
 
   String _initialBatch = '';
@@ -93,9 +90,6 @@ class DeliveryNoteFormController extends GetxController {
   String currentItemCode = '';
   String currentItemName = '';
   String currentScannedEan = '';
-
-  final ScrollController highlightScrollController = ScrollController();
-  final Map<String, GlobalKey> highlightItemKeys = {};
 
   @override
   void onInit() {
@@ -234,7 +228,6 @@ class DeliveryNoteFormController extends GetxController {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
-    // CHECK FOR DUPLICATE: Item Code + Batch + Rack + Serial
     final existingIndex = currentItems.indexWhere((item) =>
     item.itemCode == itemCode &&
         (item.batchNo ?? '') == (batchNo ?? '') &&
@@ -243,7 +236,6 @@ class DeliveryNoteFormController extends GetxController {
     );
 
     if (existingIndex != -1) {
-      // MERGE
       final existing = currentItems[existingIndex];
       final newQty = existing.qty + qty;
       currentItems[existingIndex] = existing.copyWith(qty: newQty);
@@ -254,7 +246,6 @@ class DeliveryNoteFormController extends GetxController {
       _triggerItemFeedback(itemCode, serial);
 
     } else {
-      // ADD NEW
       final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = DeliveryNoteItem(
         name: tempId,
@@ -416,6 +407,8 @@ class DeliveryNoteFormController extends GetxController {
 
     if (qty <= 0) valid = false;
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
+
+    // Strict Validation Check
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
 
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
@@ -471,7 +464,6 @@ class DeliveryNoteFormController extends GetxController {
       _initialSerial = editingItem.customInvoiceSerialNumber;
 
       bsIsBatchValid.value = (editingItem.batchNo != null && editingItem.batchNo!.isNotEmpty);
-      bsIsBatchReadOnly.value = bsIsBatchValid.value;
       bsIsRackValid.value = (editingItem.rack != null && editingItem.rack!.isNotEmpty);
 
       bsMaxQty.value = maxQty;
@@ -490,16 +482,13 @@ class DeliveryNoteFormController extends GetxController {
       bsBatchError.value = null;
       bsIsRackValid.value = false;
 
-      // Force empty selection for Invoice Serial
       bsInvoiceSerialNo.value = null;
       _initialSerial = null;
 
       if (batchNo != null && maxQty > 0) {
         bsIsBatchValid.value = true;
-        bsIsBatchReadOnly.value = true;
       } else {
         bsIsBatchValid.value = false;
-        bsIsBatchReadOnly.value = false;
       }
     }
 
@@ -521,6 +510,7 @@ class DeliveryNoteFormController extends GetxController {
       );
 
       if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
+        GlobalSnackbar.error(message: 'Batch not found');
         throw Exception('Batch not found');
       }
 
@@ -545,12 +535,13 @@ class DeliveryNoteFormController extends GetxController {
 
       if (fetchedQty > 0) {
         bsIsBatchValid.value = true;
-        bsIsBatchReadOnly.value = true;
         bsBatchError.value = null;
+        GlobalSnackbar.success(message: 'Batch Validated');
         bsRackFocusNode.requestFocus();
       } else {
         bsIsBatchValid.value = false;
         bsBatchError.value = 'Batch has no stock';
+        GlobalSnackbar.error(message: 'Batch has 0 stock');
       }
     } catch (e) {
       bsIsLoadingBatch.value = false;
@@ -635,13 +626,11 @@ class DeliveryNoteFormController extends GetxController {
     });
   }
 
-  // UPDATED: Standardised scanBarcode method
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
     if (isItemSheetOpen.value) {
       barcodeController.clear();
-      // Use current scanned EAN or item code as context
       final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
 
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
@@ -649,7 +638,7 @@ class DeliveryNoteFormController extends GetxController {
       if (result.type == ScanType.rack && result.rackId != null) {
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
-      } else if (result.batchNo != null) {
+      } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.error) {

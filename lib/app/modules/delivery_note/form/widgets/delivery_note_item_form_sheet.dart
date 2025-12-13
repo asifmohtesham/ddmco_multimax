@@ -48,8 +48,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         }
             : null,
 
-        // Standardized Global Scan Integration
-        onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
+        // Scan Integration
+        onScan: (code) => controller.scanBarcode(code),
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
 
@@ -76,16 +76,19 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
-          // Batch No
-          GlobalItemFormSheet.buildInputGroup(
+          // Batch No (Strict Validation)
+          Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',
             color: Colors.purple,
+            bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
             child: TextFormField(
+              key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
-              readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
+              // Lock field if valid or loading
+              readOnly: controller.bsIsBatchValid.value || controller.bsIsLoadingBatch.value,
               autofocus: false,
               decoration: InputDecoration(
-                hintText: 'Enter Batch',
+                hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -95,39 +98,50 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: Colors.purple, width: 2),
                 ),
-                filled: controller.bsIsBatchReadOnly.value,
-                fillColor: controller.bsIsBatchReadOnly.value ? Colors.purple.shade50 : null,
+                filled: true,
+                fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
                 suffixIcon: controller.bsIsLoadingBatch.value
                     ? const Padding(
-                  padding: EdgeInsets.all(12.0),
-                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                )
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
                     : (controller.bsIsBatchValid.value
-                    ? const Icon(Icons.check_circle, color: Colors.purple)
+                    ? IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.purple),
+                  onPressed: () {
+                    controller.bsIsBatchValid.value = false;
+                    controller.validateSheet();
+                  },
+                  tooltip: 'Edit Batch',
+                )
                     : IconButton(
                   icon: const Icon(Icons.arrow_forward),
                   onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
+                  tooltip: 'Validate',
                 )),
               ),
               onChanged: (_) => controller.validateSheet(),
               onFieldSubmitted: (val) {
-                if (!controller.bsIsBatchReadOnly.value) {
+                if (!controller.bsIsBatchValid.value) {
                   controller.validateAndFetchBatch(val);
                 }
               },
             ),
-          ),
+          )),
 
-          // Rack (Standard Text Input - Scanning handled globally via onScan)
+          // Rack
           GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
             bgColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
             child: Obx(() => TextFormField(
+              key: const ValueKey('rack_field'),
               controller: controller.bsRackController,
               readOnly: controller.bsIsRackValid.value,
               decoration: InputDecoration(
-                hintText: 'Enter Rack ID',
+                hintText: 'Enter or scan rack',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -137,18 +151,25 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: Colors.orange, width: 2),
                 ),
-                filled: controller.bsIsRackValid.value,
-                fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
+                filled: true,
+                fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : Colors.white,
                 suffixIcon: controller.isValidatingRack.value
-                    ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                    ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
                     : (controller.bsIsRackValid.value
                     ? IconButton(
                   icon: const Icon(Icons.edit, color: Colors.orange),
                   onPressed: controller.resetRackValidation,
+                  tooltip: 'Edit Rack',
                 )
                     : IconButton(
                   icon: const Icon(Icons.arrow_forward),
                   onPressed: () => controller.validateRack(controller.bsRackController.text),
+                  tooltip: 'Validate',
                 )),
               ),
               onFieldSubmitted: (val) => controller.validateRack(val),
