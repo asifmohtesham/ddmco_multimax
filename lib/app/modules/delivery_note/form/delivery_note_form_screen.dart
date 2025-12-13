@@ -83,6 +83,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildDetailsView(DeliveryNote note) {
+    // Determine if editable based on docstatus
+    final bool isEditable = note.docstatus == 0;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -127,7 +130,30 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
           const SizedBox(height: 16),
 
-          // 2. References Card
+          // 2. Settings Card (Warehouse)
+          _buildSectionCard(
+            title: 'Settings',
+            children: [
+              Obx(() => DropdownButtonFormField<String>(
+                value: controller.setWarehouse.value,
+                decoration: const InputDecoration(
+                  labelText: 'Set Source Warehouse',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.store),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                ),
+                hint: const Text('Select Warehouse'),
+                items: controller.warehouses.map((wh) {
+                  return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
+                }).toList(),
+                onChanged: isEditable ? (value) => controller.setWarehouse.value = value : null,
+              )),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // 3. References Card
           if (note.poNo != null && note.poNo!.isNotEmpty)
             _buildSectionCard(
               title: 'References',
@@ -147,7 +173,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
           if (note.poNo != null && note.poNo!.isNotEmpty) const SizedBox(height: 16),
 
-          // 3. Schedule Card
+          // 4. Schedule Card
           _buildSectionCard(
             title: 'Schedule',
             children: [
@@ -166,7 +192,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
           const SizedBox(height: 16),
 
-          // 4. Summary Card
+          // 5. Summary Card
           _buildSectionCard(
             title: 'Summary',
             children: [
@@ -226,141 +252,159 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildItemsView() {
-    return Column(
-      children: [
-        // 1. Filters (Moved to Top)
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Obx(() => Row(
+    // Strict Warehouse Check
+    return Obx(() {
+      if (controller.setWarehouse.value == null || controller.setWarehouse.value!.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildFilterChip('All', controller.allCount),
-              const SizedBox(width: 8),
-              _buildFilterChip('Pending', controller.pendingCount),
-              const SizedBox(width: 8),
-              _buildFilterChip('Completed', controller.completedCount),
+              Icon(Icons.store_outlined, size: 64, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              const Text('Warehouse Not Selected', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              const Text('Please go to Details tab and set the Source Warehouse.', style: TextStyle(color: Colors.grey)),
             ],
-          )),
-        ),
-        const Divider(height: 1),
+          ),
+        );
+      }
 
-        // 2. Item List (Middle - Expanded)
-        Expanded(
-          child: Obx(() {
-            if (controller.isLoading.value && controller.posUpload.value == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      return Column(
+        children: [
+          // 1. Filters (Moved to Top)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Obx(() => Row(
+              children: [
+                _buildFilterChip('All', controller.allCount),
+                const SizedBox(width: 8),
+                _buildFilterChip('Pending', controller.pendingCount),
+                const SizedBox(width: 8),
+                _buildFilterChip('Completed', controller.completedCount),
+              ],
+            )),
+          ),
+          const Divider(height: 1),
 
-            final currentExpandedKey = controller.expandedInvoice.value;
-
-            final posUpload = controller.posUpload.value;
-            final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
-
-            if (posUpload == null) {
-              if (deliveryNoteItems.isEmpty) {
-                return const Center(child: Text('No items to display.'));
+          // 2. Item List (Middle - Expanded)
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value && controller.posUpload.value == null) {
+                return const Center(child: CircularProgressIndicator());
               }
-              return ListView.builder(
-                controller: controller.scrollController, // ADDED
-                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
-                itemCount: deliveryNoteItems.length,
-                itemBuilder: (context, index) {
-                  final item = deliveryNoteItems[index];
-                  // Register Key
-                  if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
-                    controller.itemKeys[item.name!] = GlobalKey();
-                  }
 
-                  return DeliveryNoteItemCard(item: item);
-                },
-              );
-            }
+              final currentExpandedKey = controller.expandedInvoice.value;
 
-            final posItems = posUpload.items;
-            final groupedDnItems = controller.groupedItems;
+              final posUpload = controller.posUpload.value;
+              final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
 
-            // Apply filtering logic
-            final filteredItems = posItems.where((posItem) {
-              final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
-              final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
-              final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
-
-              if (controller.itemFilter.value == 'Completed') {
-                return cumulativeQty >= posItem.quantity;
-              } else if (controller.itemFilter.value == 'Pending') {
-                return cumulativeQty < posItem.quantity;
-              }
-              return true;
-            }).toList();
-
-            if (filteredItems.isEmpty) {
-              return const Center(child: Text('No items match the filter.'));
-            }
-
-            return ListView.builder(
-              controller: controller.scrollController,
-              padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
-              itemCount: filteredItems.length,
-              itemBuilder: (context, index) {
-                final posItem = filteredItems[index];
-                final serialNumber = posItem.idx.toString();
-                final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
-                final expansionKey = '${posItem.idx}';
-
-                // Register Key
-                if (!controller.itemKeys.containsKey(expansionKey)) {
-                  controller.itemKeys[expansionKey] = GlobalKey();
+              if (posUpload == null) {
+                if (deliveryNoteItems.isEmpty) {
+                  return const Center(child: Text('No items to display.'));
                 }
+                return ListView.builder(
+                  controller: controller.scrollController,
+                  padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
+                  itemCount: deliveryNoteItems.length,
+                  itemBuilder: (context, index) {
+                    final item = deliveryNoteItems[index];
+                    // Register Key
+                    if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                      controller.itemKeys[item.name!] = GlobalKey();
+                    }
 
+                    return DeliveryNoteItemCard(item: item);
+                  },
+                );
+              }
+
+              final posItems = posUpload.items;
+              final groupedDnItems = controller.groupedItems;
+
+              // Apply filtering logic
+              final filteredItems = posItems.where((posItem) {
+                final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
+                final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
                 final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
 
-                return Container(
-                  key: controller.itemKeys[expansionKey], // Attach Key
-                  child: ItemGroupCard(
-                    isExpanded: currentExpandedKey == expansionKey,
-                    serialNo: posItem.idx,
-                    itemName: posItem.itemName,
-                    rate: posItem.rate,
-                    totalQty: posItem.quantity,
-                    scannedQty: cumulativeQty,
-                    onToggle: () => controller.toggleInvoiceExpand(expansionKey),
-                    children: dnItemsForThisPosItem.map((item) {
-                      // Register Key
-                      if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
-                        controller.itemKeys[item.name!] = GlobalKey();
-                      }
+                if (controller.itemFilter.value == 'Completed') {
+                  return cumulativeQty >= posItem.quantity;
+                } else if (controller.itemFilter.value == 'Pending') {
+                  return cumulativeQty < posItem.quantity;
+                }
+                return true;
+              }).toList();
 
-                      return DeliveryNoteItemCard(item: item);
-                    }).toList(),
-                  ),
-                );
-              },
-            );
-          }),
-        ),
+              if (filteredItems.isEmpty) {
+                return const Center(child: Text('No items match the filter.'));
+              }
 
-        // 3. Scanner (Moved to Bottom)
-        // Only show if document is editable (Draft status)
-        Obx(() {
-          if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+              return ListView.builder(
+                controller: controller.scrollController,
+                padding: const EdgeInsets.only(left: 8.0, right: 8.0, top: 8.0, bottom: 80.0),
+                itemCount: filteredItems.length,
+                itemBuilder: (context, index) {
+                  final posItem = filteredItems[index];
+                  final serialNumber = posItem.idx.toString();
+                  final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
+                  final expansionKey = '${posItem.idx}';
 
-          if (controller.isScanning.value || controller.isAddingItem.value) {
+                  // Register Key
+                  if (!controller.itemKeys.containsKey(expansionKey)) {
+                    controller.itemKeys[expansionKey] = GlobalKey();
+                  }
+
+                  final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
+
+                  return Container(
+                    key: controller.itemKeys[expansionKey], // Attach Key
+                    child: ItemGroupCard(
+                      isExpanded: currentExpandedKey == expansionKey,
+                      serialNo: posItem.idx,
+                      itemName: posItem.itemName,
+                      rate: posItem.rate,
+                      totalQty: posItem.quantity,
+                      scannedQty: cumulativeQty,
+                      onToggle: () => controller.toggleInvoiceExpand(expansionKey),
+                      children: dnItemsForThisPosItem.map((item) {
+                        // Register Key
+                        if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+                          controller.itemKeys[item.name!] = GlobalKey();
+                        }
+
+                        return DeliveryNoteItemCard(item: item);
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            }),
+          ),
+
+          // 3. Scanner (Moved to Bottom)
+          // Only show if document is editable (Draft status)
+          Obx(() {
+            if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+
+            if (controller.isScanning.value || controller.isAddingItem.value) {
+              return BarcodeInputWidget(
+                onScan: (code) {}, // No-op when busy
+                isLoading: controller.isScanning.value,
+                isSuccess: controller.isAddingItem.value,
+                controller: controller.barcodeController,
+                activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
+              );
+            }
             return BarcodeInputWidget(
-              onScan: (code) {}, // No-op when busy
-              isLoading: controller.isScanning.value,
-              isSuccess: controller.isAddingItem.value,
+              onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
               controller: controller.barcodeController,
               activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
             );
-          }
-          return BarcodeInputWidget(
-            onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
-            controller: controller.barcodeController,
-            activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
-          );
-        }),
-      ],
-    );
+          }),
+        ],
+      );
+    });
   }
 
   Widget _buildFilterChip(String label, int count) {

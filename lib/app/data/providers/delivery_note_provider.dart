@@ -6,18 +6,18 @@ class DeliveryNoteProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   Future<Response> getDeliveryNotes({
-    int limit = 20, 
-    int limitStart = 0, 
+    int limit = 20,
+    int limitStart = 0,
     Map<String, dynamic>? filters,
     String orderBy = 'modified desc',
   }) async {
     return _apiProvider.getDocumentList(
-      'Delivery Note', 
-      limit: limit, 
-      limitStart: limitStart, 
+      'Delivery Note',
+      limit: limit,
+      limitStart: limitStart,
       filters: filters,
       orderBy: orderBy,
-      fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus'],
+      fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus', 'set_warehouse'],
     );
   }
 

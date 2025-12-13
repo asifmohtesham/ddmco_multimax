@@ -1,4 +1,3 @@
-//
 class DeliveryNote {
   final String name;
   final String customer;
@@ -11,6 +10,7 @@ class DeliveryNote {
   final String? poNo;
   final double totalQty;
   final int docstatus;
+  final String? setWarehouse; // Added Field
   final List<DeliveryNoteItem> items;
 
   DeliveryNote({
@@ -25,6 +25,7 @@ class DeliveryNote {
     this.poNo,
     required this.totalQty,
     required this.docstatus,
+    this.setWarehouse, // Added
     required this.items,
   });
 
@@ -44,6 +45,7 @@ class DeliveryNote {
       poNo: json['po_no'],
       totalQty: _parseDouble(json['total_qty']),
       docstatus: _parseInt(json['docstatus']),
+      setWarehouse: json['set_warehouse'], // Added
       items: items,
     );
   }
@@ -55,6 +57,7 @@ class DeliveryNote {
       'currency': currency,
       'po_no': poNo,
       'docstatus': docstatus,
+      'set_warehouse': setWarehouse, // Added
       'items': items.map((e) => e.toJson()).toList(),
     };
   }
@@ -71,6 +74,7 @@ class DeliveryNote {
     String? poNo,
     double? totalQty,
     int? docstatus,
+    String? setWarehouse, // Added
     List<DeliveryNoteItem>? items,
   }) {
     return DeliveryNote(
@@ -85,6 +89,7 @@ class DeliveryNote {
       poNo: poNo ?? this.poNo,
       totalQty: totalQty ?? this.totalQty,
       docstatus: docstatus ?? this.docstatus,
+      setWarehouse: setWarehouse ?? this.setWarehouse, // Added
       items: items ?? this.items,
     );
   }

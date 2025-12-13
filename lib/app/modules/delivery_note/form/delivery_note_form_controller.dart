@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -57,8 +56,8 @@ class DeliveryNoteFormController extends GetxController {
   final bsRackFocusNode = FocusNode();
 
   var isItemSheetOpen = false.obs;
-  var bsIsLoadingBatch = false.obs; // General loading
-  var isValidatingBatch = false.obs; // Specific validation spinner state
+  var bsIsLoadingBatch = false.obs;
+  var isValidatingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
@@ -76,6 +75,11 @@ class DeliveryNoteFormController extends GetxController {
   String _initialRack = '';
   String _initialQty = '';
   String? _initialSerial;
+
+  // Warehouse State
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+  var setWarehouse = RxnString();
 
   // Temp Item Data
   var bsItemOwner = RxnString();
@@ -96,12 +100,14 @@ class DeliveryNoteFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    fetchWarehouses();
 
     // Add Listeners for Validation
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsRackController.addListener(validateSheet);
     ever(bsInvoiceSerialNo, (_) => validateSheet());
+    ever(setWarehouse, (_) => _markDirty());
 
     if (mode == 'new') {
       _createNewDeliveryNote();
@@ -127,6 +133,20 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
+  Future<void> fetchWarehouses() async {
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+      }
+    } catch (e) {
+      print('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
+  }
+
   void _createNewDeliveryNote() async {
     isLoading.value = true;
     final now = DateTime.now();
@@ -143,6 +163,7 @@ class DeliveryNoteFormController extends GetxController {
       poNo: posUploadNameArg,
       totalQty: 0.0,
       docstatus: 0,
+      setWarehouse: '', // Init empty
     );
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
@@ -159,6 +180,7 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
+        setWarehouse.value = note.setWarehouse; // Populate warehouse
         _originalJson = jsonEncode(note.toJson());
         isDirty.value = false;
         if (note.poNo != null && note.poNo!.isNotEmpty) {
@@ -230,6 +252,7 @@ class DeliveryNoteFormController extends GetxController {
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
+    // CHECK FOR DUPLICATE: Item Code + Batch + Rack + Serial
     final existingIndex = currentItems.indexWhere((item) =>
     item.itemCode == itemCode &&
         (item.batchNo ?? '') == (batchNo ?? '') &&
@@ -238,6 +261,7 @@ class DeliveryNoteFormController extends GetxController {
     );
 
     if (existingIndex != -1) {
+      // MERGE
       final existing = currentItems[existingIndex];
       final newQty = existing.qty + qty;
       currentItems[existingIndex] = existing.copyWith(qty: newQty);
@@ -248,6 +272,7 @@ class DeliveryNoteFormController extends GetxController {
       _triggerItemFeedback(itemCode, serial);
 
     } else {
+      // ADD NEW
       final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = DeliveryNoteItem(
         name: tempId,
@@ -293,6 +318,10 @@ class DeliveryNoteFormController extends GetxController {
       final String docName = deliveryNote.value?.name ?? '';
       final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
       final Map<String, dynamic> data = deliveryNote.value!.toJson();
+
+      // Explicitly set warehouse in data
+      data['set_warehouse'] = setWarehouse.value;
+
       if (isNew) {
         data['customer'] = deliveryNote.value!.customer;
         data['posting_date'] = deliveryNote.value!.postingDate;
@@ -504,7 +533,7 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
-    isValidatingBatch.value = true; // Use separate loading state for spinner
+    isValidatingBatch.value = true;
     bsBatchError.value = null;
     try {
       final batchResponse = await _apiProvider.getDocumentList('Batch',
@@ -545,8 +574,6 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Batch has 0 stock');
       }
     } catch (e) {
-      log(name: 'balanceResponse', e.toString());
-
       bsBatchError.value = 'Invalid Batch';
       bsMaxQty.value = 0.0;
       bsIsBatchValid.value = false;
