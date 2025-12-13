@@ -23,7 +23,7 @@ class StockEntryController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
-  // NEW: Search Query State
+  // Search Query State
   var searchQuery = ''.obs;
 
   var sortField = 'creation'.obs;
@@ -34,12 +34,17 @@ class StockEntryController extends GetxController {
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
+  // NEW: Stock Entry Types for Filter (Dynamic Fetch)
+  var stockEntryTypes = <String>[].obs;
+  var isFetchingTypes = false.obs;
+
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
   @override
   void onInit() {
     super.onInit();
     fetchStockEntries();
+    fetchStockEntryTypes(); // Fetch types on init
   }
 
   @override
@@ -66,7 +71,6 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  // NEW: Search Handler
   void onSearchChanged(String val) {
     searchQuery.value = val;
     // Simple debounce to prevent API spamming
@@ -131,7 +135,23 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // ... (Rest of the controller methods remain unchanged: _fetchAndCacheEntryDetails, toggleExpand, openCreateDialog, etc.) ...
+  // NEW: Fetch Stock Entry Types Dynamically
+  Future<void> fetchStockEntryTypes() async {
+    isFetchingTypes.value = true;
+    try {
+      // This calls the method added to StockEntryProvider in the previous step
+      final response = await _provider.getStockEntryTypes();
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        stockEntryTypes.value = data.map((e) => e['name'].toString()).toList();
+      }
+    } catch (e) {
+      print('Error fetching stock entry types: $e');
+    } finally {
+      isFetchingTypes.value = false;
+    }
+  }
 
   Future<void> _fetchAndCacheEntryDetails(String name) async {
     if (_detailedEntriesCache.containsKey(name)) {

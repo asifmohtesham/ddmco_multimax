@@ -18,6 +18,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   late TextEditingController dateRangeController;
 
   int? selectedDocstatus; // 0=Draft, 1=Submitted, 2=Cancelled
+  String? selectedStockEntryType; // NEW: Filter for Entry Type
   DateTime? startDate;
   DateTime? endDate;
 
@@ -25,11 +26,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   void initState() {
     super.initState();
 
-    // UPDATED: Use helper to extract string from filter list ['like', '%val%']
     purposeController = TextEditingController(text: _extractFilterValue('purpose'));
     referenceController = TextEditingController(text: _extractFilterValue('custom_reference_no'));
 
     selectedDocstatus = controller.activeFilters['docstatus'];
+    selectedStockEntryType = controller.activeFilters['stock_entry_type']; // Load existing filter
+
     dateRangeController = TextEditingController();
 
     // Pre-fill date range text if exists
@@ -40,7 +42,6 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
       final dates = controller.activeFilters['creation'][1] as List;
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
-        // Parse back to objects if you want the picker to start there (optional for display)
         try {
           startDate = DateTime.parse(dates[0]);
           endDate = DateTime.parse(dates[1]);
@@ -49,14 +50,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
     }
   }
 
-  // NEW HELPER METHOD
+  // Helper method to extract string values from complex filter arrays
   String _extractFilterValue(String key) {
     final val = controller.activeFilters[key];
-    // Check if it's the list format ['like', '%value%']
     if (val is List && val.isNotEmpty && val[0] == 'like') {
       return val[1].toString().replaceAll('%', '');
     }
-    // Handle direct string if ever stored that way
     if (val is String) return val;
     return '';
   }
@@ -131,6 +130,8 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                   const SizedBox(height: 16),
                   const Text('Filter By', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
+
+                  // Status Filter
                   DropdownButtonFormField<int>(
                     value: selectedDocstatus,
                     decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
@@ -142,6 +143,21 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                     onChanged: (value) => selectedDocstatus = value,
                   ),
                   const SizedBox(height: 12),
+
+                  // NEW: Stock Entry Type Filter
+                  Obx(() => DropdownButtonFormField<String>(
+                    value: controller.stockEntryTypes.contains(selectedStockEntryType) ? selectedStockEntryType : null,
+                    decoration: const InputDecoration(labelText: 'Stock Entry Type', border: OutlineInputBorder()),
+                    isExpanded: true,
+                    hint: const Text('Select Stock Entry Type'),
+                    items: controller.stockEntryTypes.map((type) {
+                      return DropdownMenuItem(value: type, child: Text(type));
+                    }).toList(),
+                    onChanged: (value) => selectedStockEntryType = value,
+                  )),
+                  const SizedBox(height: 12),
+
+                  // Date Range
                   TextFormField(
                     controller: dateRangeController,
                     readOnly: true,
@@ -153,11 +169,15 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                     onTap: _pickDateRange,
                   ),
                   const SizedBox(height: 12),
+
+                  // Purpose
                   TextFormField(
                     controller: purposeController,
                     decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 12),
+
+                  // Reference
                   TextFormField(
                     controller: referenceController,
                     decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder()),
@@ -171,6 +191,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                 final filters = <String, dynamic>{};
 
                 if (selectedDocstatus != null) filters['docstatus'] = selectedDocstatus;
+                if (selectedStockEntryType != null) filters['stock_entry_type'] = selectedStockEntryType; // Apply New Filter
                 if (purposeController.text.isNotEmpty) filters['purpose'] = ['like', '%${purposeController.text}%'];
                 if (referenceController.text.isNotEmpty) filters['custom_reference_no'] = ['like', '%${referenceController.text}%'];
 
