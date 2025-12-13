@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:collection/collection.dart'; // Needed for firstWhereOrNull
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -37,6 +38,7 @@ class PurchaseReceiptFormController extends GetxController {
   bool get isEditable => purchaseReceipt.value?.docstatus == 0;
 
   var poItemQuantities = <String, double>{}.obs;
+  final List<Map<String, dynamic>> _cachedPoItems = []; // Cache for PO linking
 
   final supplierController = TextEditingController();
   final postingDateController = TextEditingController();
@@ -226,6 +228,7 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   Future<void> _fetchLinkedPurchaseOrders(List<String> poNames) async {
+    _cachedPoItems.clear(); // Reset cache
     for (var poName in poNames) {
       try {
         final response = await _poProvider.getPurchaseOrder(poName);
@@ -234,12 +237,43 @@ class PurchaseReceiptFormController extends GetxController {
           for (var item in po.items) {
             if (item.name != null) {
               poItemQuantities[item.name!] = item.qty;
+              // Cache for linking
+              _cachedPoItems.add({
+                'poName': po.name,
+                'item': item
+              });
             }
           }
         }
       } catch (e) {
         print('Failed to fetch linked PO $poName: $e');
       }
+    }
+  }
+
+  void _linkToPurchaseOrder(String itemCode) {
+    // Reset
+    currentPoItem = '';
+    currentPoName = '';
+    currentPurchaseOrderQty.value = 0.0;
+
+    // 1. Try finding an item that is NOT fully received
+    var match = _cachedPoItems.firstWhereOrNull((data) {
+      final PurchaseOrderItem item = data['item'];
+      return item.itemCode == itemCode && item.receivedQty < item.qty;
+    });
+
+    // 2. Fallback to any item with matching code
+    match ??= _cachedPoItems.firstWhereOrNull((data) {
+      final PurchaseOrderItem item = data['item'];
+      return item.itemCode == itemCode;
+    });
+
+    if (match != null) {
+      final PurchaseOrderItem item = match['item'];
+      currentPoItem = item.name ?? '';
+      currentPoName = match['poName'];
+      currentPurchaseOrderQty.value = item.qty;
     }
   }
 
@@ -360,9 +394,9 @@ class PurchaseReceiptFormController extends GetxController {
         currentModified = '';
         currentModifiedBy = '';
         currentItemIdx.value = 0;
-        currentPurchaseOrderQty.value = 0.0;
-        currentPoItem = '';
-        currentPoName = '';
+
+        // Link to PO Item logic
+        _linkToPurchaseOrder(itemData.itemCode);
 
         _openQtySheet(scannedBatch: result.batchNo);
       } else {
