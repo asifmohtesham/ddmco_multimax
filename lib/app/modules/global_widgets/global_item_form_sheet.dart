@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
@@ -33,6 +34,11 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String? modified;
   final String? modifiedBy;
 
+  // Scan Integration
+  final Function(String)? onScan;
+  final TextEditingController? scanController;
+  final bool isScanning;
+
   const GlobalItemFormSheet({
     super.key,
     required this.formKey,
@@ -57,6 +63,9 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.creation,
     this.modified,
     this.modifiedBy,
+    this.onScan,
+    this.scanController,
+    this.isScanning = false,
   });
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
@@ -105,8 +114,8 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  // ... (Metadata Header Builder unchanged) ...
   Widget _buildMetadataHeader(BuildContext context) {
-    // Return empty if absolutely no metadata is available
     if (owner == null && creation == null && modified == null && modifiedBy == null) {
       return const SizedBox.shrink();
     }
@@ -116,7 +125,6 @@ class GlobalItemFormSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Creation Info
           if (owner != null || creation != null)
             Row(
               children: [
@@ -143,9 +151,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ],
               ],
             ),
-
-          // Row 2: Modification Info
-          // Display if modified data exists AND it is either a different user OR a different time
           if ((modified != null || modifiedBy != null) &&
               (modified != creation || modifiedBy != owner)) ...[
             const SizedBox(height: 4),
@@ -189,95 +194,106 @@ class GlobalItemFormSheet extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
         ),
-        child: Form(
-          key: formKey,
-          child: ListView(
-            controller: scrollController,
-            shrinkWrap: true,
-            children: [
-              // --- Header ---
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
+        child: Column(
+          children: [
+            Expanded(
+              child: Form(
+                key: formKey,
+                child: ListView(
+                  controller: scrollController,
+                  shrinkWrap: true,
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
+                              ),
+                              Text(
+                                itemName,
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              _buildMetadataHeader(context),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                          style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
+                        IconButton(
+                          onPressed: () => Get.back(),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
                         ),
-                        Text(
-                          itemName,
-                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        // Metadata Header
-                        _buildMetadataHeader(context),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => Get.back(),
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
+                    const Divider(height: 24),
 
-              // --- Custom Fields ---
-              ...customFields.map((w) => Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: w,
-              )),
+                    ...customFields.map((w) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: w,
+                    )),
 
-              // --- Quantity Input ---
-              QuantityInputWidget(
-                controller: qtyController,
-                onIncrement: onIncrement,
-                onDecrement: onDecrement,
-                isReadOnly: isQtyReadOnly,
-                label: 'Quantity',
-                infoText: qtyInfoText,
-              ),
+                    QuantityInputWidget(
+                      controller: qtyController,
+                      onIncrement: onIncrement,
+                      onDecrement: onDecrement,
+                      isReadOnly: isQtyReadOnly,
+                      label: 'Quantity',
+                      infoText: qtyInfoText,
+                    ),
 
-              const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-              // --- Action Buttons ---
-              SizedBox(
-                width: double.infinity,
-                child: isSaveEnabledRx != null
-                    ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                    : _buildSaveButton(context, isSaveEnabled),
-              ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: isSaveEnabledRx != null
+                          ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                          : _buildSaveButton(context, isSaveEnabled),
+                    ),
 
-              // --- Delete Button ---
-              if (onDelete != null) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: () {
-                      Get.back();
-                      onDelete!();
-                    },
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    label: const Text('Remove Item', style: TextStyle(color: Colors.red)),
-                  ),
+                    if (onDelete != null) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Get.back();
+                            onDelete!();
+                          },
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          label: const Text('Remove Item', style: TextStyle(color: Colors.red)),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
+            ),
 
-              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-            ],
-          ),
+            // Standardised Global Scanner in Sheet
+            if (onScan != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: BarcodeInputWidget(
+                  onScan: onScan!,
+                  controller: scanController,
+                  isLoading: isScanning,
+                  hintText: 'Scan Rack / Batch / Item',
+                  isEmbedded: true,
+                ),
+              ),
+          ],
         ),
       ),
     );

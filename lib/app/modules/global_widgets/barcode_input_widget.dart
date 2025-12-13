@@ -8,9 +8,10 @@ class BarcodeInputWidget extends StatefulWidget {
   final Function(String) onScan;
   final bool isLoading;
   final bool isSuccess;
-  final bool hasError; // Added
+  final bool hasError;
   final String hintText;
   final String? activeRoute;
+  final bool isEmbedded; // Added for form integration
 
   const BarcodeInputWidget({
     super.key,
@@ -18,9 +19,10 @@ class BarcodeInputWidget extends StatefulWidget {
     this.controller,
     this.isLoading = false,
     this.isSuccess = false,
-    this.hasError = false, // Added default false
+    this.hasError = false,
     this.hintText = 'Scan or enter barcode',
     this.activeRoute,
+    this.isEmbedded = false,
   });
 
   @override
@@ -39,9 +41,11 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
 
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
+        // Route check: if activeRoute is set, only respond if it matches Get.currentRoute
         if (widget.activeRoute != null && Get.currentRoute != widget.activeRoute) {
           return;
         }
+
         final cleanCode = code.trim();
         _textController.text = cleanCode;
         _textController.selection = TextSelection.fromPosition(
@@ -63,19 +67,40 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Styling based on isEmbedded flag
+    final decoration = widget.isEmbedded
+        ? null
+        : BoxDecoration(
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.1),
+          blurRadius: 4,
+          offset: const Offset(0, -2),
+        ),
+      ],
+    );
+
+    final padding = widget.isEmbedded
+        ? EdgeInsets.zero
+        : const EdgeInsets.all(16.0);
+
+    final inputBorder = widget.isEmbedded
+        ? OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    )
+        : OutlineInputBorder(borderRadius: BorderRadius.circular(30));
+
+    final contentPadding = widget.isEmbedded
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
+        : const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
+
     return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
+      padding: padding,
+      decoration: decoration,
       child: SafeArea(
+        bottom: !widget.isEmbedded, // Only padding for floating mode
         child: TextFormField(
           controller: _textController,
           readOnly: widget.isLoading,
@@ -84,10 +109,24 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 ? 'Processing...'
                 : (widget.isSuccess
                 ? 'Scan Validated'
-                : (widget.hasError ? 'Scan Failed' : widget.hintText)), // Update Label on Error
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-            prefixIcon: const Icon(Icons.qr_code_scanner),
+                : (widget.hasError ? 'Scan Failed' : widget.hintText)),
+            border: inputBorder,
+            enabledBorder: widget.isEmbedded
+                ? OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: widget.hasError ? Colors.red : Colors.grey.shade300))
+                : (widget.hasError
+                ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red))
+                : null),
+            focusedBorder: widget.isEmbedded
+                ? OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: widget.hasError ? Colors.red : Theme.of(context).primaryColor, width: 2))
+                : (widget.hasError
+                ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red, width: 2))
+                : null),
+            contentPadding: contentPadding,
+            prefixIcon: Icon(Icons.qr_code_scanner, color: widget.isEmbedded ? Colors.grey : null),
+            filled: widget.isEmbedded,
+            fillColor: widget.isEmbedded
+                ? (widget.hasError ? Colors.red.shade50 : (widget.isSuccess ? Colors.green.shade50 : Colors.white))
+                : null,
             suffixIcon: widget.isLoading
                 ? const Padding(
               padding: EdgeInsets.all(12.0),
@@ -96,22 +135,15 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 : (widget.isSuccess
                 ? const Icon(Icons.check_circle, color: Colors.green)
                 : (widget.hasError
-                ? const Icon(Icons.error, color: Colors.red) // Error Icon
+                ? const Icon(Icons.error, color: Colors.red)
                 : IconButton(
-              icon: const Icon(Icons.send),
+              icon: Icon(widget.isEmbedded ? Icons.arrow_forward : Icons.send),
               onPressed: () {
                 if (_textController.text.trim().isNotEmpty) {
                   widget.onScan(_textController.text.trim());
                 }
               },
             ))),
-            // Highlight border on error
-            enabledBorder: widget.hasError
-                ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red))
-                : null,
-            focusedBorder: widget.hasError
-                ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red, width: 2))
-                : null,
           ),
           onFieldSubmitted: (value) {
             if (value.trim().isNotEmpty && !widget.isLoading) {

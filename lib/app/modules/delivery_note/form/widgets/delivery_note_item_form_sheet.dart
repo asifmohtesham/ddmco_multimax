@@ -13,8 +13,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
 
-      // Removed old 'canSubmit' logic, relying on reactive isSheetValid
-
       return GlobalItemFormSheet(
         owner: controller.bsItemOwner.value,
         creation: controller.bsItemCreation.value,
@@ -34,9 +32,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ? 'Max Available: ${controller.bsMaxQty.value}'
             : null,
 
-        // UPDATED: Using reactive validation
         isSaveEnabledRx: controller.isSheetValid,
-        isSaveEnabled: true, // Fallback
+        isSaveEnabled: true,
 
         isLoading: controller.bsIsLoadingBatch.value,
 
@@ -50,6 +47,11 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           }
         }
             : null,
+
+        // Standardized Global Scan Integration
+        onScan: (code) => controller.addItemFromBarcode(code),
+        scanController: controller.barcodeController,
+        isScanning: controller.isScanning.value,
 
         customFields: [
           // Invoice Serial No
@@ -68,12 +70,10 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 }).toList(),
                 onChanged: (value) {
                   controller.bsInvoiceSerialNo.value = value;
-                  controller.validateSheet(); // Check immediately
+                  controller.validateSheet();
                 },
               ),
             ),
-
-          // ... [Rest of the file remains same: Batch No, Rack, etc.] ...
 
           // Batch No
           GlobalItemFormSheet.buildInputGroup(
@@ -84,7 +84,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               readOnly: controller.bsIsBatchReadOnly.value || controller.bsIsLoadingBatch.value,
               autofocus: false,
               decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
+                hintText: 'Enter Batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -117,17 +117,16 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ),
           ),
 
-          // Rack
-          Obx(() => GlobalItemFormSheet.buildInputGroup(
+          // Rack (Standard Text Input - Scanning handled globally via onScan)
+          GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
             bgColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
-            child: TextFormField(
+            child: Obx(() => TextFormField(
               controller: controller.bsRackController,
-              autofocus: false,
               readOnly: controller.bsIsRackValid.value,
               decoration: InputDecoration(
-                hintText: 'Source Rack',
+                hintText: 'Enter Rack ID',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -137,28 +136,23 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: Colors.orange, width: 2),
                 ),
-                prefixIcon: const Icon(Icons.shelves, color: Colors.orange),
-                filled: true,
-                fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : Colors.white,
+                filled: controller.bsIsRackValid.value,
+                fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
                 suffixIcon: controller.isValidatingRack.value
-                    ? const Padding(
-                  padding: EdgeInsets.all(12.0),
-                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
-                )
+                    ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
                     : (controller.bsIsRackValid.value
                     ? IconButton(
                   icon: const Icon(Icons.edit, color: Colors.orange),
                   onPressed: controller.resetRackValidation,
                 )
                     : IconButton(
-                  icon: const Icon(Icons.arrow_forward, color: Colors.orange),
+                  icon: const Icon(Icons.arrow_forward),
                   onPressed: () => controller.validateRack(controller.bsRackController.text),
                 )),
               ),
-              onChanged: (_) => controller.validateSheet(),
               onFieldSubmitted: (val) => controller.validateRack(val),
-            ),
-          )),
+            )),
+          ),
         ],
       );
     });
