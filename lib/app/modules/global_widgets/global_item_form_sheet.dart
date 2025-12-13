@@ -106,14 +106,17 @@ class GlobalItemFormSheet extends StatelessWidget {
   }
 
   Widget _buildMetadataHeader(BuildContext context) {
-    if (owner == null && creation == null && modified == null) return const SizedBox.shrink();
+    // Return empty if absolutely no metadata is available
+    if (owner == null && creation == null && modified == null && modifiedBy == null) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Creation
+          // Row 1: Creation Info
           if (owner != null || creation != null)
             Row(
               children: [
@@ -141,8 +144,10 @@ class GlobalItemFormSheet extends StatelessWidget {
               ],
             ),
 
-          // Row 2: Modification (Only if different from creation roughly)
-          if (modified != null && modified != creation) ...[
+          // Row 2: Modification Info
+          // Display if modified data exists AND it is either a different user OR a different time
+          if ((modified != null || modifiedBy != null) &&
+              (modified != creation || modifiedBy != owner)) ...[
             const SizedBox(height: 4),
             Row(
               children: [
@@ -154,17 +159,19 @@ class GlobalItemFormSheet extends StatelessWidget {
                     style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
                   ),
                 ],
-                if (modifiedBy != null)
+                if (modifiedBy != null && modified != null)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
                   ),
-                const Icon(Icons.history, size: 12, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  'Modified ${FormattingHelper.getRelativeTime(modified)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
+                if (modified != null) ...[
+                  const Icon(Icons.history, size: 12, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
               ],
             ),
           ],

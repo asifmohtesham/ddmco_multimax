@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
   final ScrollController? scrollController;
@@ -40,6 +41,8 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
       // Pass Metadata to Global Widget
       owner: controller.bsItemOwner.value,
       creation: controller.bsItemCreation.value,
+      modified: controller.bsItemModified.value,
+      modifiedBy: controller.bsItemModifiedBy.value,
 
       customFields: [
         // Batch No

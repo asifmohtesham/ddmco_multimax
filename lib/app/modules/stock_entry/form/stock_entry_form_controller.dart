@@ -18,6 +18,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class StockEntryFormController extends GetxController {
+  // ... (Providers and variables remain same)
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
@@ -65,9 +66,11 @@ class StockEntryFormController extends GetxController {
   final bsSourceRackController = TextEditingController();
   final bsTargetRackController = TextEditingController();
 
-  // New Observables for Owner/Creation
+  // Metadata Observables
   var bsItemOwner = RxnString();
   var bsItemCreation = RxnString();
+  var bsItemModified = RxnString();
+  var bsItemModifiedBy = RxnString();
 
   var derivedSourceWarehouse = RxnString();
   var derivedTargetWarehouse = RxnString();
@@ -136,6 +139,7 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  // ... (onClose, fetchWarehouses, fetchStockEntryTypes, _onReferenceNoChanged, _initNewStockEntry, fetchStockEntry unchanged) ...
   @override
   void onClose() {
     barcodeController.dispose();
@@ -270,9 +274,11 @@ class StockEntryFormController extends GetxController {
     selectedSerial.value = null;
     currentItemNameKey.value = null;
 
-    // Reset Owner/Creation
+    // Reset Metadata
     bsItemOwner.value = null;
     bsItemCreation.value = null;
+    bsItemModified.value = null;
+    bsItemModifiedBy.value = null;
 
     _initialQty = '';
     _initialBatch = '';
@@ -308,9 +314,11 @@ class StockEntryFormController extends GetxController {
     currentItemName = item.itemName ?? '';
     currentItemNameKey.value = item.name;
 
-    // Set Owner and Creation
+    // Set Metadata
     bsItemOwner.value = item.owner;
     bsItemCreation.value = item.creation;
+    bsItemModified.value = item.modified;
+    bsItemModifiedBy.value = item.modifiedBy;
 
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
@@ -357,6 +365,125 @@ class StockEntryFormController extends GetxController {
       rackError.value = null;
     });
   }
+
+  void addItem() async {
+    if (isAddingItem.value) return;
+
+    final double qty = double.tryParse(bsQtyController.text) ?? 0;
+    if (qty <= 0) return;
+
+    isAddingItem.value = true;
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final batch = bsBatchController.text;
+    final sourceRack = bsSourceRackController.text;
+    final targetRack = bsTargetRackController.text;
+
+    final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
+
+    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final currentItems = stockEntry.value?.items.toList() ?? [];
+
+    final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
+
+    if (existingIndex != -1) {
+      final existing = currentItems[existingIndex];
+      currentItems[existingIndex] = StockEntryItem(
+        name: existing.name,
+        itemCode: existing.itemCode,
+        qty: qty,
+        basicRate: existing.basicRate,
+        itemGroup: existing.itemGroup,
+        customVariantOf: existing.customVariantOf,
+        batchNo: batch,
+        itemName: existing.itemName,
+        rack: sourceRack,
+        toRack: targetRack,
+        sWarehouse: sWh,
+        tWarehouse: tWh,
+        customInvoiceSerialNumber: selectedSerial.value,
+        owner: existing.owner,
+        creation: existing.creation,
+        modified: existing.modified,
+        modifiedBy: existing.modifiedBy,
+      );
+    } else {
+      final duplicateIndex = currentItems.indexWhere((i) =>
+      i.itemCode == currentItemCode &&
+          (i.batchNo ?? '') == batch &&
+          (i.rack ?? '') == sourceRack &&
+          (i.toRack ?? '') == targetRack &&
+          (i.sWarehouse ?? '') == sWh &&
+          (i.tWarehouse ?? '') == tWh &&
+          (i.customInvoiceSerialNumber ?? '') == (selectedSerial.value ?? '')
+      );
+
+      if (duplicateIndex != -1) {
+        final existing = currentItems[duplicateIndex];
+        currentItems[duplicateIndex] = StockEntryItem(
+          name: existing.name,
+          itemCode: existing.itemCode,
+          qty: existing.qty + qty,
+          basicRate: existing.basicRate,
+          itemGroup: existing.itemGroup,
+          customVariantOf: existing.customVariantOf,
+          batchNo: existing.batchNo,
+          itemName: existing.itemName,
+          rack: existing.rack,
+          toRack: existing.toRack,
+          sWarehouse: existing.sWarehouse,
+          tWarehouse: existing.tWarehouse,
+          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+          owner: existing.owner,
+          creation: existing.creation,
+          modified: existing.modified,
+          modifiedBy: existing.modifiedBy,
+        );
+        currentItemNameKey.value = existing.name;
+      } else {
+        final newItem = StockEntryItem(
+          name: uniqueId,
+          itemCode: currentItemCode,
+          qty: qty,
+          basicRate: 0.0,
+          itemGroup: null,
+          customVariantOf: currentVariantOf,
+          batchNo: batch,
+          itemName: currentItemName,
+          rack: sourceRack,
+          toRack: targetRack,
+          sWarehouse: sWh,
+          tWarehouse: tWh,
+          customInvoiceSerialNumber: selectedSerial.value,
+          // New items don't have meta yet
+        );
+        currentItems.add(newItem);
+      }
+    }
+
+    stockEntry.update((val) {
+      val?.items.assignAll(currentItems);
+    });
+
+    Get.back();
+
+    isAddingItem.value = false;
+    barcodeController.clear();
+
+    triggerHighlight(currentItemNameKey.value ?? uniqueId);
+
+    if (mode == 'new') {
+      saveStockEntry();
+    } else {
+      isDirty.value = true;
+      await saveStockEntry();
+      GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
+    }
+  }
+
+  // ... (Rest of logic: validateSheet, deleteItem, saveStockEntry, scanBarcode, etc. unchanged) ...
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -575,119 +702,6 @@ class StockEntryFormController extends GetxController {
     Future.delayed(const Duration(seconds: 2), () {
       recentlyAddedItemName.value = '';
     });
-  }
-
-  void addItem() async {
-    if (isAddingItem.value) return;
-
-    final double qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) return;
-
-    isAddingItem.value = true;
-    FocusManager.instance.primaryFocus?.unfocus();
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    final batch = bsBatchController.text;
-    final sourceRack = bsSourceRackController.text;
-    final targetRack = bsTargetRackController.text;
-
-    final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
-    final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
-
-    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    final currentItems = stockEntry.value?.items.toList() ?? [];
-
-    final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
-
-    if (existingIndex != -1) {
-      final existing = currentItems[existingIndex];
-      currentItems[existingIndex] = StockEntryItem(
-        name: existing.name,
-        itemCode: existing.itemCode,
-        qty: qty,
-        basicRate: existing.basicRate,
-        itemGroup: existing.itemGroup,
-        customVariantOf: existing.customVariantOf,
-        batchNo: batch,
-        itemName: existing.itemName,
-        rack: sourceRack,
-        toRack: targetRack,
-        sWarehouse: sWh,
-        tWarehouse: tWh,
-        customInvoiceSerialNumber: selectedSerial.value,
-        owner: existing.owner, // Preserve owner
-        creation: existing.creation, // Preserve creation
-      );
-    } else {
-      final duplicateIndex = currentItems.indexWhere((i) =>
-      i.itemCode == currentItemCode &&
-          (i.batchNo ?? '') == batch &&
-          (i.rack ?? '') == sourceRack &&
-          (i.toRack ?? '') == targetRack &&
-          (i.sWarehouse ?? '') == sWh &&
-          (i.tWarehouse ?? '') == tWh &&
-          (i.customInvoiceSerialNumber ?? '') == (selectedSerial.value ?? '')
-      );
-
-      if (duplicateIndex != -1) {
-        final existing = currentItems[duplicateIndex];
-        currentItems[duplicateIndex] = StockEntryItem(
-          name: existing.name,
-          itemCode: existing.itemCode,
-          qty: existing.qty + qty,
-          basicRate: existing.basicRate,
-          itemGroup: existing.itemGroup,
-          customVariantOf: existing.customVariantOf,
-          batchNo: existing.batchNo,
-          itemName: existing.itemName,
-          rack: existing.rack,
-          toRack: existing.toRack,
-          sWarehouse: existing.sWarehouse,
-          tWarehouse: existing.tWarehouse,
-          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
-          owner: existing.owner,
-          creation: existing.creation,
-        );
-        currentItemNameKey.value = existing.name;
-      } else {
-        final newItem = StockEntryItem(
-          name: uniqueId,
-          itemCode: currentItemCode,
-          qty: qty,
-          basicRate: 0.0,
-          itemGroup: null,
-          customVariantOf: currentVariantOf,
-          batchNo: batch,
-          itemName: currentItemName,
-          rack: sourceRack,
-          toRack: targetRack,
-          sWarehouse: sWh,
-          tWarehouse: tWh,
-          customInvoiceSerialNumber: selectedSerial.value,
-          // Newly added items won't have server-generated owner/creation yet
-        );
-        currentItems.add(newItem);
-      }
-    }
-
-    stockEntry.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-
-    Get.back();
-
-    isAddingItem.value = false;
-    barcodeController.clear();
-
-    triggerHighlight(currentItemNameKey.value ?? uniqueId);
-
-    if (mode == 'new') {
-      saveStockEntry();
-    } else {
-      isDirty.value = true;
-      await saveStockEntry();
-      GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
-    }
   }
 
   void validateSheet() {
