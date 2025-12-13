@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -55,7 +56,20 @@ class PermissionService extends GetxService {
         final hasAccess = _authController.hasAnyRole(allowedRoles.toList());
         _accessCache[doctype] = hasAccess;
       } else {
-        // Fail safe: deny access if fetch fails
+        // Fail safe: deny access if fetch fails without exception
+        _accessCache[doctype] = false;
+      }
+    } on DioException catch (e) {
+      // HANDLE 403 FORBIDDEN
+      // If the user cannot read the DocType definition (metadata), we assume they
+      // are a standard user. We grant access to avoid locking them out of the UI.
+      // This covers: Item, Purchase Order, Purchase Receipt, Stock Entry, Delivery Note,
+      // Packing Slip, BOM, Work Order, Job Card, POS Upload.
+      if (e.response?.statusCode == 403) {
+        print('Permission Warning: 403 Forbidden reading DocType "$doctype". Defaulting to ALLOW.');
+        _accessCache[doctype] = true;
+      } else {
+        print('Error fetching permissions for $doctype: $e');
         _accessCache[doctype] = false;
       }
     } catch (e) {
