@@ -6,7 +6,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -53,145 +53,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     );
   }
 
-  void _showCreateOptionsBottomSheet(BuildContext context) {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Create Stock Entry', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
-                  child: Icon(Icons.outbond, color: Colors.white),
-                ),
-                title: const Text('Material Issue'),
-                subtitle: const Text('Requires Reference No from POS Upload'),
-                onTap: () {
-                  Get.back();
-                  _showPosSelectionBottomSheet(context);
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.transform, color: Colors.white),
-                ),
-                title: const Text('Material Transfer'),
-                subtitle: const Text('Internal Transfer'),
-                onTap: () {
-                  Get.back();
-                  Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                    'name': '',
-                    'mode': 'new',
-                    'stockEntryType': 'Material Transfer',
-                    'customReferenceNo': ''
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showPosSelectionBottomSheet(BuildContext context) {
-    controller.fetchPendingPosUploads();
-
-    Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Select POS Upload',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: controller.filterPosUploads,
-                    decoration: InputDecoration(
-                      labelText: 'Search Pending Uploads',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Obx(() {
-                      if (controller.isFetchingPosUploads.value) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (controller.posUploadsForSelection.isEmpty) {
-                        return const Center(child: Text('No Pending POS Uploads found.'));
-                      }
-
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: controller.posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
-                        itemBuilder: (context, index) {
-                          final pos = controller.posUploadsForSelection[index];
-                          return ListTile(
-                            title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${pos.customer} • ${pos.date}'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Get.back();
-                              Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                                'name': '',
-                                'mode': 'new',
-                                'stockEntryType': 'Material Issue',
-                                'customReferenceNo': pos.name
-                              });
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -204,91 +65,114 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ),
         ],
       ),
-      drawer: const AppNavDrawer(), // Added
-      body: Obx(() {
-        if (controller.isLoading.value && controller.stockEntries.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (controller.stockEntries.isEmpty) {
-          final bool hasFilters = controller.activeFilters.isNotEmpty;
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
-                    size: 64,
-                    color: Colors.grey[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    hasFilters ? 'No Matching Entries' : 'No Stock Entries',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    hasFilters
-                        ? 'We couldn\'t find any stock entries matching your current filters. Try adjusting or clearing them.'
-                        : 'There are no stock entries to display at the moment. Pull to refresh or create a new one.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 24),
-                  if (hasFilters)
-                    ElevatedButton.icon(
-                      onPressed: () => controller.clearFilters(),
-                      icon: const Icon(Icons.clear_all),
-                      label: const Text('Clear Filters'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        backgroundColor: Colors.grey[100],
-                        foregroundColor: Colors.black87,
-                        elevation: 0,
-                      ),
-                    )
-                  else
-                    ElevatedButton.icon(
-                      onPressed: () => controller.fetchStockEntries(clear: true),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reload'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        backgroundColor: Colors.grey[100],
-                        foregroundColor: Colors.black87,
-                        elevation: 0,
-                      ),
-                    ),
-                ],
+      drawer: const AppNavDrawer(),
+      body: Column(
+        children: [
+          // NEW: Search Box
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              onChanged: controller.onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Search Stock Entry ID...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                filled: true,
+                fillColor: Colors.grey.shade50,
               ),
             ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () => controller.fetchStockEntries(clear: true),
-          child: Scrollbar(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= controller.stockEntries.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-                final entry = controller.stockEntries[index];
-                return StockEntryCard(entry: entry);
-              },
-            ),
           ),
-        );
-      }),
+
+          // List View
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value && controller.stockEntries.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (controller.stockEntries.isEmpty) {
+                final bool hasFilters = controller.activeFilters.isNotEmpty || controller.searchQuery.value.isNotEmpty;
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
+                          size: 64,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          hasFilters ? 'No Matching Entries' : 'No Stock Entries',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black54),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          hasFilters
+                              ? 'We couldn\'t find any stock entries matching your current filters. Try adjusting or clearing them.'
+                              : 'There are no stock entries to display at the moment. Pull to refresh or create a new one.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 24),
+                        if (hasFilters)
+                          ElevatedButton.icon(
+                            onPressed: () => controller.clearFilters(),
+                            icon: const Icon(Icons.clear_all),
+                            label: const Text('Clear Filters'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              backgroundColor: Colors.grey[100],
+                              foregroundColor: Colors.black87,
+                              elevation: 0,
+                            ),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: () => controller.fetchStockEntries(clear: true),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reload'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              backgroundColor: Colors.grey[100],
+                              foregroundColor: Colors.black87,
+                              elevation: 0,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () => controller.fetchStockEntries(clear: true),
+                child: Scrollbar(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= controller.stockEntries.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      final entry = controller.stockEntries[index];
+                      return StockEntryCard(entry: entry);
+                    },
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
       // Only show Create button for Stock Managers
       floatingActionButton: RoleGuard(
         roles: const ['Stock Manager'],
@@ -302,7 +186,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   }
 }
 
-// StockEntryCard and other private widgets remain the same
+// StockEntryCard and other private widgets remain unchanged...
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();

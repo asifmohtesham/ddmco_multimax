@@ -23,6 +23,9 @@ class StockEntryController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
+  // NEW: Search Query State
+  var searchQuery = ''.obs;
+
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
@@ -47,7 +50,6 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // ... (Existing Fetch, Filter, Sort, Expand logic unchanged) ...
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchStockEntries(isLoadMore: false, clear: true);
@@ -64,6 +66,17 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
+  // NEW: Search Handler
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+    // Simple debounce to prevent API spamming
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (searchQuery.value == val) {
+        fetchStockEntries(clear: true);
+      }
+    });
+  }
+
   Future<void> fetchStockEntries({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
@@ -77,10 +90,16 @@ class StockEntryController extends GetxController {
     }
 
     try {
+      // Prepare filters including search
+      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (searchQuery.value.isNotEmpty) {
+        queryFilters['name'] = ['like', '%${searchQuery.value}%'];
+      }
+
       final response = await _provider.getStockEntries(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
@@ -112,6 +131,8 @@ class StockEntryController extends GetxController {
     }
   }
 
+  // ... (Rest of the controller methods remain unchanged: _fetchAndCacheEntryDetails, toggleExpand, openCreateDialog, etc.) ...
+
   Future<void> _fetchAndCacheEntryDetails(String name) async {
     if (_detailedEntriesCache.containsKey(name)) {
       return;
@@ -142,11 +163,9 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // --- UPDATED POS FETCHING LOGIC (API SIDE FILTER) ---
   Future<void> fetchPendingPosUploads() async {
     isFetchingPosUploads.value = true;
     try {
-      // API Call 1: Fetch items starting with KX
       final kxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
           filters: {
@@ -155,8 +174,6 @@ class StockEntryController extends GetxController {
           },
           orderBy: 'modified desc'
       );
-
-      // API Call 2: Fetch items starting with MX
       final mxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
           filters: {
@@ -165,26 +182,19 @@ class StockEntryController extends GetxController {
           },
           orderBy: 'modified desc'
       );
-
       final results = await Future.wait([kxFuture, mxFuture]);
-
       final List<PosUpload> mergedList = [];
-
       for (var response in results) {
         if (response.statusCode == 200 && response.data['data'] != null) {
           final List<dynamic> data = response.data['data'];
           mergedList.addAll(data.map((json) => PosUpload.fromJson(json)));
         }
       }
-
-      // Deduplicate (using name as key) & Sort
       final uniqueMap = {for (var item in mergedList) item.name: item};
       final sortedList = uniqueMap.values.toList()
         ..sort((a, b) => b.modified.compareTo(a.modified));
-
       _allFetchedPosUploads = sortedList;
       posUploadsForSelection.value = _allFetchedPosUploads;
-
     } catch (e) {
       Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
     } finally {
@@ -257,7 +267,6 @@ class StockEntryController extends GetxController {
 
   void _showPosSelectionBottomSheet() {
     fetchPendingPosUploads();
-
     Get.bottomSheet(
       SafeArea(
         child: DraggableScrollableSheet(
@@ -301,20 +310,15 @@ class StockEntryController extends GetxController {
                       if (posUploadsForSelection.isEmpty) {
                         return const Center(child: Text('No matching POS Uploads found.'));
                       }
-
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: posUploadsForSelection.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final pos = posUploadsForSelection[index];
-                          // --- UPDATED UI with Status, Total Qty, Date ---
                           return Card(
                             elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey.shade200)
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
