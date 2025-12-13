@@ -310,9 +310,12 @@ class HomeController extends GetxController {
 
       if (result.type == ScanType.rack && result.rackId != null) {
         await _handleRackScan(result.rackId!);
-      } else if (result.isSuccess && result.type == ScanType.item && result.itemData != null) {
+      }
+      // FIX: Add check for ScanType.batch
+      else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
         _openItemDetailSheet(result.itemData!.itemCode);
-      } else if (result.type == ScanType.multiple && result.candidates != null) {
+      }
+      else if (result.type == ScanType.multiple && result.candidates != null) {
         // Open Disambiguation Sheet
         barcodeController.clear();
         Get.bottomSheet(
