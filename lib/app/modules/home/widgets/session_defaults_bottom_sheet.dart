@@ -17,10 +17,8 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
 
   bool _isLoading = true;
   List<String> _companies = [];
-  List<String> _warehouses = [];
 
   String? _selectedCompany;
-  String? _selectedWarehouse;
 
   // Auto Submit State
   bool _autoSubmitEnabled = true;
@@ -35,10 +33,8 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
   Future<void> _loadData() async {
     try {
       final companies = await _apiProvider.getList('Company');
-      final warehouses = await _apiProvider.getList('Warehouse');
 
       final savedCompany = _storageService.getCompany();
-      final savedWarehouse = _storageService.getDefaultWarehouse();
 
       final autoSubmit = _storageService.getAutoSubmitEnabled();
       final delay = _storageService.getAutoSubmitDelay();
@@ -46,9 +42,7 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
       if (mounted) {
         setState(() {
           _companies = companies;
-          _warehouses = warehouses;
           _selectedCompany = savedCompany;
-          _selectedWarehouse = savedWarehouse;
           _autoSubmitEnabled = autoSubmit;
           _autoSubmitDelay = delay.toDouble();
           _isLoading = false;
@@ -67,12 +61,12 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
   }
 
   Future<void> _saveDefaults() async {
-    if (_selectedCompany == null || _selectedWarehouse == null) {
-      GlobalSnackbar.warning(message: 'Company and Default Warehouse are mandatory.');
+    if (_selectedCompany == null) {
+      GlobalSnackbar.warning(message: 'Company is mandatory.');
       return;
     }
 
-    await _storageService.saveSessionDefaults(_selectedCompany!, _selectedWarehouse!);
+    await _storageService.saveSessionDefaults(_selectedCompany!);
     await _storageService.saveAutoSubmitSettings(_autoSubmitEnabled, _autoSubmitDelay.toInt());
 
     Get.back();
@@ -115,13 +109,6 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
                       decoration: const InputDecoration(labelText: 'Company', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)),
                       items: _companies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (val) => setState(() => _selectedCompany = val),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _selectedWarehouse,
-                      decoration: const InputDecoration(labelText: 'Default Source Warehouse', border: OutlineInputBorder(), prefixIcon: Icon(Icons.store)),
-                      items: _warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
-                      onChanged: (val) => setState(() => _selectedWarehouse = val),
                     ),
                     const SizedBox(height: 24),
 

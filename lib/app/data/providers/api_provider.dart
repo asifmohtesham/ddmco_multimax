@@ -155,13 +155,12 @@ class ApiProvider {
 
     final storage = Get.find<StorageService>();
     final String company = storage.getCompany();
-    final String? defaultWarehouse = storage.getDefaultWarehouse();
 
-    // Priority: Argument -> Session Default -> Fallback (null)
-    final String? targetWarehouse = warehouse?.isNotEmpty == true ? warehouse : defaultWarehouse;
+    // Priority: Argument -> Error
+    final String? targetWarehouse = warehouse;
 
     if (targetWarehouse == null || targetWarehouse.isEmpty) {
-      throw Exception('Session Default Warehouse is missing. Please set it in Settings.');
+      throw Exception('Warehouse is required to check stock balance.');
     }
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());

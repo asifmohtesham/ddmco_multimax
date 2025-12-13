@@ -12,7 +12,6 @@ class StorageService {
 
   // Session Defaults Keys
   static const String _companyKey = 'session_company';
-  static const String _warehouseKey = 'session_default_warehouse';
 
   // Auto Submit Keys
   static const String _autoSubmitEnabledKey = 'auto_submit_enabled';
@@ -56,21 +55,16 @@ class StorageService {
   }
 
   // --- Session Defaults ---
-  Future<void> saveSessionDefaults(String company, String warehouse) async {
+  Future<void> saveSessionDefaults(String company) async {
     await _box.write(_companyKey, company);
-    await _box.write(_warehouseKey, warehouse);
   }
 
   String getCompany() {
     return _box.read<String>(_companyKey) ?? 'Multimax'; // Default fallback
   }
 
-  String? getDefaultWarehouse() {
-    return _box.read<String>(_warehouseKey);
-  }
-
   bool hasSessionDefaults() {
-    return _box.hasData(_companyKey) && _box.hasData(_warehouseKey);
+    return _box.hasData(_companyKey);
   }
 
   // --- Auto Submit Settings ---
