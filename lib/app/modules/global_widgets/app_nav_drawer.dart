@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/doctype_guard.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
 class AppNavDrawer extends StatelessWidget {
   const AppNavDrawer({super.key});
@@ -14,24 +14,24 @@ class AppNavDrawer extends StatelessWidget {
     final AuthenticationController authController = Get.find<AuthenticationController>();
     final String currentRoute = Get.currentRoute;
 
+    // Reusable Skeleton Instance
+    const skeleton = _SkeletonDrawerItem();
+
     return SafeArea(
       child: Drawer(
         elevation: 0,
         backgroundColor: Colors.white,
         child: Column(
           children: [
-            // 1. User Header (Unchanged)
+            // 1. User Header
             Obx(() {
               final user = authController.currentUser.value;
               return UserAccountsDrawerHeader(
                 margin: EdgeInsets.zero,
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
-                  image: const DecorationImage(
-                    image: AssetImage('lib/assets/images/logo.jpg'), // Ensure asset exists or remove
-                    fit: BoxFit.cover,
-                    opacity: 0.15,
-                  ),
+                  // Optional: Add logo asset if available
+                  // image: DecorationImage(...)
                 ),
                 accountName: Text(
                   user?.name ?? 'Guest',
@@ -68,9 +68,9 @@ class AppNavDrawer extends StatelessWidget {
                     onTap: homeController.goToHome,
                   ),
 
-                  // DocType Guard used here for generic 'ToDo' doctype check
                   DocTypeGuard(
                     doctype: 'ToDo',
+                    loading: skeleton,
                     child: _DrawerItem(
                       icon: Icons.check_circle_outline_rounded,
                       title: 'To Do',
@@ -90,11 +90,11 @@ class AppNavDrawer extends StatelessWidget {
                     icon: Icons.inventory_2_rounded,
                     initiallyExpanded: [AppRoutes.ITEM, AppRoutes.BATCH, AppRoutes.STOCK_ENTRY].contains(currentRoute),
                     children: [
-                      DocTypeGuard(doctype: 'Item', child: _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
-                      DocTypeGuard(doctype: 'Batch', child: _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch)),
-                      DocTypeGuard(doctype: 'Stock Entry', child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
-                      DocTypeGuard(doctype: 'Delivery Note', child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
-                      DocTypeGuard(doctype: 'Packing Slip', child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
+                      DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
+                      DocTypeGuard(doctype: 'Batch', loading: skeleton, child: _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch)),
+                      DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
+                      DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
+                      DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
                     ],
                   ),
 
@@ -104,13 +104,13 @@ class AppNavDrawer extends StatelessWidget {
                     icon: Icons.shopping_bag_rounded,
                     initiallyExpanded: [AppRoutes.PURCHASE_ORDER, AppRoutes.PURCHASE_RECEIPT].contains(currentRoute),
                     children: [
-                      DocTypeGuard(doctype: 'Purchase Order', child: _DrawerItem(
+                      DocTypeGuard(doctype: 'Purchase Order', loading: skeleton, child: _DrawerItem(
                         title: 'Purchase Order',
                         icon: Icons.description_rounded,
                         isSelected: currentRoute == AppRoutes.PURCHASE_ORDER,
                         onTap: () { Get.back(); Get.toNamed(AppRoutes.PURCHASE_ORDER); },
                       )),
-                      DocTypeGuard(doctype: 'Purchase Receipt', child: _DrawerItem(
+                      DocTypeGuard(doctype: 'Purchase Receipt', loading: skeleton, child: _DrawerItem(
                         title: 'Purchase Receipt',
                         icon: Icons.receipt_long_rounded,
                         isSelected: currentRoute == AppRoutes.PURCHASE_RECEIPT,
@@ -125,14 +125,14 @@ class AppNavDrawer extends StatelessWidget {
                     icon: Icons.precision_manufacturing_rounded,
                     initiallyExpanded: [AppRoutes.BOM, AppRoutes.WORK_ORDER, AppRoutes.JOB_CARD].contains(currentRoute),
                     children: [
-                      DocTypeGuard(doctype: 'BOM', child: _DrawerItem(
+                      DocTypeGuard(doctype: 'BOM', loading: skeleton, child: _DrawerItem(
                         title: 'Bill of Materials',
                         icon: Icons.account_tree_rounded,
                         isSelected: currentRoute == AppRoutes.BOM,
                         onTap: () { Get.back(); Get.toNamed(AppRoutes.BOM); },
                       )),
-                      DocTypeGuard(doctype: 'Work Order', child: _DrawerItem(title: 'Work Order', icon: Icons.assignment_rounded, isSelected: currentRoute == AppRoutes.WORK_ORDER, onTap: homeController.goToWorkOrder)),
-                      DocTypeGuard(doctype: 'Job Card', child: _DrawerItem(title: 'Job Card', icon: Icons.assignment_ind_rounded, isSelected: currentRoute == AppRoutes.JOB_CARD, onTap: homeController.goToJobCard)),
+                      DocTypeGuard(doctype: 'Work Order', loading: skeleton, child: _DrawerItem(title: 'Work Order', icon: Icons.assignment_rounded, isSelected: currentRoute == AppRoutes.WORK_ORDER, onTap: homeController.goToWorkOrder)),
+                      DocTypeGuard(doctype: 'Job Card', loading: skeleton, child: _DrawerItem(title: 'Job Card', icon: Icons.assignment_ind_rounded, isSelected: currentRoute == AppRoutes.JOB_CARD, onTap: homeController.goToJobCard)),
                     ],
                   ),
 
@@ -142,7 +142,7 @@ class AppNavDrawer extends StatelessWidget {
                     icon: Icons.storefront_rounded,
                     initiallyExpanded: [AppRoutes.POS_UPLOAD].contains(currentRoute),
                     children: [
-                      DocTypeGuard(doctype: 'POS Upload', child: _DrawerItem(title: 'POS Upload', icon: Icons.cloud_upload_rounded, isSelected: currentRoute == AppRoutes.POS_UPLOAD, onTap: homeController.goToPosUpload)),
+                      DocTypeGuard(doctype: 'POS Upload', loading: skeleton, child: _DrawerItem(title: 'POS Upload', icon: Icons.cloud_upload_rounded, isSelected: currentRoute == AppRoutes.POS_UPLOAD, onTap: homeController.goToPosUpload)),
                     ],
                   ),
                 ],
@@ -163,7 +163,6 @@ class AppNavDrawer extends StatelessWidget {
               },
             ),
 
-            // 3. Footer
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               leading: Icon(Icons.logout_rounded, color: Colors.red.shade400, size: 22),
@@ -180,7 +179,49 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
-// Helpers
+// --- Skeleton Drawer Item ---
+class _SkeletonDrawerItem extends StatelessWidget {
+  const _SkeletonDrawerItem();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            // Icon Placeholder
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8)
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Text Placeholder
+            Container(
+              width: 120,
+              height: 12,
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4)
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- Existing Helpers ---
 class _ModuleGroup extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -196,11 +237,6 @@ class _ModuleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If we want to hide the entire group if no children are visible,
-    // it requires logic that checks all child permissions.
-    // For simplicity, we just display the group. If all children are hidden, it will expand to empty.
-    // Advanced: Wrap in a custom widget that aggregates permissions.
-
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(

@@ -6,12 +6,14 @@ class DocTypeGuard extends StatelessWidget {
   final String doctype;
   final Widget child;
   final Widget? fallback;
+  final Widget? loading; // Added loading widget slot
 
   const DocTypeGuard({
     super.key,
     required this.doctype,
     required this.child,
     this.fallback,
+    this.loading,
   });
 
   @override
@@ -21,13 +23,17 @@ class DocTypeGuard extends StatelessWidget {
     return Obx(() {
       final hasAccess = service.hasReadAccess(doctype);
 
-      // If null (loading) or false (denied), show fallback or shrink
+      // 1. Loading State
+      if (hasAccess == null) {
+        return loading ?? const SizedBox.shrink();
+      }
+
+      // 2. Access Granted
       if (hasAccess == true) {
         return child;
       }
 
-      // Optional: You could show a loading skeleton if hasAccess is null
-      // But for menus, it's usually cleaner to hide until ready.
+      // 3. Access Denied
       return fallback ?? const SizedBox.shrink();
     });
   }

@@ -10,6 +10,9 @@ class PermissionService extends GetxService {
   // Cache: DocType -> List of Roles allowed to read
   final Map<String, List<String>> _readPermissionsCache = {};
 
+  // Track in-flight requests to prevent duplicate API calls
+  final Set<String> _pendingFetches = {};
+
   // Observable map to trigger UI updates when permissions are loaded
   final RxMap<String, bool> _accessCache = <String, bool>{}.obs;
 
@@ -20,14 +23,18 @@ class PermissionService extends GetxService {
       return _accessCache[doctype];
     }
 
-    // Trigger fetch if not already cached/loading
-    _fetchDocTypePermissions(doctype);
+    // Trigger fetch if not already cached and not currently fetching
+    if (!_pendingFetches.contains(doctype)) {
+      _fetchDocTypePermissions(doctype);
+    }
+
     return null; // Loading state
   }
 
   Future<void> _fetchDocTypePermissions(String doctype) async {
-    // Prevent duplicate fetches
     if (_readPermissionsCache.containsKey(doctype)) return;
+
+    _pendingFetches.add(doctype);
 
     try {
       final response = await _apiProvider.getDocument('DocType', doctype);
@@ -42,9 +49,6 @@ class PermissionService extends GetxService {
         allowedRoles.add('System Manager');
 
         for (var p in permissions) {
-          // Check for Read (1) or Write (1) access.
-          // Usually 'read' is enough for menu visibility.
-          // 'permlevel' 0 is the base level for the document.
           if ((p['read'] == 1) && (p['permlevel'] == 0)) {
             allowedRoles.add(p['role']);
           }
@@ -56,17 +60,12 @@ class PermissionService extends GetxService {
         final hasAccess = _authController.hasAnyRole(allowedRoles.toList());
         _accessCache[doctype] = hasAccess;
       } else {
-        // Fail safe: deny access if fetch fails without exception
         _accessCache[doctype] = false;
       }
     } on DioException catch (e) {
-      // HANDLE 403 FORBIDDEN
-      // If the user cannot read the DocType definition (metadata), we assume they
-      // are a standard user. We grant access to avoid locking them out of the UI.
-      // This covers: Item, Purchase Order, Purchase Receipt, Stock Entry, Delivery Note,
-      // Packing Slip, BOM, Work Order, Job Card, POS Upload.
+      // Handle 403: If user can't read DocType definition, assume they are standard user and Allow Access
       if (e.response?.statusCode == 403) {
-        print('Permission Warning: 403 Forbidden reading DocType "$doctype". Defaulting to ALLOW.');
+        // print('Permission Warning: 403 Forbidden reading DocType "$doctype". Defaulting to ALLOW.');
         _accessCache[doctype] = true;
       } else {
         print('Error fetching permissions for $doctype: $e');
@@ -75,6 +74,8 @@ class PermissionService extends GetxService {
     } catch (e) {
       print('Error fetching permissions for $doctype: $e');
       _accessCache[doctype] = false;
+    } finally {
+      _pendingFetches.remove(doctype);
     }
   }
 }
