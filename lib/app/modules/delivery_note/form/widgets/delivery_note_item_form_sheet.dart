@@ -49,7 +49,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         }
             : null,
 
-        // Standardised Global Scan Integration
+        // Standardized Global Scan Integration
         onScan: (code) => controller.scanBarcode(code),
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
@@ -77,7 +77,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
-          // Batch No (Strict Validation Implementation)
+          // Batch No (Strict Validation Implementation + Tooltip)
           Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',
             color: Colors.purple,
@@ -101,7 +101,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 ),
                 filled: true,
                 fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
-                // Identical Icon Logic to Stock Entry
+                // Identical Icon Logic to Stock Entry + Tooltip
                 suffixIcon: controller.isValidatingBatch.value
                     ? const Padding(
                     padding: EdgeInsets.all(12),
@@ -110,10 +110,24 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
                     : (controller.bsIsBatchValid.value
-                    ? IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.purple),
-                  onPressed: controller.resetBatchValidation,
-                  tooltip: 'Edit Batch',
+                    ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (controller.batchInfoTooltip.value != null)
+                      Tooltip(
+                        message: controller.batchInfoTooltip.value!,
+                        triggerMode: TooltipTriggerMode.tap,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Icon(Icons.info_outline, color: Colors.blue),
+                        ),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.purple),
+                      onPressed: controller.resetBatchValidation,
+                      tooltip: 'Edit Batch',
+                    ),
+                  ],
                 )
                     : IconButton(
                   icon: const Icon(Icons.arrow_forward),

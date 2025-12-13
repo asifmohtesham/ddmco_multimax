@@ -62,6 +62,7 @@ class DeliveryNoteFormController extends GetxController {
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
+  var batchInfoTooltip = RxnString(); // NEW: Tooltip content
 
   // Rack Validation State
   var bsIsRackValid = false.obs;
@@ -532,6 +533,8 @@ class DeliveryNoteFormController extends GetxController {
     if (batchNo.isEmpty) return;
     isValidatingBatch.value = true;
     bsBatchError.value = null;
+    batchInfoTooltip.value = null; // Reset Tooltip
+
     try {
       final batchResponse = await _apiProvider.getDocumentList('Batch',
           filters: {'name': batchNo, 'item': currentItemCode},
@@ -548,42 +551,71 @@ class DeliveryNoteFormController extends GetxController {
         bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
-      // --- Determine Warehouse logic ---
-      // 1. Fallback to set_warehouse
+      // --- Determine Warehouse ---
       String? determinedWarehouse = setWarehouse.value;
-
-      // 2. If Rack is scanned/entered, fetch its warehouse
       if (bsRackController.text.isNotEmpty) {
         try {
           final rackRes = await _apiProvider.getDocument('Rack', bsRackController.text);
           if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
             determinedWarehouse = rackRes.data['data']['warehouse'] ?? determinedWarehouse;
           }
-        } catch (_) {
-          // Ignore rack fetch failure, proceed with default/fallback
-        }
+        } catch (_) {}
       }
-      // ----------------------------------
 
+      // 1. Get Batch-Wise Balance History (General Stock)
       final balanceResponse = await _apiProvider.getBatchWiseBalance(
           currentItemCode,
           batchNo,
-          warehouse: determinedWarehouse // Pass the determined warehouse
+          warehouse: determinedWarehouse
       );
-      log(name: 'balanceResponse', balanceResponse.toString());
 
-      double fetchedQty = 0.0;
+      double fetchedBatchQty = 0.0;
       if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
         final result = balanceResponse.data['message']['result'];
         if (result is List && result.isNotEmpty) {
           final row = result.first;
-          fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
+          fetchedBatchQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
         }
       }
 
-      bsMaxQty.value = fetchedQty;
+      // 2. Get Rack-Specific Stock Balance (if rack exists)
+      double? fetchedRackQty;
+      if (bsRackController.text.isNotEmpty && determinedWarehouse != null) {
+        try {
+          final stockBalRes = await _apiProvider.getStockBalance(
+            itemCode: currentItemCode,
+            warehouse: determinedWarehouse,
+            batchNo: batchNo,
+            rack: bsRackController.text, // Specific Rack Filter
+          );
+          log(name: 'stockBalRes', stockBalRes.toString());
+          if (stockBalRes.statusCode == 200 && stockBalRes.data['message'] != null) {
+            final result = stockBalRes.data['message']['result'];
+            if (result is List && result.isNotEmpty) {
+              // Usually stock balance report returns one row per item/wh/rack combo
+              fetchedRackQty = result.fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
+            } else {
+              fetchedRackQty = 0.0;
+            }
+          }
+        } catch (e) {
+          print('Error fetching rack stock: $e');
+        }
+      }
 
-      if (fetchedQty > 0) {
+      bsMaxQty.value = fetchedBatchQty;
+
+      // Construct Tooltip
+      final sb = StringBuffer();
+      sb.writeln('Batch Stock: $fetchedBatchQty');
+      if (fetchedRackQty != null) {
+        sb.writeln('Rack Stock: $fetchedRackQty');
+      } else if (bsRackController.text.isNotEmpty) {
+        sb.writeln('Rack Stock: 0.0');
+      }
+      batchInfoTooltip.value = sb.toString().trim();
+
+      if (fetchedBatchQty > 0) {
         bsIsBatchValid.value = true;
         bsBatchError.value = null;
         GlobalSnackbar.success(message: 'Batch Validated');

@@ -150,6 +150,7 @@ class ApiProvider {
     required String itemCode,
     String? warehouse,
     String? batchNo,
+    String? rack, // Added rack parameter
   }) async {
     if (!_dioInitialised) await _initDio();
 
@@ -170,9 +171,9 @@ class ApiProvider {
       "from_date": today,
       "to_date": today,
       "item_code": itemCode,
-      "warehouse": targetWarehouse,
+      // "warehouse": targetWarehouse,
       "valuation_field_type": "Currency",
-      "rack": [],
+      "rack": rack != null && rack.isNotEmpty ? [rack] : [], // Updated to filter by rack
       "show_variant_attributes": 1,
       "show_dimension_wise_stock": 1
     };
@@ -185,7 +186,7 @@ class ApiProvider {
         queryParameters: {
           'report_name': 'Stock Balance',
           'filters': json.encode(filters),
-          'ignore_prepared_report': 'false',
+          'ignore_prepared_report': 'true',
           'are_default_filters': 'false',
           '_': DateTime.now().millisecondsSinceEpoch
         }
@@ -216,7 +217,7 @@ class ApiProvider {
         queryParameters: {
           'report_name': 'Batch-Wise Balance History',
           'filters': json.encode(filters),
-          'ignore_prepared_report': 'true',
+          'ignore_prepared_report': 'true', // Ensure we get fresh data
           'are_default_filters': 'false',
           '_': DateTime.now().millisecondsSinceEpoch
         }
@@ -224,7 +225,7 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // MODULE SPECIFIC GETTERS (Restoring missing methods)
+  // MODULE SPECIFIC GETTERS
   // ---------------------------------------------------------------------------
 
   // Purchase Receipt
