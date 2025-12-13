@@ -64,6 +64,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 decoration: InputDecoration(
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  hintText: 'Select Serial',
                 ),
                 items: controller.bsAvailableInvoiceSerialNos.map((s) {
                   return DropdownMenuItem(value: s, child: Text('Serial #$s'));

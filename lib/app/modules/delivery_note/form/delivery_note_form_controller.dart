@@ -490,14 +490,9 @@ class DeliveryNoteFormController extends GetxController {
       bsBatchError.value = null;
       bsIsRackValid.value = false;
 
-      final availableSerials = bsAvailableInvoiceSerialNos;
-      if (availableSerials.isNotEmpty) {
-        bsInvoiceSerialNo.value = availableSerials.first;
-        _initialSerial = availableSerials.first;
-      } else {
-        bsInvoiceSerialNo.value = null;
-        _initialSerial = null;
-      }
+      // Force empty selection for Invoice Serial
+      bsInvoiceSerialNo.value = null;
+      _initialSerial = null;
 
       if (batchNo != null && maxQty > 0) {
         bsIsBatchValid.value = true;
