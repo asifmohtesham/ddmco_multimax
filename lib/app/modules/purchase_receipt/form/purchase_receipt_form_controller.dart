@@ -95,6 +95,12 @@ class PurchaseReceiptFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
+  // Add Metadata Observables
+  var bsItemOwner = RxnString();
+  var bsItemCreation = RxnString();
+  var bsItemModified = RxnString();
+  var bsItemModifiedBy = RxnString();
+
   @override
   void onInit() {
     super.onInit();
@@ -383,6 +389,11 @@ class PurchaseReceiptFormController extends GetxController {
     isTargetRackValid.value = false;
     isSheetValid.value = false;
 
+    bsItemOwner.value = null;
+    bsItemCreation.value = null;
+    bsItemModified.value = null;
+    bsItemModifiedBy.value = null;
+
     currentItemNameKey.value = null;
     warehouse.value = null;
 
@@ -545,6 +556,12 @@ class PurchaseReceiptFormController extends GetxController {
 
   void editItem(PurchaseReceiptItem item) {
     currentItemNameKey.value = item.name;
+
+    bsItemOwner.value = item.owner;
+    bsItemCreation.value = item.creation;
+    bsItemModified.value = item.modified;
+    bsItemModifiedBy.value = item.modifiedBy;
+
     currentOwner = item.owner;
     currentCreation = item.creation;
     currentModified = item.modified ?? '';

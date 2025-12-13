@@ -31,7 +31,6 @@ class PackingSlip {
     var itemsList = json['items'] as List? ?? [];
     List<PackingSlipItem> items = itemsList.map((i) => PackingSlipItem.fromJson(i)).toList();
 
-    // Sort items by custom_invoice_serial_number
     items.sort((a, b) {
       int aSerial = int.tryParse(a.customInvoiceSerialNumber ?? '0') ?? 0;
       int bSerial = int.tryParse(b.customInvoiceSerialNumber ?? '0') ?? 0;
@@ -103,8 +102,8 @@ class PackingSlip {
 }
 
 class PackingSlipItem {
-  final String name; // Unique ID
-  final String dnDetail; // Link to Delivery Note Item
+  final String name;
+  final String dnDetail;
   final String itemCode;
   final String itemName;
   final double qty;
@@ -115,7 +114,11 @@ class PackingSlipItem {
   final String? customInvoiceSerialNumber;
   final String? customVariantOf;
   final String? customCountryOfOrigin;
+  // Metadata
+  final String? owner;
   final String? creation;
+  final String? modified;
+  final String? modifiedBy;
 
   PackingSlipItem({
     required this.name,
@@ -130,7 +133,10 @@ class PackingSlipItem {
     this.customInvoiceSerialNumber,
     this.customVariantOf,
     this.customCountryOfOrigin,
+    this.owner,
     this.creation,
+    this.modified,
+    this.modifiedBy,
   });
 
   factory PackingSlipItem.fromJson(Map<String, dynamic> json) {
@@ -147,7 +153,10 @@ class PackingSlipItem {
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
       customVariantOf: json['custom_variant_of'],
       customCountryOfOrigin: json['custom_country_of_origin'],
+      owner: json['owner'],
       creation: json['creation'],
+      modified: json['modified'],
+      modifiedBy: json['modified_by'],
     );
   }
 

@@ -454,6 +454,11 @@ class DeliveryNoteFormController extends GetxController {
     isFormDirty.value = false;
 
     if (editingItem != null) {
+      bsItemOwner.value = editingItem.owner;
+      bsItemCreation.value = editingItem.creation;
+      bsItemModified.value = editingItem.modified;
+      bsItemModifiedBy.value = editingItem.modifiedBy;
+
       editingItemName.value = editingItem.name;
       bsBatchController.text = editingItem.batchNo ?? '';
       bsRackController.text = editingItem.rack ?? '';

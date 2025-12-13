@@ -21,6 +21,10 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
         itemCode: controller.currentItemCode,
         itemName: controller.currentItemName,
         itemSubtext: controller.currentVariantOf,
+        owner: controller.bsItemOwner.value,
+        creation: controller.bsItemCreation.value,
+        modified: controller.bsItemModified.value,
+        modifiedBy: controller.bsItemModifiedBy.value,
 
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),

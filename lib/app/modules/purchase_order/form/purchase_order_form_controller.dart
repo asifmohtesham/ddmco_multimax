@@ -42,6 +42,11 @@ class PurchaseOrderFormController extends GetxController {
   final bsQtyController = TextEditingController();
   final bsRateController = TextEditingController();
   final bsScheduleDateController = TextEditingController(); // Added
+  // Metadata Observables
+  var bsItemOwner = RxnString();
+  var bsItemCreation = RxnString();
+  var bsItemModified = RxnString();
+  var bsItemModifiedBy = RxnString();
 
   var sheetQty = 0.0.obs;
   var sheetRate = 0.0.obs;
@@ -231,6 +236,11 @@ class PurchaseOrderFormController extends GetxController {
         rowId: item.name,
         scheduleDate: item.scheduleDate // Pass existing date
     );
+    // Set after opening (or pass to _openItemSheet)
+    bsItemOwner.value = item.owner;
+    bsItemCreation.value = item.creation;
+    bsItemModified.value = item.modified;
+    bsItemModifiedBy.value = item.modifiedBy;
   }
 
   void _openItemSheet({
@@ -247,6 +257,10 @@ class PurchaseOrderFormController extends GetxController {
     currentItemName = name;
     currentUom = uom;
     currentItemNameKey = rowId;
+    bsItemOwner.value = null; // Reset
+    bsItemCreation.value = null;
+    bsItemModified.value = null;
+    bsItemModifiedBy.value = null;
 
     bsQtyController.text = qty.toStringAsFixed(0);
     bsRateController.text = rate.toStringAsFixed(2);

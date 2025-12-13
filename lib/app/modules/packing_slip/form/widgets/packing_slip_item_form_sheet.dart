@@ -30,6 +30,12 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
         onSubmit: controller.addItemToSlip,
         onDelete: isEditing ? controller.deleteCurrentItem : null,
 
+        // Pass Metadata to Global Widget
+        owner: controller.bsItemOwner.value,
+        creation: controller.bsItemCreation.value,
+        modified: controller.bsItemModified.value,
+        modifiedBy: controller.bsItemModifiedBy.value,
+
         customFields: [
           // Item Info Container
           Container(

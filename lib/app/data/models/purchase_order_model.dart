@@ -62,8 +62,16 @@ class PurchaseOrderItem {
   final String? uom;
   final String? description;
   final String? scheduleDate; // Added Field
+  final String? owner;
+  final String? creation;
+  final String? modified;
+  final String? modifiedBy;
 
   PurchaseOrderItem({
+    this.owner,
+    this.creation,
+    this.modified,
+    this.modifiedBy,
     this.name,
     required this.itemCode,
     required this.itemName,
@@ -78,6 +86,10 @@ class PurchaseOrderItem {
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
     return PurchaseOrderItem(
+      owner: json['owner'],
+      creation: json['creation'],
+      modified: json['modified'],
+      modifiedBy: json['modified_by'],
       name: json['name'],
       itemCode: json['item_code'] ?? '',
       itemName: json['item_name'] ?? '',

@@ -10,7 +10,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class PackingSlipFormController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
@@ -25,11 +25,9 @@ class PackingSlipFormController extends GetxController {
   var isSaving = false.obs;
   var isScanning = false.obs;
 
-  // Dirty Check State (Document Level)
   var isDirty = false.obs;
   String _originalJson = '';
 
-  // Sheet Validation State (Item Level)
   var isSheetValid = false.obs;
   String _initialQty = '';
 
@@ -38,10 +36,8 @@ class PackingSlipFormController extends GetxController {
 
   final TextEditingController barcodeController = TextEditingController();
 
-  // Grouping State
   var expandedInvoice = ''.obs;
 
-  // Bottom Sheet State
   final bsQtyController = TextEditingController();
   var bsMaxQty = 0.0.obs;
   var isEditing = false.obs;
@@ -57,11 +53,15 @@ class PackingSlipFormController extends GetxController {
   double? currentWeightUom;
   String? currentItemNameKey;
 
+  // Metadata Observables
+  var bsItemOwner = RxnString();
+  var bsItemCreation = RxnString();
+  var bsItemModified = RxnString();
+  var bsItemModifiedBy = RxnString();
+
   @override
   void onInit() {
     super.onInit();
-
-    // Listen for Sheet Changes
     bsQtyController.addListener(validateSheet);
 
     if (mode == 'new') {
@@ -78,25 +78,20 @@ class PackingSlipFormController extends GetxController {
     super.onClose();
   }
 
-  // --- Sheet Validation Logic ---
   void validateSheet() {
     final text = bsQtyController.text;
     final qty = double.tryParse(text);
 
-    // 1. Basic Validity
     if (qty == null || qty <= 0) {
       isSheetValid.value = false;
       return;
     }
 
-    // 2. Max Constraint
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) {
       isSheetValid.value = false;
       return;
     }
 
-    // 3. Dirty Check (Only strictly enforced for Editing)
-    // For Adding, simply having valid input is enough, even if it matches the default suggestion.
     if (isEditing.value) {
       if (text == _initialQty) {
         isSheetValid.value = false;
@@ -107,7 +102,6 @@ class PackingSlipFormController extends GetxController {
     isSheetValid.value = true;
   }
 
-  // ... (Init and Fetch methods unchanged) ...
   void _initNewPackingSlip() {
     isLoading.value = true;
     final String dnName = Get.arguments['deliveryNote'] ?? '';
@@ -182,7 +176,6 @@ class PackingSlipFormController extends GetxController {
     isDirty.value = currentJson != _originalJson;
   }
 
-  // ... (Grouping logic unchanged) ...
   void toggleInvoiceExpand(String key) => expandedInvoice.value = expandedInvoice.value == key ? '' : key;
 
   Map<String, List<PackingSlipItem>> get groupedItems {
@@ -201,7 +194,6 @@ class PackingSlipFormController extends GetxController {
     return item?.qty;
   }
 
-  // ... (Scan Logic unchanged) ...
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
@@ -239,13 +231,17 @@ class PackingSlipFormController extends GetxController {
     });
   }
 
-  // --- Sheet Setup with Dirty Tracking ---
-
   void _prepareSheetForAdd(DeliveryNoteItem item) {
     itemFormKey = GlobalKey<FormState>();
     isEditing.value = false;
     currentItemNameKey = null;
     _populateItemDetails(item);
+
+    // Reset Metadata
+    bsItemOwner.value = null;
+    bsItemCreation.value = null;
+    bsItemModified.value = null;
+    bsItemModifiedBy.value = null;
 
     double existingPacked = 0;
     final currentSlipItems = packingSlip.value?.items ?? [];
@@ -260,12 +256,11 @@ class PackingSlipFormController extends GetxController {
 
     bsMaxQty.value = remaining;
 
-    // Set Initial values for Dirty Check
     final qtyStr = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
     bsQtyController.text = qtyStr;
     _initialQty = qtyStr;
 
-    validateSheet(); // Initial check
+    validateSheet();
 
     Get.bottomSheet(
       const PackingSlipItemFormSheet(),
@@ -280,6 +275,13 @@ class PackingSlipFormController extends GetxController {
 
     isEditing.value = true;
     currentItemNameKey = item.name;
+
+    // Set Metadata
+    bsItemOwner.value = item.owner;
+    bsItemCreation.value = item.creation;
+    bsItemModified.value = item.modified;
+    bsItemModifiedBy.value = item.modifiedBy;
+
     _populateItemDetails(dnItem);
 
     double existingPackedOthers = 0;
@@ -290,12 +292,11 @@ class PackingSlipFormController extends GetxController {
     }
     bsMaxQty.value = dnItem.qty - existingPackedOthers;
 
-    // Set Initial values for Dirty Check
     final qtyStr = item.qty.toStringAsFixed(0);
     bsQtyController.text = qtyStr;
     _initialQty = qtyStr;
 
-    validateSheet(); // Initial check
+    validateSheet();
 
     Get.bottomSheet(
       const PackingSlipItemFormSheet(),
@@ -320,10 +321,8 @@ class PackingSlipFormController extends GetxController {
     if (newVal < 0) newVal = 0;
     if (newVal > bsMaxQty.value) newVal = bsMaxQty.value;
     bsQtyController.text = newVal.toStringAsFixed(0);
-    // Listener calls validateSheet automatically
   }
 
-  // ... (Add/Delete/Save methods unchanged) ...
   Future<void> addItemToSlip() async {
     final double qtyToAdd = double.tryParse(bsQtyController.text) ?? 0;
     if (qtyToAdd <= 0) { Get.back(); return; }
@@ -333,15 +332,66 @@ class PackingSlipFormController extends GetxController {
       final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
       if (index != -1) {
         final existing = currentItems[index];
-        currentItems[index] = PackingSlipItem(name: existing.name, dnDetail: existing.dnDetail, itemCode: existing.itemCode, itemName: existing.itemName, qty: qtyToAdd, uom: existing.uom, batchNo: existing.batchNo, netWeight: existing.netWeight, weightUom: existing.weightUom, customInvoiceSerialNumber: existing.customInvoiceSerialNumber, customVariantOf: existing.customVariantOf, customCountryOfOrigin: existing.customCountryOfOrigin, creation: existing.creation);
+        currentItems[index] = PackingSlipItem(
+          name: existing.name,
+          dnDetail: existing.dnDetail,
+          itemCode: existing.itemCode,
+          itemName: existing.itemName,
+          qty: qtyToAdd,
+          uom: existing.uom,
+          batchNo: existing.batchNo,
+          netWeight: existing.netWeight,
+          weightUom: existing.weightUom,
+          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+          customVariantOf: existing.customVariantOf,
+          customCountryOfOrigin: existing.customCountryOfOrigin,
+          creation: existing.creation,
+          owner: existing.owner,
+          modified: existing.modified,
+          modifiedBy: existing.modifiedBy,
+        );
       }
     } else {
       final existingIndex = currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
       if (existingIndex != -1) {
         final existing = currentItems[existingIndex];
-        currentItems[existingIndex] = PackingSlipItem(name: existing.name, dnDetail: existing.dnDetail, itemCode: existing.itemCode, itemName: existing.itemName, qty: existing.qty + qtyToAdd, uom: existing.uom, batchNo: existing.batchNo, netWeight: existing.netWeight, weightUom: existing.weightUom, customInvoiceSerialNumber: existing.customInvoiceSerialNumber, customVariantOf: existing.customVariantOf, customCountryOfOrigin: existing.customCountryOfOrigin, creation: existing.creation);
+        currentItems[existingIndex] = PackingSlipItem(
+          name: existing.name,
+          dnDetail: existing.dnDetail,
+          itemCode: existing.itemCode,
+          itemName: existing.itemName,
+          qty: existing.qty + qtyToAdd,
+          uom: existing.uom,
+          batchNo: existing.batchNo,
+          netWeight: existing.netWeight,
+          weightUom: existing.weightUom,
+          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+          customVariantOf: existing.customVariantOf,
+          customCountryOfOrigin: existing.customCountryOfOrigin,
+          creation: existing.creation,
+          owner: existing.owner,
+          modified: existing.modified,
+          modifiedBy: existing.modifiedBy,
+        );
       } else {
-        final newItem = PackingSlipItem(name: '', dnDetail: currentItemDnDetail!, itemCode: currentItemCode!, itemName: currentItemName ?? '', qty: qtyToAdd, uom: currentUom ?? '', batchNo: currentBatchNo ?? '', netWeight: 0.0, weightUom: 0.0, customInvoiceSerialNumber: currentSerial, customVariantOf: null, customCountryOfOrigin: null, creation: DateTime.now().toString());
+        final newItem = PackingSlipItem(
+          name: '',
+          dnDetail: currentItemDnDetail!,
+          itemCode: currentItemCode!,
+          itemName: currentItemName ?? '',
+          qty: qtyToAdd,
+          uom: currentUom ?? '',
+          batchNo: currentBatchNo ?? '',
+          netWeight: 0.0,
+          weightUom: 0.0,
+          customInvoiceSerialNumber: currentSerial,
+          customVariantOf: null,
+          customCountryOfOrigin: null,
+          creation: DateTime.now().toString(),
+          owner: bsItemOwner.value, // Capture current owner if set, or leave null to be handled by server
+          modified: null,
+          modifiedBy: null,
+        );
         currentItems.add(newItem);
       }
     }
@@ -353,7 +403,7 @@ class PackingSlipFormController extends GetxController {
 
   Future<void> deleteCurrentItem() async {
     if (currentItemNameKey == null) return;
-    Get.back(); // Close the Item Form Sheet first
+    Get.back();
 
     GlobalDialog.showConfirmation(
       title: 'Remove Item?',

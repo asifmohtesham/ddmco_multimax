@@ -16,6 +16,11 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
       // Removed old 'canSubmit' logic, relying on reactive isSheetValid
 
       return GlobalItemFormSheet(
+        owner: controller.bsItemOwner.value,
+        creation: controller.bsItemCreation.value,
+        modified: controller.bsItemModified.value,
+        modifiedBy: controller.bsItemModifiedBy.value,
+
         formKey: controller.itemFormKey,
         scrollController: scrollController,
         title: isEditing ? 'Update Item' : 'Add Item',
