@@ -55,131 +55,144 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stock Entries'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterBottomSheet(context),
-          ),
-        ],
-      ),
+      backgroundColor: colorScheme.surface, // M3 Background
       drawer: const AppNavDrawer(),
-      body: Column(
-        children: [
-          // Search Box
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              onChanged: controller.onSearchChanged,
-              decoration: InputDecoration(
-                hintText: 'Search Stock Entry ID...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                filled: true,
-                fillColor: Colors.grey.shade50,
+      body: RefreshIndicator(
+        // Pull to Refresh Trigger
+        onRefresh: () => controller.fetchStockEntries(clear: true),
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        child: CustomScrollView(
+          controller: _scrollController,
+          // Always allow scroll so pull-to-refresh works even on short lists
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // M3 Large App Bar
+            SliverAppBar.large(
+              title: const Text('Stock Entries'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: () => _showFilterBottomSheet(context),
+                ),
+              ],
+            ),
+
+            // Search Bar Pinned to top of list
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: TextField(
+                  onChanged: controller.onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search ID, Purpose...',
+                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest, // M3 Search Bar Color
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30), // Pill Shape
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                ),
               ),
             ),
-          ),
 
-          // List View
-          Expanded(
-            child: Obx(() {
+            // List Content
+            Obx(() {
               if (controller.isLoading.value && controller.stockEntries.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
               }
 
               if (controller.stockEntries.isEmpty) {
                 final bool hasFilters = controller.activeFilters.isNotEmpty || controller.searchQuery.value.isNotEmpty;
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
-                          size: 64,
-                          color: Colors.grey[300],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          hasFilters ? 'No Matching Entries' : 'No Stock Entries',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black54),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          hasFilters
-                              ? 'We couldn\'t find any stock entries matching your current filters. Try adjusting or clearing them.'
-                              : 'There are no stock entries to display at the moment. Pull to refresh or create a new one.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                        const SizedBox(height: 24),
-                        if (hasFilters)
-                          ElevatedButton.icon(
-                            onPressed: () => controller.clearFilters(),
-                            icon: const Icon(Icons.clear_all),
-                            label: const Text('Clear Filters'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                              backgroundColor: Colors.grey[100],
-                              foregroundColor: Colors.black87,
-                              elevation: 0,
-                            ),
-                          )
-                        else
-                          ElevatedButton.icon(
-                            onPressed: () => controller.fetchStockEntries(clear: true),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Reload'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                              backgroundColor: Colors.grey[100],
-                              foregroundColor: Colors.black87,
-                              elevation: 0,
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
+                            size: 64,
+                            color: colorScheme.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasFilters ? 'No Matching Entries' : 'No Stock Entries',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            hasFilters
+                                ? 'Try adjusting your filters or search query.'
+                                : 'Pull to refresh or create a new one.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 24),
+                          if (hasFilters)
+                            FilledButton.tonalIcon(
+                              onPressed: () => controller.clearFilters(),
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Clear Filters'),
+                            )
+                          else
+                            FilledButton.tonalIcon(
+                              onPressed: () => controller.fetchStockEntries(clear: true),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reload'),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               }
 
-              return RefreshIndicator(
-                onRefresh: () => controller.fetchStockEntries(clear: true),
-                child: Scrollbar(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    itemCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= controller.stockEntries.length) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-                      final entry = controller.stockEntries[index];
-                      return StockEntryCard(entry: entry);
-                    },
-                  ),
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    if (index >= controller.stockEntries.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    final entry = controller.stockEntries[index];
+                    return StockEntryCard(entry: entry);
+                  },
+                  childCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
                 ),
               );
             }),
-          ),
-        ],
+          ],
+        ),
       ),
       // Create button with Dynamic Permission Guard
       floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(), // .toList() ensures Obx registers the change
+        roles: controller.writeRoles.toList(), // Access list content to trigger Obx
         child: FloatingActionButton.extended(
           onPressed: controller.openCreateDialog,
           icon: const Icon(Icons.add),
           label: const Text('Create'),
+          backgroundColor: colorScheme.primaryContainer,
+          foregroundColor: colorScheme.onPrimaryContainer,
+          elevation: 4,
         ),
       )),
     );
@@ -194,77 +207,79 @@ class StockEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      elevation: 0, // M3 Filled Card style (flat with color)
+      color: colorScheme.surfaceContainer, // Distinct from background
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => controller.toggleExpand(entry.name),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Row 1: Purpose + Status
+              // Row 1: Purpose (Title) + Status
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      entry.purpose,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.purpose,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          entry.name,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
                   StatusPill(status: entry.status),
                 ],
               ),
-              const SizedBox(height: 6),
 
-              // Row 2: Name + Time
+              const SizedBox(height: 16),
+
+              // Row 2: Stats (Total Qty, Time)
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      entry.name,
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  _buildIconStat(
+                    context,
+                    Icons.inventory_2_outlined,
+                    '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
                   ),
-                  Text(
+                  const SizedBox(width: 16),
+                  _buildIconStat(
+                    context,
+                    Icons.access_time,
                     FormattingHelper.getRelativeTime(entry.creation),
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-
-              // Row 3: Stats (Total Qty, Assigned, Time Taken)
-              Row(
-                children: [
-                  _buildStatItem(
-                      Icons.inventory_2_outlined,
-                      '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items'
                   ),
                   const Spacer(),
-                  if (entry.docstatus == 1) // Submitted
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: _buildStatItem(Icons.timer_outlined, FormattingHelper.getTimeTaken(entry.creation, entry.modified), color: Colors.green),
-                    ),
                   // Animated Arrow
                   Obx(() {
                     final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
                     return AnimatedRotation(
                       turns: isCurrentlyExpanded ? 0.5 : 0.0,
                       duration: const Duration(milliseconds: 300),
-                      child: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
+                      child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
                     );
                   }),
                 ],
@@ -276,134 +291,18 @@ class StockEntryCard extends StatelessWidget {
                 return AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  child: Container(
-                    child: !isCurrentlyExpanded
-                        ? const SizedBox.shrink()
-                        : Obx(() {
-                      final detailed = controller.detailedEntry;
-                      if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16.0),
-                          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                        );
-                      }
-
-                      if (detailed != null && detailed.name == entry.name) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Divider(height: 1),
-                              const SizedBox(height: 12),
-
-                              if (detailed.fromWarehouse != null || detailed.toWarehouse != null) ...[
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.grey.shade200),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      if (detailed.fromWarehouse != null)
-                                        Expanded(child: _buildWarehouseInfo('From', detailed.fromWarehouse!)),
-
-                                      if (detailed.fromWarehouse != null && detailed.toWarehouse != null)
-                                        const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                                          child: Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
-                                        ),
-
-                                      if (detailed.toWarehouse != null)
-                                        Expanded(child: _buildWarehouseInfo('To', detailed.toWarehouse!)),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Type', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                                        const SizedBox(height: 2),
-                                        Text(detailed.stockEntryType ?? '-', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                                      ],
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Posting Date', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                            '${detailed.postingDate} ${detailed.postingTime ?? ''}',
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (detailed.totalAmount > 0)
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text('Total Value', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                            '\$${detailed.totalAmount.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  if (detailed.status == 'Draft') ...[
-                                    RoleGuard(
-                                      roles: controller.writeRoles.toList(), // Ensure change detection here too
-                                      fallback: const SizedBox.shrink(),
-                                      child: OutlinedButton.icon(
-                                        onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),
-                                        icon: const Icon(Icons.edit, size: 16),
-                                        label: const Text('Edit'),
-                                        style: OutlinedButton.styleFrom(
-                                          visualDensity: VisualDensity.compact,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          side: BorderSide(color: Theme.of(context).primaryColor),
-                                        ),
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    OutlinedButton.icon(
-                                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'view'}),
-                                      icon: const Icon(Icons.visibility_outlined, size: 16),
-                                      label: const Text('View Details'),
-                                      style: OutlinedButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                    ),
-                                  ]
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }),
+                  alignment: Alignment.topCenter,
+                  child: !isCurrentlyExpanded
+                      ? const SizedBox.shrink()
+                      : Column(
+                    children: [
+                      // Divider with padding
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(color: colorScheme.outlineVariant, height: 1),
+                      ),
+                      _buildExpandedDetails(context),
+                    ],
                   ),
                 );
               }),
@@ -414,31 +313,158 @@ class StockEntryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(IconData icon, String text, {Color? color}) {
+  Widget _buildExpandedDetails(BuildContext context) {
+    return Obx(() {
+      final detailed = controller.detailedEntry;
+      if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
+        return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
+      }
+
+      if (detailed != null && detailed.name == entry.name) {
+        final colorScheme = Theme.of(context).colorScheme;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Warehouse Flow (Source -> Target)
+            if (detailed.fromWarehouse != null || detailed.toWarehouse != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    if (detailed.fromWarehouse != null)
+                      Expanded(child: _buildWarehouseInfo(context, 'From', detailed.fromWarehouse!)),
+
+                    if (detailed.fromWarehouse != null && detailed.toWarehouse != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                        child: Icon(Icons.arrow_forward, size: 18, color: colorScheme.outline),
+                      ),
+
+                    if (detailed.toWarehouse != null)
+                      Expanded(child: _buildWarehouseInfo(context, 'To', detailed.toWarehouse!)),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 16),
+
+            // Additional Details Grid
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildDetailField(context, 'Type', detailed.stockEntryType ?? '-'),
+                ),
+                Expanded(
+                  child: _buildDetailField(context, 'Posting Date',
+                      '${detailed.postingDate} ${detailed.postingTime ?? ''}'),
+                ),
+                if (detailed.totalAmount > 0)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('Total Value',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '\$${detailed.totalAmount.toStringAsFixed(2)}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Actions
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (detailed.status == 'Draft') ...[
+                  RoleGuard(
+                    roles: controller.writeRoles.toList(),
+                    fallback: const SizedBox.shrink(),
+                    child: FilledButton.tonalIcon(
+                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                          arguments: {'name': entry.name, 'mode': 'edit'}),
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Edit'),
+                    ),
+                  ),
+                ] else ...[
+                  OutlinedButton.icon(
+                    onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                        arguments: {'name': entry.name, 'mode': 'view'}),
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('View Details'),
+                  ),
+                ]
+              ],
+            ),
+          ],
+        );
+      }
+      return const SizedBox.shrink();
+    });
+  }
+
+  Widget _buildIconStat(BuildContext context, IconData icon, String text) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: color ?? Colors.grey.shade600),
-        const SizedBox(width: 4),
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
         Text(
           text,
-          style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildWarehouseInfo(String label, String value) {
+  Widget _buildWarehouseInfo(BuildContext context, String label, String value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        Text(label.toUpperCase(),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.bold,
+            )),
         const SizedBox(height: 2),
         Text(
-            value,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis
+          value,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
+      ],
+    );
+  }
+
+  Widget _buildDetailField(BuildContext context, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 2),
+        Text(value, style: Theme.of(context).textTheme.bodyMedium),
       ],
     );
   }
