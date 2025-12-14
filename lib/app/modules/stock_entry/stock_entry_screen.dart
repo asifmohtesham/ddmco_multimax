@@ -68,7 +68,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       drawer: const AppNavDrawer(),
       body: Column(
         children: [
-          // NEW: Search Box
+          // Search Box
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(
@@ -173,20 +173,19 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ),
         ],
       ),
-      // Only show Create button for Stock Managers
-      floatingActionButton: RoleGuard(
-        roles: const ['Stock Manager'],
+      // Create button with Dynamic Permission Guard
+      floatingActionButton: Obx(() => RoleGuard(
+        roles: controller.writeRoles.toList(), // .toList() ensures Obx registers the change
         child: FloatingActionButton.extended(
-          onPressed: controller.openCreateDialog, // Call controller method
+          onPressed: controller.openCreateDialog,
           icon: const Icon(Icons.add),
           label: const Text('Create'),
         ),
-      ),
+      )),
     );
   }
 }
 
-// StockEntryCard and other private widgets remain unchanged...
 class StockEntryCard extends StatelessWidget {
   final dynamic entry;
   final StockEntryController controller = Get.find();
@@ -373,7 +372,7 @@ class StockEntryCard extends StatelessWidget {
                                 children: [
                                   if (detailed.status == 'Draft') ...[
                                     RoleGuard(
-                                      roles: const ['Stock Manager'], // Only Manager can edit
+                                      roles: controller.writeRoles.toList(), // Ensure change detection here too
                                       fallback: const SizedBox.shrink(),
                                       child: OutlinedButton.icon(
                                         onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': entry.name, 'mode': 'edit'}),

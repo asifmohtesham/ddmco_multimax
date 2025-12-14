@@ -4,6 +4,7 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -12,6 +13,7 @@ class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -41,9 +43,12 @@ class StockEntryController extends GetxController {
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
 
-  // NEW: Users for Filter
+  // Users for Filter
   var users = <User>[].obs;
   var isFetchingUsers = false.obs;
+
+  // Dynamic Permissions
+  var writeRoles = <String>['System Manager'].obs; // Default to System Manager
 
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
@@ -52,7 +57,8 @@ class StockEntryController extends GetxController {
     super.onInit();
     fetchStockEntries();
     fetchStockEntryTypes();
-    fetchUsers(); // Fetch users on init
+    fetchUsers();
+    fetchDocTypePermissions();
   }
 
   @override
@@ -60,6 +66,28 @@ class StockEntryController extends GetxController {
     super.onReady();
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
+    }
+  }
+
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response = await _apiProvider.getDocument('DocType', 'Stock Entry');
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'}; // Always allowed
+
+        for (var p in perms) {
+          // Check for Write access (1) at permlevel 0 (Standard fields)
+          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      print('Error fetching permissions: $e');
     }
   }
 
@@ -159,7 +187,6 @@ class StockEntryController extends GetxController {
     }
   }
 
-  // NEW: Fetch Users for Filter
   Future<void> fetchUsers() async {
     if (users.isNotEmpty) return;
     isFetchingUsers.value = true;
