@@ -83,7 +83,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             // Search Bar Pinned to top of list
             SliverToBoxAdapter(
               child: Padding(
-                // Increased top padding from 0 to 16 for better spacing
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
@@ -417,7 +416,8 @@ class StockEntryCard extends StatelessWidget {
                     ),
                   ),
                 ] else ...[
-                  OutlinedButton.icon(
+                  // UPDATED: Now matches Edit button style
+                  FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
                         arguments: {'name': entry.name, 'mode': 'view'}),
                     icon: const Icon(Icons.visibility_outlined, size: 18),
