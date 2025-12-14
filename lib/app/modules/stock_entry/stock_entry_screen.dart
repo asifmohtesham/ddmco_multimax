@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -173,7 +173,36 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                       );
                     }
                     final entry = controller.stockEntries[index];
-                    return StockEntryCard(entry: entry);
+
+                    // Use Obx to listen to specific card expansion
+                    return Obx(() {
+                      final isExpanded = controller.expandedEntryName.value == entry.name;
+                      final isLoadingDetails = controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
+
+                      return GenericDocumentCard(
+                        title: entry.purpose,
+                        subtitle: entry.name,
+                        status: entry.status,
+                        // Convert Model fields to Stat Widgets
+                        stats: [
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.inventory_2_outlined,
+                            '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
+                          ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.access_time,
+                            FormattingHelper.getRelativeTime(entry.creation),
+                          ),
+                        ],
+                        isExpanded: isExpanded,
+                        isLoadingDetails: isLoadingDetails && isExpanded,
+                        onTap: () => controller.toggleExpand(entry.name),
+                        // Pass the specific detailed view here
+                        expandedContent: isExpanded ? _buildDetailedContent(context, entry.name) : null,
+                      );
+                    });
                   },
                   childCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
                 ),
@@ -196,249 +225,131 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       )),
     );
   }
-}
 
-class StockEntryCard extends StatelessWidget {
-  final dynamic entry;
-  final StockEntryController controller = Get.find();
-
-  StockEntryCard({super.key, required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      elevation: 0, // M3 Filled Card style (flat with color)
-      color: colorScheme.surfaceContainer, // Distinct from background
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => controller.toggleExpand(entry.name),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Row 1: Purpose (Title) + Status
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.purpose,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          entry.name,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  StatusPill(status: entry.status),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Row 2: Stats (Total Qty, Time)
-              Row(
-                children: [
-                  _buildIconStat(
-                    context,
-                    Icons.inventory_2_outlined,
-                    '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
-                  ),
-                  const Spacer(),
-                  if (entry.docstatus == 1) // Submitted
-                    _buildIconStat(
-                      context,
-                      Icons.timer_outlined,
-                      FormattingHelper.getTimeTaken(entry.creation, entry.modified),
-                    ),
-                  // Animated Arrow
-                  Obx(() {
-                    final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
-                    return AnimatedRotation(
-                      turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
-                    );
-                  }),
-                ],
-              ),
-
-              // Expansion Content
-              Obx(() {
-                final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
-                return AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  alignment: Alignment.topCenter,
-                  child: !isCurrentlyExpanded
-                      ? const SizedBox.shrink()
-                      : Column(
-                    children: [
-                      // Divider with padding
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Divider(color: colorScheme.outlineVariant, height: 1),
-                      ),
-                      _buildExpandedDetails(context),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpandedDetails(BuildContext context) {
+  Widget _buildDetailedContent(BuildContext context, String entryName) {
     return Obx(() {
       final detailed = controller.detailedEntry;
-      if (controller.isLoadingDetails.value && detailed?.name != entry.name) {
-        return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
+      if (detailed == null || detailed.name != entryName) {
+        return const SizedBox.shrink();
       }
 
-      if (detailed != null && detailed.name == entry.name) {
-        final colorScheme = Theme.of(context).colorScheme;
+      final colorScheme = Theme.of(context).colorScheme;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Warehouse Flow (Source -> Target)
-            if (detailed.fromWarehouse != null || detailed.toWarehouse != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    if (detailed.fromWarehouse != null)
-                      Expanded(child: _buildWarehouseInfo(context, 'From', detailed.fromWarehouse!)),
-
-                    if (detailed.fromWarehouse != null && detailed.toWarehouse != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                        child: Icon(Icons.arrow_forward, size: 18, color: colorScheme.outline),
-                      ),
-
-                    if (detailed.toWarehouse != null)
-                      Expanded(child: _buildWarehouseInfo(context, 'To', detailed.toWarehouse!)),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 16),
-
-            // Additional Details Grid
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _buildDetailField(
-                      context,
-                      'Posted',
-                      FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')
-                  ),
-                ),
-                if (detailed.totalAmount > 0)
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('Total Value',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 2).format(detailed.totalAmount)}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Contextual Audit Info (Created/Modified)
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Warehouse Flow (Source -> Target)
+          if (detailed.fromWarehouse != null || detailed.toWarehouse != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(8),
+                color: colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  _buildAuditRow(context, 'Created', detailed.owner, detailed.creation),
-                  if (detailed.modifiedBy != null && detailed.modified.isNotEmpty) ...[
-                    // Only show modified if it's different from creation
-                    if (detailed.creation != detailed.modified)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6.0),
-                        child: _buildAuditRow(context, 'Modified', detailed.modifiedBy, detailed.modified),
-                      ),
-                  ]
+                  if (detailed.fromWarehouse != null)
+                    Expanded(child: _buildWarehouseInfo(context, 'From', detailed.fromWarehouse!)),
+
+                  if (detailed.fromWarehouse != null && detailed.toWarehouse != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Icon(Icons.arrow_forward, size: 18, color: colorScheme.outline),
+                    ),
+
+                  if (detailed.toWarehouse != null)
+                    Expanded(child: _buildWarehouseInfo(context, 'To', detailed.toWarehouse!)),
                 ],
               ),
             ),
 
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-            // Actions
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+          // Additional Details Grid
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _buildDetailField(
+                    context,
+                    'Posted',
+                    FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')
+                ),
+              ),
+              if (detailed.totalAmount > 0)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Total Value',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 2).format(detailed.totalAmount)}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Contextual Audit Info (Created/Modified)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
               children: [
-                if (detailed.status == 'Draft') ...[
-                  RoleGuard(
-                    roles: controller.writeRoles.toList(),
-                    fallback: const SizedBox.shrink(),
-                    child: FilledButton.tonalIcon(
-                      onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
-                          arguments: {'name': entry.name, 'mode': 'edit'}),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text('Edit'),
+                _buildAuditRow(context, 'Created', detailed.owner, detailed.creation),
+                if (detailed.modifiedBy != null && detailed.modified.isNotEmpty) ...[
+                  // Only show modified if it's different from creation
+                  if (detailed.creation != detailed.modified)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6.0),
+                      child: _buildAuditRow(context, 'Modified', detailed.modifiedBy, detailed.modified),
                     ),
-                  ),
-                ] else ...[
-                  FilledButton.tonalIcon(
-                    onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
-                        arguments: {'name': entry.name, 'mode': 'view'}),
-                    icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: const Text('View Details'),
-                  ),
                 ]
               ],
             ),
-          ],
-        );
-      }
-      return const SizedBox.shrink();
+          ),
+
+          const SizedBox(height: 16),
+
+          // Actions
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (detailed.status == 'Draft') ...[
+                RoleGuard(
+                  roles: controller.writeRoles.toList(),
+                  fallback: const SizedBox.shrink(),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                        arguments: {'name': detailed.name, 'mode': 'edit'}),
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                ),
+              ] else ...[
+                FilledButton.tonalIcon(
+                  onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                      arguments: {'name': detailed.name, 'mode': 'view'}),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('View Details'),
+                ),
+              ]
+            ],
+          ),
+        ],
+      );
     });
   }
 
@@ -473,24 +384,6 @@ class StockEntryCard extends StatelessWidget {
         Text(
           FormattingHelper.getRelativeTime(date),
           style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIconStat(BuildContext context, IconData icon, String text) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
         ),
       ],
     );
