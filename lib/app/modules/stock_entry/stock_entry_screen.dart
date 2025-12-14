@@ -1,4 +1,3 @@
-import 'package:intl/intl.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -8,6 +7,7 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:intl/intl.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -372,8 +372,7 @@ class StockEntryCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 2),
                         Text(
-                          // USE CURRENCY SYMBOL HERE
-                          '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 3).format(detailed.totalAmount)}',
+                          '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 2).format(detailed.totalAmount)}',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.primary,
@@ -385,19 +384,28 @@ class StockEntryCard extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Owner & Modified Info
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _buildMetaField(context, 'Created By', detailed.owner),
-                ),
-                Expanded(
-                  child: _buildMetaField(context, 'Modified By', detailed.modifiedBy),
-                ),
-              ],
+            // Contextual Audit Info (Created/Modified)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  _buildAuditRow(context, 'Created', detailed.owner, detailed.creation),
+                  if (detailed.modifiedBy != null && detailed.modified.isNotEmpty) ...[
+                    // Only show modified if it's different from creation
+                    if (detailed.creation != detailed.modified)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6.0),
+                        child: _buildAuditRow(context, 'Modified', detailed.modifiedBy, detailed.modified),
+                      ),
+                  ]
+                ],
+              ),
             ),
 
             const SizedBox(height: 16),
@@ -432,6 +440,42 @@ class StockEntryCard extends StatelessWidget {
       }
       return const SizedBox.shrink();
     });
+  }
+
+  Widget _buildAuditRow(BuildContext context, String action, String? user, String date) {
+    if (user == null || user.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Icon(
+          action == 'Created' ? Icons.add_circle_outline : Icons.edit_outlined,
+          size: 14,
+          color: colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, fontSize: 12),
+              children: [
+                TextSpan(text: '$action by '),
+                TextSpan(
+                  text: user,
+                  style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Text(
+          FormattingHelper.getRelativeTime(date),
+          style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
+        ),
+      ],
+    );
   }
 
   Widget _buildIconStat(BuildContext context, IconData icon, String text) {
@@ -480,19 +524,6 @@ class StockEntryCard extends StatelessWidget {
             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(value, style: Theme.of(context).textTheme.bodyMedium),
-      ],
-    );
-  }
-
-  Widget _buildMetaField(BuildContext context, String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10)),
-        const SizedBox(height: 2),
-        Text(value, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11)),
       ],
     );
   }
