@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -358,8 +359,8 @@ class StockEntryCard extends StatelessWidget {
                 Expanded(
                   child: _buildDetailField(
                       context,
-                      'Posted', // Changed Label
-                      FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}') // Relative Time
+                      'Posted',
+                      FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')
                   ),
                 ),
                 if (detailed.totalAmount > 0)
@@ -371,7 +372,8 @@ class StockEntryCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 2),
                         Text(
-                          '\$${detailed.totalAmount.toStringAsFixed(2)}',
+                          // USE CURRENCY SYMBOL HERE
+                          '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 3).format(detailed.totalAmount)}',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.primary,
@@ -416,7 +418,6 @@ class StockEntryCard extends StatelessWidget {
                     ),
                   ),
                 ] else ...[
-                  // UPDATED: Now matches Edit button style
                   FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
                         arguments: {'name': entry.name, 'mode': 'view'}),

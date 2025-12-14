@@ -10,13 +10,14 @@ class StockEntry {
   final String status;
   final int docstatus;
   final String? owner;
-  final String? modifiedBy; // Added modifiedBy field
+  final String? modifiedBy;
   final String? stockEntryType;
   final String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
   final double? customTotalQty;
   final String? customReferenceNo;
+  final String currency; // Added currency field
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -36,6 +37,7 @@ class StockEntry {
     this.toWarehouse,
     this.customTotalQty,
     this.customReferenceNo,
+    required this.currency, // Required in constructor
     required this.items,
   });
 
@@ -53,13 +55,14 @@ class StockEntry {
       docstatus: _parseInt(json['docstatus']),
       status: _getStatusFromDocstatus(_parseInt(json['docstatus'])),
       owner: json['owner']?.toString(),
-      modifiedBy: json['modified_by']?.toString(), // Parse modified_by
+      modifiedBy: json['modified_by']?.toString(),
       stockEntryType: json['stock_entry_type']?.toString(),
       postingTime: json['posting_time']?.toString(),
       fromWarehouse: json['from_warehouse']?.toString(),
       toWarehouse: json['to_warehouse']?.toString(),
       customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
       customReferenceNo: json['custom_reference_no']?.toString(),
+      currency: json['currency']?.toString() ?? 'AED', // Parse currency, default to AED
       items: items,
     );
   }

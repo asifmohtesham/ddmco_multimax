@@ -227,6 +227,7 @@ class StockEntryFormController extends GetxController {
       postingTime: DateFormat('HH:mm:ss').format(now),
       customTotalQty: 0.0,
       customReferenceNo: ref,
+      currency: '',
       items: [],
     );
 

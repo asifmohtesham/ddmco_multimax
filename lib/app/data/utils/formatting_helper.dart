@@ -4,7 +4,7 @@ class FormattingHelper {
   /// Returns the currency symbol for the given currency code (e.g., 'USD' -> '$').
   static String getCurrencySymbol(String currency) {
     try {
-      final format = NumberFormat.simpleCurrency(name: currency);
+      final format = NumberFormat.currency(name: currency);
       return format.currencySymbol;
     } catch (e) {
       return currency; // Fallback to code if symbol not found
