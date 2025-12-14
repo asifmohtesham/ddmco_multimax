@@ -1,13 +1,13 @@
-import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -19,6 +19,7 @@ class DeliveryNoteScreen extends StatefulWidget {
 class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   final DeliveryNoteController controller = Get.find();
   final _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -54,436 +56,272 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     );
   }
 
-  Widget _getRelativeTimeWidget(String? modified) {
-    if (modified == null || modified.isEmpty) return const SizedBox.shrink();
-
-    try {
-      final date = DateTime.parse(modified);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      String text;
-      if (difference.inDays > 0) {
-        text = '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        text = '${difference.inHours}h ago';
-      } else {
-        text = '${difference.inMinutes}m ago';
+  // Local search handler mapping to controller's filter logic
+  void _onSearchChanged(String val) {
+    // Debounce can be added here if needed
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (_searchController.text == val) {
+        final filters = Map<String, dynamic>.from(controller.activeFilters);
+        if (val.isNotEmpty) {
+          filters['name'] = ['like', '%$val%'];
+        } else {
+          filters.remove('name');
+        }
+        controller.applyFilters(filters);
       }
-
-      Color color;
-      Color bgColor;
-
-      if (difference.inHours < 6) {
-        color = const Color(0xFF8A6D3B); 
-        bgColor = const Color(0xFFFCF8E3); 
-      } else if (difference.inHours < 48) {
-        color = const Color(0xFFE65100);
-        bgColor = const Color(0xFFFFF3E0);
-      } else {
-        color = const Color(0xFFA94442);
-        bgColor = const Color(0xFFF2DEDE);
-      }
-
-      return Container(
-        margin: const EdgeInsets.only(top: 4.0),
-        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(4.0),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-      );
-    } catch (e) {
-      return const SizedBox.shrink();
-    }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Delivery Notes'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list), 
-            onPressed: () => _showFilterBottomSheet(context),
-          ),
-        ],
-      ),
-      drawer: const AppNavDrawer(), //
-      body: Obx(() {
-        if (controller.isLoading.value && controller.deliveryNotes.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (controller.deliveryNotes.isEmpty) {
-          return const Center(child: Text('No delivery notes found.'));
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            await controller.fetchDeliveryNotes(clear: true);
-          },
-          child: Scrollbar(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: controller.deliveryNotes.length + (controller.hasMore.value ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= controller.deliveryNotes.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-                final note = controller.deliveryNotes[index];
-                return DeliveryNoteCard(note: note);
-              },
+      backgroundColor: colorScheme.surface,
+      drawer: const AppNavDrawer(),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await controller.fetchDeliveryNotes(clear: true);
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // M3 Large App Bar
+            SliverAppBar.large(
+              title: const Text('Delivery Notes'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: () => _showFilterBottomSheet(context),
+                ),
+              ],
             ),
-          ),
-        );
-      }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: controller.openCreateDialog, // Call controller method
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
 
-  void _showPosUploadSelectionBottomSheet(BuildContext context) {
-    controller.fetchPosUploadsForSelection();
-
-    Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.8,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+            // Search Bar
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search ID...',
+                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Select POS Upload',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Get.back(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    child: TextField(
-                      onChanged: controller.filterPosUploads,
-                      decoration: InputDecoration(
-                        hintText: 'Search POS Uploads',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Obx(() {
-                      if (controller.isFetchingPosUploads.value) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+            ),
 
-                      if (controller.posUploadsForSelection.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
-                              const SizedBox(height: 16),
-                              const Text('No POS Uploads found.', style: TextStyle(color: Colors.grey)),
-                            ],
-                          ),
-                        );
-                      }
+            // List Content
+            Obx(() {
+              if (controller.isLoading.value && controller.deliveryNotes.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
 
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: controller.posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
-                        itemBuilder: (context, index) {
-                          final posUpload = controller.posUploadsForSelection[index];
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            title: Text(posUpload.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Expanded(child: Text(posUpload.customer, overflow: TextOverflow.ellipsis)),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8, height: 8,
-                                      decoration: BoxDecoration(
-                                        color: posUpload.status == 'Pending' ? Colors.orange : Colors.blue,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(posUpload.status, style: const TextStyle(fontSize: 12)),
-                                    const Spacer(),
-                                    _getRelativeTimeWidget(posUpload.modified),
-                                  ],
-                                ),
-                              ],
+              if (controller.deliveryNotes.isEmpty) {
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.description_outlined, size: 64, color: colorScheme.outlineVariant),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No delivery notes found',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
                             ),
-                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                            onTap: () {
-                              Get.back();
-                              controller.createNewDeliveryNote(posUpload);
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, -5),
-                        ),
-                      ],
-                    ),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Get.back();
-                          controller.createNewDeliveryNote(null);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: BorderSide(color: Theme.of(context).primaryColor),
-                        ),
-                        child: const Text('Skip & Create Blank Note'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.tonalIcon(
+                            onPressed: () => controller.fetchDeliveryNotes(clear: true),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reload'),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-}
-
-class DeliveryNoteCard extends StatelessWidget {
-  final dynamic note;
-  final DeliveryNoteController controller = Get.find();
-
-  DeliveryNoteCard({super.key, required this.note});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => controller.toggleExpand(note.name),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Row 1: PO No (Left) + Status (Right)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      note.poNo != null && note.poNo.isNotEmpty ? note.poNo! : note.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  StatusPill(status: note.status),
-                ],
-              ),
-              const SizedBox(height: 6),
-              
-              // Row 2: Customer (Left) + Relative Time (Right)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      note.customer,
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Text(
-                    FormattingHelper.getRelativeTime(note.creation),
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-
-              // Row 3: Stats (Total Qty, Assigned, Time Taken)
-              Row(
-                children: [
-                  _buildStatItem(Icons.inventory_2_outlined, '${note.totalQty.toStringAsFixed(0)} Items'),
-                  const Spacer(),
-                  if (note.docstatus == 1) // Submitted
-                    Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: _buildStatItem(Icons.timer_outlined, FormattingHelper.getTimeTaken(note.creation, note.modified), color: Colors.green),
-                    ),
-                  // Animated Arrow
-                  Obx(() {
-                    final isCurrentlyExpanded = controller.expandedNoteName.value == note.name;
-                    return AnimatedRotation(
-                        turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                        duration: const Duration(milliseconds: 300),
-                        child: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
-                    );
-                  }),
-                ],
-              ),
-
-              // Expansion Content
-              Obx(() {
-                final isCurrentlyExpanded = controller.expandedNoteName.value == note.name;
-                return AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: Container(
-                    child: !isCurrentlyExpanded
-                        ? const SizedBox.shrink()
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 12),
-                              const Divider(height: 1),
-                              _buildExpandedDetails(note),
-                            ],
-                          ),
                   ),
                 );
-              }),
-            ],
-          ),
+              }
+
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    if (index >= controller.deliveryNotes.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    final note = controller.deliveryNotes[index];
+
+                    return Obx(() {
+                      final isExpanded = controller.expandedNoteName.value == note.name;
+                      final isLoadingDetails = controller.isLoadingDetails.value && controller.detailedNote?.name != note.name;
+
+                      // Logic to determine title/subtitle
+                      final bool hasPo = note.poNo != null && note.poNo!.isNotEmpty;
+                      final String title = hasPo ? note.poNo! : note.name;
+                      final String subtitle = hasPo ? '${note.name} • ${note.customer}' : note.customer;
+
+                      return GenericDocumentCard(
+                        title: title,
+                        subtitle: subtitle,
+                        status: note.status,
+                        isExpanded: isExpanded,
+                        isLoadingDetails: isLoadingDetails && isExpanded,
+                        onTap: () => controller.toggleExpand(note.name),
+                        stats: [
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.inventory_2_outlined,
+                            '${note.totalQty.toStringAsFixed(0)} Items',
+                          ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.access_time,
+                            FormattingHelper.getRelativeTime(note.creation),
+                          ),
+                          if (note.docstatus == 1) // Submitted
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.timer_outlined,
+                              FormattingHelper.getTimeTaken(note.creation, note.modified),
+                            ),
+                        ],
+                        expandedContent: _buildExpandedContent(context, note),
+                      );
+                    });
+                  },
+                  childCount: controller.deliveryNotes.length + (controller.hasMore.value ? 1 : 0),
+                ),
+              );
+            }),
+          ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: controller.openCreateDialog,
+        icon: const Icon(Icons.add),
+        label: const Text('Create'),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
       ),
     );
   }
 
-  Widget _buildStatItem(IconData icon, String text, {Color? color}) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: color ?? Colors.grey.shade600),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(fontSize: 12, color: color ?? Colors.grey.shade700, fontWeight: FontWeight.w500),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildExpandedDetails(dynamic note) {
+  Widget _buildExpandedContent(BuildContext context, DeliveryNote note) {
     return Obx(() {
       final detailed = controller.detailedNote;
-      if (controller.isLoadingDetails.value && detailed?.name != note.name) {
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 16.0),
-          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-        );
+      // Double check matches to avoid stale data display
+      if (detailed == null || detailed.name != note.name) {
+        return const SizedBox.shrink();
       }
 
-      if (detailed != null && detailed.name == note.name) {
-        return Padding(
-          padding: const EdgeInsets.only(top: 12.0),
-          child: Column(
+      final theme = Theme.of(context);
+      final colorScheme = theme.colorScheme;
+      final currencySymbol = FormattingHelper.getCurrencySymbol(detailed.currency);
+      final grandTotal = NumberFormat('#,##0.00').format(detailed.grandTotal);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info Block (Warehouse)
+          if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _buildDetailField(context, 'Source Warehouse', detailed.setWarehouse!),
+            ),
+
+          const SizedBox(height: 16),
+
+          // Details Grid
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Grand Total: ${FormattingHelper.getCurrencySymbol(detailed.currency)}${detailed.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text('Posting Date: ${detailed.postingDate}', style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (detailed.status == 'Draft') ...[
-                    OutlinedButton.icon(
-                      onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text('Edit'),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        side: const BorderSide(color: Colors.blue),
+              Expanded(
+                child: _buildDetailField(
+                  context,
+                  'Posting Date',
+                  detailed.postingDate,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('Grand Total', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$currencySymbol $grandTotal',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.primary,
                       ),
                     ),
-                  ] else ...[
-                    TextButton(
-                      onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
-                      child: const Text('View'),
-                    ),
-                    if (detailed.status == 'Submitted') ...[
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () => Get.snackbar('TODO', 'Cancel document'),
-                        child: const Text('Cancel'),
-                      ),
-                    ]
-                  ]
-                ],
+                  ],
+                ),
               ),
             ],
           ),
-        );
-      }
-      return const SizedBox.shrink();
+
+          const SizedBox(height: 24),
+
+          // Actions
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (detailed.status == 'Draft') ...[
+                FilledButton.tonalIcon(
+                  onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'edit'}),
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('Edit'),
+                ),
+              ] else ...[
+                FilledButton.tonalIcon(
+                  onPressed: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': note.name, 'mode': 'view'}),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('View Details'),
+                ),
+              ]
+            ],
+          ),
+        ],
+      );
     });
+  }
+
+  Widget _buildDetailField(BuildContext context, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 2),
+        Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+      ],
+    );
   }
 }
