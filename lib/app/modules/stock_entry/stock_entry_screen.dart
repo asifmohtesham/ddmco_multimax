@@ -62,13 +62,11 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       backgroundColor: colorScheme.surface, // M3 Background
       drawer: const AppNavDrawer(),
       body: RefreshIndicator(
-        // Pull to Refresh Trigger
         onRefresh: () => controller.fetchStockEntries(clear: true),
         color: colorScheme.primary,
         backgroundColor: colorScheme.surfaceContainerHighest,
         child: CustomScrollView(
           controller: _scrollController,
-          // Always allow scroll so pull-to-refresh works even on short lists
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             // M3 Large App Bar
@@ -85,7 +83,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             // Search Bar Pinned to top of list
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                // Increased top padding from 0 to 16 for better spacing
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
