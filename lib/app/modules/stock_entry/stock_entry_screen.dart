@@ -265,13 +265,13 @@ class StockEntryCard extends StatelessWidget {
                     Icons.inventory_2_outlined,
                     '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
                   ),
-                  const SizedBox(width: 16),
-                  _buildIconStat(
-                    context,
-                    Icons.access_time,
-                    FormattingHelper.getRelativeTime(entry.creation),
-                  ),
                   const Spacer(),
+                  if (entry.docstatus == 1) // Submitted
+                    _buildIconStat(
+                      context,
+                      Icons.timer_outlined,
+                      FormattingHelper.getTimeTaken(entry.creation, entry.modified),
+                    ),
                   // Animated Arrow
                   Obx(() {
                     final isCurrentlyExpanded = controller.expandedEntryName.value == entry.name;
