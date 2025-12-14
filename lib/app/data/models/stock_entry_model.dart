@@ -10,6 +10,7 @@ class StockEntry {
   final String status;
   final int docstatus;
   final String? owner;
+  final String? modifiedBy; // Added modifiedBy field
   final String? stockEntryType;
   final String? postingTime;
   final String? fromWarehouse;
@@ -28,6 +29,7 @@ class StockEntry {
     required this.status,
     required this.docstatus,
     this.owner,
+    this.modifiedBy,
     this.stockEntryType,
     this.postingTime,
     this.fromWarehouse,
@@ -51,6 +53,7 @@ class StockEntry {
       docstatus: _parseInt(json['docstatus']),
       status: _getStatusFromDocstatus(_parseInt(json['docstatus'])),
       owner: json['owner']?.toString(),
+      modifiedBy: json['modified_by']?.toString(), // Parse modified_by
       stockEntryType: json['stock_entry_type']?.toString(),
       postingTime: json['posting_time']?.toString(),
       fromWarehouse: json['from_warehouse']?.toString(),

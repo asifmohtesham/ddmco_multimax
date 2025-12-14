@@ -357,11 +357,11 @@ class StockEntryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: _buildDetailField(context, 'Type', detailed.stockEntryType ?? '-'),
-                ),
-                Expanded(
-                  child: _buildDetailField(context, 'Posting Date',
-                      '${detailed.postingDate} ${detailed.postingTime ?? ''}'),
+                  child: _buildDetailField(
+                      context,
+                      'Posted', // Changed Label
+                      FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}') // Relative Time
+                  ),
                 ),
                 if (detailed.totalAmount > 0)
                   Expanded(
@@ -381,6 +381,21 @@ class StockEntryCard extends StatelessWidget {
                       ],
                     ),
                   ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Owner & Modified Info
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildMetaField(context, 'Created By', detailed.owner),
+                ),
+                Expanded(
+                  child: _buildMetaField(context, 'Modified By', detailed.modifiedBy),
+                ),
               ],
             ),
 
@@ -464,6 +479,19 @@ class StockEntryCard extends StatelessWidget {
             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(value, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+    );
+  }
+
+  Widget _buildMetaField(BuildContext context, String label, String? value) {
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11)),
       ],
     );
   }
