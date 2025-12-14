@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 class SessionDefaultsBottomSheet extends StatefulWidget {
   const SessionDefaultsBottomSheet({super.key});
@@ -73,6 +75,27 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
     GlobalSnackbar.success(message: 'Settings Saved');
   }
 
+  Future<void> _reloadPermissions() async {
+    setState(() => _isLoading = true);
+    try {
+      // 1. Clear Permission Cache
+      Get.find<PermissionService>().clearCache();
+
+      // 2. Refresh User Details (Roles)
+      await Get.find<AuthenticationController>().fetchUserDetails();
+
+      if (mounted) {
+        GlobalSnackbar.success(message: 'Permissions & Roles Reloaded');
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        GlobalSnackbar.error(message: 'Failed to reload permissions: $e');
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -133,6 +156,21 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
                         onChanged: (val) => setState(() => _autoSubmitDelay = val),
                       ),
                     ],
+
+                    const SizedBox(height: 24),
+                    Text('Troubleshooting', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+                        child: Icon(Icons.sync_lock, color: Colors.orange.shade700),
+                      ),
+                      title: const Text('Reload Permissions'),
+                      subtitle: const Text('Clear cache and re-fetch access rights'),
+                      onTap: _reloadPermissions,
+                    ),
 
                     const SizedBox(height: 24),
                     SizedBox(

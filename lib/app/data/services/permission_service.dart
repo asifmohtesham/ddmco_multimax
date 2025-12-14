@@ -31,6 +31,14 @@ class PermissionService extends GetxService {
     return null; // Loading state
   }
 
+  /// Clears all cached permission data, forcing re-verification on next access.
+  void clearCache() {
+    _readPermissionsCache.clear();
+    _accessCache.clear();
+    _pendingFetches.clear();
+    print('Permissions cache cleared.');
+  }
+
   Future<void> _fetchDocTypePermissions(String doctype) async {
     if (_readPermissionsCache.containsKey(doctype)) return;
 
