@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/info_block.dart'; // Added Import
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -102,7 +103,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             // Search Bar
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
@@ -246,42 +247,35 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         children: [
           // Info Block (Warehouse)
           if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: _buildDetailField(context, 'Source Warehouse', detailed.setWarehouse!),
+            InfoBlock(
+              label: 'Source Warehouse',
+              value: detailed.setWarehouse!,
+              icon: Icons.store_outlined,
             ),
 
-          const SizedBox(height: 16),
+          if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
+            const SizedBox(height: 12),
 
-          // Details Grid
+          // Details Grid (Using InfoBlock for uniformity)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: _buildDetailField(
-                  context,
-                  'Posting Date',
-                  detailed.postingDate,
+                child: InfoBlock(
+                  label: 'Posting Date',
+                  value: detailed.postingDate,
+                  icon: Icons.calendar_today_outlined,
+                  backgroundColor: colorScheme.surfaceContainer,
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Grand Total', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$currencySymbol $grandTotal',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                  ],
+                child: InfoBlock(
+                  label: 'Grand Total',
+                  value: '$currencySymbol $grandTotal',
+                  icon: Icons.attach_money,
+                  valueColor: colorScheme.primary,
+                  backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.3),
                 ),
               ),
             ],
@@ -311,17 +305,5 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         ],
       );
     });
-  }
-
-  Widget _buildDetailField(BuildContext context, String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 2),
-        Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-      ],
-    );
   }
 }
