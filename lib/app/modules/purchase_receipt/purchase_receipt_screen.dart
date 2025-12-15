@@ -5,8 +5,8 @@ import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controlle
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
@@ -97,60 +97,29 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Purchase Receipts'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _showFilterDialog(context),
-          ),
-        ],
-      ),
-      drawer: const AppNavDrawer(),
-      body: Obx(() {
-        if (controller.isLoading.value && controller.purchaseReceipts.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
+    return GenericListPage(
+      title: 'Purchase Receipts',
+      isLoading: controller.isLoading,
+      data: controller.purchaseReceipts,
+      onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
+      scrollController: _scrollController,
+      searchHint: 'Search...',
+      onSearch: null, // Add search logic to controller if needed
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.filter_alt_outlined),
+          onPressed: () => _showFilterDialog(context),
+        ),
+      ],
+      emptyTitle: 'No Purchase Receipts',
+      onClearFilters: controller.activeFilters.isNotEmpty ? controller.clearFilters : null,
+      itemBuilder: (context, index) {
+        if (index >= controller.purchaseReceipts.length) {
+          return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
         }
-
-        if (controller.purchaseReceipts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.receipt_long_outlined, size: 64, color: colorScheme.outlineVariant),
-                const SizedBox(height: 16),
-                const Text('No purchase receipts found.'),
-                const SizedBox(height: 8),
-                FilledButton.tonalIcon(
-                  onPressed: () => controller.fetchPurchaseReceipts(clear: true),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reload'),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.purchaseReceipts.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.purchaseReceipts.length) {
-                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
-              }
-              final receipt = controller.purchaseReceipts[index];
-              return _buildPurchaseReceiptCard(context, receipt);
-            },
-          ),
-        );
-      }),
-      floatingActionButton: FloatingActionButton.extended(
+        return _buildPurchaseReceiptCard(context, controller.purchaseReceipts[index]);
+      },
+      fab: FloatingActionButton.extended(
         onPressed: controller.openCreateDialog,
         icon: const Icon(Icons.add),
         label: const Text('Create'),

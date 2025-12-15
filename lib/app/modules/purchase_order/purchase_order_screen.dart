@@ -6,8 +6,8 @@ import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
@@ -49,66 +49,37 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Purchase Orders'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              Get.bottomSheet(
-                const PurchaseOrderFilterBottomSheet(),
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-              );
-            },
-          ),
-        ],
-      ),
-      drawer: const AppNavDrawer(),
-      body: Obx(() {
-        if (controller.isLoading.value && controller.purchaseOrders.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
+    return GenericListPage(
+      title: 'Purchase Orders',
+      isLoading: controller.isLoading,
+      data: controller.purchaseOrders,
+      onRefresh: () => controller.fetchPurchaseOrders(clear: true),
+      scrollController: _scrollController,
+      searchHint: 'Search Supplier or ID...',
+      // Assuming controller has search logic, passing null if not implemented yet
+      // or implement onSearchChanged in controller similar to others
+      onSearch: null,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.filter_list),
+          onPressed: () {
+            Get.bottomSheet(
+              const PurchaseOrderFilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            );
+          },
+        ),
+      ],
+      emptyTitle: 'No Purchase Orders',
+      onClearFilters: controller.activeFilters.isNotEmpty ? controller.clearFilters : null,
+      itemBuilder: (context, index) {
+        if (index >= controller.purchaseOrders.length) {
+          return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
         }
-
-        if (controller.purchaseOrders.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.description_outlined, size: 64, color: colorScheme.outlineVariant),
-                const SizedBox(height: 16),
-                const Text('No Purchase Orders found.'),
-                const SizedBox(height: 8),
-                FilledButton.tonalIcon(
-                  onPressed: () => controller.fetchPurchaseOrders(clear: true),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reload'),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async => controller.fetchPurchaseOrders(clear: true),
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: controller.purchaseOrders.length + (controller.hasMore.value ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index >= controller.purchaseOrders.length) {
-                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
-              }
-              final po = controller.purchaseOrders[index];
-              return _buildPurchaseOrderCard(context, po);
-            },
-          ),
-        );
-      }),
-      floatingActionButton: FloatingActionButton.extended(
+        return _buildPurchaseOrderCard(context, controller.purchaseOrders[index]);
+      },
+      fab: FloatingActionButton.extended(
         onPressed: controller.createNewPO,
         icon: const Icon(Icons.add),
         label: const Text('Create'),
