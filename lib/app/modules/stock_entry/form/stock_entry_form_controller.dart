@@ -563,6 +563,10 @@ class StockEntryFormController extends GetxController {
         double totalBalance = 0.0;
 
         for (var row in result) {
+          // --- FIX START: Ignore Total row (List) or invalid data ---
+          if (row is! Map) continue;
+          // --- FIX END ---
+
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
         }

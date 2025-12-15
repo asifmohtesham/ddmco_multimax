@@ -593,7 +593,11 @@ class DeliveryNoteFormController extends GetxController {
             final result = stockBalRes.data['message']['result'];
             if (result is List && result.isNotEmpty) {
               // Usually stock balance report returns one row per item/wh/rack combo
-              fetchedRackQty = result.fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
+              // --- FIX START: Filter for Maps only ---
+              fetchedRackQty = result
+                .whereType<Map<String, dynamic>>() // Ignore List/Total rows
+                .fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
+              // --- FIX END ---
             } else {
               fetchedRackQty = 0.0;
             }
