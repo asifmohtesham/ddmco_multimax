@@ -59,6 +59,7 @@ class ApiProvider {
     int limitStart = 0,
     List<String>? fields,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters, // Added orFilters support
     String orderBy = 'modified desc',
   }) async {
     if (!_dioInitialised) await _initDio();
@@ -74,6 +75,7 @@ class ApiProvider {
       queryParameters['fields'] = json.encode(fields);
     }
 
+    // Process Standard Filters (AND)
     if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
         if (entry.value is List && (entry.value as List).length == 2) {
@@ -83,6 +85,18 @@ class ApiProvider {
       }).toList();
 
       queryParameters['filters'] = json.encode(filterList);
+    }
+
+    // Process OR Filters (OR)
+    if (orFilters != null && orFilters.isNotEmpty) {
+      final List<List<dynamic>> orFilterList = orFilters.entries.map((entry) {
+        if (entry.value is List && (entry.value as List).length == 2) {
+          return [doctype, entry.key, entry.value[0], entry.value[1]];
+        }
+        return [doctype, entry.key, '=', entry.value];
+      }).toList();
+
+      queryParameters['or_filters'] = json.encode(orFilterList);
     }
 
     try {
@@ -150,14 +164,13 @@ class ApiProvider {
     required String itemCode,
     String? warehouse,
     String? batchNo,
-    String? rack, // Added rack parameter
+    String? rack,
   }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
     final String company = storage.getCompany();
 
-    // Priority: Argument -> Error
     final String? targetWarehouse = warehouse;
 
     if (targetWarehouse == null || targetWarehouse.isEmpty) {
@@ -171,9 +184,8 @@ class ApiProvider {
       "from_date": today,
       "to_date": today,
       "item_code": itemCode,
-      // "warehouse": targetWarehouse,
       "valuation_field_type": "Currency",
-      "rack": rack != null && rack.isNotEmpty ? [rack] : [], // Updated to filter by rack
+      "rack": rack != null && rack.isNotEmpty ? [rack] : [],
       "show_variant_attributes": 1,
       "show_dimension_wise_stock": 1
     };
@@ -193,7 +205,6 @@ class ApiProvider {
     );
   }
 
-  // Updated to query "Batch-Wise Balance History" with specific filters
   Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
     if (!_dioInitialised) await _initDio();
 
@@ -217,7 +228,7 @@ class ApiProvider {
         queryParameters: {
           'report_name': 'Batch-Wise Balance History',
           'filters': json.encode(filters),
-          'ignore_prepared_report': 'true', // Ensure we get fresh data
+          'ignore_prepared_report': 'true',
           'are_default_filters': 'false',
           '_': DateTime.now().millisecondsSinceEpoch
         }
@@ -228,31 +239,26 @@ class ApiProvider {
   // MODULE SPECIFIC GETTERS
   // ---------------------------------------------------------------------------
 
-  // Purchase Receipt
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
 
   Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
 
-  // Packing Slip
   Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner']);
 
   Future<Response> getPackingSlip(String name) async => getDocument('Packing Slip', name);
 
-  // Stock Entry
   Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']);
 
   Future<Response> getStockEntry(String name) async => getDocument('Stock Entry', name);
 
-  // Delivery Note
   Future<Response> getDeliveryNotes({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Delivery Note', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus']);
 
   Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);
 
-  // POS Upload
   Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) filters.remove('docstatus');
     return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status', 'total_qty']);
@@ -260,13 +266,11 @@ class ApiProvider {
 
   Future<Response> getPosUpload(String name) async => getDocument('POS Upload', name);
 
-  // ToDo
   Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('ToDo', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'status', 'description', 'modified', 'priority', 'date']);
 
   Future<Response> getTodo(String name) async => getDocument('ToDo', name);
 
-  // Purchase Order
   Future<Response> getPurchaseOrders({
     int limit = 20,
     int limitStart = 0,
