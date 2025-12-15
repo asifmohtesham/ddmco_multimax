@@ -103,7 +103,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             // Search Bar
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
