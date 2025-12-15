@@ -139,9 +139,9 @@ class _ItemScreenState extends State<ItemScreen> {
         onTap: () => controller.toggleExpand(item.name, item.itemCode),
 
         stats: [
-          GenericDocumentCard.buildIconStat(context, Icons.scale, item.stockUom ?? '-'),
+          GenericDocumentCard.buildIconStat(context, Icons.emoji_flags, item.countryOfOrigin ?? '-'),
           if (item.variantOf != null)
-            GenericDocumentCard.buildIconStat(context, Icons.copy, 'Var'),
+            GenericDocumentCard.buildIconStat(context, Icons.copy, item.variantOf ?? ''),
         ],
 
         expandedContent: Column(
