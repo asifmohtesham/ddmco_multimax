@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
@@ -9,6 +10,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
@@ -21,6 +23,7 @@ class DeliveryNoteFormController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final StorageService _storageService = Get.find<StorageService>();
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
@@ -62,7 +65,7 @@ class DeliveryNoteFormController extends GetxController {
   var bsMaxQty = 0.0.obs;
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
-  var batchInfoTooltip = RxnString(); // NEW: Tooltip content
+  var batchInfoTooltip = RxnString();
 
   // Rack Validation State
   var bsIsRackValid = false.obs;
@@ -99,6 +102,8 @@ class DeliveryNoteFormController extends GetxController {
   String currentItemName = '';
   String currentScannedEan = '';
 
+  Timer? _autoSubmitTimer;
+
   @override
   void onInit() {
     super.onInit();
@@ -111,6 +116,22 @@ class DeliveryNoteFormController extends GetxController {
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _markDirty());
 
+    // Auto-Submit Logic
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+
+      if (valid && isItemSheetOpen.value && deliveryNote.value?.docstatus == 0) {
+        if (_storageService.getAutoSubmitEnabled()) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              submitSheet();
+            }
+          });
+        }
+      }
+    });
+
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
@@ -120,6 +141,7 @@ class DeliveryNoteFormController extends GetxController {
 
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsBatchController.dispose();
     bsRackController.dispose();
@@ -592,12 +614,9 @@ class DeliveryNoteFormController extends GetxController {
           if (stockBalRes.statusCode == 200 && stockBalRes.data['message'] != null) {
             final result = stockBalRes.data['message']['result'];
             if (result is List && result.isNotEmpty) {
-              // Usually stock balance report returns one row per item/wh/rack combo
-              // --- FIX START: Filter for Maps only ---
               fetchedRackQty = result
-                .whereType<Map<String, dynamic>>() // Ignore List/Total rows
-                .fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
-              // --- FIX END ---
+                  .whereType<Map<String, dynamic>>() // Ignore List/Total rows
+                  .fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
             } else {
               fetchedRackQty = 0.0;
             }

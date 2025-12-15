@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
@@ -11,11 +12,13 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class PackingSlipFormController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final StorageService _storageService = Get.find<StorageService>(); // Get StorageService
 
   var itemFormKey = GlobalKey<FormState>();
   String name = Get.arguments['name'];
@@ -42,6 +45,9 @@ class PackingSlipFormController extends GetxController {
   var bsMaxQty = 0.0.obs;
   var isEditing = false.obs;
 
+  // Track Sheet Open State
+  var isItemSheetOpen = false.obs;
+
   // Temporary State
   String? currentItemDnDetail;
   String? currentItemCode;
@@ -59,10 +65,29 @@ class PackingSlipFormController extends GetxController {
   var bsItemModified = RxnString();
   var bsItemModifiedBy = RxnString();
 
+  Timer? _autoSubmitTimer;
+
   @override
   void onInit() {
     super.onInit();
     bsQtyController.addListener(validateSheet);
+
+    // Auto-Submit Logic
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+
+      if (valid && isItemSheetOpen.value && packingSlip.value?.docstatus == 0) {
+        if (_storageService.getAutoSubmitEnabled()) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
+            // Re-validate strictly before submission
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              addItemToSlip();
+            }
+          });
+        }
+      }
+    });
 
     if (mode == 'new') {
       _initNewPackingSlip();
@@ -73,6 +98,7 @@ class PackingSlipFormController extends GetxController {
 
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
     super.onClose();
@@ -262,10 +288,15 @@ class PackingSlipFormController extends GetxController {
 
     validateSheet();
 
+    // Set Sheet Open Flag
+    isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       const PackingSlipItemFormSheet(),
       isScrollControlled: true,
-    );
+    ).whenComplete(() {
+      isItemSheetOpen.value = false;
+    });
   }
 
   void editItem(PackingSlipItem item) {
@@ -298,10 +329,14 @@ class PackingSlipFormController extends GetxController {
 
     validateSheet();
 
+    isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       const PackingSlipItemFormSheet(),
       isScrollControlled: true,
-    );
+    ).whenComplete(() {
+      isItemSheetOpen.value = false;
+    });
   }
 
   void _populateItemDetails(DeliveryNoteItem item) {

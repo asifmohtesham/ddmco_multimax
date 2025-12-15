@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,12 +11,14 @@ import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final StorageService _storageService = Get.find<StorageService>(); // Get StorageService
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
@@ -39,9 +42,11 @@ class PurchaseOrderFormController extends GetxController {
 
   // Item Sheet State
   var isItemSheetOpen = false.obs;
+  var isSheetValid = false.obs; // Added for validation tracking
+
   final bsQtyController = TextEditingController();
   final bsRateController = TextEditingController();
-  final bsScheduleDateController = TextEditingController(); // Added
+  final bsScheduleDateController = TextEditingController();
   // Metadata Observables
   var bsItemOwner = RxnString();
   var bsItemCreation = RxnString();
@@ -58,7 +63,14 @@ class PurchaseOrderFormController extends GetxController {
   String? currentUom;
   String? currentItemNameKey;
 
+  // Validation State Tracking
+  double _initialQty = 0.0;
+  double _initialRate = 0.0;
+  String _initialDate = '';
+
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
+
+  Timer? _autoSubmitTimer;
 
   @override
   void onInit() {
@@ -68,11 +80,31 @@ class PurchaseOrderFormController extends GetxController {
     supplierController.addListener(_checkForChanges);
     dateController.addListener(_checkForChanges);
 
+    // Update validation on change
     bsQtyController.addListener(() {
       sheetQty.value = double.tryParse(bsQtyController.text) ?? 0.0;
+      validateSheet();
     });
     bsRateController.addListener(() {
       sheetRate.value = double.tryParse(bsRateController.text) ?? 0.0;
+      validateSheet();
+    });
+    bsScheduleDateController.addListener(validateSheet);
+
+    // Auto-Submit Logic
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+
+      if (valid && isItemSheetOpen.value && isEditable) {
+        if (_storageService.getAutoSubmitEnabled()) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              submitItem();
+            }
+          });
+        }
+      }
     });
 
     if (mode == 'new') {
@@ -84,16 +116,49 @@ class PurchaseOrderFormController extends GetxController {
 
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel();
     supplierController.dispose();
     dateController.dispose();
     barcodeController.dispose();
     bsQtyController.dispose();
     bsRateController.dispose();
-    bsScheduleDateController.dispose(); // Dispose
+    bsScheduleDateController.dispose();
     super.onClose();
   }
 
-  // ... (fetchSuppliers, _initNewPO, fetchPO, _updateOriginalState, _checkForChanges unchanged) ...
+  void validateSheet() {
+    if (!isEditable) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    // Rate can be 0, but usually implies cost. Allow 0 for FOC.
+    // Basic validation
+    if (qty <= 0) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    if (bsScheduleDateController.text.isEmpty) {
+      isSheetValid.value = false;
+      return;
+    }
+
+    // Dirty check: Must differ from initial if editing
+    bool isDirtySheet = false;
+    if (currentItemNameKey != null) {
+      final currentRate = double.tryParse(bsRateController.text) ?? 0;
+      if (qty != _initialQty) isDirtySheet = true;
+      if (currentRate != _initialRate) isDirtySheet = true;
+      if (bsScheduleDateController.text != _initialDate) isDirtySheet = true;
+    } else {
+      isDirtySheet = true; // New items are always dirty
+    }
+
+    isSheetValid.value = isDirtySheet;
+  }
+
   Future<void> fetchSuppliers() async {
     isFetchingSuppliers.value = true;
     try {
@@ -236,7 +301,7 @@ class PurchaseOrderFormController extends GetxController {
         rowId: item.name,
         scheduleDate: item.scheduleDate // Pass existing date
     );
-    // Set after opening (or pass to _openItemSheet)
+    // Set after opening
     bsItemOwner.value = item.owner;
     bsItemCreation.value = item.creation;
     bsItemModified.value = item.modified;
@@ -270,7 +335,13 @@ class PurchaseOrderFormController extends GetxController {
     sheetQty.value = qty;
     sheetRate.value = rate;
 
+    // Track initial values for dirty check
+    _initialQty = qty;
+    _initialRate = rate;
+    _initialDate = bsScheduleDateController.text;
+
     isItemSheetOpen.value = true;
+    validateSheet();
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -307,7 +378,7 @@ class PurchaseOrderFormController extends GetxController {
       itemCode: currentItemCode!,
       itemName: currentItemName!,
       qty: qty,
-      receivedQty: 0.0, // Should preserve if editing? Simplified for now.
+      receivedQty: 0.0,
       rate: rate,
       amount: qty * rate,
       uom: currentUom,

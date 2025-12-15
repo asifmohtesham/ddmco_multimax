@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -14,12 +15,14 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:collection/collection.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class PurchaseReceiptFormController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final StorageService _storageService = Get.find<StorageService>();
 
   var itemFormKey = GlobalKey<FormState>();
 
@@ -107,6 +110,8 @@ class PurchaseReceiptFormController extends GetxController {
   var bsItemModified = RxnString();
   var bsItemModifiedBy = RxnString();
 
+  Timer? _autoSubmitTimer;
+
   @override
   void onInit() {
     super.onInit();
@@ -120,6 +125,22 @@ class PurchaseReceiptFormController extends GetxController {
     bsQtyController.addListener(validateSheet);
     bsBatchController.addListener(validateSheet);
     bsRackController.addListener(validateSheet);
+
+    // Auto-Submit Logic
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+
+      if (valid && isItemSheetOpen.value && purchaseReceipt.value?.docstatus == 0) {
+        if (_storageService.getAutoSubmitEnabled()) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              addItem();
+            }
+          });
+        }
+      }
+    });
 
     if (mode == 'new') {
       _initNewPurchaseReceipt();
@@ -136,6 +157,7 @@ class PurchaseReceiptFormController extends GetxController {
 
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel();
     supplierController.dispose();
     postingDateController.dispose();
     postingTimeController.dispose();
