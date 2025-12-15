@@ -266,6 +266,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: slips.length,
+                            padding: EdgeInsets.zero, // Removed extra space before the first item
                             separatorBuilder: (context, index) => Divider(
                               height: 1,
                               indent: 16,
