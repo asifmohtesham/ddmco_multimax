@@ -33,6 +33,7 @@ class PackingSlipController extends GetxController {
   var searchQuery = ''.obs;
 
   // Cache for POS Customer Names
+  // Observed by the UI to trigger rebuilds when customers are loaded
   var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
@@ -55,7 +56,6 @@ class PackingSlipController extends GetxController {
     }
   }
 
-  // ... (Fetch logic unchanged) ...
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchPackingSlips(isLoadMore: false, clear: true);
@@ -145,6 +145,8 @@ class PackingSlipController extends GetxController {
           final String customer = doc['customer'] ?? 'Unknown';
           posCustomerMap[name] = customer;
         }
+        // Force refresh to ensure all UI listeners update immediately after bulk load
+        posCustomerMap.refresh();
       }
     } catch (e) {
       print('Error fetching POS customers: $e');
@@ -274,7 +276,6 @@ class PackingSlipController extends GetxController {
     });
   }
 
-  // Moved from Screen
   void openCreateDialog() {
     fetchDeliveryNotesForSelection();
 
