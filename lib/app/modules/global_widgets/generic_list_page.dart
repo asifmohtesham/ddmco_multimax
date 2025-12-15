@@ -106,7 +106,7 @@ class GenericListPage extends StatelessWidget {
             if (onSearch != null)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   child: TextField(
                     onChanged: onSearch,
                     decoration: InputDecoration(

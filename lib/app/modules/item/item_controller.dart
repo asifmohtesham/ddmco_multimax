@@ -1,9 +1,9 @@
 import 'dart:developer';
-
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/data/utils/search_helper.dart'; // Import Search Helper
 
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
@@ -11,7 +11,13 @@ class ItemController extends GetxController {
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
+
+  // All items fetched from server
   var items = <Item>[].obs;
+
+  // Items displayed after local search filter
+  var displayedItems = <Item>[].obs;
+
   final int _limit = 20;
   int _currentPage = 0;
 
@@ -20,16 +26,17 @@ class ItemController extends GetxController {
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
-
-  // Stores list of active attribute filters
   var attributeFilters = <Map<String, String>>[].obs;
 
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
+  // Search State
+  var searchQuery = ''.obs;
+
   // Filter Data Sources
   var itemGroups = <String>[].obs;
-  var templateItems = <String>[].obs; // For 'Variant Of' filter
+  var templateItems = <String>[].obs;
   var itemAttributes = <String>[].obs;
   var currentAttributeValues = <String>[].obs;
 
@@ -46,8 +53,12 @@ class ItemController extends GetxController {
     super.onInit();
     fetchItems();
     fetchItemGroups();
-    fetchTemplateItems(); // Fetch templates
+    fetchTemplateItems();
     fetchItemAttributes();
+
+    // Reactive Search: Re-filter whenever items or query changes
+    ever(items, (_) => _applySearch());
+    ever(searchQuery, (_) => _applySearch());
   }
 
   void toggleLayout() {
@@ -56,6 +67,27 @@ class ItemController extends GetxController {
 
   void setImagesOnly(bool value) {
     showImagesOnly.value = value;
+  }
+
+  void onSearchChanged(String query) {
+    searchQuery.value = query;
+    // Note: If you want to trigger Server-Side search for lazy loading support,
+    // you would debounce calls to fetchItems(clear:true) here.
+    // For now, we are implementing the requested "multi-field robust match" on loaded data.
+  }
+
+  void _applySearch() {
+    displayedItems.value = SearchHelper.search<Item>(
+      items,
+      searchQuery.value,
+          (item) => [
+        item.itemName,
+        item.itemCode,
+        item.itemGroup,
+        item.variantOf,
+        item.description
+      ],
+    );
   }
 
   void applyFilters(Map<String, dynamic> filters, List<Map<String, String>> attributes) {
@@ -68,6 +100,7 @@ class ItemController extends GetxController {
     activeFilters.clear();
     attributeFilters.clear();
     showImagesOnly.value = true;
+    searchQuery.value = ''; // Clear search too
     fetchItems(clear: true);
   }
 
@@ -96,12 +129,11 @@ class ItemController extends GetxController {
         queryFilters['image'] = ['!=', ''];
       }
 
-      // --- Attribute Filtering Logic ---
+      // Attribute Filtering Logic (Unchanged)
       if (attributeFilters.isNotEmpty) {
         Set<String>? commonItemCodes;
         bool permissionErrorOccurred = false;
 
-        // Find items that match ALL selected attributes (Intersection)
         for (var filter in attributeFilters) {
           try {
             final response = await _provider.getItemVariantsByAttribute(
@@ -119,43 +151,27 @@ class ItemController extends GetxController {
               } else {
                 commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
               }
-
-              // Optimization: If intersection is empty, no items match -> break
               if (commonItemCodes.isEmpty) break;
             }
           } catch (e) {
-            // Handle Permission 403 or other errors gracefully
             print('Error fetching attributes: $e');
             permissionErrorOccurred = true;
-            // Fallback: Add description filter for this value
-            // Note: This is less precise and only supports one 'description' key in Map
             queryFilters['description'] = ['like', '%${filter['value']}%'];
           }
         }
 
-        // Apply result to main query if we successfully fetched Item Codes
         if (!permissionErrorOccurred) {
           if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
-            // If queryFilters['name'] already exists (e.g. from searching), we need to intersect it?
-            // For simplicity, we just use the attribute results or intersect if supported.
-            // ERPNext 'in' operator takes a list.
             queryFilters['name'] = ['in', commonItemCodes.toList()];
           } else {
-            // Attributes were checked but no intersection found
-            // Return empty result immediately to avoid fetching all items
             items.clear();
             isLoading.value = false;
             hasMore.value = false;
             isFetchingMore.value = false;
             return;
           }
-        } else {
-          // If we had a permission error, we rely on the 'description' filter added in catch block
-          // and let the main query run.
-          GlobalSnackbar.info(title: 'Permissions', message: 'Attribute access restricted. Searching by description instead.');
         }
       }
-      // ---------------------------------
 
       final response = await _provider.getItems(
         limit: _limit,
@@ -192,6 +208,7 @@ class ItemController extends GetxController {
     }
   }
 
+  // ... (Rest of Methods: Groups, Attributes, StockLevels - Unchanged) ...
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {

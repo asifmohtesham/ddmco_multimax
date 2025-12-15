@@ -4,23 +4,25 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 class GenericDocumentCard extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String status;
+  final String? status; // Made nullable
   final List<Widget> stats;
   final bool isExpanded;
   final bool isLoadingDetails;
   final VoidCallback onTap;
   final Widget? expandedContent;
+  final Widget? leading; // Added support for leading image/icon
 
   const GenericDocumentCard({
     super.key,
     required this.title,
     required this.subtitle,
-    required this.status,
-    required this.stats,
+    this.status,
+    this.stats = const [],
     required this.isExpanded,
     required this.onTap,
     this.isLoadingDetails = false,
     this.expandedContent,
+    this.leading,
   });
 
   @override
@@ -29,23 +31,33 @@ class GenericDocumentCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       elevation: 0,
-      color: colorScheme.surfaceContainer,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: colorScheme.surfaceContainer, // M3 Surface
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // Header Row
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Optional Leading Widget (Image/Icon)
+                  if (leading != null) ...[
+                    leading!,
+                    const SizedBox(width: 16),
+                  ],
+
+                  // Title & Subtitle
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,38 +68,56 @@ class GenericDocumentCard extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: colorScheme.onSurface,
                           ),
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
                           subtitle,
-                          style: theme.textTheme.labelMedium?.copyWith(
+                          style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontFamily: 'monospace',
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  StatusPill(status: status),
+
+                  // Status Pill
+                  if (status != null) ...[
+                    const SizedBox(width: 8),
+                    StatusPill(status: status!),
+                  ],
                 ],
               ),
 
-              const SizedBox(height: 16),
+              if (stats.isNotEmpty || isExpanded)
+                const SizedBox(height: 16),
 
               // Stats Row
-              Row(
-                children: [
-                  ...stats.expand((widget) => [widget, const SizedBox(width: 16)]),
-                  const Spacer(),
-                  AnimatedRotation(
+              if (stats.isNotEmpty)
+                Row(
+                  children: [
+                    ...stats.expand((widget) => [widget, const SizedBox(width: 16)]),
+                    const Spacer(),
+                    AnimatedRotation(
+                      turns: isExpanded ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                )
+              else if (isExpanded)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0.0,
                     duration: const Duration(milliseconds: 300),
                     child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
                   ),
-                ],
-              ),
+                ),
 
               // Expanded Content
               AnimatedSize(
@@ -119,7 +149,7 @@ class GenericDocumentCard extends StatelessWidget {
     );
   }
 
-  // Static helper to build icon stats consistently across screens
+  // Static helper to build icon stats consistently
   static Widget buildIconStat(BuildContext context, IconData icon, String text) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
