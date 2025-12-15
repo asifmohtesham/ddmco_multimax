@@ -34,7 +34,11 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   }
 
   void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
+    // Only load more if not searching
+    if (controller.searchQuery.value.isEmpty &&
+        _isBottom &&
+        controller.hasMore.value &&
+        !controller.isFetchingMore.value) {
       controller.fetchPackingSlips(isLoadMore: true);
     }
   }
@@ -152,7 +156,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                 );
               }
 
-              // Access map length to ensure Obx listens to map updates for the customer name bug
+              // Access map length to ensure Obx listens to map updates
               // ignore: unused_local_variable
               final _dummyListener = controller.posCustomerMap.length;
 
@@ -164,6 +168,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                   child: Center(child: Text('No results match your search.')),
                 );
               }
+
+              // Only show bottom loader if NOT searching and there is more data
+              final bool showLoader = controller.searchQuery.value.isEmpty && controller.hasMore.value;
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -266,7 +273,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: slips.length,
-                            padding: EdgeInsets.zero, // Removed extra space before the first item
+                            padding: EdgeInsets.zero, // Removed extra space
                             separatorBuilder: (context, index) => Divider(
                               height: 1,
                               indent: 16,
@@ -282,7 +289,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                       ),
                     );
                   },
-                  childCount: groupKeys.length + (controller.hasMore.value ? 1 : 0),
+                  childCount: groupKeys.length + (showLoader ? 1 : 0),
                 ),
               );
             }),
