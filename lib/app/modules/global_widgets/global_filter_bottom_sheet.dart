@@ -41,153 +41,156 @@ class GlobalFilterBottomSheet extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      // Removed padding from here to prevent overlap issues
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Drag Handle
-            Center(
-              child: Container(
-                width: 32,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+        // Moved padding inside SafeArea to ensure spacing from Status Bar
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag Handle
+              Center(
+                child: Container(
+                  width: 32,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
 
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: onClear,
-                  style: TextButton.styleFrom(
-                    foregroundColor: colorScheme.error,
+                  TextButton(
+                    onPressed: onClear,
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                    ),
+                    child: const Text('Reset'),
                   ),
-                  child: const Text('Reset'),
-                ),
-              ],
-            ),
-            const Divider(),
+                ],
+              ),
+              const Divider(),
 
-            // Scrollable Content
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (sortOptions.isNotEmpty) ...[
-                      const SizedBox(height: 16),
+              // Scrollable Content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (sortOptions.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Sort By',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: sortOptions.map((option) {
+                              final isSelected = currentSortField == option.field;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: FilterChip(
+                                  label: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(option.label),
+                                      if (isSelected) ...[
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          currentSortOrder == 'desc'
+                                              ? Icons.arrow_downward
+                                              : Icons.arrow_upward,
+                                          size: 16,
+                                          color: colorScheme.onSecondaryContainer,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  selected: isSelected,
+                                  onSelected: (bool selected) {
+                                    String newOrder = 'desc';
+                                    if (isSelected) {
+                                      newOrder = currentSortOrder == 'desc' ? 'asc' : 'desc';
+                                    }
+                                    onSortChanged(option.field, newOrder);
+                                  },
+                                  showCheckmark: false,
+                                  selectedColor: colorScheme.secondaryContainer,
+                                  labelStyle: TextStyle(
+                                    color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(
+                                      color: isSelected ? Colors.transparent : colorScheme.outline,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
                       Text(
-                        'Sort By',
+                        'Filter Options',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: colorScheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      // CHANGED: Wrap -> SingleChildScrollView + Row for Horizontal Scroll
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: sortOptions.map((option) {
-                            final isSelected = currentSortField == option.field;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8.0), // Spacing between items
-                              child: FilterChip(
-                                label: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(option.label),
-                                    if (isSelected) ...[
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        currentSortOrder == 'desc'
-                                            ? Icons.arrow_downward
-                                            : Icons.arrow_upward,
-                                        size: 16,
-                                        color: colorScheme.onSecondaryContainer,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                selected: isSelected,
-                                onSelected: (bool selected) {
-                                  String newOrder = 'desc';
-                                  if (isSelected) {
-                                    newOrder = currentSortOrder == 'desc' ? 'asc' : 'desc';
-                                  }
-                                  onSortChanged(option.field, newOrder);
-                                },
-                                showCheckmark: false,
-                                selectedColor: colorScheme.secondaryContainer,
-                                labelStyle: TextStyle(
-                                  color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: BorderSide(
-                                    color: isSelected ? Colors.transparent : colorScheme.outline,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+                      ...filterWidgets.map((w) => Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: w,
+                      )),
                     ],
-
-                    Text(
-                      'Filter Options',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ...filterWidgets.map((w) => Padding(
-                      padding: const EdgeInsets.only(bottom: 16.0),
-                      child: w,
-                    )),
-                  ],
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Actions
-            FilledButton(
-              onPressed: onApply,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              // Actions
+              FilledButton(
+                onPressed: onApply,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                    activeFilterCount > 0
+                        ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
+                        : 'Show Results'
+                ),
               ),
-              child: Text(
-                  activeFilterCount > 0
-                      ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
-                      : 'Show Results'
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
