@@ -40,6 +40,13 @@ class PurchaseOrderController extends GetxController {
     fetchPurchaseOrders(isLoadMore: false, clear: true);
   }
 
+  // Added missing method
+  void setSort(String field, String order) {
+    sortField.value = field;
+    sortOrder.value = order;
+    fetchPurchaseOrders(isLoadMore: false, clear: true);
+  }
+
   Future<void> fetchPurchaseOrders({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
