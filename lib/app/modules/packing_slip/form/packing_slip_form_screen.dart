@@ -14,8 +14,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: controller.onWillPop,
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
@@ -78,7 +82,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           }),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildDetailsView(PackingSlip slip) {

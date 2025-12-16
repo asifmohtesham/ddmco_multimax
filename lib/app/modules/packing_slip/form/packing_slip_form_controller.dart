@@ -114,10 +114,8 @@ class PackingSlipFormController extends GetxController {
     super.onClose();
   }
 
-  // --- Dirty Check Logic ---
-  Future<bool> onWillPop() async {
-    if (!isDirty.value) return true;
-
+  // --- PopScope Logic ---
+  Future<void> confirmDiscard() async {
     final result = await Get.dialog<bool>(
       AlertDialog(
         title: const Text('Unsaved Changes'),
@@ -136,7 +134,10 @@ class PackingSlipFormController extends GetxController {
       ),
     );
 
-    return result ?? false;
+    if (result == true) {
+      isDirty.value = false; // Reset dirty flag to allow PopScope to proceed
+      Get.back(); // Trigger the pop
+    }
   }
 
   void validateSheet() {
@@ -226,7 +227,9 @@ class PackingSlipFormController extends GetxController {
 
         if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
           packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
-          if (mode != 'new') _checkForChanges();
+          // If we auto-corrected the customer on load, treat this as the new "original" state
+          // so the form doesn't appear dirty immediately.
+          if (mode != 'new') _updateOriginalState(packingSlip.value!);
         }
       }
     } catch (e) {
