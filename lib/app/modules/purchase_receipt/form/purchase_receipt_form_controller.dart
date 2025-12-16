@@ -170,6 +170,16 @@ class PurchaseReceiptFormController extends GetxController {
     super.onClose();
   }
 
+  // --- PopScope Logic ---
+  Future<void> confirmDiscard() async {
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false; // Reset dirty flag
+        Get.back(); // Pop the screen (Navigation)
+      },
+    );
+  }
+
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {

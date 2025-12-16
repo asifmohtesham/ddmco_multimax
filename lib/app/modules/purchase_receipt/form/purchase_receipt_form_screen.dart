@@ -14,76 +14,83 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() {
-            final receipt = controller.purchaseReceipt.value;
-            final name = receipt?.name ?? 'Loading...';
-            final supplier = receipt?.supplier;
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Obx(() {
+              final receipt = controller.purchaseReceipt.value;
+              final name = receipt?.name ?? 'Loading...';
+              final supplier = receipt?.supplier;
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                if (supplier != null && supplier.isNotEmpty)
-                  Text(supplier, style: const TextStyle(fontSize: 16)),
-              ],
-            );
-          }),
-          actions: [
-            Obx(() {
-              if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
-
-              return controller.isSaving.value
-                  ? const Center(
-                  child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
-                      )
-                  )
-              )
-                  : IconButton(
-                icon: const Icon(Icons.save),
-                // Enable save only if dirty AND draft
-                onPressed: (controller.isDirty.value && controller.isEditable)
-                    ? controller.savePurchaseReceipt
-                    : null,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  if (supplier != null && supplier.isNotEmpty)
+                    Text(supplier, style: const TextStyle(fontSize: 16)),
+                ],
               );
             }),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Items'),
+            actions: [
+              Obx(() {
+                if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
+
+                return controller.isSaving.value
+                    ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
+                        )
+                    )
+                )
+                    : IconButton(
+                  icon: const Icon(Icons.save),
+                  // Enable save only if dirty AND draft
+                  onPressed: (controller.isDirty.value && controller.isEditable)
+                      ? controller.savePurchaseReceipt
+                      : null,
+                );
+              }),
             ],
-          ),
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final receipt = controller.purchaseReceipt.value;
-          if (receipt == null) {
-            return const Center(child: Text('Purchase receipt not found.'));
-          }
-
-          return SafeArea(
-            child: TabBarView(
-              children: [
-                _buildDetailsView(context, receipt),
-                _buildItemsView(context, receipt),
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Details'),
+                Tab(text: 'Items'),
               ],
             ),
-          );
-        }),
+          ),
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final receipt = controller.purchaseReceipt.value;
+            if (receipt == null) {
+              return const Center(child: Text('Purchase receipt not found.'));
+            }
+
+            return SafeArea(
+              child: TabBarView(
+                children: [
+                  _buildDetailsView(context, receipt),
+                  _buildItemsView(context, receipt),
+                ],
+              ),
+            );
+          }),
+        ),
       ),
-    );
+    ));
   }
 
   Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
@@ -272,8 +279,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 controller.itemKeys[item.name!] = GlobalKey();
               }
               return Container(
-                key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
-                child: PurchaseReceiptItemCard(item: item, index: index)
+                  key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
+                  child: PurchaseReceiptItemCard(item: item, index: index)
               );
             },
           ),
