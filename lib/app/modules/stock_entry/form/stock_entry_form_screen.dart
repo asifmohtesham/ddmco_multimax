@@ -14,57 +14,64 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
-          actions: [
-            Obx(() => controller.isSaving.value
-                ? const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2.5)),
-              ),
-            )
-                : IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: (controller.isDirty.value &&
-                  controller.stockEntry.value?.docstatus == 0)
-                  ? controller.saveStockEntry
-                  : null,
-            )),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Items'),
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Obx(() => Text(controller.stockEntry.value?.name ?? 'Loading...')),
+            actions: [
+              Obx(() => controller.isSaving.value
+                  ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2.5)),
+                ),
+              )
+                  : IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: (controller.isDirty.value &&
+                    controller.stockEntry.value?.docstatus == 0)
+                    ? controller.saveStockEntry
+                    : null,
+              )),
             ],
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Details'),
+                Tab(text: 'Items'),
+              ],
+            ),
           ),
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final entry = controller.stockEntry.value;
+            if (entry == null) {
+              return const Center(child: Text('Stock entry not found.'));
+            }
+
+            return TabBarView(
+              children: [
+                _buildDetailsView(context, entry),
+                _buildItemsView(context, entry),
+              ],
+            );
+          }),
         ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final entry = controller.stockEntry.value;
-          if (entry == null) {
-            return const Center(child: Text('Stock entry not found.'));
-          }
-
-          return TabBarView(
-            children: [
-              _buildDetailsView(context, entry),
-              _buildItemsView(context, entry),
-            ],
-          );
-        }),
       ),
-    );
+    ));
   }
 
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
@@ -472,8 +479,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               }
 
               return Container(
-                key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
-                child: StockEntryItemCard(item: item, index: globalIndex)
+                  key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
+                  child: StockEntryItemCard(item: item, index: globalIndex)
               );
             }).toList(),
           );

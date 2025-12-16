@@ -179,6 +179,16 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
+  // --- PopScope Logic ---
+  Future<void> confirmDiscard() async {
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false; // Reset dirty flag
+        Get.back(); // Pop the screen (Navigation)
+      },
+    );
+  }
+
   // ... [Existing methods: fetchWarehouses, fetchStockEntryTypes, etc. maintained] ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
