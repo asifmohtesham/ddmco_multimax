@@ -114,6 +114,31 @@ class PackingSlipFormController extends GetxController {
     super.onClose();
   }
 
+  // --- Dirty Check Logic ---
+  Future<bool> onWillPop() async {
+    if (!isDirty.value) return true;
+
+    final result = await Get.dialog<bool>(
+      AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text('You have unsaved changes. Are you sure you want to leave?'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
   void validateSheet() {
     final text = bsQtyController.text;
     final qty = double.tryParse(text);

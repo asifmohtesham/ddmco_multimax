@@ -14,72 +14,72 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() {
-            final slip = controller.packingSlip.value;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(slip?.name ?? 'Loading...', style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                if (slip?.customPoNo != null)
-                  Text(slip!.customPoNo!, style: const TextStyle(fontSize: 16)),
-              ],
-            );
-          }),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Items'),
-            ],
-          ),
-          actions: [
-            Obx(() {
-              if (controller.isSaving.value) {
-                return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
-                );
-              }
-
-              // Enable Save button only if Draft AND Dirty
-              final bool isDraft = controller.packingSlip.value?.docstatus == 0;
-              final bool isDirty = controller.isDirty.value;
-
-              return IconButton(
-                icon: Icon(Icons.save, color: (isDraft && isDirty) ? Colors.white : Colors.white54),
-                onPressed: (isDraft && isDirty) ? controller.savePackingSlip : null,
+    return WillPopScope(
+      onWillPop: controller.onWillPop,
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Obx(() {
+              final slip = controller.packingSlip.value;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(slip?.name ?? 'Loading...', style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  if (slip?.customPoNo != null)
+                    Text(slip!.customPoNo!, style: const TextStyle(fontSize: 16)),
+                ],
               );
             }),
-          ],
-        ),
-        // ... (Rest of body remains same)
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final slip = controller.packingSlip.value;
-          if (slip == null) {
-            return const Center(child: Text('Document not found'));
-          }
-
-          return SafeArea(
-            child: TabBarView(
-              children: [
-                _buildDetailsView(slip),
-                _buildItemsView(slip),
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Details'),
+                Tab(text: 'Items'),
               ],
             ),
-          );
-        }),
+            actions: [
+              Obx(() {
+                if (controller.isSaving.value) {
+                  return const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
+                  );
+                }
+
+                // Enable Save button only if Draft AND Dirty
+                final bool isDraft = controller.packingSlip.value?.docstatus == 0;
+                final bool isDirty = controller.isDirty.value;
+
+                return IconButton(
+                  icon: Icon(Icons.save, color: (isDraft && isDirty) ? Colors.white : Colors.white54),
+                  onPressed: (isDraft && isDirty) ? controller.savePackingSlip : null,
+                );
+              }),
+            ],
+          ),
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final slip = controller.packingSlip.value;
+            if (slip == null) {
+              return const Center(child: Text('Document not found'));
+            }
+
+            return SafeArea(
+              child: TabBarView(
+                children: [
+                  _buildDetailsView(slip),
+                  _buildItemsView(slip),
+                ],
+              ),
+            );
+          }),
+        ),
       ),
     );
   }
-
-  // ... (Other widgets _buildDetailsView, _buildSectionCard, _buildItemsView remain identical)
 
   Widget _buildDetailsView(PackingSlip slip) {
     return SingleChildScrollView(
