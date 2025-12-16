@@ -70,8 +70,9 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
     final bool canPress = enabled && !isSaving && !isLoading;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return ElevatedButton(
+    return FilledButton(
       onPressed: canPress
           ? () {
         if (formKey.currentState!.validate()) {
@@ -79,34 +80,55 @@ class GlobalItemFormSheet extends StatelessWidget {
         }
       }
           : null,
-      style: ElevatedButton.styleFrom(
+      style: FilledButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        backgroundColor: enabled ? Theme.of(context).primaryColor : Colors.grey.shade300,
-        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: enabled ? 2 : 0,
+        // M3 handles disabled colors automatically, but we can enforce opacity if needed
       ),
       child: isSaving
-          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          ? SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(
+          color: colorScheme.onPrimary,
+          strokeWidth: 2.5,
+        ),
+      )
           : Text(
         title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  static Widget buildInputGroup({required String label, required Color color, required Widget child, Color? bgColor}) {
+  static Widget buildInputGroup({
+    required String label,
+    required Color color,
+    required Widget child,
+    Color? bgColor,
+  }) {
+    // Note: In M3, relying on context for colors is better,
+    // but we keep the signature for backward compatibility.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
-          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+          padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: bgColor ?? color.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(8),
+            color: bgColor ?? color.withValues(alpha: 0.08), // M3 subtle tint
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.1)),
           ),
           child: child,
         ),
@@ -114,11 +136,14 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
-  // ... (Metadata Header Builder unchanged) ...
   Widget _buildMetadataHeader(BuildContext context) {
     if (owner == null && creation == null && modified == null && modifiedBy == null) {
       return const SizedBox.shrink();
     }
+
+    final theme = Theme.of(context);
+    final variantColor = theme.colorScheme.onSurfaceVariant;
+    final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
@@ -129,24 +154,19 @@ class GlobalItemFormSheet extends StatelessWidget {
             Row(
               children: [
                 if (owner != null) ...[
-                  const Icon(Icons.person_outline, size: 12, color: Colors.grey),
+                  Icon(Icons.person_outline, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(
-                    owner!,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
-                  ),
+                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (owner != null && creation != null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    child: Text('•', style: style),
                   ),
                 if (creation != null) ...[
-                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
-                  const SizedBox(width: 4),
                   Text(
                     'Created ${FormattingHelper.getRelativeTime(creation)}',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    style: style,
                   ),
                 ],
               ],
@@ -157,24 +177,19 @@ class GlobalItemFormSheet extends StatelessWidget {
             Row(
               children: [
                 if (modifiedBy != null) ...[
-                  const Icon(Icons.edit_outlined, size: 12, color: Colors.grey),
+                  Icon(Icons.edit_outlined, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(
-                    modifiedBy!,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
-                  ),
+                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (modifiedBy != null && modified != null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    child: Text('•', style: style),
                   ),
                 if (modified != null) ...[
-                  const Icon(Icons.history, size: 12, color: Colors.grey),
-                  const SizedBox(width: 4),
                   Text(
                     'Modified ${FormattingHelper.getRelativeTime(modified)}',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    style: style,
                   ),
                 ],
               ],
@@ -187,22 +202,42 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return SafeArea(
+      bottom: false, // Handle bottom safe area manually inside content to allow full bleed if needed
       child: Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)), // M3 Standard
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // --- Drag Handle ---
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+              child: Container(
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // --- Scrollable Content ---
             Expanded(
               child: Form(
                 key: formKey,
                 child: ListView(
                   controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                   shrinkWrap: true,
                   children: [
+                    // Header Row
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -213,37 +248,63 @@ class GlobalItemFormSheet extends StatelessWidget {
                             children: [
                               Text(
                                 title,
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontFamily: 'monospace',
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
-                              ),
-                              Text(
                                 itemName,
-                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                                maxLines: 1,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colorScheme.onSurface,
+                                ),
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               _buildMetadataHeader(context),
                             ],
                           ),
                         ),
+                        // Close Button
                         IconButton(
                           onPressed: () => Get.back(),
                           icon: const Icon(Icons.close),
-                          style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
+                          style: IconButton.styleFrom(
+                            backgroundColor: colorScheme.surfaceContainerHigh,
+                            foregroundColor: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
 
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.0),
+                      child: Divider(height: 1),
+                    ),
+
+                    // Custom Fields
                     ...customFields.map((w) => Padding(
-                      padding: const EdgeInsets.only(bottom: 16.0),
+                      padding: const EdgeInsets.only(bottom: 20.0),
                       child: w,
                     )),
 
+                    // Quantity Input
                     QuantityInputWidget(
                       controller: qtyController,
                       onIncrement: onIncrement,
@@ -253,8 +314,9 @@ class GlobalItemFormSheet extends StatelessWidget {
                       infoText: qtyInfoText,
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
 
+                    // Save Button
                     SizedBox(
                       width: double.infinity,
                       child: isSaveEnabledRx != null
@@ -262,6 +324,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                           : _buildSaveButton(context, isSaveEnabled),
                     ),
 
+                    // Delete Button
                     if (onDelete != null) ...[
                       const SizedBox(height: 12),
                       SizedBox(
@@ -271,20 +334,44 @@ class GlobalItemFormSheet extends StatelessWidget {
                             Get.back();
                             onDelete!();
                           },
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          label: const Text('Remove Item', style: TextStyle(color: Colors.red)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: colorScheme.error,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Remove Item'),
                         ),
                       ),
                     ],
+
+                    // Add extra padding at the bottom for scrolling past the scanner/keyboard
+                    SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
                   ],
                 ),
               ),
             ),
 
-            // Standardised Global Scanner in Sheet
+            // --- Sticky Scanner ---
             if (onScan != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
+                    )
+                  ],
+                ),
+                padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    // Respect bottom safe area (e.g., iPhone home indicator)
+                    MediaQuery.of(context).padding.bottom + 12
+                ),
                 child: BarcodeInputWidget(
                   onScan: onScan!,
                   controller: scanController,
