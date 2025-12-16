@@ -257,7 +257,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 children: [
                   Text(
                     variant,
-                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black),
+                    style: const TextStyle(fontFamily: 'ShureTechMono', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -272,7 +272,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       drawText: true,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontFamily: 'monospace',
+                        fontFamily: 'ShureTechMono',
                         color: Colors.black,
                         fontFeatures: [FontFeature.slashedZero()],
                       ),
@@ -298,17 +298,17 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       errorCorrectionLevel: QrErrorCorrectLevel.H,
                       data: controller.generatedBatchId.value,
                       version: QrVersions.auto,
-                      padding: EdgeInsets.zero,
+                      padding: EdgeInsets.all(2),
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     controller.generatedBatchId.value.replaceAll('-', '-\n'),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'ShureTechMono',
                       fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                      color: Theme.of(context).colorScheme.primary,
                       fontFeatures: [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,
