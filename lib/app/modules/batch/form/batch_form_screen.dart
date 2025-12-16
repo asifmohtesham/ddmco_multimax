@@ -14,186 +14,192 @@ class BatchFormScreen extends GetView<BatchFormController> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
-        actions: [
-          // Export Button
-          Obx(() {
-            final batchId = controller.generatedBatchId.value;
-            if (controller.isEditMode && batchId.isNotEmpty) {
-              return PopupMenuButton<String>(
-                icon: controller.isExporting.value
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: colorScheme.onSurface, strokeWidth: 2))
-                    : const Icon(Icons.share),
-                onSelected: (value) {
-                  if (value == 'png') controller.exportQrAsPng();
-                  if (value == 'pdf') controller.exportQrAsPdf();
-                },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                  const PopupMenuItem<String>(
-                    value: 'png',
-                    child: ListTile(
-                      leading: Icon(Icons.image, color: Colors.blue),
-                      title: Text('Export PNG'),
-                      contentPadding: EdgeInsets.zero,
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: Scaffold(
+        backgroundColor: colorScheme.surface,
+        appBar: AppBar(
+          title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
+          actions: [
+            // Export Button
+            Obx(() {
+              final batchId = controller.generatedBatchId.value;
+              if (controller.isEditMode && batchId.isNotEmpty) {
+                return PopupMenuButton<String>(
+                  icon: controller.isExporting.value
+                      ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: colorScheme.onSurface, strokeWidth: 2))
+                      : const Icon(Icons.share),
+                  onSelected: (value) {
+                    if (value == 'png') controller.exportQrAsPng();
+                    if (value == 'pdf') controller.exportQrAsPdf();
+                  },
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'png',
+                      child: ListTile(
+                        leading: Icon(Icons.image, color: Colors.blue),
+                        title: Text('Export PNG'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'pdf',
-                    child: ListTile(
-                      leading: Icon(Icons.picture_as_pdf, color: Colors.red),
-                      title: Text('Export PDF (Vector)'),
-                      contentPadding: EdgeInsets.zero,
+                    const PopupMenuItem<String>(
+                      value: 'pdf',
+                      child: ListTile(
+                        leading: Icon(Icons.picture_as_pdf, color: Colors.red),
+                        title: Text('Export PDF (Vector)'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
-                  ),
-                ],
-              );
-            }
-            return const SizedBox.shrink();
-          }),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            }),
 
-          Obx(() => controller.isSaving.value
-              ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-              : IconButton(
-            icon: const Icon(Icons.save),
-            // M3 style: Disable color is handled by theme usually, but explicit grey helps if logic dictates
-            onPressed: controller.isDirty.value ? controller.saveBatch : null,
-          )
-          ),
-        ],
-      ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- Label Preview Section ---
-              if (controller.generatedBatchId.value.isNotEmpty)
+            Obx(() => controller.isSaving.value
+                ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                : IconButton(
+              icon: Icon(Icons.save, color: controller.isDirty.value ? colorScheme.primary : Colors.grey),
+              onPressed: controller.isDirty.value ? controller.saveBatch : null,
+            )
+            ),
+          ],
+        ),
+        body: Obx(() {
+          if (controller.isLoading.value) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // --- Label Preview Section ---
+                if (controller.generatedBatchId.value.isNotEmpty)
+                  _buildSectionCard(
+                    context,
+                    title: 'Label Preview',
+                    children: [
+                      Center(child: _buildLabelPreview(context)),
+                    ],
+                  ),
+
+                // --- Primary Details ---
                 _buildSectionCard(
                   context,
-                  title: 'Label Preview',
+                  title: 'General Information',
                   children: [
-                    Center(child: _buildLabelPreview(context)),
+                    // Item Code
+                    GestureDetector(
+                      onTap: controller.isEditMode ? null : () => _showItemPicker(context),
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller: controller.itemController,
+                          decoration: const InputDecoration(
+                            labelText: 'Item Code *',
+                            hintText: 'Select Item',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.inventory_2_outlined),
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                          readOnly: true, // Always handled by picker or locked in edit
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: controller.descriptionController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.description_outlined),
+                        alignLabelWithHint: true,
+                      ),
+                    ),
                   ],
                 ),
 
-              // --- Primary Details ---
-              _buildSectionCard(
-                context,
-                title: 'General Information',
-                children: [
-                  // Item Code
-                  GestureDetector(
-                    onTap: controller.isEditMode ? null : () => _showItemPicker(context),
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        controller: controller.itemController,
-                        decoration: const InputDecoration(
-                          labelText: 'Item Code *',
-                          hintText: 'Select Item',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.inventory_2_outlined),
-                          suffixIcon: Icon(Icons.arrow_drop_down),
-                        ),
-                        readOnly: true, // Always handled by picker or locked in edit
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: controller.descriptionController,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Description',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.description_outlined),
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                ],
-              ),
-
-              // --- Purchase Details ---
-              _buildSectionCard(
-                context,
-                title: 'Source',
-                children: [
-                  GestureDetector(
-                    onTap: () => _showPOPicker(context),
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        controller: controller.customPurchaseOrderController,
-                        decoration: const InputDecoration(
-                          labelText: 'Purchase Order',
-                          hintText: 'Link PO',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.receipt_long_outlined),
-                          suffixIcon: Icon(Icons.arrow_drop_down),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // --- Dates & Quantity ---
-              _buildSectionCard(
-                context,
-                title: 'Dates & Packaging',
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
+                // --- Purchase Details ---
+                _buildSectionCard(
+                  context,
+                  title: 'Source',
+                  children: [
+                    GestureDetector(
+                      onTap: () => _showPOPicker(context),
+                      child: AbsorbPointer(
                         child: TextFormField(
-                          controller: controller.mfgDateController,
-                          readOnly: true,
-                          onTap: () => controller.pickDate(controller.mfgDateController),
+                          controller: controller.customPurchaseOrderController,
                           decoration: const InputDecoration(
-                            labelText: 'Mfg Date',
+                            labelText: 'Purchase Order',
+                            hintText: 'Link PO',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                            prefixIcon: Icon(Icons.receipt_long_outlined),
+                            suffixIcon: Icon(Icons.arrow_drop_down),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: controller.expDateController,
-                          readOnly: true,
-                          onTap: () => controller.pickDate(controller.expDateController),
-                          decoration: const InputDecoration(
-                            labelText: 'Expiry Date',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.event_busy_outlined),
+                    ),
+                  ],
+                ),
+
+                // --- Dates & Quantity ---
+                _buildSectionCard(
+                  context,
+                  title: 'Dates & Packaging',
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: controller.mfgDateController,
+                            readOnly: true,
+                            onTap: () => controller.pickDate(controller.mfgDateController),
+                            decoration: const InputDecoration(
+                              labelText: 'Mfg Date',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today_outlined),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: controller.customPackagingQtyController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Packaging Qty (Custom)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.layers_outlined),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: controller.expDateController,
+                            readOnly: true,
+                            onTap: () => controller.pickDate(controller.expDateController),
+                            decoration: const InputDecoration(
+                              labelText: 'Expiry Date',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.event_busy_outlined),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-            ],
-          ),
-        );
-      }),
-    );
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: controller.customPackagingQtyController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Packaging Qty (Custom)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.layers_outlined),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
+          );
+        }),
+      ),
+    ));
   }
 
   Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children}) {

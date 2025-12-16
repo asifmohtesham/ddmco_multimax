@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -79,6 +80,16 @@ class BatchFormController extends GetxController {
     customPackagingQtyController.dispose();
     customPurchaseOrderController.dispose();
     super.onClose();
+  }
+
+  // --- PopScope Logic ---
+  Future<void> confirmDiscard() async {
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false; // Reset dirty flag
+        Get.back(); // Pop the screen (Navigation)
+      },
+    );
   }
 
   void _initNewBatch() {
