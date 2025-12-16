@@ -12,45 +12,52 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() => Text(controller.purchaseOrder.value?.name ?? 'Loading...')),
-          actions: [
-            Obx(() => controller.isSaving.value
-                ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
-                : IconButton(
-              icon: Icon(Icons.save, color: (controller.isDirty.value && controller.isEditable) ? Colors.white : Colors.white54),
-              onPressed: (controller.isDirty.value && controller.isEditable) ? controller.savePurchaseOrder : null,
-            )
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Items'),
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Obx(() => Text(controller.purchaseOrder.value?.name ?? 'Loading...')),
+            actions: [
+              Obx(() => controller.isSaving.value
+                  ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
+                  : IconButton(
+                icon: Icon(Icons.save, color: (controller.isDirty.value && controller.isEditable) ? Colors.white : Colors.white54),
+                onPressed: (controller.isDirty.value && controller.isEditable) ? controller.savePurchaseOrder : null,
+              )
+              ),
             ],
-          ),
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final po = controller.purchaseOrder.value;
-          if (po == null) return const Center(child: Text('Not found'));
-
-          return SafeArea(
-            child: TabBarView(
-              children: [
-                _buildDetailsView(context, po), // Passed context for bottom sheet
-                _buildItemsView(po),
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Details'),
+                Tab(text: 'Items'),
               ],
             ),
-          );
-        }),
+          ),
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final po = controller.purchaseOrder.value;
+            if (po == null) return const Center(child: Text('Not found'));
+
+            return SafeArea(
+              child: TabBarView(
+                children: [
+                  _buildDetailsView(context, po), // Passed context for bottom sheet
+                  _buildItemsView(po),
+                ],
+              ),
+            );
+          }),
+        ),
       ),
-    );
+    ));
   }
 
   Widget _buildDetailsView(BuildContext context, dynamic po) {
