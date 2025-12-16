@@ -15,71 +15,78 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() {
-            final note = controller.deliveryNote.value;
-            final name = note?.name ?? 'Loading...';
-            final poNo = note?.poNo;
+    return Obx(() => PopScope(
+      canPop: !controller.isDirty.value,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Obx(() {
+              final note = controller.deliveryNote.value;
+              final name = note?.name ?? 'Loading...';
+              final poNo = note?.poNo;
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                if (poNo != null && poNo.isNotEmpty)
-                  Text(poNo, style: const TextStyle(fontSize: 16)),
-              ],
-            );
-          }),
-          actions: [
-            // Save Button Logic
-            Obx(() {
-              // Hide if document is submitted/cancelled
-              if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
-
-              return controller.isSaving.value
-                  ? const Center(
-                  child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  )
-              )
-                  : IconButton(
-                icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
-                onPressed: controller.isDirty.value ? controller.saveDeliveryNote : null,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  if (poNo != null && poNo.isNotEmpty)
+                    Text(poNo, style: const TextStyle(fontSize: 16)),
+                ],
               );
             }),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Items'),
+            actions: [
+              // Save Button Logic
+              Obx(() {
+                // Hide if document is submitted/cancelled
+                if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+
+                return controller.isSaving.value
+                    ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    )
+                )
+                    : IconButton(
+                  icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
+                  onPressed: controller.isDirty.value ? controller.saveDeliveryNote : null,
+                );
+              }),
             ],
-          ),
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value && controller.deliveryNote.value == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final note = controller.deliveryNote.value;
-          if (note == null) {
-            return const Center(child: Text('Delivery note not found.'));
-          }
-
-          return SafeArea(
-            child: TabBarView(
-              children: [
-                _buildDetailsView(note),
-                _buildItemsView(),
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Details'),
+                Tab(text: 'Items'),
               ],
             ),
-          );
-        }),
+          ),
+          body: Obx(() {
+            if (controller.isLoading.value && controller.deliveryNote.value == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final note = controller.deliveryNote.value;
+            if (note == null) {
+              return const Center(child: Text('Delivery note not found.'));
+            }
+
+            return SafeArea(
+              child: TabBarView(
+                children: [
+                  _buildDetailsView(note),
+                  _buildItemsView(),
+                ],
+              ),
+            );
+          }),
+        ),
       ),
-    );
+    ));
   }
 
   Widget _buildDetailsView(DeliveryNote note) {

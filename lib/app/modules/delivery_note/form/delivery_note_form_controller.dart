@@ -151,6 +151,16 @@ class DeliveryNoteFormController extends GetxController {
     super.onClose();
   }
 
+  // --- PopScope Logic ---
+  Future<void> confirmDiscard() async {
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false; // Reset dirty flag
+        Get.back(); // Pop the screen (Navigation)
+      },
+    );
+  }
+
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && deliveryNote.value?.docstatus == 0) {
       isDirty.value = true;
