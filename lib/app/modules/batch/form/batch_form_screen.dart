@@ -11,19 +11,21 @@ class BatchFormScreen extends GetView<BatchFormController> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
         actions: [
           // Export Button
           Obx(() {
-            // FIX: Access the observable unconditionally to satisfy GetX
             final batchId = controller.generatedBatchId.value;
-
             if (controller.isEditMode && batchId.isNotEmpty) {
               return PopupMenuButton<String>(
                 icon: controller.isExporting.value
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: colorScheme.onSurface, strokeWidth: 2))
                     : const Icon(Icons.share),
                 onSelected: (value) {
                   if (value == 'png') controller.exportQrAsPng();
@@ -53,11 +55,11 @@ class BatchFormScreen extends GetView<BatchFormController> {
           }),
 
           Obx(() => controller.isSaving.value
-              ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
+              ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
               : IconButton(
             icon: const Icon(Icons.save),
+            // M3 style: Disable color is handled by theme usually, but explicit grey helps if logic dictates
             onPressed: controller.isDirty.value ? controller.saveBatch : null,
-            color: controller.isDirty.value ? Colors.white : Colors.white38,
           )
           ),
         ],
@@ -73,117 +75,153 @@ class BatchFormScreen extends GetView<BatchFormController> {
             children: [
               // --- Label Preview Section ---
               if (controller.generatedBatchId.value.isNotEmpty)
-                Center(
-                  child: Column(
-                    children: [
-                      const Text('Label Preview', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      const SizedBox(height: 8),
-                      _buildLabelPreview(context),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                _buildSectionCard(
+                  context,
+                  title: 'Label Preview',
+                  children: [
+                    Center(child: _buildLabelPreview(context)),
+                  ],
                 ),
 
-              _buildSectionTitle('Primary Details'),
-              const SizedBox(height: 12),
-
-              // Item Code
-              GestureDetector(
-                onTap: controller.isEditMode ? null : () => _showItemPicker(context),
-                child: AbsorbPointer(
-                  child: TextFormField(
-                    controller: controller.itemController,
-                    decoration: InputDecoration(
-                      labelText: 'Item Code *',
-                      hintText: 'Select Item',
-                      border: const OutlineInputBorder(),
-                      filled: controller.isEditMode,
-                      fillColor: controller.isEditMode ? Colors.grey.shade100 : null,
-                      prefixIcon: const Icon(Icons.inventory_2),
-                      suffixIcon: controller.isEditMode ? null : const Icon(Icons.arrow_drop_down),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Purchase Order
-              GestureDetector(
-                onTap: () => _showPOPicker(context),
-                child: AbsorbPointer(
-                  child: TextFormField(
-                    controller: controller.customPurchaseOrderController,
-                    decoration: const InputDecoration(
-                      labelText: 'Purchase Order (Link)',
-                      hintText: 'Select PO',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.receipt_long),
-                      suffixIcon: Icon(Icons.arrow_drop_down),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: controller.descriptionController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.description_outlined),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              _buildSectionTitle('Dates & Quantity'),
-              const SizedBox(height: 12),
-
-              Row(
+              // --- Primary Details ---
+              _buildSectionCard(
+                context,
+                title: 'General Information',
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.mfgDateController,
-                      readOnly: true,
-                      onTap: () => controller.pickDate(controller.mfgDateController),
-                      decoration: const InputDecoration(
-                        labelText: 'Mfg Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
+                  // Item Code
+                  GestureDetector(
+                    onTap: controller.isEditMode ? null : () => _showItemPicker(context),
+                    child: AbsorbPointer(
+                      child: TextFormField(
+                        controller: controller.itemController,
+                        decoration: const InputDecoration(
+                          labelText: 'Item Code *',
+                          hintText: 'Select Item',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.inventory_2_outlined),
+                          suffixIcon: Icon(Icons.arrow_drop_down),
+                        ),
+                        readOnly: true, // Always handled by picker or locked in edit
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.expDateController,
-                      readOnly: true,
-                      onTap: () => controller.pickDate(controller.expDateController),
-                      decoration: const InputDecoration(
-                        labelText: 'Expiry Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.event_busy),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: controller.descriptionController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.description_outlined),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ],
+              ),
+
+              // --- Purchase Details ---
+              _buildSectionCard(
+                context,
+                title: 'Source',
+                children: [
+                  GestureDetector(
+                    onTap: () => _showPOPicker(context),
+                    child: AbsorbPointer(
+                      child: TextFormField(
+                        controller: controller.customPurchaseOrderController,
+                        decoration: const InputDecoration(
+                          labelText: 'Purchase Order',
+                          hintText: 'Link PO',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.receipt_long_outlined),
+                          suffixIcon: Icon(Icons.arrow_drop_down),
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: controller.customPackagingQtyController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Packaging Qty (Custom)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.layers),
-                ),
+
+              // --- Dates & Quantity ---
+              _buildSectionCard(
+                context,
+                title: 'Dates & Packaging',
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: controller.mfgDateController,
+                          readOnly: true,
+                          onTap: () => controller.pickDate(controller.mfgDateController),
+                          decoration: const InputDecoration(
+                            labelText: 'Mfg Date',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: controller.expDateController,
+                          readOnly: true,
+                          onTap: () => controller.pickDate(controller.expDateController),
+                          decoration: const InputDecoration(
+                            labelText: 'Expiry Date',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.event_busy_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: controller.customPackagingQtyController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Packaging Qty (Custom)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.layers_outlined),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 40),
             ],
           ),
         );
       }),
+    );
+  }
+
+  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children}) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 16),
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
     );
   }
 
@@ -200,41 +238,42 @@ class BatchFormScreen extends GetView<BatchFormController> {
     return AspectRatio(
       aspectRatio: 51 / 26,
       child: Container(
-        width: 300, // Fixed visual width, height auto by aspect ratio
+        width: 300,
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(color: Colors.grey.shade300, width: 1),
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
         ),
         padding: const EdgeInsets.all(8.0),
         child: Row(
           children: [
-            // Column 1: 65% Width (Variant + EAN)
+            // Column 1: 60% Width (Variant + EAN)
             Expanded(
-              flex: 65,
+              flex: 60,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     variant,
-                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12),
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis, // Changed to ellipsis to prevent overflow
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
-                  // EAN Barcode
+                  // Linear Barcode
                   SizedBox(
-                    height: 120,
+                    height: 100,
                     width: double.infinity,
                     child: BarcodeWidget(
                       barcode: Barcode.ean8(drawSpacers: false),
                       data: barcodeData.isNotEmpty ? barcodeData : 'UNKNOWN',
                       drawText: true,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 18,
                         fontFamily: 'monospace',
+                        color: Colors.black,
                         fontFeatures: [FontFeature.slashedZero()],
                       ),
                     ),
@@ -242,17 +281,21 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 24),
 
-            // Column 2: 35% Width (QR + Batch ID)
+            // Column 2: 30% Width (QR + Batch ID)
             Expanded(
-              flex: 35,
+              flex: 30,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   AspectRatio(
                     aspectRatio: 1,
                     child: QrImageView(
+                      eyeStyle: QrEyeStyle(color: Theme.of(context).colorScheme.primary, eyeShape: QrEyeShape.circle),
+                      dataModuleStyle: QrDataModuleStyle(color: Theme.of(context).colorScheme.primary),
+                      embeddedImageStyle: QrEmbeddedImageStyle(color: Theme.of(context).colorScheme.primary),
+                      errorCorrectionLevel: QrErrorCorrectLevel.H,
                       data: controller.generatedBatchId.value,
                       version: QrVersions.auto,
                       padding: EdgeInsets.zero,
@@ -260,11 +303,12 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    controller.generatedBatchId.value,
+                    controller.generatedBatchId.value.replaceAll('-', '-\n'),
                     style: const TextStyle(
-                      fontSize: 8,
+                      fontSize: 12,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.bold,
+                      color: Colors.black,
                       fontFeatures: [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,
@@ -280,54 +324,57 @@ class BatchFormScreen extends GetView<BatchFormController> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-    );
-  }
-
   void _showItemPicker(BuildContext context) {
     controller.searchItems('');
     Get.bottomSheet(
-      Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                decoration: const InputDecoration(
-                  hintText: 'Search Item Name or Code...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+      DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search Item Name or Code...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    ),
+                    onChanged: (val) => controller.searchItems(val),
+                  ),
                 ),
-                onChanged: (val) => controller.searchItems(val),
-              ),
-            ),
-            Expanded(
-              child: Obx(() {
-                if (controller.isFetchingItems.value) return const Center(child: CircularProgressIndicator());
-                return ListView.separated(
-                  itemCount: controller.itemList.length,
-                  separatorBuilder: (c, i) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final item = controller.itemList[i];
-                    return ListTile(
-                      title: Text(item['item_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(item['item_code'] ?? ''),
-                      onTap: () => controller.selectItem(item),
+                Expanded(
+                  child: Obx(() {
+                    if (controller.isFetchingItems.value) return const Center(child: CircularProgressIndicator());
+                    return ListView.separated(
+                      controller: scrollController,
+                      itemCount: controller.itemList.length,
+                      separatorBuilder: (c, i) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final item = controller.itemList[i];
+                        return ListTile(
+                          title: Text(item['item_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(item['item_code'] ?? ''),
+                          onTap: () => controller.selectItem(item),
+                        );
+                      },
                     );
-                  },
-                );
-              }),
+                  }),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
       isScrollControlled: true,
     );
@@ -336,44 +383,54 @@ class BatchFormScreen extends GetView<BatchFormController> {
   void _showPOPicker(BuildContext context) {
     controller.searchPurchaseOrders('');
     Get.bottomSheet(
-      Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                decoration: const InputDecoration(
-                  hintText: 'Search Purchase Orders...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+      DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search Purchase Orders...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    ),
+                    onChanged: (val) => controller.searchPurchaseOrders(val),
+                  ),
                 ),
-                onChanged: (val) => controller.searchPurchaseOrders(val),
-              ),
-            ),
-            Expanded(
-              child: Obx(() {
-                if (controller.isFetchingPOs.value) return const Center(child: CircularProgressIndicator());
-                return ListView.separated(
-                  itemCount: controller.poList.length,
-                  separatorBuilder: (c, i) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final po = controller.poList[i];
-                    return ListTile(
-                      title: Text(po['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('${po['supplier']} • ${po['transaction_date']}'),
-                      onTap: () => controller.selectPurchaseOrder(po['name']),
+                Expanded(
+                  child: Obx(() {
+                    if (controller.isFetchingPOs.value) return const Center(child: CircularProgressIndicator());
+                    return ListView.separated(
+                      controller: scrollController,
+                      itemCount: controller.poList.length,
+                      separatorBuilder: (c, i) => const Divider(height: 1),
+                      itemBuilder: (ctx, i) {
+                        final po = controller.poList[i];
+                        return ListTile(
+                          title: Text(po['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('${po['supplier']} • ${po['transaction_date']}'),
+                          onTap: () => controller.selectPurchaseOrder(po['name']),
+                        );
+                      },
                     );
-                  },
-                );
-              }),
+                  }),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
       isScrollControlled: true,
     );
