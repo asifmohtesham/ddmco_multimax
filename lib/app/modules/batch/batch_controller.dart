@@ -12,6 +12,11 @@ class BatchController extends GetxController {
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
 
+  // Expansion Logic
+  var expandedBatchName = ''.obs;
+  var isLoadingDetails = false.obs;
+  var itemVariants = <String, String>{}.obs; // Cache for Item Variants
+
   final int _limit = 20;
   int _currentPage = 0;
   var searchQuery = ''.obs;
@@ -31,13 +36,13 @@ class BatchController extends GetxController {
         batches.clear();
         _currentPage = 0;
         hasMore.value = true;
+        expandedBatchName.value = ''; // Reset expansion
       }
     }
 
     try {
       final filters = <String, dynamic>{};
       if (searchQuery.value.isNotEmpty) {
-        // Search by Batch ID or Item Code
         filters['name'] = ['like', '%${searchQuery.value}%'];
       }
 
@@ -72,7 +77,6 @@ class BatchController extends GetxController {
 
   void onSearchChanged(String val) {
     searchQuery.value = val;
-    // Debounce or simple delay could be added here
     Future.delayed(const Duration(milliseconds: 500), () {
       if (searchQuery.value == val) {
         fetchBatches(clear: true);
@@ -85,5 +89,38 @@ class BatchController extends GetxController {
         AppRoutes.BATCH_FORM,
         arguments: {'name': name ?? '', 'mode': name != null ? 'edit' : 'new'}
     )?.then((value) => fetchBatches(clear: true));
+  }
+
+  // --- Expansion Logic ---
+
+  void toggleExpand(String batchName) {
+    if (expandedBatchName.value == batchName) {
+      expandedBatchName.value = ''; // Collapse
+    } else {
+      expandedBatchName.value = batchName; // Expand
+      _fetchVariantDetails(batchName);
+    }
+  }
+
+  Future<void> _fetchVariantDetails(String batchName) async {
+    // Find the batch object
+    final batch = batches.firstWhereOrNull((b) => b.name == batchName);
+    if (batch == null || itemVariants.containsKey(batch.item)) return;
+
+    isLoadingDetails.value = true;
+    try {
+      // We need to fetch the ITEM details to get 'variant_of'
+      final response = await _provider.getItemDetails(batch.item);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final itemData = response.data['data'];
+        final variantOf = itemData['variant_of'] ?? '';
+        itemVariants[batch.item] = variantOf.isNotEmpty ? variantOf : 'N/A';
+      }
+    } catch (e) {
+      print('Error fetching item variant: $e');
+      itemVariants[batch.item] = 'Error';
+    } finally {
+      isLoadingDetails.value = false;
+    }
   }
 }

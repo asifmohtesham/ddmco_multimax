@@ -6,7 +6,8 @@ class Batch {
   final String? manufacturingDate;
   final String? expiryDate;
   final double customPackagingQty;
-  final String? customPurchaseOrder; // Added
+  final String? purchaseOrder;
+  final String? variantOf; // Added
   final String creation;
   final String modified;
 
@@ -17,7 +18,8 @@ class Batch {
     this.manufacturingDate,
     this.expiryDate,
     this.customPackagingQty = 0.0,
-    this.customPurchaseOrder,
+    this.purchaseOrder,
+    this.variantOf,
     required this.creation,
     required this.modified,
   });
@@ -30,7 +32,8 @@ class Batch {
       manufacturingDate: json['manufacturing_date'],
       expiryDate: json['expiry_date'],
       customPackagingQty: (json['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0,
-      customPurchaseOrder: json['custom_purchase_order'],
+      purchaseOrder: json['purchase_order'],
+      variantOf: json['variant_of'],
       creation: json['creation'] ?? '',
       modified: json['modified'] ?? '',
     );
@@ -43,7 +46,8 @@ class Batch {
       'manufacturing_date': manufacturingDate,
       'expiry_date': expiryDate,
       'custom_packaging_qty': customPackagingQty,
-      'purchase_order': customPurchaseOrder,
+      'purchase_order': purchaseOrder,
+      'variant_of': variantOf,
     };
   }
 }

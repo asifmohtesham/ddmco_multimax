@@ -1,11 +1,10 @@
 // app/modules/batch/batch_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:intl/intl.dart'; // Added for DateFormat
+import 'package:intl/intl.dart';
 
 class BatchScreen extends GetView<BatchController> {
   const BatchScreen({super.key});
@@ -34,12 +33,10 @@ class BatchScreen extends GetView<BatchController> {
           controller: scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // M3 Large App Bar
             const SliverAppBar.large(
               title: Text('Batches'),
             ),
 
-            // Search Bar
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -60,7 +57,6 @@ class BatchScreen extends GetView<BatchController> {
               ),
             ),
 
-            // List Content
             Obx(() {
               if (controller.isLoading.value && controller.batches.isEmpty) {
                 return const SliverFillRemaining(
@@ -106,7 +102,7 @@ class BatchScreen extends GetView<BatchController> {
                     }
                     final batch = controller.batches[index];
 
-                    // Determine Status based on Expiry
+                    // Determine Status
                     String status = 'Active';
                     if (batch.expiryDate != null) {
                       final expiry = DateTime.tryParse(batch.expiryDate!);
@@ -115,32 +111,37 @@ class BatchScreen extends GetView<BatchController> {
                       }
                     }
 
-                    return GenericDocumentCard(
-                      title: batch.item,
-                      subtitle: batch.name,
-                      status: status,
-                      isExpanded: false, // Fix: Required parameter
-                      onTap: () => controller.openBatchForm(batch.name),
-                      stats: [
-                        if (batch.manufacturingDate != null)
+                    return Obx(() {
+                      final isExpanded = controller.expandedBatchName.value == batch.name;
+
+                      return GenericDocumentCard(
+                        title: batch.item,
+                        subtitle: batch.name,
+                        status: status,
+                        isExpanded: isExpanded,
+                        onTap: () => controller.toggleExpand(batch.name),
+                        stats: [
+                          if (batch.manufacturingDate != null)
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.precision_manufacturing_outlined,
+                              DateFormat('dd MMM yyyy').format(DateTime.parse(batch.manufacturingDate!)),
+                            ),
+                          if (batch.expiryDate != null)
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.event_busy_outlined,
+                              DateFormat('dd MMM yyyy').format(DateTime.parse(batch.expiryDate!)),
+                            ),
                           GenericDocumentCard.buildIconStat(
                             context,
-                            Icons.precision_manufacturing_outlined,
-                            FormattingHelper.getRelativeTime(batch.manufacturingDate!), // Fix: Use DateFormat directly
+                            Icons.layers_outlined,
+                            'Qty: ${batch.customPackagingQty}',
                           ),
-                        if (batch.expiryDate != null)
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.event_busy_outlined,
-                            FormattingHelper.getRelativeTime(batch.expiryDate!), // Fix: Use DateFormat directly
-                          ),
-                        GenericDocumentCard.buildIconStat(
-                          context,
-                          Icons.layers_outlined,
-                          'Qty: ${batch.customPackagingQty}',
-                        ),
-                      ],
-                    );
+                        ],
+                        expandedContent: isExpanded ? _buildExpandedContent(context, batch) : null,
+                      );
+                    });
                   },
                   childCount: controller.batches.length + (controller.hasMore.value ? 1 : 0),
                 ),
@@ -156,6 +157,92 @@ class BatchScreen extends GetView<BatchController> {
         backgroundColor: colorScheme.primaryContainer,
         foregroundColor: colorScheme.onPrimaryContainer,
       ),
+    );
+  }
+
+  Widget _buildExpandedContent(BuildContext context, dynamic batch) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // const Divider(),
+        // const SizedBox(height: 8),
+
+        // Purchase Order Field
+        _buildInfoRow(
+          context,
+          'Purchase Order',
+          batch.purchaseOrder ?? 'Not Linked',
+          icon: Icons.receipt_long,
+        ),
+
+        const SizedBox(height: 12),
+
+        // Variant Of Field
+        Obx(() {
+          final variant = controller.itemVariants[batch.item];
+          final isLoading = controller.isLoadingDetails.value && variant == null;
+
+          if (isLoading) {
+            return Row(
+              children: [
+                Icon(Icons.style_outlined, size: 16, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+                Text('Loading Variant...', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.outline)),
+              ],
+            );
+          }
+
+          return _buildInfoRow(
+            context,
+            'Variant Of',
+            variant ?? 'N/A', // Display N/A if null/empty
+            icon: Icons.style_outlined,
+          );
+        }),
+
+        const SizedBox(height: 16),
+
+        // Actions
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: () => controller.openBatchForm(batch.name),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit Details'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(BuildContext context, String label, String value, {required IconData icon}) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+              Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

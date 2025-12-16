@@ -55,6 +55,7 @@ class BatchFormController extends GetxController {
   void onInit() {
     super.onInit();
 
+    // Attach Listeners for Dirty Check
     itemController.addListener(_checkForChanges);
     descriptionController.addListener(_checkForChanges);
     mfgDateController.addListener(_checkForChanges);
@@ -110,7 +111,8 @@ class BatchFormController extends GetxController {
         mfgDateController.text = b.manufacturingDate ?? '';
         expDateController.text = b.expiryDate ?? '';
         customPackagingQtyController.text = b.customPackagingQty.toString();
-        customPurchaseOrderController.text = b.customPurchaseOrder ?? '';
+        // FIX: Use b.purchaseOrder instead of b.customPurchaseOrder
+        customPurchaseOrderController.text = b.purchaseOrder ?? '';
         generatedBatchId.value = b.name;
 
         if(b.item.isNotEmpty) {
@@ -327,8 +329,6 @@ class BatchFormController extends GetxController {
       // Label Size: 51mm x 26mm
       final pageFormat = PdfPageFormat(51 * PdfPageFormat.mm, 26 * PdfPageFormat.mm);
 
-      // Determine Data to Display
-      // Use Variant Of if available, else Item Code
       final String variant = itemVariantOf.value.isNotEmpty ? itemVariantOf.value : itemController.text;
       final String barcodeData = itemBarcode.value.isNotEmpty ? itemBarcode.value : itemController.text;
 
@@ -353,23 +353,22 @@ class BatchFormController extends GetxController {
                         style: pw.TextStyle(
                           fontSize: 7,
                           fontWeight: pw.FontWeight.bold,
-                          font: pw.Font.courierBold(), // Monospace
+                          font: pw.Font.courier(),
                         ),
                         maxLines: 2,
-                        overflow: pw.TextOverflow.visible,
+                        overflow: pw.TextOverflow.clip,
                       ),
-                      pw.SizedBox(height: 8),
+                      pw.SizedBox(height: 2),
 
-                      // Barcode Symbol (Code128 used for versatility)
-                      // Increased height by approx 25% (from default ~25 to 32)
+                      // Barcode Symbol
                       pw.BarcodeWidget(
-                        barcode: pw.Barcode.ean8(),
+                        barcode: pw.Barcode.code128(),
                         data: barcodeData,
-                        height: 42,
-                        drawText: true, // Draws text with descender-like visual
+                        height: 32,
+                        drawText: true,
                         textStyle: pw.TextStyle(
-                          font: pw.Font.courierBold(), // Consolas/Monospace equivalent
-                          fontSize: 10,
+                          font: pw.Font.courier(),
+                          fontSize: 6,
                         ),
                       ),
                     ],
@@ -386,21 +385,20 @@ class BatchFormController extends GetxController {
                       pw.AspectRatio(
                         aspectRatio: 1,
                         child: pw.BarcodeWidget(
-                          barcode: pw.Barcode.qrCode(errorCorrectLevel: pw.BarcodeQRCorrectionLevel.high),
+                          barcode: pw.Barcode.qrCode(),
                           data: generatedBatchId.value,
-                          drawText: false, // QR usually better without auto-text
+                          drawText: false,
                         ),
                       ),
                       pw.SizedBox(height: 2),
-                      // QR Caption (Batch ID)
                       pw.Text(
                         generatedBatchId.value,
                         style: pw.TextStyle(
-                          font: pw.Font.courierBold(), // Monospace
-                          fontSize: 6,
+                          font: pw.Font.courier(),
+                          fontSize: 5,
                         ),
                         maxLines: 2,
-                        overflow: pw.TextOverflow.visible,
+                        overflow: pw.TextOverflow.clip,
                         textAlign: pw.TextAlign.center,
                       ),
                     ],
