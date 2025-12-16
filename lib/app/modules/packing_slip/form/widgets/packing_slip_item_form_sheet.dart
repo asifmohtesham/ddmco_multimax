@@ -68,6 +68,7 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
                         child: Text(
                           controller.currentBatchNo!,
                           style: TextStyle(
+                            fontFamily: 'ShureTechMono',
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
                             color: Theme.of(context).colorScheme.onSurface,

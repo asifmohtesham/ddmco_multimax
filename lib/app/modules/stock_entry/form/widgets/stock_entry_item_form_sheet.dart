@@ -55,6 +55,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             controller: controller.bsBatchController,
             readOnly: controller.bsIsBatchValid.value,
             autofocus: false,
+            style: TextStyle(fontFamily: 'ShureTechMono'),
             decoration: InputDecoration(
               hintText: 'Enter or scan batch',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

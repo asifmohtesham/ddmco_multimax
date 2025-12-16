@@ -273,7 +273,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                               child: Text(
                                 '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
                                 style: theme.textTheme.labelMedium?.copyWith(
-                                  fontFamily: 'monospace',
+                                  fontFamily: 'ShureTechMono',
+                                  fontSize: 16,
                                   color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
