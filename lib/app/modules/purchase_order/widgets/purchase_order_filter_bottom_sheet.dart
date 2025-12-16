@@ -20,9 +20,8 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
   @override
   void initState() {
     super.initState();
-    String initialSupplier = _extractFilterValue('supplier');
-    supplierController = TextEditingController(text: initialSupplier);
-    supplier.value = initialSupplier;
+    supplierController = TextEditingController(text: _extractFilterValue('supplier'));
+    supplier.value = supplierController.text;
   }
 
   String _extractFilterValue(String key) {
@@ -82,6 +81,7 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
             labelText: 'Supplier',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.business),
+            isDense: true,
           ),
           onChanged: (val) => supplier.value = val,
         ),

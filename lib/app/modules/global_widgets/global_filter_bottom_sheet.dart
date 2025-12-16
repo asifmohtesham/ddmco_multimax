@@ -41,13 +41,11 @@ class GlobalFilterBottomSheet extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      // Removed padding from here to prevent overlap issues
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       child: SafeArea(
-        // Moved padding inside SafeArea to ensure spacing from Status Bar
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           child: Column(
@@ -78,12 +76,14 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                       color: colorScheme.onSurface,
                     ),
                   ),
-                  TextButton(
+                  TextButton.icon(
                     onPressed: onClear,
                     style: TextButton.styleFrom(
                       foregroundColor: colorScheme.error,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
-                    child: const Text('Reset'),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Reset'),
                   ),
                 ],
               ),
@@ -182,11 +182,13 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
                 ),
                 child: Text(
-                    activeFilterCount > 0
-                        ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
-                        : 'Show Results'
+                  activeFilterCount > 0
+                      ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
+                      : 'Show Results',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ],

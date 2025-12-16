@@ -33,17 +33,13 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-    String initialGroup = _extractFilterValue('item_group');
-    String initialVariant = _extractFilterValue('variant_of');
+    itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
+    variantOfController = TextEditingController(text: _extractFilterValue('variant_of'));
 
-    itemGroupController = TextEditingController(text: initialGroup);
-    variantOfController = TextEditingController(text: initialVariant);
-
-    itemGroup.value = initialGroup;
-    variantOf.value = initialVariant;
+    itemGroup.value = itemGroupController.text;
+    variantOf.value = variantOfController.text;
     showImagesOnly.value = controller.showImagesOnly.value;
 
-    // Copy existing attribute filters
     localAttributeFilters.assignAll(
         controller.attributeFilters.map((e) => Map<String, String>.from(e)).toList()
     );
@@ -57,7 +53,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     if (val is List && val.isNotEmpty && val[0] == 'like') {
       return val[1].toString().replaceAll('%', '');
     }
-    // Handle 'equals' which might be just the value or [=, val]
     if (val is List && val.isNotEmpty && val[0] == '=') {
       return val[1].toString();
     }
@@ -178,7 +173,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         localAttributeFilters.add({'name': name, 'value': value});
         attributeNameController.clear();
         attributeValueController.clear();
-        attributeName.value = ''; // Reset reactive state for field enabling
+        attributeName.value = '';
       } else {
         GlobalSnackbar.info(message: 'Filter already added');
       }
@@ -220,11 +215,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         itemGroupController.clear();
         variantOfController.clear();
         localAttributeFilters.clear();
-
         itemGroup.value = '';
         variantOf.value = '';
         showImagesOnly.value = false;
-
         controller.clearFilters();
       },
       filterWidgets: [
@@ -237,7 +230,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         ),
         const SizedBox(height: 12),
 
-        // Item Group
         TextFormField(
           controller: itemGroupController,
           readOnly: true,
@@ -256,11 +248,11 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.category),
             suffixIcon: Icon(Icons.arrow_drop_down),
+            isDense: true,
           ),
         ),
         const SizedBox(height: 16),
 
-        // Variant Of
         TextFormField(
           controller: variantOfController,
           readOnly: true,
@@ -279,6 +271,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.copy),
             suffixIcon: Icon(Icons.arrow_drop_down),
+            isDense: true,
           ),
         ),
 
@@ -287,7 +280,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         const Text('Filter By Attributes', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
 
-        // Active Filters Chips
         Obx(() {
           if (localAttributeFilters.isEmpty) return const SizedBox.shrink();
           return Wrap(
@@ -307,7 +299,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         }),
         const SizedBox(height: 8),
 
-        // Add New Attribute Filter Row
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -329,6 +320,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                         border: OutlineInputBorder(),
                         suffixIcon: Icon(Icons.arrow_drop_down),
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        isDense: true,
                       ),
                       onTap: () => _showSelectionSheet(
                           context: context,
@@ -362,6 +354,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                           fillColor: enabled ? Colors.white : Colors.grey.shade100,
                           filled: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          isDense: true,
                         ),
                         onTap: enabled ? () => _showSelectionSheet(
                           context: context,

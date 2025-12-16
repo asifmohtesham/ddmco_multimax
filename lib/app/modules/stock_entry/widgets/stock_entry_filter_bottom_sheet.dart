@@ -26,7 +26,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   final startDate = Rxn<DateTime>();
   final endDate = Rxn<DateTime>();
 
-  // Reactive mirrors for text fields to drive the count
+  // Reactive mirrors for count
   final purpose = ''.obs;
   final reference = ''.obs;
   final owner = ''.obs;
@@ -44,14 +44,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
     ownerController = TextEditingController(text: initialOwner);
     dateRangeController = TextEditingController();
 
-    // Initialize Reactive Variables
     purpose.value = initialPurpose;
     reference.value = initialRef;
     owner.value = initialOwner;
     selectedDocstatus.value = controller.activeFilters['docstatus'];
     selectedStockEntryType.value = controller.activeFilters['stock_entry_type'];
 
-    // Pre-fill date range text if exists
     if (controller.activeFilters.containsKey('creation') &&
         controller.activeFilters['creation'] is List &&
         controller.activeFilters['creation'][0] == 'between') {
@@ -246,35 +244,67 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
         dateRangeController.clear();
         startDate.value = null;
         endDate.value = null;
-
-        // Clear reactive mirrors
         purpose.value = '';
         reference.value = '';
         owner.value = '';
-
         controller.clearFilters();
       },
       filterWidgets: [
-        DropdownButtonFormField<int>(
-          value: selectedDocstatus.value,
-          decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-          items: const [
-            DropdownMenuItem(value: 0, child: Text('Draft')),
-            DropdownMenuItem(value: 1, child: Text('Submitted')),
-            DropdownMenuItem(value: 2, child: Text('Cancelled')),
+        // Status Chips (ERPNext Style)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Status', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final entry in {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'}.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ChoiceChip(
+                        label: Text(entry.value),
+                        selected: selectedDocstatus.value == entry.key,
+                        onSelected: (bool selected) {
+                          selectedDocstatus.value = selected ? entry.key : null;
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
-          onChanged: (value) => selectedDocstatus.value = value,
         ),
-        DropdownButtonFormField<String>(
-          value: controller.stockEntryTypes.contains(selectedStockEntryType.value) ? selectedStockEntryType.value : null,
-          decoration: const InputDecoration(labelText: 'Stock Entry Type', border: OutlineInputBorder()),
-          isExpanded: true,
-          hint: const Text('Select Stock Entry Type'),
-          items: controller.stockEntryTypes.map((type) {
-            return DropdownMenuItem(value: type, child: Text(type));
-          }).toList(),
-          onChanged: (value) => selectedStockEntryType.value = value,
+        const SizedBox(height: 16),
+
+        // Stock Entry Type Chips
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Entry Type', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: controller.stockEntryTypes.map((type) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ChoiceChip(
+                      label: Text(type),
+                      selected: selectedStockEntryType.value == type,
+                      onSelected: (bool selected) {
+                        selectedStockEntryType.value = selected ? type : null;
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 16),
+
         TextFormField(
           controller: dateRangeController,
           readOnly: true,
@@ -282,17 +312,18 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
             labelText: 'Date Range',
             border: OutlineInputBorder(),
             suffixIcon: Icon(Icons.calendar_today),
+            isDense: true,
           ),
           onTap: _pickDateRange,
         ),
         TextFormField(
           controller: purposeController,
-          decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => purpose.value = val,
         ),
         TextFormField(
           controller: referenceController,
-          decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => reference.value = val,
         ),
         TextFormField(
@@ -304,6 +335,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.person_outline),
             suffixIcon: Icon(Icons.arrow_drop_down),
+            isDense: true,
           ),
         ),
       ],

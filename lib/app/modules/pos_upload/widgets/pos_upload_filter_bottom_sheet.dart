@@ -26,11 +26,10 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
   @override
   void initState() {
     super.initState();
-    String initialCustomer = _extractFilterValue('customer');
-    customerController = TextEditingController(text: initialCustomer);
+    customerController = TextEditingController(text: _extractFilterValue('customer'));
     dateRangeController = TextEditingController();
 
-    customer.value = initialCustomer;
+    customer.value = customerController.text;
     selectedStatus.value = controller.activeFilters['status'];
     _initDateRange();
   }
@@ -130,14 +129,33 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
         controller.clearFilters();
       },
       filterWidgets: [
-        DropdownButtonFormField<String>(
-          value: selectedStatus.value,
-          decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-          items: ['Pending', 'Processed', 'Completed', 'Failed', 'Cancelled']
-              .map((status) => DropdownMenuItem(value: status, child: Text(status)))
-              .toList(),
-          onChanged: (value) => selectedStatus.value = value,
+        // Status Chips
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Status', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['Pending', 'Processed', 'Completed', 'Failed', 'Cancelled'].map((status) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ChoiceChip(
+                      label: Text(status),
+                      selected: selectedStatus.value == status,
+                      onSelected: (bool selected) {
+                        selectedStatus.value = selected ? status : null;
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 16),
+
         TextFormField(
           controller: dateRangeController,
           readOnly: true,
@@ -145,12 +163,13 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
             labelText: 'Upload Date Range',
             border: OutlineInputBorder(),
             suffixIcon: Icon(Icons.calendar_today),
+            isDense: true,
           ),
           onTap: _pickDateRange,
         ),
         TextFormField(
           controller: customerController,
-          decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => customer.value = val,
         ),
       ],

@@ -23,8 +23,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   final selectedStatus = RxnString();
   final startDate = Rxn<DateTime>();
   final endDate = Rxn<DateTime>();
-
-  // Reactive mirrors
   final poNo = ''.obs;
   final customer = ''.obs;
   final owner = ''.obs;
@@ -32,19 +30,14 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-
-    String initialPo = _extractFilterValue('po_no');
-    String initialCustomer = _extractFilterValue('customer');
-    String initialOwner = _extractFilterValue('owner');
-
-    poNoController = TextEditingController(text: initialPo);
-    customerController = TextEditingController(text: initialCustomer);
-    ownerController = TextEditingController(text: initialOwner);
+    poNoController = TextEditingController(text: _extractFilterValue('po_no'));
+    customerController = TextEditingController(text: _extractFilterValue('customer'));
+    ownerController = TextEditingController(text: _extractFilterValue('owner'));
     dateRangeController = TextEditingController();
 
-    poNo.value = initialPo;
-    customer.value = initialCustomer;
-    owner.value = initialOwner;
+    poNo.value = poNoController.text;
+    customer.value = customerController.text;
+    owner.value = ownerController.text;
     selectedStatus.value = controller.activeFilters['status'];
 
     _initDateRange();
@@ -149,22 +142,39 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
         dateRangeController.clear();
         startDate.value = null;
         endDate.value = null;
-
         customer.value = '';
         poNo.value = '';
         owner.value = '';
-
         controller.clearFilters();
       },
       filterWidgets: [
-        DropdownButtonFormField<String>(
-          value: selectedStatus.value,
-          decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-          items: ['Draft', 'Submitted', 'Completed', 'Cancelled']
-              .map((status) => DropdownMenuItem(value: status, child: Text(status)))
-              .toList(),
-          onChanged: (value) => selectedStatus.value = value,
+        // Status Chips
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Status', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['Draft', 'Submitted', 'Completed', 'Cancelled'].map((status) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ChoiceChip(
+                      label: Text(status),
+                      selected: selectedStatus.value == status,
+                      onSelected: (bool selected) {
+                        selectedStatus.value = selected ? status : null;
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 16),
+
         TextFormField(
           controller: dateRangeController,
           readOnly: true,
@@ -172,22 +182,23 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             labelText: 'Creation Date Range',
             border: OutlineInputBorder(),
             suffixIcon: Icon(Icons.calendar_today),
+            isDense: true,
           ),
           onTap: _pickDateRange,
         ),
         TextFormField(
           controller: customerController,
-          decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => customer.value = val,
         ),
         TextFormField(
           controller: poNoController,
-          decoration: const InputDecoration(labelText: 'PO Number', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'PO Number', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => poNo.value = val,
         ),
         TextFormField(
           controller: ownerController,
-          decoration: const InputDecoration(labelText: 'Owner', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Owner', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => owner.value = val,
         ),
       ],
