@@ -193,42 +193,68 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   Widget _buildItemsView(PackingSlip slip) {
     return Column(
       children: [
+        // 1. Filters (Consolidated with Delivery Note style)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Obx(() => Row(
+            children: [
+              _buildFilterChip('All', controller.allCount),
+              const SizedBox(width: 8),
+              _buildFilterChip('Pending', controller.pendingCount),
+              const SizedBox(width: 8),
+              _buildFilterChip('Completed', controller.completedCount),
+            ],
+          )),
+        ),
+        const Divider(height: 1),
+
+        // 2. List
         Expanded(
           child: Obx(() {
-            final grouped = controller.groupedItems;
+            final visibleGroups = controller.visibleGroupKeys;
+            final currentSlipItemsGrouped = controller.groupedItems; // Items in CURRENT slip
 
-            if (grouped.isEmpty) {
-              return const Center(child: Text('No items packed yet.'));
+            if (visibleGroups.isEmpty) {
+              return const Center(child: Text('No items to display.'));
             }
-
-            final sortedKeys = grouped.keys.toList()..sort((a, b) {
-              final intA = int.tryParse(a) ?? 9999;
-              final intB = int.tryParse(b) ?? 9999;
-              return intA.compareTo(intB);
-            });
 
             return ListView.builder(
               padding: const EdgeInsets.only(top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
-              itemCount: sortedKeys.length,
+              itemCount: visibleGroups.length,
               itemBuilder: (context, index) {
-                final serial = sortedKeys[index];
-                final items = grouped[serial]!;
-                final firstItem = items.first;
+                final serial = visibleGroups[index];
 
-                final packedQty = items.fold(0.0, (sum, i) => sum + i.qty);
+                // Items present in the CURRENT packing slip for this serial
+                final itemsInCurrentSlip = currentSlipItemsGrouped[serial] ?? [];
+
+                // Use POS Upload Item Name as primary source
+                String itemName = controller.getPosItemName(serial);
+
+                if (itemName.isEmpty) {
+                  // Fallback logic
+                  if (itemsInCurrentSlip.isNotEmpty) {
+                    itemName = itemsInCurrentSlip.first.itemName;
+                  } else {
+                    final dnItem = controller.linkedDeliveryNote.value?.items.firstWhereOrNull((i) => (i.customInvoiceSerialNumber ?? '0') == serial);
+                    itemName = dnItem?.itemName ?? 'Unknown Item';
+                  }
+                }
+
                 final totalRequired = controller.getTotalDnQtyForSerial(serial);
+                final globalPacked = controller.getGlobalPackedQty(serial);
 
                 return Obx(() {
                   final isExpanded = controller.expandedInvoice.value == serial;
                   return ItemGroupCard(
                     isExpanded: isExpanded,
                     serialNo: int.tryParse(serial) ?? 0,
-                    itemName: firstItem.itemName,
+                    itemName: itemName,
                     rate: 0.0,
                     totalQty: totalRequired,
-                    scannedQty: packedQty,
+                    scannedQty: globalPacked, // Shows Sum of All Drafts/Submitted + Current
                     onToggle: () => controller.toggleInvoiceExpand(serial),
-                    children: items.map((item) {
+                    children: itemsInCurrentSlip.map((item) {
                       final globalIndex = slip.items.indexOf(item);
                       return PackingSlipItemCard(item: item, index: globalIndex);
                     }).toList(),
@@ -238,6 +264,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             );
           }),
         ),
+
+        // 3. Scanner
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
             onScan: (code) => controller.scanBarcode(code),
@@ -247,6 +275,18 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             activeRoute: AppRoutes.PACKING_SLIP_FORM,
           )),
       ],
+    );
+  }
+
+  Widget _buildFilterChip(String label, int count) {
+    return ChoiceChip(
+      label: Text('$label ($count)'),
+      selected: controller.itemFilter.value == label,
+      onSelected: (bool selected) {
+        if (selected) {
+          controller.setFilter(label);
+        }
+      },
     );
   }
 }

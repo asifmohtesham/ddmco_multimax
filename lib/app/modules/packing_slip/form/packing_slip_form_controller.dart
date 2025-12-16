@@ -8,6 +8,8 @@ import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
@@ -17,8 +19,9 @@ import 'package:multimax/app/data/services/storage_service.dart';
 class PackingSlipFormController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  final StorageService _storageService = Get.find<StorageService>(); // Get StorageService
+  final StorageService _storageService = Get.find<StorageService>();
 
   var itemFormKey = GlobalKey<FormState>();
   String name = Get.arguments['name'];
@@ -36,6 +39,10 @@ class PackingSlipFormController extends GetxController {
 
   var packingSlip = Rx<PackingSlip?>(null);
   var linkedDeliveryNote = Rx<DeliveryNote?>(null);
+  var posUpload = Rx<PosUpload?>(null);
+
+  // Other Packing Slips linked to the same Delivery Note (for progress calculation)
+  var relatedPackingSlips = <PackingSlip>[].obs;
 
   final TextEditingController barcodeController = TextEditingController();
 
@@ -44,6 +51,9 @@ class PackingSlipFormController extends GetxController {
   final bsQtyController = TextEditingController();
   var bsMaxQty = 0.0.obs;
   var isEditing = false.obs;
+
+  // Filters
+  var itemFilter = 'All'.obs;
 
   // Track Sheet Open State
   var isItemSheetOpen = false.obs;
@@ -148,7 +158,10 @@ class PackingSlipFormController extends GetxController {
     );
     isDirty.value = true;
     _originalJson = '';
-    if (dnName.isNotEmpty) fetchLinkedDeliveryNote(dnName);
+    if (dnName.isNotEmpty) {
+      fetchLinkedDeliveryNote(dnName);
+      fetchRelatedPackingSlips(dnName);
+    }
     isLoading.value = false;
   }
 
@@ -160,7 +173,10 @@ class PackingSlipFormController extends GetxController {
         final slip = PackingSlip.fromJson(response.data['data']);
         packingSlip.value = slip;
         _updateOriginalState(slip);
-        if (slip.deliveryNote.isNotEmpty) await fetchLinkedDeliveryNote(slip.deliveryNote);
+        if (slip.deliveryNote.isNotEmpty) {
+          await fetchLinkedDeliveryNote(slip.deliveryNote);
+          fetchRelatedPackingSlips(slip.deliveryNote);
+        }
       } else {
         GlobalSnackbar.error(message: 'Failed to fetch packing slip details');
       }
@@ -177,6 +193,12 @@ class PackingSlipFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final dn = DeliveryNote.fromJson(response.data['data']);
         linkedDeliveryNote.value = dn;
+
+        // Fetch POS Upload if available
+        if (dn.poNo != null && dn.poNo!.isNotEmpty) {
+          fetchPosUpload(dn.poNo!);
+        }
+
         if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
           packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
           if (mode != 'new') _checkForChanges();
@@ -184,6 +206,34 @@ class PackingSlipFormController extends GetxController {
       }
     } catch (e) {
       log('Failed to fetch linked DN: $e');
+    }
+  }
+
+  Future<void> fetchPosUpload(String posName) async {
+    try {
+      final response = await _posUploadProvider.getPosUpload(posName);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        posUpload.value = PosUpload.fromJson(response.data['data']);
+      }
+    } catch (e) {
+      print('Failed to fetch linked POS Upload: $e');
+    }
+  }
+
+  Future<void> fetchRelatedPackingSlips(String dnName) async {
+    try {
+      // Fetch all packing slips linked to this delivery note
+      final response = await _provider.getPackingSlips(
+        limit: 1000,
+        filters: {'delivery_note': dnName},
+      );
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        final allSlips = data.map((json) => PackingSlip.fromJson(json)).toList();
+        relatedPackingSlips.value = allSlips;
+      }
+    } catch (e) {
+      log('Failed to fetch related packing slips: $e');
     }
   }
 
@@ -204,14 +254,96 @@ class PackingSlipFormController extends GetxController {
 
   void toggleInvoiceExpand(String key) => expandedInvoice.value = expandedInvoice.value == key ? '' : key;
 
+  void setFilter(String filter) => itemFilter.value = filter;
+
+  // --- Grouping & Counting Logic ---
+
+  // Groups based on CURRENT Packing Slip (for internal logic)
   Map<String, List<PackingSlipItem>> get groupedItems {
     if (packingSlip.value == null || packingSlip.value!.items.isEmpty) return {};
     return groupBy(packingSlip.value!.items, (PackingSlipItem item) => item.customInvoiceSerialNumber ?? '0');
   }
 
+  // All Serials available in the Delivery Note
+  List<String> get _allDnSerials {
+    if (linkedDeliveryNote.value == null) return [];
+    return linkedDeliveryNote.value!.items
+        .map((i) => i.customInvoiceSerialNumber ?? '0')
+        .toSet()
+        .toList()
+      ..sort((a, b) {
+        final intA = int.tryParse(a) ?? 9999;
+        final intB = int.tryParse(b) ?? 9999;
+        return intA.compareTo(intB);
+      });
+  }
+
+  String getPosItemName(String serial) {
+    if (posUpload.value == null) return '';
+    final int idx = int.tryParse(serial) ?? 0;
+    final item = posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
+    return item?.itemName ?? '';
+  }
+
+  // Get Total Required Qty for a Serial (Target)
   double getTotalDnQtyForSerial(String serial) {
     if (linkedDeliveryNote.value == null) return 0.0;
     return linkedDeliveryNote.value!.items.where((item) => (item.customInvoiceSerialNumber ?? '0') == serial).fold(0.0, (sum, item) => sum + item.qty);
+  }
+
+  // Get Total Packed Qty for a Serial (Drafts + Current + Submitted)
+  double getGlobalPackedQty(String serial) {
+    double total = 0.0;
+    final currentSlipName = packingSlip.value?.name;
+
+    // 1. Sum from Related Slips (excluding current stored version)
+    for (var slip in relatedPackingSlips) {
+      // If the slip in the list is the current one (saved version), skip it
+      // because we will add the current memory version below
+      if (slip.name == currentSlipName) continue;
+
+      final items = slip.items.where((i) => (i.customInvoiceSerialNumber ?? '0') == serial);
+      for (var i in items) total += i.qty;
+    }
+
+    // 2. Sum from Current Memory (Active Form)
+    final currentItems = packingSlip.value?.items ?? [];
+    final activeItems = currentItems.where((i) => (i.customInvoiceSerialNumber ?? '0') == serial);
+    for (var i in activeItems) total += i.qty;
+
+    return total;
+  }
+
+  // Count Getters
+  int get allCount => _allDnSerials.length;
+
+  int get pendingCount => _allDnSerials.where((serial) {
+    final required = getTotalDnQtyForSerial(serial);
+    final packed = getGlobalPackedQty(serial);
+    return packed < required;
+  }).length;
+
+  int get completedCount => _allDnSerials.where((serial) {
+    final required = getTotalDnQtyForSerial(serial);
+    final packed = getGlobalPackedQty(serial);
+    return packed >= required;
+  }).length;
+
+  // Filtered List of Serials for UI
+  List<String> get visibleGroupKeys {
+    final serials = _allDnSerials;
+    final filter = itemFilter.value;
+
+    if (filter == 'All') return serials;
+
+    return serials.where((serial) {
+      final required = getTotalDnQtyForSerial(serial);
+      final packed = getGlobalPackedQty(serial);
+
+      if (filter == 'Pending') return packed < required;
+      if (filter == 'Completed') return packed >= required;
+      return true;
+    }).toList();
   }
 
   double? getRequiredQty(String dnDetail) {
@@ -269,15 +401,28 @@ class PackingSlipFormController extends GetxController {
     bsItemModified.value = null;
     bsItemModifiedBy.value = null;
 
-    double existingPacked = 0;
-    final currentSlipItems = packingSlip.value?.items ?? [];
-    for (var i in currentSlipItems) {
-      if (i.dnDetail == item.name) {
-        existingPacked += i.qty;
+    // Logic for Max Qty in Sheet:
+    // Remaining = (DN Item Qty) - (Global Packed Qty for THIS SPECIFIC DN Detail line in all other slips) - (Current Slip Qty for this line)
+
+    // Calculate how much has been packed for this specific line item across all slips
+    double globalPackedForLine = 0.0;
+    final currentSlipName = packingSlip.value?.name;
+
+    // Other slips
+    for(var slip in relatedPackingSlips) {
+      if (slip.name == currentSlipName) continue;
+      for(var i in slip.items) {
+        if (i.dnDetail == item.name) globalPackedForLine += i.qty;
       }
     }
 
-    double remaining = item.qty - existingPacked;
+    // Current slip
+    final currentSlipItems = packingSlip.value?.items ?? [];
+    for(var i in currentSlipItems) {
+      if (i.dnDetail == item.name) globalPackedForLine += i.qty;
+    }
+
+    double remaining = item.qty - globalPackedForLine;
     if (remaining < 0) remaining = 0;
 
     bsMaxQty.value = remaining;
@@ -315,13 +460,25 @@ class PackingSlipFormController extends GetxController {
 
     _populateItemDetails(dnItem);
 
-    double existingPackedOthers = 0;
-    for (var i in packingSlip.value!.items) {
-      if (i.dnDetail == item.dnDetail && i.name != item.name) {
-        existingPackedOthers += i.qty;
+    // Recalculate max qty considering we are editing THIS item
+    double globalPackedOthers = 0.0;
+    final currentSlipName = packingSlip.value?.name;
+
+    // Other slips
+    for(var slip in relatedPackingSlips) {
+      if (slip.name == currentSlipName) continue;
+      for(var i in slip.items) {
+        if (i.dnDetail == item.dnDetail) globalPackedOthers += i.qty;
       }
     }
-    bsMaxQty.value = dnItem.qty - existingPackedOthers;
+
+    // Current slip (excluding the one being edited)
+    final currentSlipItems = packingSlip.value?.items ?? [];
+    for(var i in currentSlipItems) {
+      if (i.dnDetail == item.dnDetail && i.name != item.name) globalPackedOthers += i.qty;
+    }
+
+    bsMaxQty.value = dnItem.qty - globalPackedOthers;
 
     final qtyStr = item.qty.toStringAsFixed(0);
     bsQtyController.text = qtyStr;
