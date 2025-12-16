@@ -17,16 +17,22 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
   late TextEditingController deliveryNoteController;
   late TextEditingController dateRangeController;
 
-  String? selectedStatus;
-  DateTime? startDate;
-  DateTime? endDate;
+  // Reactive State
+  final selectedStatus = RxnString();
+  final startDate = Rxn<DateTime>();
+  final endDate = Rxn<DateTime>();
+  final deliveryNote = ''.obs;
 
   @override
   void initState() {
     super.initState();
-    deliveryNoteController = TextEditingController(text: _extractFilterValue('delivery_note'));
-    selectedStatus = controller.activeFilters['status'];
+    String initialNote = _extractFilterValue('delivery_note');
+    deliveryNoteController = TextEditingController(text: initialNote);
     dateRangeController = TextEditingController();
+
+    deliveryNote.value = initialNote;
+    selectedStatus.value = controller.activeFilters['status'];
+
     _initDateRange();
   }
 
@@ -45,8 +51,8 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate = DateTime.parse(dates[0]);
-          endDate = DateTime.parse(dates[1]);
+          startDate.value = DateTime.parse(dates[0]);
+          endDate.value = DateTime.parse(dates[1]);
         } catch (_) {}
       }
     }
@@ -61,9 +67,9 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
 
   int get _activeCount {
     int count = 0;
-    if (selectedStatus != null) count++;
-    if (deliveryNoteController.text.isNotEmpty) count++;
-    if (startDate != null && endDate != null) count++;
+    if (selectedStatus.value != null) count++;
+    if (deliveryNote.value.isNotEmpty) count++;
+    if (startDate.value != null && endDate.value != null) count++;
     return count;
   }
 
@@ -72,29 +78,27 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: startDate != null && endDate != null
-          ? DateTimeRange(start: startDate!, end: endDate!)
+      initialDateRange: startDate.value != null && endDate.value != null
+          ? DateTimeRange(start: startDate.value!, end: endDate.value!)
           : null,
     );
 
     if (picked != null) {
-      setState(() {
-        startDate = picked.start;
-        endDate = picked.end;
-        dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate!)} - ${DateFormat('yyyy-MM-dd').format(endDate!)}';
-      });
+      startDate.value = picked.start;
+      endDate.value = picked.end;
+      dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate.value!)} - ${DateFormat('yyyy-MM-dd').format(endDate.value!)}';
     }
   }
 
   void _applyFilters() {
     final filters = <String, dynamic>{};
-    if (selectedStatus != null) filters['status'] = selectedStatus;
+    if (selectedStatus.value != null) filters['status'] = selectedStatus.value;
     if (deliveryNoteController.text.isNotEmpty) filters['delivery_note'] = ['like', '%${deliveryNoteController.text}%'];
 
-    if (startDate != null && endDate != null) {
+    if (startDate.value != null && endDate.value != null) {
       filters['creation'] = ['between', [
-        DateFormat('yyyy-MM-dd').format(startDate!),
-        DateFormat('yyyy-MM-dd').format(endDate!)
+        DateFormat('yyyy-MM-dd').format(startDate.value!),
+        DateFormat('yyyy-MM-dd').format(endDate.value!)
       ]];
     }
 
@@ -117,17 +121,22 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        selectedStatus.value = null;
+        deliveryNoteController.clear();
+        dateRangeController.clear();
+        startDate.value = null;
+        endDate.value = null;
+        deliveryNote.value = '';
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         DropdownButtonFormField<String>(
-          value: selectedStatus,
+          value: selectedStatus.value,
           decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
           items: ['Draft', 'Submitted', 'Cancelled']
               .map((status) => DropdownMenuItem(value: status, child: Text(status)))
               .toList(),
-          onChanged: (value) => setState(() => selectedStatus = value),
+          onChanged: (value) => selectedStatus.value = value,
         ),
         TextFormField(
           controller: dateRangeController,
@@ -142,7 +151,7 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
         TextFormField(
           controller: deliveryNoteController,
           decoration: const InputDecoration(labelText: 'Delivery Note', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => deliveryNote.value = val,
         ),
       ],
     ));

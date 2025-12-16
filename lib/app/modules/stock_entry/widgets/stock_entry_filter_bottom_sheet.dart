@@ -20,23 +20,36 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   late TextEditingController dateRangeController;
   late TextEditingController ownerController;
 
-  int? selectedDocstatus; // 0=Draft, 1=Submitted, 2=Cancelled
-  String? selectedStockEntryType;
-  DateTime? startDate;
-  DateTime? endDate;
+  // Reactive State
+  final selectedDocstatus = RxnInt();
+  final selectedStockEntryType = RxnString();
+  final startDate = Rxn<DateTime>();
+  final endDate = Rxn<DateTime>();
+
+  // Reactive mirrors for text fields to drive the count
+  final purpose = ''.obs;
+  final reference = ''.obs;
+  final owner = ''.obs;
 
   @override
   void initState() {
     super.initState();
 
-    purposeController = TextEditingController(text: _extractFilterValue('purpose'));
-    referenceController = TextEditingController(text: _extractFilterValue('custom_reference_no'));
-    ownerController = TextEditingController(text: _extractFilterValue('owner'));
+    String initialPurpose = _extractFilterValue('purpose');
+    String initialRef = _extractFilterValue('custom_reference_no');
+    String initialOwner = _extractFilterValue('owner');
 
-    selectedDocstatus = controller.activeFilters['docstatus'];
-    selectedStockEntryType = controller.activeFilters['stock_entry_type'];
-
+    purposeController = TextEditingController(text: initialPurpose);
+    referenceController = TextEditingController(text: initialRef);
+    ownerController = TextEditingController(text: initialOwner);
     dateRangeController = TextEditingController();
+
+    // Initialize Reactive Variables
+    purpose.value = initialPurpose;
+    reference.value = initialRef;
+    owner.value = initialOwner;
+    selectedDocstatus.value = controller.activeFilters['docstatus'];
+    selectedStockEntryType.value = controller.activeFilters['stock_entry_type'];
 
     // Pre-fill date range text if exists
     if (controller.activeFilters.containsKey('creation') &&
@@ -47,8 +60,8 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate = DateTime.parse(dates[0]);
-          endDate = DateTime.parse(dates[1]);
+          startDate.value = DateTime.parse(dates[0]);
+          endDate.value = DateTime.parse(dates[1]);
         } catch (_) {}
       }
     }
@@ -74,12 +87,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
 
   int get _activeCount {
     int count = 0;
-    if (selectedDocstatus != null) count++;
-    if (selectedStockEntryType != null) count++;
-    if (purposeController.text.isNotEmpty) count++;
-    if (referenceController.text.isNotEmpty) count++;
-    if (ownerController.text.isNotEmpty) count++;
-    if (startDate != null && endDate != null) count++;
+    if (selectedDocstatus.value != null) count++;
+    if (selectedStockEntryType.value != null) count++;
+    if (purpose.value.isNotEmpty) count++;
+    if (reference.value.isNotEmpty) count++;
+    if (owner.value.isNotEmpty) count++;
+    if (startDate.value != null && endDate.value != null) count++;
     return count;
   }
 
@@ -88,17 +101,15 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: startDate != null && endDate != null
-          ? DateTimeRange(start: startDate!, end: endDate!)
+      initialDateRange: startDate.value != null && endDate.value != null
+          ? DateTimeRange(start: startDate.value!, end: endDate.value!)
           : null,
     );
 
     if (picked != null) {
-      setState(() {
-        startDate = picked.start;
-        endDate = picked.end;
-        dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate!)} - ${DateFormat('yyyy-MM-dd').format(endDate!)}';
-      });
+      startDate.value = picked.start;
+      endDate.value = picked.end;
+      dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate.value!)} - ${DateFormat('yyyy-MM-dd').format(endDate.value!)}';
     }
   }
 
@@ -173,7 +184,8 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                             title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text(user.email),
                             onTap: () {
-                              setState(() => ownerController.text = userId);
+                              ownerController.text = userId;
+                              owner.value = userId;
                               Get.back();
                             },
                           );
@@ -194,16 +206,16 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   void _applyFilters() {
     final filters = <String, dynamic>{};
 
-    if (selectedDocstatus != null) filters['docstatus'] = selectedDocstatus;
-    if (selectedStockEntryType != null) filters['stock_entry_type'] = selectedStockEntryType;
+    if (selectedDocstatus.value != null) filters['docstatus'] = selectedDocstatus.value;
+    if (selectedStockEntryType.value != null) filters['stock_entry_type'] = selectedStockEntryType.value;
     if (purposeController.text.isNotEmpty) filters['purpose'] = ['like', '%${purposeController.text}%'];
     if (referenceController.text.isNotEmpty) filters['custom_reference_no'] = ['like', '%${referenceController.text}%'];
     if (ownerController.text.isNotEmpty) filters['owner'] = ownerController.text;
 
-    if (startDate != null && endDate != null) {
+    if (startDate.value != null && endDate.value != null) {
       filters['creation'] = ['between', [
-        DateFormat('yyyy-MM-dd').format(startDate!),
-        DateFormat('yyyy-MM-dd').format(endDate!)
+        DateFormat('yyyy-MM-dd').format(startDate.value!),
+        DateFormat('yyyy-MM-dd').format(endDate.value!)
       ]];
     }
 
@@ -226,30 +238,43 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        selectedDocstatus.value = null;
+        selectedStockEntryType.value = null;
+        purposeController.clear();
+        referenceController.clear();
+        ownerController.clear();
+        dateRangeController.clear();
+        startDate.value = null;
+        endDate.value = null;
+
+        // Clear reactive mirrors
+        purpose.value = '';
+        reference.value = '';
+        owner.value = '';
+
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         DropdownButtonFormField<int>(
-          value: selectedDocstatus,
+          value: selectedDocstatus.value,
           decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: 0, child: Text('Draft')),
             DropdownMenuItem(value: 1, child: Text('Submitted')),
             DropdownMenuItem(value: 2, child: Text('Cancelled')),
           ],
-          onChanged: (value) => setState(() => selectedDocstatus = value),
+          onChanged: (value) => selectedDocstatus.value = value,
         ),
-        Obx(() => DropdownButtonFormField<String>(
-          value: controller.stockEntryTypes.contains(selectedStockEntryType) ? selectedStockEntryType : null,
+        DropdownButtonFormField<String>(
+          value: controller.stockEntryTypes.contains(selectedStockEntryType.value) ? selectedStockEntryType.value : null,
           decoration: const InputDecoration(labelText: 'Stock Entry Type', border: OutlineInputBorder()),
           isExpanded: true,
           hint: const Text('Select Stock Entry Type'),
           items: controller.stockEntryTypes.map((type) {
             return DropdownMenuItem(value: type, child: Text(type));
           }).toList(),
-          onChanged: (value) => setState(() => selectedStockEntryType = value),
-        )),
+          onChanged: (value) => selectedStockEntryType.value = value,
+        ),
         TextFormField(
           controller: dateRangeController,
           readOnly: true,
@@ -263,12 +288,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
         TextFormField(
           controller: purposeController,
           decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => purpose.value = val,
         ),
         TextFormField(
           controller: referenceController,
           decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => reference.value = val,
         ),
         TextFormField(
           controller: ownerController,

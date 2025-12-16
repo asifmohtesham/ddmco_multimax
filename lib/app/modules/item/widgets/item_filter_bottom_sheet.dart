@@ -21,7 +21,11 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   late TextEditingController attributeNameController;
   late TextEditingController attributeValueController;
 
-  late bool showImagesOnly;
+  // Reactive State
+  final showImagesOnly = false.obs;
+  final itemGroup = ''.obs;
+  final variantOf = ''.obs;
+  final attributeName = ''.obs;
 
   // Local list to manage filters before applying
   final RxList<Map<String, String>> localAttributeFilters = <Map<String, String>>[].obs;
@@ -29,8 +33,15 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-    itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
-    variantOfController = TextEditingController(text: _extractFilterValue('variant_of'));
+    String initialGroup = _extractFilterValue('item_group');
+    String initialVariant = _extractFilterValue('variant_of');
+
+    itemGroupController = TextEditingController(text: initialGroup);
+    variantOfController = TextEditingController(text: initialVariant);
+
+    itemGroup.value = initialGroup;
+    variantOf.value = initialVariant;
+    showImagesOnly.value = controller.showImagesOnly.value;
 
     // Copy existing attribute filters
     localAttributeFilters.assignAll(
@@ -39,8 +50,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
     attributeNameController = TextEditingController();
     attributeValueController = TextEditingController();
-
-    showImagesOnly = controller.showImagesOnly.value;
   }
 
   String _extractFilterValue(String key) {
@@ -67,9 +76,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   int get _activeCount {
     int count = 0;
-    if (showImagesOnly) count++;
-    if (itemGroupController.text.isNotEmpty) count++;
-    if (variantOfController.text.isNotEmpty) count++;
+    if (showImagesOnly.value) count++;
+    if (itemGroup.value.isNotEmpty) count++;
+    if (variantOf.value.isNotEmpty) count++;
     count += localAttributeFilters.length;
     return count;
   }
@@ -169,6 +178,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         localAttributeFilters.add({'name': name, 'value': value});
         attributeNameController.clear();
         attributeValueController.clear();
+        attributeName.value = ''; // Reset reactive state for field enabling
       } else {
         GlobalSnackbar.info(message: 'Filter already added');
       }
@@ -186,7 +196,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       filters['variant_of'] = variantOfController.text;
     }
 
-    controller.setImagesOnly(showImagesOnly);
+    controller.setImagesOnly(showImagesOnly.value);
     controller.applyFilters(filters, localAttributeFilters.toList());
     Get.back();
   }
@@ -207,15 +217,22 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        itemGroupController.clear();
+        variantOfController.clear();
+        localAttributeFilters.clear();
+
+        itemGroup.value = '';
+        variantOf.value = '';
+        showImagesOnly.value = false;
+
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         SwitchListTile(
           title: const Text('Show Images Only'),
           subtitle: const Text('Hide items without a product image'),
-          value: showImagesOnly,
-          onChanged: (val) => setState(() => showImagesOnly = val),
+          value: showImagesOnly.value,
+          onChanged: (val) => showImagesOnly.value = val,
           contentPadding: EdgeInsets.zero,
         ),
         const SizedBox(height: 12),
@@ -229,7 +246,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             title: "Select Item Group",
             items: controller.itemGroups,
             isLoading: controller.isLoadingGroups.value,
-            onSelected: (val) => setState(() => itemGroupController.text = val),
+            onSelected: (val) {
+              itemGroupController.text = val;
+              itemGroup.value = val;
+            },
           ),
           decoration: const InputDecoration(
             labelText: 'Item Group',
@@ -249,7 +269,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             title: "Select Template Item",
             items: controller.templateItems,
             isLoading: controller.isLoadingTemplates.value,
-            onSelected: (val) => setState(() => variantOfController.text = val),
+            onSelected: (val) {
+              variantOfController.text = val;
+              variantOf.value = val;
+            },
           ),
           decoration: const InputDecoration(
             labelText: 'Variant Of (Template)',
@@ -313,10 +336,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                           items: controller.itemAttributes,
                           isLoading: controller.isLoadingAttributes.value,
                           onSelected: (val) {
-                            setState(() {
-                              attributeNameController.text = val;
-                              attributeValueController.clear();
-                            });
+                            attributeNameController.text = val;
+                            attributeName.value = val;
+                            attributeValueController.clear();
                             controller.fetchAttributeValues(val);
                           }
                       ),
@@ -325,7 +347,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Obx(() {
-                      final enabled = attributeNameController.text.isNotEmpty;
+                      final enabled = attributeName.value.isNotEmpty;
                       return TextFormField(
                         controller: attributeValueController,
                         readOnly: true,
@@ -345,7 +367,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                           context: context,
                           title: "Select Value",
                           items: controller.currentAttributeValues,
-                          onSelected: (val) => setState(() => attributeValueController.text = val),
+                          onSelected: (val) => attributeValueController.text = val,
                         ) : null,
                       );
                     }),
@@ -356,7 +378,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => setState(_addAttributeFilter),
+                  onPressed: _addAttributeFilter,
                   icon: const Icon(Icons.add),
                   label: const Text('Add Attribute Filter'),
                   style: OutlinedButton.styleFrom(

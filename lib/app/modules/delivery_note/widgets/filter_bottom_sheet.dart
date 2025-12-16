@@ -19,19 +19,34 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   late TextEditingController ownerController;
   late TextEditingController dateRangeController;
 
-  String? selectedStatus;
-  DateTime? startDate;
-  DateTime? endDate;
+  // Reactive State
+  final selectedStatus = RxnString();
+  final startDate = Rxn<DateTime>();
+  final endDate = Rxn<DateTime>();
+
+  // Reactive mirrors
+  final poNo = ''.obs;
+  final customer = ''.obs;
+  final owner = ''.obs;
 
   @override
   void initState() {
     super.initState();
-    poNoController = TextEditingController(text: _extractFilterValue('po_no'));
-    customerController = TextEditingController(text: _extractFilterValue('customer'));
-    ownerController = TextEditingController(text: _extractFilterValue('owner'));
-    selectedStatus = controller.activeFilters['status'];
 
+    String initialPo = _extractFilterValue('po_no');
+    String initialCustomer = _extractFilterValue('customer');
+    String initialOwner = _extractFilterValue('owner');
+
+    poNoController = TextEditingController(text: initialPo);
+    customerController = TextEditingController(text: initialCustomer);
+    ownerController = TextEditingController(text: initialOwner);
     dateRangeController = TextEditingController();
+
+    poNo.value = initialPo;
+    customer.value = initialCustomer;
+    owner.value = initialOwner;
+    selectedStatus.value = controller.activeFilters['status'];
+
     _initDateRange();
   }
 
@@ -51,8 +66,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate = DateTime.parse(dates[0]);
-          endDate = DateTime.parse(dates[1]);
+          startDate.value = DateTime.parse(dates[0]);
+          endDate.value = DateTime.parse(dates[1]);
         } catch (_) {}
       }
     }
@@ -69,11 +84,11 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
 
   int get _activeCount {
     int count = 0;
-    if (selectedStatus != null) count++;
-    if (customerController.text.isNotEmpty) count++;
-    if (poNoController.text.isNotEmpty) count++;
-    if (ownerController.text.isNotEmpty) count++;
-    if (startDate != null && endDate != null) count++;
+    if (selectedStatus.value != null) count++;
+    if (customer.value.isNotEmpty) count++;
+    if (poNo.value.isNotEmpty) count++;
+    if (owner.value.isNotEmpty) count++;
+    if (startDate.value != null && endDate.value != null) count++;
     return count;
   }
 
@@ -82,31 +97,29 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: startDate != null && endDate != null
-          ? DateTimeRange(start: startDate!, end: endDate!)
+      initialDateRange: startDate.value != null && endDate.value != null
+          ? DateTimeRange(start: startDate.value!, end: endDate.value!)
           : null,
     );
 
     if (picked != null) {
-      setState(() {
-        startDate = picked.start;
-        endDate = picked.end;
-        dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate!)} - ${DateFormat('yyyy-MM-dd').format(endDate!)}';
-      });
+      startDate.value = picked.start;
+      endDate.value = picked.end;
+      dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate.value!)} - ${DateFormat('yyyy-MM-dd').format(endDate.value!)}';
     }
   }
 
   void _applyFilters() {
     final filters = <String, dynamic>{};
-    if (selectedStatus != null) filters['status'] = selectedStatus;
+    if (selectedStatus.value != null) filters['status'] = selectedStatus.value;
     if (customerController.text.isNotEmpty) filters['customer'] = ['like', '%${customerController.text}%'];
     if (poNoController.text.isNotEmpty) filters['po_no'] = ['like', '%${poNoController.text}%'];
     if (ownerController.text.isNotEmpty) filters['owner'] = ['like', '%${ownerController.text}%'];
 
-    if (startDate != null && endDate != null) {
+    if (startDate.value != null && endDate.value != null) {
       filters['creation'] = ['between', [
-        DateFormat('yyyy-MM-dd').format(startDate!),
-        DateFormat('yyyy-MM-dd').format(endDate!)
+        DateFormat('yyyy-MM-dd').format(startDate.value!),
+        DateFormat('yyyy-MM-dd').format(endDate.value!)
       ]];
     }
 
@@ -129,17 +142,28 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        selectedStatus.value = null;
+        customerController.clear();
+        poNoController.clear();
+        ownerController.clear();
+        dateRangeController.clear();
+        startDate.value = null;
+        endDate.value = null;
+
+        customer.value = '';
+        poNo.value = '';
+        owner.value = '';
+
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         DropdownButtonFormField<String>(
-          value: selectedStatus,
+          value: selectedStatus.value,
           decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
           items: ['Draft', 'Submitted', 'Completed', 'Cancelled']
               .map((status) => DropdownMenuItem(value: status, child: Text(status)))
               .toList(),
-          onChanged: (value) => setState(() => selectedStatus = value),
+          onChanged: (value) => selectedStatus.value = value,
         ),
         TextFormField(
           controller: dateRangeController,
@@ -154,17 +178,17 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
         TextFormField(
           controller: customerController,
           decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => customer.value = val,
         ),
         TextFormField(
           controller: poNoController,
           decoration: const InputDecoration(labelText: 'PO Number', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => poNo.value = val,
         ),
         TextFormField(
           controller: ownerController,
           decoration: const InputDecoration(labelText: 'Owner', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => owner.value = val,
         ),
       ],
     ));

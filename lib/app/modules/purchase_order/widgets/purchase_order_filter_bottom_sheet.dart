@@ -14,10 +14,15 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
   final PurchaseOrderController controller = Get.find();
   late TextEditingController supplierController;
 
+  // Reactive mirror
+  final supplier = ''.obs;
+
   @override
   void initState() {
     super.initState();
-    supplierController = TextEditingController(text: _extractFilterValue('supplier'));
+    String initialSupplier = _extractFilterValue('supplier');
+    supplierController = TextEditingController(text: initialSupplier);
+    supplier.value = initialSupplier;
   }
 
   String _extractFilterValue(String key) {
@@ -37,7 +42,7 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
 
   int get _activeCount {
     int count = 0;
-    if (supplierController.text.isNotEmpty) count++;
+    if (supplier.value.isNotEmpty) count++;
     return count;
   }
 
@@ -66,8 +71,9 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        supplierController.clear();
+        supplier.value = '';
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         TextFormField(
@@ -77,7 +83,7 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.business),
           ),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => supplier.value = val,
         ),
       ],
     ));

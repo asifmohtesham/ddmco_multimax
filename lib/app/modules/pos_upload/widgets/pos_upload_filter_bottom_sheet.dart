@@ -17,16 +17,21 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
   late TextEditingController customerController;
   late TextEditingController dateRangeController;
 
-  String? selectedStatus;
-  DateTime? startDate;
-  DateTime? endDate;
+  // Reactive State
+  final selectedStatus = RxnString();
+  final startDate = Rxn<DateTime>();
+  final endDate = Rxn<DateTime>();
+  final customer = ''.obs;
 
   @override
   void initState() {
     super.initState();
-    customerController = TextEditingController(text: _extractFilterValue('customer'));
-    selectedStatus = controller.activeFilters['status'];
+    String initialCustomer = _extractFilterValue('customer');
+    customerController = TextEditingController(text: initialCustomer);
     dateRangeController = TextEditingController();
+
+    customer.value = initialCustomer;
+    selectedStatus.value = controller.activeFilters['status'];
     _initDateRange();
   }
 
@@ -45,8 +50,8 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate = DateTime.parse(dates[0]);
-          endDate = DateTime.parse(dates[1]);
+          startDate.value = DateTime.parse(dates[0]);
+          endDate.value = DateTime.parse(dates[1]);
         } catch (_) {}
       }
     }
@@ -61,9 +66,9 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
 
   int get _activeCount {
     int count = 0;
-    if (selectedStatus != null) count++;
-    if (customerController.text.isNotEmpty) count++;
-    if (startDate != null && endDate != null) count++;
+    if (selectedStatus.value != null) count++;
+    if (customer.value.isNotEmpty) count++;
+    if (startDate.value != null && endDate.value != null) count++;
     return count;
   }
 
@@ -72,29 +77,27 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: startDate != null && endDate != null
-          ? DateTimeRange(start: startDate!, end: endDate!)
+      initialDateRange: startDate.value != null && endDate.value != null
+          ? DateTimeRange(start: startDate.value!, end: endDate.value!)
           : null,
     );
 
     if (picked != null) {
-      setState(() {
-        startDate = picked.start;
-        endDate = picked.end;
-        dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate!)} - ${DateFormat('yyyy-MM-dd').format(endDate!)}';
-      });
+      startDate.value = picked.start;
+      endDate.value = picked.end;
+      dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate.value!)} - ${DateFormat('yyyy-MM-dd').format(endDate.value!)}';
     }
   }
 
   void _applyFilters() {
     final filters = <String, dynamic>{};
-    if (selectedStatus != null) filters['status'] = selectedStatus;
+    if (selectedStatus.value != null) filters['status'] = selectedStatus.value;
     if (customerController.text.isNotEmpty) filters['customer'] = ['like', '%${customerController.text}%'];
 
-    if (startDate != null && endDate != null) {
+    if (startDate.value != null && endDate.value != null) {
       filters['date'] = ['between', [
-        DateFormat('yyyy-MM-dd').format(startDate!),
-        DateFormat('yyyy-MM-dd').format(endDate!)
+        DateFormat('yyyy-MM-dd').format(startDate.value!),
+        DateFormat('yyyy-MM-dd').format(endDate.value!)
       ]];
     }
 
@@ -118,17 +121,22 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
       onSortChanged: (field, order) => controller.setSort(field, order),
       onApply: _applyFilters,
       onClear: () {
+        selectedStatus.value = null;
+        customerController.clear();
+        dateRangeController.clear();
+        startDate.value = null;
+        endDate.value = null;
+        customer.value = '';
         controller.clearFilters();
-        Get.back();
       },
       filterWidgets: [
         DropdownButtonFormField<String>(
-          value: selectedStatus,
+          value: selectedStatus.value,
           decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
           items: ['Pending', 'Processed', 'Completed', 'Failed', 'Cancelled']
               .map((status) => DropdownMenuItem(value: status, child: Text(status)))
               .toList(),
-          onChanged: (value) => setState(() => selectedStatus = value),
+          onChanged: (value) => selectedStatus.value = value,
         ),
         TextFormField(
           controller: dateRangeController,
@@ -143,7 +151,7 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
         TextFormField(
           controller: customerController,
           decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() {}),
+          onChanged: (val) => customer.value = val,
         ),
       ],
     ));
