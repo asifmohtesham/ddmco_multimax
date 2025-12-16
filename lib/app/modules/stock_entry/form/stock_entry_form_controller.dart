@@ -16,10 +16,9 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'dart:async'; // Add this import
+import 'dart:async';
 
 class StockEntryFormController extends GetxController {
-  // ... (Providers and variables remain same)
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
@@ -106,7 +105,7 @@ class StockEntryFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  Timer? _autoSubmitTimer; // Add Timer variable
+  Timer? _autoSubmitTimer;
 
   @override
   void onInit() {
@@ -129,7 +128,7 @@ class StockEntryFormController extends GetxController {
 
     ever(selectedSerial, (_) => validateSheet());
 
-    // CHANGED: Replaced debounce with manual Timer to support dynamic delay settings
+    // Auto-Add logic
     ever(isSheetValid, (bool valid) {
       _autoSubmitTimer?.cancel();
 
@@ -154,10 +153,9 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // ... (onClose, fetchWarehouses, fetchStockEntryTypes, _onReferenceNoChanged, _initNewStockEntry, fetchStockEntry unchanged) ...
   @override
   void onClose() {
-    _autoSubmitTimer?.cancel(); // Cancel timer
+    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
     bsBatchController.dispose();
@@ -389,8 +387,13 @@ class StockEntryFormController extends GetxController {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
+    // 1. Set Loading State (Disables button & Shows Spinner)
     isAddingItem.value = true;
-    FocusManager.instance.primaryFocus?.unfocus();
+
+    // 2. Hide Keyboard explicitly
+    FocusScope.of(Get.context!).unfocus();
+
+    // 3. Feedback Delay
     await Future.delayed(const Duration(milliseconds: 500));
 
     final batch = bsBatchController.text;
@@ -484,6 +487,7 @@ class StockEntryFormController extends GetxController {
       val?.items.assignAll(currentItems);
     });
 
+    // 4. Close Sheet automatically
     Get.back();
 
     isAddingItem.value = false;
@@ -563,9 +567,7 @@ class StockEntryFormController extends GetxController {
         double totalBalance = 0.0;
 
         for (var row in result) {
-          // --- FIX START: Ignore Total row (List) or invalid data ---
           if (row is! Map) continue;
-          // --- FIX END ---
 
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
@@ -809,7 +811,6 @@ class StockEntryFormController extends GetxController {
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
 
-    // Auto-populate header warehouses from the first item if they are missing
     if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
       final firstItem = stockEntry.value!.items.first;
       if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
@@ -825,10 +826,6 @@ class StockEntryFormController extends GetxController {
         GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
         return;
       }
-      // if (selectedFromWarehouse.value == selectedToWarehouse.value) {
-      //   GlobalSnackbar.error(message: 'Source and Target Warehouses cannot be the same');
-      //   return;
-      // }
     }
 
     isSaving.value = true;
