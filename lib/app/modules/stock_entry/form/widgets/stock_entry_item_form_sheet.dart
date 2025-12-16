@@ -11,7 +11,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    // WRAPPED IN OBX: This is crucial for reactivity (loading state, validation)
     return Obx(() {
       final isEditing = controller.currentItemNameKey.value != null;
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
@@ -33,8 +32,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: docStatus == 0,
 
-        isLoading: controller.isAddingItem.value, // Now properly reactive
-
+        isLoading: controller.isAddingItem.value, // RESTORED BINDING
         onSubmit: controller.addItem,
         onDelete: isEditing
             ? () => controller.deleteItem(controller.currentItemNameKey.value!)

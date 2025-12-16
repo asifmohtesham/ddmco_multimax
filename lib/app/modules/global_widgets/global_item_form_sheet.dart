@@ -20,14 +20,14 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String? qtyInfoText;
   final bool isQtyReadOnly;
 
-  final VoidCallback onSubmit;
+  final Function onSubmit;
   final VoidCallback? onDelete;
 
   // State
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isSaving;
-  final bool isLoading;
+  final bool isLoading; // External loading state (for Auto-Submit)
 
   // Metadata Fields
   final String? owner;
@@ -40,7 +40,10 @@ class GlobalItemFormSheet extends StatelessWidget {
   final TextEditingController? scanController;
   final bool isScanning;
 
-  const GlobalItemFormSheet({
+  // Internal Loading State (for Manual Press)
+  final _isInternalLoading = false.obs;
+
+  GlobalItemFormSheet({
     super.key,
     required this.formKey,
     required this.scrollController,
@@ -70,37 +73,61 @@ class GlobalItemFormSheet extends StatelessWidget {
   });
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
-    final bool canPress = enabled && !isSaving && !isLoading;
-    final colorScheme = Theme.of(context).colorScheme;
+    return Obx(() {
+      // Combines external (Auto-Submit) and internal (Manual Click) loading states
+      final internalLoading = _isInternalLoading.value;
+      final showLoading = isSaving || isLoading || internalLoading;
+      final canPress = enabled && !showLoading;
+      final colorScheme = Theme.of(context).colorScheme;
 
-    return FilledButton(
-      onPressed: canPress
-          ? () {
-        if (formKey.currentState!.validate()) {
-          onSubmit();
+      return FilledButton(
+        onPressed: canPress
+            ? () async {
+          if (formKey.currentState!.validate()) {
+            // 1. Unfocus Keyboard
+            FocusScope.of(context).unfocus();
+
+            // 2. Set Internal Loading & Delay (Manual Feedback)
+            _isInternalLoading.value = true;
+            await Future.delayed(const Duration(milliseconds: 500));
+
+            // 3. Submit & Close
+            try {
+              var result = onSubmit();
+              if (result is Future) {
+                await result;
+              }
+              Get.back(); // Auto-close on manual success
+            } catch (e) {
+              print('Error submitting form: $e');
+            } finally {
+              _isInternalLoading.value = false;
+            }
+          }
         }
-      }
-          : null,
-      style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: isSaving
-          ? SizedBox(
-        width: 20,
-        height: 20,
-        child: CircularProgressIndicator(
-          color: colorScheme.onPrimary,
-          strokeWidth: 2.5,
+            : null,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-      )
-          : Text(
-        title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
-    );
+        child: showLoading
+            ? SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            color: colorScheme.onPrimary,
+            strokeWidth: 2.5,
+          ),
+        )
+            : Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      );
+    });
   }
 
+  // ... [buildInputGroup, _buildMetadataHeader, build() logic remains identical to previous smart implementation] ...
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -138,11 +165,9 @@ class GlobalItemFormSheet extends StatelessWidget {
     if (owner == null && creation == null && modified == null && modifiedBy == null) {
       return const SizedBox.shrink();
     }
-
     final theme = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
     final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
-
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Column(
@@ -203,26 +228,20 @@ class GlobalItemFormSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final mediaQuery = MediaQuery.of(context);
-
-    // Explicitly calculate top padding to avoid status bar overlap
     final topPadding = mediaQuery.viewPadding.top;
-    final bottomPadding = mediaQuery.viewPadding.bottom; // Home indicator
-    final viewInsetsBottom = mediaQuery.viewInsets.bottom; // Keyboard
+    final bottomPadding = mediaQuery.viewPadding.bottom;
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
 
     return Container(
-      // Add margin to force the sheet down from the status bar area
       margin: EdgeInsets.only(top: topPadding + 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
-      // Clip to bounds to ensure content (like scroll view) respects the rounded corners
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // --- Drag Handle ---
-          // This handle is now safely reachable because of the top margin
           Container(
             color: colorScheme.surface,
             width: double.infinity,
@@ -237,8 +256,6 @@ class GlobalItemFormSheet extends StatelessWidget {
               ),
             ),
           ),
-
-          // --- Scrollable Content ---
           Expanded(
             child: Form(
               key: formKey,
@@ -247,7 +264,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                 shrinkWrap: true,
                 children: [
-                  // Header Row
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -292,7 +308,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // Close Button
                       IconButton(
                         onPressed: () => Get.back(),
                         icon: const Icon(Icons.close),
@@ -303,19 +318,14 @@ class GlobalItemFormSheet extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                     child: Divider(height: 1),
                   ),
-
-                  // Custom Fields
                   ...customFields.map((w) => Padding(
                     padding: const EdgeInsets.only(bottom: 20.0),
                     child: w,
                   )),
-
-                  // Quantity Input
                   QuantityInputWidget(
                     controller: qtyController,
                     onIncrement: onIncrement,
@@ -324,18 +334,13 @@ class GlobalItemFormSheet extends StatelessWidget {
                     label: 'Quantity',
                     infoText: qtyInfoText,
                   ),
-
                   const SizedBox(height: 32),
-
-                  // Save Button
                   SizedBox(
                     width: double.infinity,
                     child: isSaveEnabledRx != null
                         ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
                         : _buildSaveButton(context, isSaveEnabled),
                   ),
-
-                  // Delete Button
                   if (onDelete != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
@@ -354,11 +359,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                       ),
                     ),
                   ],
-
-                  // Dynamic Bottom Padding:
-                  // 1. If keyboard is open (viewInsetsBottom > 0), use that.
-                  // 2. If keyboard is closed, use Home Indicator (bottomPadding).
-                  // 3. Add 20px buffer.
                   SizedBox(
                       height: math.max(viewInsetsBottom, bottomPadding) + 20
                   ),
@@ -366,8 +366,6 @@ class GlobalItemFormSheet extends StatelessWidget {
               ),
             ),
           ),
-
-          // --- Sticky Scanner ---
           if (onScan != null)
             Container(
               decoration: BoxDecoration(
@@ -385,7 +383,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                   16,
                   12,
                   16,
-                  // Respect bottom safe area explicitly for the scanner
                   bottomPadding + 12
               ),
               child: BarcodeInputWidget(
