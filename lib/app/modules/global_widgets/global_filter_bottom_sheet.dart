@@ -19,6 +19,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
   final List<Widget> filterWidgets;
   final VoidCallback onApply;
   final VoidCallback onClear;
+  final int activeFilterCount; // New parameter
 
   const GlobalFilterBottomSheet({
     super.key,
@@ -30,6 +31,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
     required this.filterWidgets,
     required this.onApply,
     required this.onClear,
+    this.activeFilterCount = 0,
   });
 
   @override
@@ -41,7 +43,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow, // M3 Surface
+        color: colorScheme.surfaceContainerLow,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       child: SafeArea(
@@ -174,7 +176,11 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Show Results'),
+              child: Text(
+                  activeFilterCount > 0
+                      ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
+                      : 'Show Results'
+              ),
             ),
           ],
         ),

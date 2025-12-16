@@ -35,6 +35,12 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
     super.dispose();
   }
 
+  int get _activeCount {
+    int count = 0;
+    if (supplierController.text.isNotEmpty) count++;
+    return count;
+  }
+
   void _applyFilters() {
     final filters = <String, dynamic>{};
     if (supplierController.text.isNotEmpty) {
@@ -48,6 +54,7 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
       title: 'Filter Purchase Orders',
+      activeFilterCount: _activeCount,
       sortOptions: const [
         SortOption('Date', 'transaction_date'),
         SortOption('Modified', 'modified'),
@@ -70,6 +77,7 @@ class _PurchaseOrderFilterBottomSheetState extends State<PurchaseOrderFilterBott
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.business),
           ),
+          onChanged: (_) => setState(() {}),
         ),
       ],
     ));

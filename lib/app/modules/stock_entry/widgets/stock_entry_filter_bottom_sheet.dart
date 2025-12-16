@@ -72,6 +72,17 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
     super.dispose();
   }
 
+  int get _activeCount {
+    int count = 0;
+    if (selectedDocstatus != null) count++;
+    if (selectedStockEntryType != null) count++;
+    if (purposeController.text.isNotEmpty) count++;
+    if (referenceController.text.isNotEmpty) count++;
+    if (ownerController.text.isNotEmpty) count++;
+    if (startDate != null && endDate != null) count++;
+    return count;
+  }
+
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
@@ -162,7 +173,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
                             title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text(user.email),
                             onTap: () {
-                              ownerController.text = userId;
+                              setState(() => ownerController.text = userId);
                               Get.back();
                             },
                           );
@@ -204,6 +215,7 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
       title: 'Filter Stock Entries',
+      activeFilterCount: _activeCount,
       sortOptions: const [
         SortOption('Creation', 'creation'),
         SortOption('Modified', 'modified'),
@@ -251,10 +263,12 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
         TextFormField(
           controller: purposeController,
           decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
         TextFormField(
           controller: referenceController,
           decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
         TextFormField(
           controller: ownerController,

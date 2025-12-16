@@ -67,6 +67,16 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
     super.dispose();
   }
 
+  int get _activeCount {
+    int count = 0;
+    if (selectedStatus != null) count++;
+    if (customerController.text.isNotEmpty) count++;
+    if (poNoController.text.isNotEmpty) count++;
+    if (ownerController.text.isNotEmpty) count++;
+    if (startDate != null && endDate != null) count++;
+    return count;
+  }
+
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
@@ -108,6 +118,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
       title: 'Filter Delivery Notes',
+      activeFilterCount: _activeCount,
       sortOptions: const [
         SortOption('Creation', 'creation'),
         SortOption('Status', 'status'),
@@ -143,14 +154,17 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
         TextFormField(
           controller: customerController,
           decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
         TextFormField(
           controller: poNoController,
           decoration: const InputDecoration(labelText: 'PO Number', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
         TextFormField(
           controller: ownerController,
           decoration: const InputDecoration(labelText: 'Owner', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
       ],
     ));

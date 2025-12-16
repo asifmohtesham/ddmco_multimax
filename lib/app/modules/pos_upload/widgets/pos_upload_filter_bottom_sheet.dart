@@ -59,6 +59,14 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
     super.dispose();
   }
 
+  int get _activeCount {
+    int count = 0;
+    if (selectedStatus != null) count++;
+    if (customerController.text.isNotEmpty) count++;
+    if (startDate != null && endDate != null) count++;
+    return count;
+  }
+
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
@@ -98,6 +106,7 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
       title: 'Filter POS Uploads',
+      activeFilterCount: _activeCount,
       sortOptions: const [
         SortOption('Date', 'date'),
         SortOption('Status', 'status'),
@@ -134,6 +143,7 @@ class _PosUploadFilterBottomSheetState extends State<PosUploadFilterBottomSheet>
         TextFormField(
           controller: customerController,
           decoration: const InputDecoration(labelText: 'Customer', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
       ],
     ));

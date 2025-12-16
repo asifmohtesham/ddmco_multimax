@@ -59,6 +59,14 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
     super.dispose();
   }
 
+  int get _activeCount {
+    int count = 0;
+    if (selectedStatus != null) count++;
+    if (deliveryNoteController.text.isNotEmpty) count++;
+    if (startDate != null && endDate != null) count++;
+    return count;
+  }
+
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
@@ -98,6 +106,7 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
       title: 'Filter Packing Slips',
+      activeFilterCount: _activeCount,
       sortOptions: const [
         SortOption('Creation', 'creation'),
         SortOption('Status', 'status'),
@@ -133,6 +142,7 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
         TextFormField(
           controller: deliveryNoteController,
           decoration: const InputDecoration(labelText: 'Delivery Note', border: OutlineInputBorder()),
+          onChanged: (_) => setState(() {}),
         ),
       ],
     ));
