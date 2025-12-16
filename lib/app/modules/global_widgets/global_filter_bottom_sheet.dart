@@ -19,7 +19,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
   final List<Widget> filterWidgets;
   final VoidCallback onApply;
   final VoidCallback onClear;
-  final int activeFilterCount; // New parameter
+  final int activeFilterCount;
 
   const GlobalFilterBottomSheet({
     super.key,
@@ -102,50 +102,55 @@ class GlobalFilterBottomSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8.0,
-                        runSpacing: 8.0,
-                        children: sortOptions.map((option) {
-                          final isSelected = currentSortField == option.field;
-                          return FilterChip(
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(option.label),
-                                if (isSelected) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    currentSortOrder == 'desc'
-                                        ? Icons.arrow_downward
-                                        : Icons.arrow_upward,
-                                    size: 16,
-                                    color: colorScheme.onSecondaryContainer,
+                      // CHANGED: Wrap -> SingleChildScrollView + Row for Horizontal Scroll
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: sortOptions.map((option) {
+                            final isSelected = currentSortField == option.field;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8.0), // Spacing between items
+                              child: FilterChip(
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(option.label),
+                                    if (isSelected) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        currentSortOrder == 'desc'
+                                            ? Icons.arrow_downward
+                                            : Icons.arrow_upward,
+                                        size: 16,
+                                        color: colorScheme.onSecondaryContainer,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                selected: isSelected,
+                                onSelected: (bool selected) {
+                                  String newOrder = 'desc';
+                                  if (isSelected) {
+                                    newOrder = currentSortOrder == 'desc' ? 'asc' : 'desc';
+                                  }
+                                  onSortChanged(option.field, newOrder);
+                                },
+                                showCheckmark: false,
+                                selectedColor: colorScheme.secondaryContainer,
+                                labelStyle: TextStyle(
+                                  color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: isSelected ? Colors.transparent : colorScheme.outline,
                                   ),
-                                ],
-                              ],
-                            ),
-                            selected: isSelected,
-                            onSelected: (bool selected) {
-                              String newOrder = 'desc';
-                              if (isSelected) {
-                                newOrder = currentSortOrder == 'desc' ? 'asc' : 'desc';
-                              }
-                              onSortChanged(option.field, newOrder);
-                            },
-                            showCheckmark: false,
-                            selectedColor: colorScheme.secondaryContainer,
-                            labelStyle: TextStyle(
-                              color: isSelected ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(
-                                color: isSelected ? Colors.transparent : colorScheme.outline,
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
+                            );
+                          }).toList(),
+                        ),
                       ),
                       const SizedBox(height: 24),
                     ],
