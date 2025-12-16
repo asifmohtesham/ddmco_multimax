@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
@@ -83,7 +84,6 @@ class GlobalItemFormSheet extends StatelessWidget {
       style: FilledButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        // M3 handles disabled colors automatically, but we can enforce opacity if needed
       ),
       child: isSaving
           ? SizedBox(
@@ -107,8 +107,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     required Widget child,
     Color? bgColor,
   }) {
-    // Note: In M3, relying on context for colors is better,
-    // but we keep the signature for backward compatibility.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -126,7 +124,7 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
         Container(
           decoration: BoxDecoration(
-            color: bgColor ?? color.withValues(alpha: 0.08), // M3 subtle tint
+            color: bgColor ?? color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: color.withValues(alpha: 0.1)),
           ),
@@ -204,184 +202,200 @@ class GlobalItemFormSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final mediaQuery = MediaQuery.of(context);
 
-    return SafeArea(
-      bottom: false, // Handle bottom safe area manually inside content to allow full bleed if needed
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)), // M3 Standard
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // --- Drag Handle ---
-            Padding(
-              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-              child: Container(
-                width: 32,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+    // Explicitly calculate top padding to avoid status bar overlap
+    final topPadding = mediaQuery.viewPadding.top;
+    final bottomPadding = mediaQuery.viewPadding.bottom; // Home indicator
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom; // Keyboard
+
+    return Container(
+      // Add margin to force the sheet down from the status bar area
+      margin: EdgeInsets.only(top: topPadding + 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+      ),
+      // Clip to bounds to ensure content (like scroll view) respects the rounded corners
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // --- Drag Handle ---
+          // This handle is now safely reachable because of the top margin
+          Container(
+            color: colorScheme.surface,
+            width: double.infinity,
+            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+            alignment: Alignment.center,
+            child: Container(
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
+          ),
 
-            // --- Scrollable Content ---
-            Expanded(
-              child: Form(
-                key: formKey,
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  shrinkWrap: true,
-                  children: [
-                    // Header Row
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.onSurface,
+          // --- Scrollable Content ---
+          Expanded(
+            child: Form(
+              key: formKey,
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                shrinkWrap: true,
+                children: [
+                  // Header Row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontFamily: 'monospace',
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    fontFamily: 'monospace',
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              itemName,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: colorScheme.onSurface,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                itemName,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurface,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              _buildMetadataHeader(context),
-                            ],
-                          ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            _buildMetadataHeader(context),
+                          ],
                         ),
-                        // Close Button
-                        IconButton(
-                          onPressed: () => Get.back(),
-                          icon: const Icon(Icons.close),
-                          style: IconButton.styleFrom(
-                            backgroundColor: colorScheme.surfaceContainerHigh,
-                            foregroundColor: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16.0),
-                      child: Divider(height: 1),
-                    ),
-
-                    // Custom Fields
-                    ...customFields.map((w) => Padding(
-                      padding: const EdgeInsets.only(bottom: 20.0),
-                      child: w,
-                    )),
-
-                    // Quantity Input
-                    QuantityInputWidget(
-                      controller: qtyController,
-                      onIncrement: onIncrement,
-                      onDecrement: onDecrement,
-                      isReadOnly: isQtyReadOnly,
-                      label: 'Quantity',
-                      infoText: qtyInfoText,
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // Save Button
-                    SizedBox(
-                      width: double.infinity,
-                      child: isSaveEnabledRx != null
-                          ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                          : _buildSaveButton(context, isSaveEnabled),
-                    ),
-
-                    // Delete Button
-                    if (onDelete != null) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: TextButton.icon(
-                          onPressed: () {
-                            Get.back();
-                            onDelete!();
-                          },
-                          style: TextButton.styleFrom(
-                            foregroundColor: colorScheme.error,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('Remove Item'),
+                      ),
+                      // Close Button
+                      IconButton(
+                        onPressed: () => Get.back(),
+                        icon: const Icon(Icons.close),
+                        style: IconButton.styleFrom(
+                          backgroundColor: colorScheme.surfaceContainerHigh,
+                          foregroundColor: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
+                  ),
 
-                    // Add extra padding at the bottom for scrolling past the scanner/keyboard
-                    SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.0),
+                    child: Divider(height: 1),
+                  ),
+
+                  // Custom Fields
+                  ...customFields.map((w) => Padding(
+                    padding: const EdgeInsets.only(bottom: 20.0),
+                    child: w,
+                  )),
+
+                  // Quantity Input
+                  QuantityInputWidget(
+                    controller: qtyController,
+                    onIncrement: onIncrement,
+                    onDecrement: onDecrement,
+                    isReadOnly: isQtyReadOnly,
+                    label: 'Quantity',
+                    infoText: qtyInfoText,
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Save Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: isSaveEnabledRx != null
+                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                        : _buildSaveButton(context, isSaveEnabled),
+                  ),
+
+                  // Delete Button
+                  if (onDelete != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Get.back();
+                          onDelete!();
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: colorScheme.error,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Remove Item'),
+                      ),
+                    ),
                   ],
-                ),
+
+                  // Dynamic Bottom Padding:
+                  // 1. If keyboard is open (viewInsetsBottom > 0), use that.
+                  // 2. If keyboard is closed, use Home Indicator (bottomPadding).
+                  // 3. Add 20px buffer.
+                  SizedBox(
+                      height: math.max(viewInsetsBottom, bottomPadding) + 20
+                  ),
+                ],
               ),
             ),
+          ),
 
-            // --- Sticky Scanner ---
-            if (onScan != null)
-              Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surface,
-                  border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, -2),
-                    )
-                  ],
-                ),
-                padding: EdgeInsets.fromLTRB(
-                    16,
-                    12,
-                    16,
-                    // Respect bottom safe area (e.g., iPhone home indicator)
-                    MediaQuery.of(context).padding.bottom + 12
-                ),
-                child: BarcodeInputWidget(
-                  onScan: onScan!,
-                  controller: scanController,
-                  isLoading: isScanning,
-                  hintText: 'Scan Rack / Batch / Item',
-                  isEmbedded: true,
-                ),
+          // --- Sticky Scanner ---
+          if (onScan != null)
+            Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  )
+                ],
               ),
-          ],
-        ),
+              padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  // Respect bottom safe area explicitly for the scanner
+                  bottomPadding + 12
+              ),
+              child: BarcodeInputWidget(
+                onScan: onScan!,
+                controller: scanController,
+                isLoading: isScanning,
+                hintText: 'Scan Rack / Batch / Item',
+                isEmbedded: true,
+              ),
+            ),
+        ],
       ),
     );
   }
