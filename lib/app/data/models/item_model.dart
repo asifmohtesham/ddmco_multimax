@@ -12,6 +12,20 @@ class ItemAttribute {
   }
 }
 
+class ItemCustomerDetail {
+  final String customerName;
+  final String refCode;
+
+  ItemCustomerDetail({required this.customerName, required this.refCode});
+
+  factory ItemCustomerDetail.fromJson(Map<String, dynamic> json) {
+    return ItemCustomerDetail(
+      customerName: json['customer_name'] ?? '',
+      refCode: json['ref_code'] ?? '',
+    );
+  }
+}
+
 class Item {
   final String name;
   final String itemName;
@@ -22,7 +36,8 @@ class Item {
   final String? countryOfOrigin;
   final String? description;
   final String? stockUom;
-  final List<ItemAttribute> attributes; // Added
+  final List<ItemAttribute> attributes;
+  final List<ItemCustomerDetail> customerItems; // Added
 
   Item({
     required this.name,
@@ -35,11 +50,15 @@ class Item {
     this.description,
     this.stockUom,
     this.attributes = const [],
+    this.customerItems = const [], // Added
   });
 
   factory Item.fromJson(Map<String, dynamic> json) {
     var attrList = json['attributes'] as List? ?? [];
     List<ItemAttribute> attributes = attrList.map((i) => ItemAttribute.fromJson(i)).toList();
+
+    var custList = json['customer_items'] as List? ?? [];
+    List<ItemCustomerDetail> customerItems = custList.map((i) => ItemCustomerDetail.fromJson(i)).toList();
 
     return Item(
       name: json['name'] ?? '',
@@ -52,6 +71,7 @@ class Item {
       description: json['description'],
       stockUom: json['stock_uom'],
       attributes: attributes,
+      customerItems: customerItems,
     );
   }
 }

@@ -130,10 +130,6 @@ class _ItemScreenState extends State<ItemScreen> {
         status: item.itemGroup,
         leading: _buildImage(item, size: 56),
 
-        // FontFeature.slashedZero for item code in subtitle can't be easily applied via GenericDocumentCard properties directly
-        // unless we update GenericDocumentCard to take Widget for subtitle.
-        // For now, we rely on standard text style.
-
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingStock,
         onTap: () => controller.toggleExpand(item.name, item.itemCode),
@@ -152,6 +148,25 @@ class _ItemScreenState extends State<ItemScreen> {
                 padding: const EdgeInsets.only(bottom: 12.0),
                 child: Text(item.description!, style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 3, overflow: TextOverflow.ellipsis),
               ),
+
+            // --- Customer Items Section ---
+            if (item.customerItems.isNotEmpty) ...[
+              const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 8),
+              ...item.customerItems.map((ci) => Padding(
+                padding: const EdgeInsets.only(bottom: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(ci.customerName, style: const TextStyle(fontSize: 12)),
+                    Text(ci.refCode, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              )),
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 12),
+            ],
 
             const Text('Stock Balance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 8),

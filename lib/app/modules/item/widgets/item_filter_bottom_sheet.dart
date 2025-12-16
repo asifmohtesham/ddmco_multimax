@@ -16,6 +16,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   late TextEditingController itemGroupController;
   late TextEditingController variantOfController;
+  late TextEditingController customerNameController; // Added
+  late TextEditingController customerRefController; // Added
 
   // Local state for adding a new attribute filter
   late TextEditingController attributeNameController;
@@ -35,6 +37,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     super.initState();
     itemGroupController = TextEditingController(text: _extractFilterValue('item_group'));
     variantOfController = TextEditingController(text: _extractFilterValue('variant_of'));
+    customerNameController = TextEditingController(text: _extractFilterValue('customer_name')); // Added
+    customerRefController = TextEditingController(text: _extractFilterValue('ref_code')); // Added
 
     itemGroup.value = itemGroupController.text;
     variantOf.value = variantOfController.text;
@@ -64,6 +68,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   void dispose() {
     itemGroupController.dispose();
     variantOfController.dispose();
+    customerNameController.dispose();
+    customerRefController.dispose();
     attributeNameController.dispose();
     attributeValueController.dispose();
     super.dispose();
@@ -74,6 +80,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     if (showImagesOnly.value) count++;
     if (itemGroup.value.isNotEmpty) count++;
     if (variantOf.value.isNotEmpty) count++;
+    if (customerNameController.text.isNotEmpty) count++; // Added
+    if (customerRefController.text.isNotEmpty) count++; // Added
     count += localAttributeFilters.length;
     return count;
   }
@@ -191,6 +199,15 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       filters['variant_of'] = variantOfController.text;
     }
 
+    // Customer Item Filters
+    if (customerNameController.text.isNotEmpty) {
+      filters['customer_name'] = ['like', '%${customerNameController.text}%'];
+    }
+
+    if (customerRefController.text.isNotEmpty) {
+      filters['ref_code'] = ['like', '%${customerRefController.text}%'];
+    }
+
     controller.setImagesOnly(showImagesOnly.value);
     controller.applyFilters(filters, localAttributeFilters.toList());
     Get.back();
@@ -214,6 +231,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       onClear: () {
         itemGroupController.clear();
         variantOfController.clear();
+        customerNameController.clear();
+        customerRefController.clear();
         localAttributeFilters.clear();
         itemGroup.value = '';
         variantOf.value = '';
@@ -273,6 +292,36 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             suffixIcon: Icon(Icons.arrow_drop_down),
             isDense: true,
           ),
+        ),
+        const SizedBox(height: 24),
+
+        // --- Customer Item Filters ---
+        const Text('Customer Reference', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: customerNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Customer Name',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                controller: customerRefController,
+                decoration: const InputDecoration(
+                  labelText: 'Ref Code',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 24),

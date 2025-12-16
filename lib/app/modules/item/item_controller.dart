@@ -85,7 +85,10 @@ class ItemController extends GetxController {
         item.itemCode,
         item.itemGroup,
         item.variantOf,
-        item.description
+        item.description,
+        // Include Customer Items in search index
+        ...item.customerItems.map((e) => e.customerName),
+        ...item.customerItems.map((e) => e.refCode),
       ],
     );
   }
