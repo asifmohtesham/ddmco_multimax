@@ -4,7 +4,9 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 
 class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
-  const PackingSlipItemFormSheet({super.key});
+  final ScrollController? scrollController;
+
+  const PackingSlipItemFormSheet({super.key, this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -12,8 +14,8 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
       final isEditing = controller.isEditing.value;
 
       return GlobalItemFormSheet(
-        formKey: controller.itemFormKey, // PASSED KEY
-        scrollController: null,
+        formKey: controller.itemFormKey,
+        scrollController: scrollController, // Standardised scroll binding
         title: isEditing ? 'Edit Pack Item' : 'Pack Item',
         itemCode: controller.currentItemCode ?? '-',
         itemName: controller.currentItemName ?? '-',
@@ -25,7 +27,7 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
 
         // Pass the validation observable for Dirty Check
         isSaveEnabledRx: controller.isSheetValid,
-        isSaveEnabled: true, // Used as fallback or if not Rx
+        isSaveEnabled: true,
 
         onSubmit: controller.addItemToSlip,
         onDelete: isEditing ? controller.deleteCurrentItem : null,
@@ -38,29 +40,45 @@ class PackingSlipItemFormSheet extends GetView<PackingSlipFormController> {
 
         customFields: [
           // Item Info Container
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              children: [
-                if (controller.currentBatchNo != null && controller.currentBatchNo!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(width: 80, child: Text('Batch No', style: TextStyle(color: Colors.grey, fontSize: 12))),
-                        Expanded(child: Text(controller.currentBatchNo!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                      ],
-                    ),
+          if (controller.currentBatchNo != null && controller.currentBatchNo!.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 80,
+                        child: Text(
+                          'Batch No',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          controller.currentBatchNo!,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       );
     });
