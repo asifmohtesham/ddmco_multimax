@@ -116,28 +116,12 @@ class PackingSlipFormController extends GetxController {
 
   // --- PopScope Logic ---
   Future<void> confirmDiscard() async {
-    final result = await Get.dialog<bool>(
-      AlertDialog(
-        title: const Text('Unsaved Changes'),
-        content: const Text('You have unsaved changes. Are you sure you want to leave?'),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(result: false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Get.back(result: true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Discard'),
-          ),
-        ],
-      ),
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false; // Reset dirty flag
+        Get.back(); // Pop the screen (Navigation)
+      },
     );
-
-    if (result == true) {
-      isDirty.value = false; // Reset dirty flag to allow PopScope to proceed
-      Get.back(); // Trigger the pop
-    }
   }
 
   void validateSheet() {
@@ -228,7 +212,6 @@ class PackingSlipFormController extends GetxController {
         if (packingSlip.value != null && (packingSlip.value!.customer == null || packingSlip.value!.customer!.isEmpty)) {
           packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
           // If we auto-corrected the customer on load, treat this as the new "original" state
-          // so the form doesn't appear dirty immediately.
           if (mode != 'new') _updateOriginalState(packingSlip.value!);
         }
       }

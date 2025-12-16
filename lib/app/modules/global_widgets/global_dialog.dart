@@ -80,4 +80,17 @@ class GlobalDialog {
       isScrollControlled: true,
     );
   }
+
+  static void showUnsavedChanges({
+    required VoidCallback onDiscard,
+  }) {
+    showConfirmation(
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes. Are you sure you want to leave?',
+      confirmText: 'Discard Changes',
+      confirmColor: Colors.orange,
+      icon: Icons.warning_amber_rounded,
+      onConfirm: onDiscard,
+    );
+  }
 }

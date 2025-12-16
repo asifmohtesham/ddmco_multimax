@@ -18,6 +18,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       canPop: !controller.isDirty.value,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        // Logic handled by GlobalDialog in controller
         await controller.confirmDiscard();
       },
       child: DefaultTabController(
