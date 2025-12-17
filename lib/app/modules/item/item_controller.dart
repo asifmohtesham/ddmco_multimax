@@ -5,6 +5,37 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/utils/search_helper.dart';
 
+/// Model to represent a single row in the ERPNext-style filter
+class FilterRow {
+  String field;      // e.g., 'item_name'
+  String label;      // e.g., 'Item Name'
+  String operator;   // e.g., 'like', '='
+  String value;      // e.g., 'iphone'
+  String fieldType;  // 'Data', 'Link', 'Select'
+  String? doctype;   // For Link fields, e.g., 'Item Group'
+
+  FilterRow({
+    required this.field,
+    required this.label,
+    this.operator = 'like',
+    this.value = '',
+    this.fieldType = 'Data',
+    this.doctype,
+  });
+
+  // Clone for local editing
+  FilterRow clone() {
+    return FilterRow(
+      field: field,
+      label: label,
+      operator: operator,
+      value: value,
+      fieldType: fieldType,
+      doctype: doctype,
+    );
+  }
+}
+
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
 
@@ -22,8 +53,25 @@ class ItemController extends GetxController {
   var isLoadingStock = false.obs;
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
-  final activeFilters = <String, dynamic>{}.obs;
+  // --- REVAMPED FILTER STATE ---
+  // Replaced Map with List to support multiple conditions per field
+  final activeFilters = <FilterRow>[].obs;
+
+  // Attribute filters kept separate as they require different logic
   var attributeFilters = <Map<String, String>>[].obs;
+
+  // Configuration for Available Fields in Filter
+  final List<FilterRow> availableFields = [
+    FilterRow(field: 'item_code', label: 'Item Code', operator: 'like'),
+    FilterRow(field: 'item_name', label: 'Item Name', operator: 'like'),
+    FilterRow(field: 'item_group', label: 'Item Group', operator: '=', fieldType: 'Link', doctype: 'Item Group'),
+    FilterRow(field: 'description', label: 'Description', operator: 'like'),
+    FilterRow(field: 'variant_of', label: 'Variant Of', operator: '=', fieldType: 'Link', doctype: 'Item'),
+    FilterRow(field: 'customer_name', label: 'Customer Name', operator: 'like'),
+    FilterRow(field: 'ref_code', label: 'Customer Ref Code', operator: 'like'),
+  ];
+
+  final List<String> availableOperators = ['like', '=', '!=', '>', '<', '>=', '<='];
 
   var sortField = '`tabItem`.`modified`'.obs;
   var sortOrder = 'desc'.obs;
@@ -42,6 +90,8 @@ class ItemController extends GetxController {
 
   var showImagesOnly = true.obs;
   var isGridView = false.obs;
+
+  int get filterCount => activeFilters.length + attributeFilters.length + (showImagesOnly.value ? 1 : 0);
 
   @override
   void onInit() {
@@ -83,8 +133,8 @@ class ItemController extends GetxController {
     );
   }
 
-  void applyFilters(Map<String, dynamic> filters, List<Map<String, String>> attributes) {
-    activeFilters.value = filters;
+  void applyFilters(List<FilterRow> filters, List<Map<String, String>> attributes) {
+    activeFilters.assignAll(filters);
     attributeFilters.assignAll(attributes);
     fetchItems(clear: true);
   }
@@ -121,30 +171,32 @@ class ItemController extends GetxController {
     try {
       final List<List<dynamic>> reportFilters = [];
 
-      activeFilters.forEach((key, value) {
-        dynamic filterVal = value;
-        String op = '=';
+      // 1. Process Dynamic Filters
+      for (var filter in activeFilters) {
+        if (filter.value.isEmpty) continue;
 
-        if (value is List && value.isNotEmpty) {
-          op = value[0];
-          filterVal = value.length > 1 ? value[1] : '';
-        }
-
-        if (key == 'customer_name') {
-          reportFilters.add(['Item Customer Detail', 'customer_name', 'like', filterVal]);
-        } else if (key == 'ref_code') {
-          reportFilters.add(['Item Customer Detail', 'ref_code', 'like', filterVal]);
+        if (filter.field == 'customer_name') {
+          reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, filter.value]);
+        } else if (filter.field == 'ref_code') {
+          reportFilters.add(['Item Customer Detail', 'ref_code', filter.operator, filter.value]);
         } else {
-          reportFilters.add(['Item', key, op, filterVal]);
+          // Add wildcards for 'like' operator if not present
+          String val = filter.value;
+          if (filter.operator == 'like' && !val.contains('%')) {
+            val = '%$val%';
+          }
+          reportFilters.add(['Item', filter.field, filter.operator, val]);
         }
-      });
+      }
 
       if (showImagesOnly.value) {
         reportFilters.add(['Item', 'image', '!=', '']);
       }
 
+      // 2. Process Attribute Filters
       if (attributeFilters.isNotEmpty) {
         for (var filter in attributeFilters) {
+          // Simplified fallback for attributes in ReportView context
           reportFilters.add(['Item', 'description', 'like', '%${filter['value']}%']);
         }
       }
@@ -184,6 +236,7 @@ class ItemController extends GetxController {
     }
   }
 
+  // --- Reference Data Fetchers ---
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {

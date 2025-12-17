@@ -59,19 +59,24 @@ class _ItemScreenState extends State<ItemScreen> {
       searchHint: 'Search Items (Name, Code, Desc...)',
 
       actions: [
-        IconButton(
-          icon: Obx(() => Icon(
-              Icons.filter_list,
-              color: controller.activeFilters.isNotEmpty || !controller.showImagesOnly.value
-                  ? Colors.amber
-                  : null
-          )),
-          onPressed: () => Get.bottomSheet(
-            const ItemFilterBottomSheet(),
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-          ),
-        ),
+        Obx(() {
+          final count = controller.filterCount;
+          return IconButton(
+            icon: Badge(
+              isLabelVisible: count > 0,
+              label: Text('$count'),
+              child: Icon(
+                Icons.filter_list,
+                color: count > 0 ? Colors.amber : null,
+              ),
+            ),
+            onPressed: () => Get.bottomSheet(
+              const ItemFilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            ),
+          );
+        }),
         Obx(() => IconButton(
           icon: Icon(controller.isGridView.value ? Icons.view_list : Icons.grid_view),
           onPressed: controller.toggleLayout,
