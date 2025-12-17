@@ -184,16 +184,18 @@ class ItemController extends GetxController {
           continue;
         }
 
-        // Standard Fields
+        // --- UPDATE: Apply % wildcards for 'like' operator to ALL fields ---
+        String val = filter.value;
+        if (filter.operator == 'like' && !val.contains('%')) {
+          val = '%$val%';
+        }
+
+        // Apply filters to appropriate tables
         if (filter.field == 'customer_name') {
-          reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, filter.value]);
+          reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, val]);
         } else if (filter.field == 'ref_code') {
-          reportFilters.add(['Item Customer Detail', 'ref_code', filter.operator, filter.value]);
+          reportFilters.add(['Item Customer Detail', 'ref_code', filter.operator, val]);
         } else {
-          String val = filter.value;
-          if (filter.operator == 'like' && !val.contains('%')) {
-            val = '%$val%';
-          }
           reportFilters.add(['Item', filter.field, filter.operator, val]);
         }
       }
