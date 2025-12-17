@@ -40,7 +40,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   : IconButton(
                 icon: const Icon(Icons.save),
                 onPressed: (controller.isDirty.value &&
-                    controller.stockEntry.value?.docstatus == 0)
+                    controller.stockEntry.value?.docstatus == 0 &&
+                    (controller.stockEntry.value?.items.isNotEmpty ?? false)) // Added Check
                     ? controller.saveStockEntry
                     : null,
               )),

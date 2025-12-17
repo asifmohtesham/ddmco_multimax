@@ -119,95 +119,92 @@ class StockEntryItemFormSheet extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    if (showSource)
-                      Expanded(
-                        child: GlobalItemFormSheet.buildInputGroup(
-                          label: 'Source Rack',
-                          color: Colors.orange,
-                          bgColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : null,
-                          child: Obx(() => TextFormField(
-                            key: const ValueKey('source_rack_field'),
-                            controller: controller.bsSourceRackController,
-                            focusNode: controller.sourceRackFocusNode,
-                            readOnly: controller.isSourceRackValid.value,
-                            autofocus: false,
-                            decoration: InputDecoration(
-                              hintText: 'Rack',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.orange.shade200),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Colors.orange, width: 2),
-                              ),
-                              filled: true,
-                              fillColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : Colors.white,
-                              suffixIcon: controller.isValidatingSourceRack.value
-                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
-                                  : (controller.isSourceRackValid.value
-                                  ? IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.orange),
-                                onPressed: controller.resetSourceRackValidation,
-                              )
-                                  : IconButton(
-                                icon: const Icon(Icons.arrow_forward, color: Colors.orange),
-                                onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
-                              )),
-                            ),
-                            onFieldSubmitted: (val) => controller.validateRack(val, true),
+                if (showSource)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: GlobalItemFormSheet.buildInputGroup(
+                      label: 'Source Rack',
+                      color: Colors.orange,
+                      bgColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : null,
+                      child: Obx(() => TextFormField(
+                        key: const ValueKey('source_rack_field'),
+                        controller: controller.bsSourceRackController,
+                        focusNode: controller.sourceRackFocusNode,
+                        readOnly: controller.isSourceRackValid.value,
+                        autofocus: false,
+                        decoration: InputDecoration(
+                          hintText: 'Rack',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.orange.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.orange, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : Colors.white,
+                          suffixIcon: controller.isValidatingSourceRack.value
+                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
+                              : (controller.isSourceRackValid.value
+                              ? IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.orange),
+                            onPressed: controller.resetSourceRackValidation,
+                          )
+                              : IconButton(
+                            icon: const Icon(Icons.arrow_forward, color: Colors.orange),
+                            onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
                           )),
                         ),
-                      ),
+                        onFieldSubmitted: (val) => controller.validateRack(val, true),
+                      )),
+                    ),
+                  ),
 
-                    if (showSource && showTarget) const SizedBox(width: 12),
-
-                    if (showTarget)
-                      Expanded(
-                        child: GlobalItemFormSheet.buildInputGroup(
-                          label: 'Target Rack',
-                          color: Colors.green,
-                          bgColor: controller.isTargetRackValid.value ? Colors.green.shade50 : null,
-                          child: Obx(() => TextFormField(
-                            key: const ValueKey('target_rack_field'),
-                            controller: controller.bsTargetRackController,
-                            focusNode: controller.targetRackFocusNode,
-                            readOnly: controller.isTargetRackValid.value,
-                            autofocus: false,
-                            decoration: InputDecoration(
-                              hintText: 'Rack',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.green.shade200),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Colors.green, width: 2),
-                              ),
-                              filled: true,
-                              fillColor: controller.isTargetRackValid.value ? Colors.green.shade50 : Colors.white,
-                              suffixIcon: controller.isValidatingTargetRack.value
-                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green)))
-                                  : (controller.isTargetRackValid.value
-                                  ? IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.green),
-                                onPressed: controller.resetTargetRackValidation,
-                              )
-                                  : IconButton(
-                                icon: const Icon(Icons.arrow_forward, color: Colors.green),
-                                onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
-                              )),
-                            ),
-                            onFieldSubmitted: (val) => controller.validateRack(val, false),
+                if (showTarget)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: GlobalItemFormSheet.buildInputGroup(
+                      label: 'Target Rack',
+                      color: Colors.green,
+                      bgColor: controller.isTargetRackValid.value ? Colors.green.shade50 : null,
+                      child: Obx(() => TextFormField(
+                        key: const ValueKey('target_rack_field'),
+                        controller: controller.bsTargetRackController,
+                        focusNode: controller.targetRackFocusNode,
+                        readOnly: controller.isTargetRackValid.value,
+                        autofocus: false,
+                        decoration: InputDecoration(
+                          hintText: 'Rack',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.green.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.green, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: controller.isTargetRackValid.value ? Colors.green.shade50 : Colors.white,
+                          suffixIcon: controller.isValidatingTargetRack.value
+                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green)))
+                              : (controller.isTargetRackValid.value
+                              ? IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.green),
+                            onPressed: controller.resetTargetRackValidation,
+                          )
+                              : IconButton(
+                            icon: const Icon(Icons.arrow_forward, color: Colors.green),
+                            onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
                           )),
                         ),
-                      ),
-                  ],
-                ),
+                        onFieldSubmitted: (val) => controller.validateRack(val, false),
+                      )),
+                    ),
+                  ),
+
                 Obx(() {
                   if (controller.rackError.value != null) {
                     return Padding(

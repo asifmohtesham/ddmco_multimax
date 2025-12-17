@@ -903,11 +903,14 @@ class StockEntryFormController extends GetxController {
         bsSourceRackController.text = code;
         validateRack(code, true);
         handled = true;
-      } else if (bsTargetRackController.text.isEmpty) {
-        bsTargetRackController.text = code;
-        validateRack(code, false);
-        handled = true;
       } else {
+        // PREVENT CONCURRENT SAME VALUE
+        if (bsSourceRackController.text == code) {
+          GlobalSnackbar.error(message: "Source and Target Racks cannot be the same");
+          return;
+        }
+
+        // Set Target
         bsTargetRackController.text = code;
         validateRack(code, false);
         handled = true;
