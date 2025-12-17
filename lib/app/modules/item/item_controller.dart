@@ -5,14 +5,15 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/utils/search_helper.dart';
 
-/// Model to represent a single row in the ERPNext-style filter
+/// Model to represent a single row in the unified filter list
 class FilterRow {
-  String field;      // e.g., 'item_name'
-  String label;      // e.g., 'Item Name'
-  String operator;   // e.g., 'like', '='
-  String value;      // e.g., 'iphone'
-  String fieldType;  // 'Data', 'Link', 'Select'
-  String? doctype;   // For Link fields, e.g., 'Item Group'
+  String field;       // The db field name or '_attribute' for attribute filters
+  String label;       // Label shown to user
+  String operator;    // e.g., 'like', '='
+  String value;       // User entered value
+  String fieldType;   // 'Data', 'Link', 'Attribute'
+  String? doctype;    // For Link fields, e.g., 'Item Group'
+  String attributeName; // Only used if fieldType == 'Attribute' (e.g., 'Color')
 
   FilterRow({
     required this.field,
@@ -21,9 +22,10 @@ class FilterRow {
     this.value = '',
     this.fieldType = 'Data',
     this.doctype,
+    this.attributeName = '',
   });
 
-  // Clone for local editing
+  // Clone for local editing in the UI
   FilterRow clone() {
     return FilterRow(
       field: field,
@@ -32,6 +34,7 @@ class FilterRow {
       value: value,
       fieldType: fieldType,
       doctype: doctype,
+      attributeName: attributeName,
     );
   }
 }
@@ -53,14 +56,10 @@ class ItemController extends GetxController {
   var isLoadingStock = false.obs;
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
-  // --- REVAMPED FILTER STATE ---
-  // Replaced Map with List to support multiple conditions per field
+  // --- UNIFIED FILTER STATE ---
   final activeFilters = <FilterRow>[].obs;
 
-  // Attribute filters kept separate as they require different logic
-  var attributeFilters = <Map<String, String>>[].obs;
-
-  // Configuration for Available Fields in Filter
+  // Configuration for Available Fields
   final List<FilterRow> availableFields = [
     FilterRow(field: 'item_code', label: 'Item Code', operator: 'like'),
     FilterRow(field: 'item_name', label: 'Item Name', operator: 'like'),
@@ -69,6 +68,8 @@ class ItemController extends GetxController {
     FilterRow(field: 'variant_of', label: 'Variant Of', operator: '=', fieldType: 'Link', doctype: 'Item'),
     FilterRow(field: 'customer_name', label: 'Customer Name', operator: 'like'),
     FilterRow(field: 'ref_code', label: 'Customer Ref Code', operator: 'like'),
+    // Special Option to trigger Attribute UI
+    FilterRow(field: '_attribute', label: 'Item Attribute', operator: '=', fieldType: 'Attribute'),
   ];
 
   final List<String> availableOperators = ['like', '=', '!=', '>', '<', '>=', '<='];
@@ -78,6 +79,7 @@ class ItemController extends GetxController {
 
   var searchQuery = ''.obs;
 
+  // Reference Data
   var itemGroups = <String>[].obs;
   var templateItems = <String>[].obs;
   var itemAttributes = <String>[].obs;
@@ -91,7 +93,8 @@ class ItemController extends GetxController {
   var showImagesOnly = true.obs;
   var isGridView = false.obs;
 
-  int get filterCount => activeFilters.length + attributeFilters.length + (showImagesOnly.value ? 1 : 0);
+  // Helper for Badge Count
+  int get filterCount => activeFilters.length + (showImagesOnly.value ? 1 : 0);
 
   @override
   void onInit() {
@@ -133,15 +136,13 @@ class ItemController extends GetxController {
     );
   }
 
-  void applyFilters(List<FilterRow> filters, List<Map<String, String>> attributes) {
+  void applyFilters(List<FilterRow> filters) {
     activeFilters.assignAll(filters);
-    attributeFilters.assignAll(attributes);
     fetchItems(clear: true);
   }
 
   void clearFilters() {
     activeFilters.clear();
-    attributeFilters.clear();
     showImagesOnly.value = true;
     searchQuery.value = '';
     fetchItems(clear: true);
@@ -170,17 +171,25 @@ class ItemController extends GetxController {
 
     try {
       final List<List<dynamic>> reportFilters = [];
+      final List<FilterRow> attributeFiltersToProcess = [];
 
-      // 1. Process Dynamic Filters
+      // 1. Separate Filters (Standard vs Attribute)
       for (var filter in activeFilters) {
         if (filter.value.isEmpty) continue;
 
+        if (filter.fieldType == 'Attribute') {
+          if (filter.attributeName.isNotEmpty) {
+            attributeFiltersToProcess.add(filter);
+          }
+          continue;
+        }
+
+        // Standard Fields
         if (filter.field == 'customer_name') {
           reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, filter.value]);
         } else if (filter.field == 'ref_code') {
           reportFilters.add(['Item Customer Detail', 'ref_code', filter.operator, filter.value]);
         } else {
-          // Add wildcards for 'like' operator if not present
           String val = filter.value;
           if (filter.operator == 'like' && !val.contains('%')) {
             val = '%$val%';
@@ -193,11 +202,48 @@ class ItemController extends GetxController {
         reportFilters.add(['Item', 'image', '!=', '']);
       }
 
-      // 2. Process Attribute Filters
-      if (attributeFilters.isNotEmpty) {
-        for (var filter in attributeFilters) {
-          // Simplified fallback for attributes in ReportView context
-          reportFilters.add(['Item', 'description', 'like', '%${filter['value']}%']);
+      // 2. Process Attribute Filters (Intersection Logic)
+      if (attributeFiltersToProcess.isNotEmpty) {
+        Set<String>? commonItemCodes;
+        bool permissionErrorOccurred = false;
+
+        for (var filter in attributeFiltersToProcess) {
+          try {
+            final response = await _provider.getItemVariantsByAttribute(
+                filter.attributeName,
+                filter.value
+            );
+
+            if (response.statusCode == 200 && response.data['data'] != null) {
+              final List<String> fetchedCodes = (response.data['data'] as List)
+                  .map((e) => e['parent'].toString())
+                  .toList();
+
+              if (commonItemCodes == null) {
+                commonItemCodes = Set.from(fetchedCodes);
+              } else {
+                commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
+              }
+              if (commonItemCodes.isEmpty) break;
+            }
+          } catch (e) {
+            permissionErrorOccurred = true;
+            // Fallback: simple text search in description if exact match fails
+            reportFilters.add(['Item', 'description', 'like', '%${filter.value}%']);
+          }
+        }
+
+        if (!permissionErrorOccurred) {
+          if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
+            reportFilters.add(['Item', 'name', 'in', commonItemCodes.toList()]);
+          } else if (commonItemCodes != null && commonItemCodes.isEmpty) {
+            // No matches for attributes
+            items.clear();
+            isLoading.value = false;
+            hasMore.value = false;
+            isFetchingMore.value = false;
+            return;
+          }
         }
       }
 
