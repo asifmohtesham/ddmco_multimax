@@ -59,7 +59,7 @@ class ApiProvider {
     int limitStart = 0,
     List<String>? fields,
     Map<String, dynamic>? filters,
-    Map<String, dynamic>? orFilters, // Added orFilters support
+    Map<String, dynamic>? orFilters,
     String orderBy = 'modified desc',
   }) async {
     if (!_dioInitialised) await _initDio();
@@ -106,6 +106,35 @@ class ApiProvider {
     }
   }
 
+  // NEW: Support for Frappe Desk Report View (allows advanced joins/filtering)
+  Future<Response> getReportView(String doctype, {
+    int start = 0,
+    int pageLength = 20,
+    List<String>? fields,
+    List<List<dynamic>>? filters,
+    String orderBy = 'modified desc',
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final data = {
+      'doctype': doctype,
+      'fields': json.encode(fields ?? ['`tab$doctype`.`name`']),
+      'filters': json.encode(filters ?? []),
+      'order_by': orderBy,
+      'start': start,
+      'page_length': pageLength,
+      'view': 'List',
+      'group_by': '`tab$doctype`.`name`',
+      'with_comment_count': 1
+    };
+
+    // Using POST as per standard ReportView usage
+    return await _dio.post('/api/method/frappe.desk.reportview.get',
+        data: data,
+        options: Options(contentType: Headers.formUrlEncodedContentType)
+    );
+  }
+
   Future<Response> getDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/$doctype/$name');
@@ -130,6 +159,7 @@ class ApiProvider {
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
 
+  // ... (Rest of the file remains unchanged) ...
   Future<List<String>> getList(String doctype) async {
     try {
       if (!_dioInitialised) await _initDio();
@@ -170,7 +200,6 @@ class ApiProvider {
 
     final storage = Get.find<StorageService>();
     final String company = storage.getCompany();
-
     final String? targetWarehouse = warehouse;
 
     if (targetWarehouse == null || targetWarehouse.isEmpty) {
@@ -235,66 +264,33 @@ class ApiProvider {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // MODULE SPECIFIC GETTERS
-  // ---------------------------------------------------------------------------
-
+  // Module specific getters would remain here...
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
-
   Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
-
   Future<Response> getPackingSlips({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Packing Slip', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'delivery_note', 'modified', 'creation', 'docstatus', 'custom_po_no', 'from_case_no', 'to_case_no', 'owner']);
-
   Future<Response> getPackingSlip(String name) async => getDocument('Packing Slip', name);
-
   Future<Response> getStockEntries({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Stock Entry', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']);
-
   Future<Response> getStockEntry(String name) async => getDocument('Stock Entry', name);
-
   Future<Response> getDeliveryNotes({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Delivery Note', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus']);
-
   Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);
-
   Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) filters.remove('docstatus');
     return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status', 'total_qty']);
   }
-
   Future<Response> getPosUpload(String name) async => getDocument('POS Upload', name);
-
   Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('ToDo', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'status', 'description', 'modified', 'priority', 'date']);
-
   Future<Response> getTodo(String name) async => getDocument('ToDo', name);
-
-  Future<Response> getPurchaseOrders({
-    int limit = 20,
-    int limitStart = 0,
-    Map<String, dynamic>? filters,
-    String orderBy = 'modified desc',
-  }) async {
-    return getDocumentList(
-      'Purchase Order',
-      limit: limit,
-      limitStart: limitStart,
-      filters: filters,
-      fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation'],
-      orderBy: orderBy,
-    );
+  Future<Response> getPurchaseOrders({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async {
+    return getDocumentList('Purchase Order', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation'], orderBy: orderBy);
   }
-
   Future<Response> getPurchaseOrder(String name) async => getDocument('Purchase Order', name);
   Future<Response> createPurchaseOrder(Map<String, dynamic> data) async => createDocument('Purchase Order', data);
   Future<Response> updatePurchaseOrder(String name, Map<String, dynamic> data) async => updateDocument('Purchase Order', name, data);
-
-  // ---------------------------------------------------------------------------
-  // AUTHENTICATION
-  // ---------------------------------------------------------------------------
-
   Future<Response> login(String email, String password) async {
     if (!_dioInitialised) await _initDio();
     try {
@@ -308,7 +304,6 @@ class ApiProvider {
       rethrow;
     }
   }
-
   Future<Response> loginWithFrappe(String username, String password) async {
     if (!_dioInitialised) await _initDio();
     try {
@@ -318,38 +313,31 @@ class ApiProvider {
       rethrow;
     }
   }
-
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
-
   Future<void> clearSessionCookies() async {
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
   }
-
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/logout');
   }
-
   Future<Response> getLoggedUser() async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/frappe.auth.get_logged_user');
   }
-
   Future<Response> getUserDetails(String email) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/User/$email');
   }
-
   Future<Response> resetPassword(String email) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/frappe.core.doctype.user.user.reset_password', data: {'user': email}, options: Options(contentType: Headers.formUrlEncodedContentType));
   }
-
   Future<Response> changePassword(String oldPassword, String newPassword) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/frappe.core.doctype.user.user.update_password',

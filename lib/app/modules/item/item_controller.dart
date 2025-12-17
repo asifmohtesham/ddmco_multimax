@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/data/utils/search_helper.dart'; // Import Search Helper
+import 'package:multimax/app/data/utils/search_helper.dart';
 
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
@@ -12,10 +12,7 @@ class ItemController extends GetxController {
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
 
-  // All items fetched from server
   var items = <Item>[].obs;
-
-  // Items displayed after local search filter
   var displayedItems = <Item>[].obs;
 
   final int _limit = 20;
@@ -28,13 +25,11 @@ class ItemController extends GetxController {
   final activeFilters = <String, dynamic>{}.obs;
   var attributeFilters = <Map<String, String>>[].obs;
 
-  var sortField = 'modified'.obs;
+  var sortField = '`tabItem`.`modified`'.obs;
   var sortOrder = 'desc'.obs;
 
-  // Search State
   var searchQuery = ''.obs;
 
-  // Filter Data Sources
   var itemGroups = <String>[].obs;
   var templateItems = <String>[].obs;
   var itemAttributes = <String>[].obs;
@@ -56,7 +51,6 @@ class ItemController extends GetxController {
     fetchTemplateItems();
     fetchItemAttributes();
 
-    // Reactive Search: Re-filter whenever items or query changes
     ever(items, (_) => _applySearch());
     ever(searchQuery, (_) => _applySearch());
   }
@@ -71,9 +65,6 @@ class ItemController extends GetxController {
 
   void onSearchChanged(String query) {
     searchQuery.value = query;
-    // Note: If you want to trigger Server-Side search for lazy loading support,
-    // you would debounce calls to fetchItems(clear:true) here.
-    // For now, we are implementing the requested "multi-field robust match" on loaded data.
   }
 
   void _applySearch() {
@@ -86,7 +77,6 @@ class ItemController extends GetxController {
         item.itemGroup,
         item.variantOf,
         item.description,
-        // Include Customer Items in search index
         ...item.customerItems.map((e) => e.customerName),
         ...item.customerItems.map((e) => e.refCode),
       ],
@@ -103,11 +93,14 @@ class ItemController extends GetxController {
     activeFilters.clear();
     attributeFilters.clear();
     showImagesOnly.value = true;
-    searchQuery.value = ''; // Clear search too
+    searchQuery.value = '';
     fetchItems(clear: true);
   }
 
   void setSort(String field, String order) {
+    if (!field.contains('`')) {
+      field = '`tabItem`.`$field`';
+    }
     sortField.value = field;
     sortOrder.value = order;
     fetchItems(clear: true);
@@ -126,82 +119,62 @@ class ItemController extends GetxController {
     }
 
     try {
-      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      final List<List<dynamic>> reportFilters = [];
+
+      activeFilters.forEach((key, value) {
+        dynamic filterVal = value;
+        String op = '=';
+
+        if (value is List && value.isNotEmpty) {
+          op = value[0];
+          filterVal = value.length > 1 ? value[1] : '';
+        }
+
+        if (key == 'customer_name') {
+          reportFilters.add(['Item Customer Detail', 'customer_name', 'like', filterVal]);
+        } else if (key == 'ref_code') {
+          reportFilters.add(['Item Customer Detail', 'ref_code', 'like', filterVal]);
+        } else {
+          reportFilters.add(['Item', key, op, filterVal]);
+        }
+      });
 
       if (showImagesOnly.value) {
-        queryFilters['image'] = ['!=', ''];
+        reportFilters.add(['Item', 'image', '!=', '']);
       }
 
-      // Attribute Filtering Logic (Unchanged)
       if (attributeFilters.isNotEmpty) {
-        Set<String>? commonItemCodes;
-        bool permissionErrorOccurred = false;
-
         for (var filter in attributeFilters) {
-          try {
-            final response = await _provider.getItemVariantsByAttribute(
-                filter['name']!,
-                filter['value']!
-            );
-
-            if (response.statusCode == 200 && response.data['data'] != null) {
-              final List<String> fetchedCodes = (response.data['data'] as List)
-                  .map((e) => e['parent'].toString())
-                  .toList();
-
-              if (commonItemCodes == null) {
-                commonItemCodes = Set.from(fetchedCodes);
-              } else {
-                commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
-              }
-              if (commonItemCodes.isEmpty) break;
-            }
-          } catch (e) {
-            print('Error fetching attributes: $e');
-            permissionErrorOccurred = true;
-            queryFilters['description'] = ['like', '%${filter['value']}%'];
-          }
-        }
-
-        if (!permissionErrorOccurred) {
-          if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
-            queryFilters['name'] = ['in', commonItemCodes.toList()];
-          } else {
-            items.clear();
-            isLoading.value = false;
-            hasMore.value = false;
-            isFetchingMore.value = false;
-            return;
-          }
+          reportFilters.add(['Item', 'description', 'like', '%${filter['value']}%']);
         }
       }
 
-      final response = await _provider.getItems(
+      final result = await _provider.getItems(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: queryFilters,
+        filters: reportFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
+log(name: 'fetchItems', result.toString());
+      final List<dynamic> data = result['data'] ?? [];
+      final newItems = data.map((json) => Item.fromJson(json)).toList();
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final List<dynamic> data = response.data['data'];
-        final newItems = data.map((json) => Item.fromJson(json)).toList();
-
-        if (newItems.length < _limit) {
-          hasMore.value = false;
-        }
-
-        if (isLoadMore) {
-          items.addAll(newItems);
-        } else {
-          items.value = newItems;
-        }
-        _currentPage++;
-      } else {
-        GlobalSnackbar.error(message: 'Failed to fetch items');
+      if (newItems.length < _limit) {
+        hasMore.value = false;
       }
+
+      if (isLoadMore) {
+        items.addAll(newItems);
+      } else {
+        items.value = newItems;
+      }
+      _currentPage++;
+
     } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+      log('Error fetching items: $e');
+      String msg = e.toString().replaceAll('Exception:', '').trim();
+      if (msg.length > 150) msg = "${msg.substring(0, 150)}... (Check logs)";
+      GlobalSnackbar.error(message: msg);
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -211,7 +184,6 @@ class ItemController extends GetxController {
     }
   }
 
-  // ... (Rest of Methods: Groups, Attributes, StockLevels - Unchanged) ...
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {
