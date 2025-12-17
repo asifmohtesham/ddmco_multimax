@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'dart:async';
 
 class StockEntryFormController extends GetxController {
@@ -24,6 +25,7 @@ class StockEntryFormController extends GetxController {
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final StorageService _storageService = Get.find<StorageService>();
   final ScanService _scanService = Get.find<ScanService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -35,7 +37,6 @@ class StockEntryFormController extends GetxController {
   var isScanning = false.obs;
   var isSaving = false.obs;
   var isDirty = false.obs;
-  // Restored: Used to drive UI feedback during Auto-Submit
   var isAddingItem = false.obs;
   var stockEntry = Rx<StockEntry?>(null);
 
@@ -58,7 +59,6 @@ class StockEntryFormController extends GetxController {
 
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
-  List<PosUpload> _allFetchedPosUploads = [];
 
   var itemFormKey = GlobalKey<FormState>();
 
@@ -91,6 +91,9 @@ class StockEntryFormController extends GetxController {
   var currentUom = '';
   var currentItemNameKey = RxnString();
   var selectedSerial = RxnString();
+
+  // Focus Nodes
+  final batchFocusNode = FocusNode();
   final sourceRackFocusNode = FocusNode();
   final targetRackFocusNode = FocusNode();
 
@@ -113,6 +116,13 @@ class StockEntryFormController extends GetxController {
     fetchWarehouses();
     fetchStockEntryTypes();
 
+    // DataWedge Listener
+    ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isNotEmpty) {
+        scanBarcode(code);
+      }
+    });
+
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
@@ -128,7 +138,7 @@ class StockEntryFormController extends GetxController {
 
     ever(selectedSerial, (_) => validateSheet());
 
-    // Auto-Add logic: Handles UX sequence for Automatic Triggers
+    // Auto-Add logic
     ever(isSheetValid, (bool valid) {
       _autoSubmitTimer?.cancel();
 
@@ -138,16 +148,9 @@ class StockEntryFormController extends GetxController {
           final int delay = _storageService.getAutoSubmitDelay();
           _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
             if (isSheetValid.value && isItemSheetOpen.value) {
-              // 1. Show Loading Feedback
               isAddingItem.value = true;
-
-              // 2. Feedback Delay
               await Future.delayed(const Duration(milliseconds: 500));
-
-              // 3. Perform Logic
               await addItem();
-
-              // 4. Close Sheet
               isAddingItem.value = false;
               if (Get.isBottomSheetOpen == true) {
                 Get.back();
@@ -173,23 +176,23 @@ class StockEntryFormController extends GetxController {
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
+    batchFocusNode.dispose();
     sourceRackFocusNode.dispose();
     targetRackFocusNode.dispose();
     customReferenceNoController.dispose();
     super.onClose();
   }
 
-  // --- PopScope Logic ---
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
-        isDirty.value = false; // Reset dirty flag
-        Get.back(); // Pop the screen (Navigation)
+        isDirty.value = false;
+        Get.back();
       },
     );
   }
 
-  // ... [Existing methods: fetchWarehouses, fetchStockEntryTypes, etc. maintained] ...
+  // ... [Standard Fetch Methods] ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -212,7 +215,6 @@ class StockEntryFormController extends GetxController {
         stockEntryTypes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
-      print('Error fetching types: $e');
       if (stockEntryTypes.isEmpty) {
         stockEntryTypes.assignAll(['Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture']);
       }
@@ -287,6 +289,15 @@ class StockEntryFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
+    // FIX: Check if sheet is already open to prevent duplicates
+    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
+      if (scannedBatch != null) {
+        bsBatchController.text = scannedBatch;
+        validateBatch(scannedBatch);
+      }
+      return;
+    }
+
     itemFormKey = GlobalKey<FormState>();
     bsQtyController.clear();
     bsBatchController.clear();
@@ -312,11 +323,14 @@ class StockEntryFormController extends GetxController {
     _initialBatch = '';
     _initialSourceRack = '';
     _initialTargetRack = '';
+
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
       validateBatch(scannedBatch);
     }
+
     isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -334,6 +348,8 @@ class StockEntryFormController extends GetxController {
   }
 
   void editItem(StockEntryItem item) {
+    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
+
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
@@ -361,8 +377,10 @@ class StockEntryFormController extends GetxController {
     if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
     _updateAvailableStock();
     validateSheet();
+
     isItemSheetOpen.value = true;
     rackError.value = null;
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -380,11 +398,8 @@ class StockEntryFormController extends GetxController {
     });
   }
 
+  // ... [AddItem, DeleteItem, Save, etc. Logic] ...
   Future<void> addItem() async {
-    // Note: addItem is now Pure Logic.
-    // - UI Feedback/Closing for Manual Taps is handled by GlobalItemFormSheet.
-    // - UI Feedback/Closing for Auto-Submit is handled by the timer in onInit.
-
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
@@ -481,7 +496,6 @@ class StockEntryFormController extends GetxController {
     barcodeController.clear();
     triggerHighlight(currentItemNameKey.value ?? uniqueId);
 
-    // Save in background (Optimistic UI: Do not await)
     if (mode == 'new') {
       saveStockEntry();
     } else {
@@ -493,8 +507,6 @@ class StockEntryFormController extends GetxController {
       });
     }
   }
-
-  // ... [Rest of logic: validateSheet, deleteItem, saveStockEntry, scanBarcode, etc.] ...
 
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
@@ -591,7 +603,7 @@ class StockEntryFormController extends GetxController {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
         }
         await _updateAvailableStock();
-        GlobalSnackbar.success(message: 'Batch validated');
+        // GlobalSnackbar.success(message: 'Batch validated');
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -631,7 +643,7 @@ class StockEntryFormController extends GetxController {
         } else {
           isTargetRackValid.value = true;
         }
-        GlobalSnackbar.success(message: 'Rack Validated');
+        // GlobalSnackbar.success(message: 'Rack Validated');
       } else {
         if (isSource) isSourceRackValid.value = false;
         else isTargetRackValid.value = false;
@@ -847,42 +859,62 @@ class StockEntryFormController extends GetxController {
 
   void _handleSheetRackScan(String code) {
     final type = selectedStockEntryType.value;
+    bool handled = false;
+
+    // Logic: Fill the first EMPTY required rack field
     if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
         validateRack(code, true);
-      } else {
+        handled = true;
+      } else if (bsTargetRackController.text.isEmpty) {
         bsTargetRackController.text = code;
         validateRack(code, false);
+        handled = true;
+      } else {
+        // If both filled, overwrite Target as default
+        bsTargetRackController.text = code;
+        validateRack(code, false);
+        handled = true;
       }
     } else if (type == 'Material Issue') {
       bsSourceRackController.text = code;
       validateRack(code, true);
+      handled = true;
     } else if (type == 'Material Receipt') {
       bsTargetRackController.text = code;
       validateRack(code, false);
+      handled = true;
     }
   }
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
-    String? contextItem;
-    if (isItemSheetOpen.value) {
-      contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-    }
-    if (isItemSheetOpen.value) {
+
+    // FIX: Only handle sheet logic if sheet is ALREADY OPEN
+    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       barcodeController.clear();
+      final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
+
       if (result.type == ScanType.rack && result.rackId != null) {
         _handleSheetRackScan(result.rackId!);
-      } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
+      }
+      else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
         bsBatchController.text = result.batchNo!;
         validateBatch(result.batchNo!);
-      } else if (result.type == ScanType.error) {
-        GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+      }
+      else {
+        // FALLBACK GLOBAL LOGIC:
+        // If ScanService failed to identify it as a valid Rack,
+        // but we have an empty Rack field, try to apply it as a Rack anyway.
+        _tryApplyAsRackFallback(barcode);
       }
       return;
     }
+
+    // Standard Open Sheet Logic (Only if sheet is NOT open)
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
@@ -906,6 +938,23 @@ class StockEntryFormController extends GetxController {
     } finally {
       isScanning.value = false;
       barcodeController.clear();
+    }
+  }
+
+  void _tryApplyAsRackFallback(String code) {
+    // If processScan didn't like it, but we need a rack, try to set it.
+    final type = selectedStockEntryType.value;
+    bool needed = false;
+
+    if (type == 'Material Issue' && bsSourceRackController.text.isEmpty) needed = true;
+    if (type == 'Material Receipt' && bsTargetRackController.text.isEmpty) needed = true;
+    if ((type == 'Material Transfer' || type == 'Material Transfer for Manufacture') &&
+        (bsSourceRackController.text.isEmpty || bsTargetRackController.text.isEmpty)) needed = true;
+
+    if (needed) {
+      _handleSheetRackScan(code);
+    } else {
+      GlobalSnackbar.error(message: 'Invalid Scan');
     }
   }
 }

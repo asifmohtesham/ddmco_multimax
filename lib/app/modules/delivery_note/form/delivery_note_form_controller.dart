@@ -681,7 +681,7 @@ class DeliveryNoteFormController extends GetxController {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         bsIsRackValid.value = true;
-        GlobalSnackbar.success(message: 'Rack validated');
+        // GlobalSnackbar.success(message: 'Rack validated');
       } else {
         bsIsRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');

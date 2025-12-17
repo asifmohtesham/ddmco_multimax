@@ -32,13 +32,12 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: docStatus == 0,
 
-        isLoading: controller.isAddingItem.value, // RESTORED BINDING
+        isLoading: controller.isAddingItem.value,
         onSubmit: controller.addItem,
         onDelete: isEditing
             ? () => controller.deleteItem(controller.currentItemNameKey.value!)
             : null,
 
-        // Pass Metadata to Global Widget
         owner: controller.bsItemOwner.value,
         creation: controller.bsItemCreation.value,
         modified: controller.bsItemModified.value,
@@ -53,6 +52,9 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
             child: TextFormField(
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
+              focusNode: controller.batchFocusNode,
+              // User can edit unless completely locked by business logic,
+              // but standard behaviour is to allow clearing.
               readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
               style: const TextStyle(fontFamily: 'ShureTechMono'),
@@ -125,6 +127,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                           child: Obx(() => TextFormField(
                             key: const ValueKey('source_rack_field'),
                             controller: controller.bsSourceRackController,
+                            focusNode: controller.sourceRackFocusNode,
                             readOnly: controller.isSourceRackValid.value,
                             autofocus: false,
                             decoration: InputDecoration(
@@ -168,6 +171,7 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
                           child: Obx(() => TextFormField(
                             key: const ValueKey('target_rack_field'),
                             controller: controller.bsTargetRackController,
+                            focusNode: controller.targetRackFocusNode,
                             readOnly: controller.isTargetRackValid.value,
                             autofocus: false,
                             decoration: InputDecoration(
