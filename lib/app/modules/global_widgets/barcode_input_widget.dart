@@ -69,10 +69,8 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;
 
-    // Distinct styling for Embedded mode to prevent camouflage
     final decoration = widget.isEmbedded
         ? BoxDecoration(
-      // Light tint background to create a "Section" feel
       color: primaryColor.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(color: primaryColor.withValues(alpha: 0.1)),
@@ -88,13 +86,10 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       ],
     );
 
-    // Add internal padding for embedded mode to frame the input
     final padding = widget.isEmbedded
         ? const EdgeInsets.all(12.0)
         : const EdgeInsets.all(16.0);
 
-    // Remove border for embedded mode input (container acts as border)
-    // or keep it subtle
     final inputBorder = widget.isEmbedded
         ? OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
@@ -106,14 +101,29 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
         ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
         : const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
 
+    // UX IMPROVEMENT: Determine Helper Text and Color
+    String? helperText = widget.hintText;
+    Color? helperColor = Colors.grey;
+
+    if (widget.isLoading) {
+      helperText = 'Processing...';
+      helperColor = Colors.blue;
+    } else if (widget.isSuccess) {
+      helperText = 'Scan Validated';
+      helperColor = Colors.green;
+    } else if (widget.hasError) {
+      helperText = 'Scan Failed';
+      helperColor = Colors.red;
+    }
+
     return Container(
       padding: padding,
       decoration: decoration,
       child: SafeArea(
         bottom: !widget.isEmbedded,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start, // Align to top for multi-line
           children: [
-            // Embedded Mode: Distinct Icon styling
             if(widget.isEmbedded)
               Container(
                 margin: const EdgeInsets.only(right: 12),
@@ -134,11 +144,15 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 controller: _textController,
                 readOnly: widget.isLoading,
                 decoration: InputDecoration(
-                  labelText: widget.isLoading
-                      ? 'Processing...'
-                      : (widget.isSuccess
-                      ? 'Scan Validated'
-                      : (widget.hasError ? 'Scan Failed' : widget.hintText)),
+                  // Keep the label static
+                  labelText: 'Barcode',
+                  floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  // UX IMPROVEMENT: Use helperText for feedback
+                  helperText: helperText,
+                  helperStyle: TextStyle(
+                    color: helperColor,
+                    fontWeight: (widget.isSuccess || widget.hasError) ? FontWeight.bold : FontWeight.normal,
+                  ),
                   labelStyle: TextStyle(
                     color: widget.isEmbedded ? Colors.grey.shade700 : null,
                     fontWeight: widget.isEmbedded ? FontWeight.w500 : null,
@@ -155,12 +169,10 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                       ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red, width: 2))
                       : null),
                   contentPadding: contentPadding,
-                  // Hide standard prefix icon in embedded mode as we added a custom one above
                   prefixIcon: widget.isEmbedded
                       ? null
                       : Icon(Icons.qr_code_scanner, color: Colors.grey),
                   filled: widget.isEmbedded,
-                  // White background inside the tinted container makes it pop
                   fillColor: Colors.white,
                   suffixIcon: widget.isLoading
                       ? const Padding(

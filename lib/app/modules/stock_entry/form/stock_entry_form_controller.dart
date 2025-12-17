@@ -725,6 +725,8 @@ class StockEntryFormController extends GetxController {
   void validateSheet() {
     rackError.value = null;
     final qty = double.tryParse(bsQtyController.text) ?? 0;
+
+    // 1. Basic Quantity Validation
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
@@ -733,40 +735,65 @@ class StockEntryFormController extends GetxController {
       isSheetValid.value = false;
       return;
     }
+
+    // 2. Batch Validation
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
       isSheetValid.value = false;
       return;
     }
+
     final type = selectedStockEntryType.value;
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+    // 3. Source Rack Validation (STRICT: Must be present and valid)
     if (requiresSource) {
-      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
+      if (bsSourceRackController.text.isEmpty) {
+        isSheetValid.value = false;
+        // Only show error if the user has interacted or other fields are valid to avoid noise
+        // rackError.value = "Source Rack is required";
+        return;
+      }
+      if (!isSourceRackValid.value) {
         isSheetValid.value = false;
         return;
       }
     }
+
+    // 4. Target Rack Validation (STRICT: Must be present and valid)
     if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+      if (bsTargetRackController.text.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+      if (!isTargetRackValid.value) {
         isSheetValid.value = false;
         return;
       }
     }
+
+    // 5. Cross Validation
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
+
+      // Ensure we don't transfer to the same rack
       if (source.isNotEmpty && target.isNotEmpty && source == target) {
         isSheetValid.value = false;
         rackError.value = "Source and Target Racks cannot be the same";
         return;
       }
     }
+
+    // 6. Serial Validation for Issue
     if (type == 'Material Issue') {
       if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
         isSheetValid.value = false;
         return;
       }
     }
+
+    // 7. Change Detection (Edit Mode)
     if (currentItemNameKey.value != null) {
       bool isChanged = false;
       if (bsQtyController.text != _initialQty) isChanged = true;
@@ -778,6 +805,7 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
+
     isSheetValid.value = true;
   }
 

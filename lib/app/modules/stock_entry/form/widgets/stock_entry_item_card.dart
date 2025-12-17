@@ -131,26 +131,29 @@ class StockEntryItemCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Wrap(
-                            spacing: 8.0,
-                            runSpacing: 8.0,
-                            children: [
-                              if (item.batchNo != null &&
-                                  item.batchNo!.isNotEmpty)
-                                _buildBadge(
-                                    icon: Icons.qr_code,
-                                    label: item.batchNo!,
-                                    color: Colors.purple,
-                                    isMono: true
-                                ),
-                              if (item.customVariantOf != null &&
-                                  item.customVariantOf!.isNotEmpty)
-                                _buildBadge(
-                                    icon: Icons.style,
-                                    label: item.customVariantOf!,
-                                    color: Colors.teal
-                                ),
-                            ],
+                          // FIX: Use Expanded to constrain width and force Wrap to work
+                          Expanded(
+                            child: Wrap(
+                              spacing: 8.0,
+                              runSpacing: 8.0,
+                              children: [
+                                if (item.batchNo != null &&
+                                    item.batchNo!.isNotEmpty)
+                                  _buildBadge(
+                                      icon: Icons.qr_code,
+                                      label: item.batchNo!,
+                                      color: Colors.purple,
+                                      isMono: true
+                                  ),
+                                if (item.customVariantOf != null &&
+                                    item.customVariantOf!.isNotEmpty)
+                                  _buildBadge(
+                                      icon: Icons.style,
+                                      label: item.customVariantOf!,
+                                      color: Colors.teal
+                                  ),
+                              ],
+                            ),
                           ),
                           Text(
                             item.qty.toString(),
