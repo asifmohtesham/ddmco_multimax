@@ -109,6 +109,7 @@ class StockEntryFormController extends GetxController {
   final Map<String, GlobalKey> itemKeys = {};
 
   Timer? _autoSubmitTimer;
+  Worker? _scanWorker; // Track the listener
 
   @override
   void onInit() {
@@ -116,8 +117,8 @@ class StockEntryFormController extends GetxController {
     fetchWarehouses();
     fetchStockEntryTypes();
 
-    // DataWedge Listener
-    ever(_dataWedgeService.scannedCode, (String code) {
+    // Assign worker to variable for manual disposal
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
         scanBarcode(code);
       }
@@ -170,15 +171,20 @@ class StockEntryFormController extends GetxController {
 
   @override
   void onClose() {
+    // Explicitly dispose worker to stop listening to global events
+    _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
+
     barcodeController.dispose();
     bsQtyController.dispose();
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
+
     batchFocusNode.dispose();
     sourceRackFocusNode.dispose();
     targetRackFocusNode.dispose();
+
     customReferenceNoController.dispose();
     super.onClose();
   }
@@ -192,7 +198,6 @@ class StockEntryFormController extends GetxController {
     );
   }
 
-  // ... [Standard Fetch Methods] ...
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -289,7 +294,6 @@ class StockEntryFormController extends GetxController {
   }
 
   void _openQtySheet({String? scannedBatch}) {
-    // FIX: Check if sheet is already open to prevent duplicates
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       if (scannedBatch != null) {
         bsBatchController.text = scannedBatch;
@@ -337,7 +341,10 @@ class StockEntryFormController extends GetxController {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
-          return StockEntryItemFormSheet(scrollController: scrollController);
+          return StockEntryItemFormSheet(
+              controller: this,
+              scrollController: scrollController
+          );
         },
       ),
       isScrollControlled: true,
@@ -387,7 +394,10 @@ class StockEntryFormController extends GetxController {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
-          return StockEntryItemFormSheet(scrollController: scrollController);
+          return StockEntryItemFormSheet(
+              controller: this,
+              scrollController: scrollController
+          );
         },
       ),
       isScrollControlled: true,
@@ -398,7 +408,6 @@ class StockEntryFormController extends GetxController {
     });
   }
 
-  // ... [AddItem, DeleteItem, Save, etc. Logic] ...
   Future<void> addItem() async {
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
@@ -861,7 +870,6 @@ class StockEntryFormController extends GetxController {
     final type = selectedStockEntryType.value;
     bool handled = false;
 
-    // Logic: Fill the first EMPTY required rack field
     if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
@@ -872,7 +880,6 @@ class StockEntryFormController extends GetxController {
         validateRack(code, false);
         handled = true;
       } else {
-        // If both filled, overwrite Target as default
         bsTargetRackController.text = code;
         validateRack(code, false);
         handled = true;
@@ -889,9 +896,11 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<void> scanBarcode(String barcode) async {
+    // 1. Guard against disposed controller
+    if (isClosed) return;
     if (barcode.isEmpty) return;
 
-    // FIX: Only handle sheet logic if sheet is ALREADY OPEN
+    // 2. Logic for when the Sheet is ALREADY Open
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       barcodeController.clear();
       final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
@@ -906,15 +915,12 @@ class StockEntryFormController extends GetxController {
         validateBatch(result.batchNo!);
       }
       else {
-        // FALLBACK GLOBAL LOGIC:
-        // If ScanService failed to identify it as a valid Rack,
-        // but we have an empty Rack field, try to apply it as a Rack anyway.
         _tryApplyAsRackFallback(barcode);
       }
       return;
     }
 
-    // Standard Open Sheet Logic (Only if sheet is NOT open)
+    // 3. Logic to OPEN the Sheet
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
@@ -942,7 +948,6 @@ class StockEntryFormController extends GetxController {
   }
 
   void _tryApplyAsRackFallback(String code) {
-    // If processScan didn't like it, but we need a rack, try to set it.
     final type = selectedStockEntryType.value;
     bool needed = false;
 

@@ -4,10 +4,15 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
-class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
+class StockEntryItemFormSheet extends StatelessWidget {
+  final StockEntryFormController controller;
   final ScrollController? scrollController;
 
-  const StockEntryItemFormSheet({super.key, this.scrollController});
+  const StockEntryItemFormSheet({
+    super.key,
+    required this.controller,
+    this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -53,8 +58,6 @@ class StockEntryItemFormSheet extends GetView<StockEntryFormController> {
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
               focusNode: controller.batchFocusNode,
-              // User can edit unless completely locked by business logic,
-              // but standard behaviour is to allow clearing.
               readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
               style: const TextStyle(fontFamily: 'ShureTechMono'),
