@@ -155,7 +155,7 @@ class ItemController extends GetxController {
         filters: reportFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
-log(name: 'fetchItems', result.toString());
+
       final List<dynamic> data = result['data'] ?? [];
       final newItems = data.map((json) => Item.fromJson(json)).toList();
 
