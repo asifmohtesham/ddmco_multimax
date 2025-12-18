@@ -651,7 +651,7 @@ class DeliveryNoteFormController extends GetxController {
       if (fetchedBatchQty > 0) {
         bsIsBatchValid.value = true;
         bsBatchError.value = null;
-        GlobalSnackbar.success(message: 'Batch Validated');
+        // GlobalSnackbar.success(message: 'Batch Validated');
         bsRackFocusNode.requestFocus();
       } else {
         bsIsBatchValid.value = false;
