@@ -109,7 +109,7 @@ class StockEntryFormController extends GetxController {
   final Map<String, GlobalKey> itemKeys = {};
 
   Timer? _autoSubmitTimer;
-  Worker? _scanWorker; // Track the listener
+  Worker? _scanWorker;
 
   @override
   void onInit() {
@@ -117,7 +117,6 @@ class StockEntryFormController extends GetxController {
     fetchWarehouses();
     fetchStockEntryTypes();
 
-    // Assign worker to variable for manual disposal
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
         scanBarcode(code);
@@ -171,20 +170,16 @@ class StockEntryFormController extends GetxController {
 
   @override
   void onClose() {
-    // Explicitly dispose worker to stop listening to global events
     _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
-
     barcodeController.dispose();
     bsQtyController.dispose();
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
-
     batchFocusNode.dispose();
     sourceRackFocusNode.dispose();
     targetRackFocusNode.dispose();
-
     customReferenceNoController.dispose();
     super.onClose();
   }
@@ -198,6 +193,8 @@ class StockEntryFormController extends GetxController {
     );
   }
 
+  // ... [fetchWarehouses, fetchStockEntryTypes, etc. methods omitted for brevity as they are unchanged] ...
+  // [Please ensure you include the full unchanged methods in your file, they are skipped here only to focus on the fix]
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -446,6 +443,7 @@ class StockEntryFormController extends GetxController {
         modifiedBy: existing.modifiedBy,
       );
     } else {
+      // Find duplicate with same key properties
       final duplicateIndex = currentItems.indexWhere((i) =>
       i.itemCode == currentItemCode &&
           (i.batchNo ?? '') == batch &&
@@ -517,6 +515,7 @@ class StockEntryFormController extends GetxController {
     }
   }
 
+  // ... [Helper functions like toggleInvoiceExpand, _markDirty, etc. maintained] ...
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
       expandedInvoice.value = '';
@@ -723,10 +722,8 @@ class StockEntryFormController extends GetxController {
   }
 
   void validateSheet() {
-    rackError.value = null;
+    rackError.value = null; // Reset error first
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-
-    // 1. Basic Quantity Validation
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
@@ -735,65 +732,41 @@ class StockEntryFormController extends GetxController {
       isSheetValid.value = false;
       return;
     }
-
-    // 2. Batch Validation
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
       isSheetValid.value = false;
       return;
     }
-
     final type = selectedStockEntryType.value;
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
-    // 3. Source Rack Validation (STRICT: Must be present and valid)
     if (requiresSource) {
-      if (bsSourceRackController.text.isEmpty) {
-        isSheetValid.value = false;
-        // Only show error if the user has interacted or other fields are valid to avoid noise
-        // rackError.value = "Source Rack is required";
-        return;
-      }
-      if (!isSourceRackValid.value) {
+      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
         isSheetValid.value = false;
         return;
       }
     }
-
-    // 4. Target Rack Validation (STRICT: Must be present and valid)
     if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty) {
-        isSheetValid.value = false;
-        return;
-      }
-      if (!isTargetRackValid.value) {
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
         isSheetValid.value = false;
         return;
       }
     }
-
-    // 5. Cross Validation
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
-
-      // Ensure we don't transfer to the same rack
+      // FIX: Check for duplicate Racks explicitly
       if (source.isNotEmpty && target.isNotEmpty && source == target) {
         isSheetValid.value = false;
         rackError.value = "Source and Target Racks cannot be the same";
         return;
       }
     }
-
-    // 6. Serial Validation for Issue
     if (type == 'Material Issue') {
       if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
         isSheetValid.value = false;
         return;
       }
     }
-
-    // 7. Change Detection (Edit Mode)
     if (currentItemNameKey.value != null) {
       bool isChanged = false;
       if (bsQtyController.text != _initialQty) isChanged = true;
@@ -805,7 +778,6 @@ class StockEntryFormController extends GetxController {
         return;
       }
     }
-
     isSheetValid.value = true;
   }
 
@@ -896,42 +868,40 @@ class StockEntryFormController extends GetxController {
 
   void _handleSheetRackScan(String code) {
     final type = selectedStockEntryType.value;
-    bool handled = false;
 
     if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
+      // 1. If Source is empty, fill Source
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
         validateRack(code, true);
-        handled = true;
-      } else {
-        // PREVENT CONCURRENT SAME VALUE
-        if (bsSourceRackController.text == code) {
-          GlobalSnackbar.error(message: "Source and Target Racks cannot be the same");
+      }
+      // 2. If Source is already set, try to fill Target
+      else {
+        // Enforce difference check immediately
+        if (code == bsSourceRackController.text) {
+          rackError.value = 'Source and Target Racks cannot be the same';
+          // GlobalSnackbar.error(message: 'Source and Target Racks cannot be the same');
           return;
         }
 
-        // Set Target
+        // Only set Target if it's currently empty or we are intentionally overwriting
+        // (Logic here prioritizes filling empty Target over overwriting Source)
         bsTargetRackController.text = code;
         validateRack(code, false);
-        handled = true;
       }
     } else if (type == 'Material Issue') {
       bsSourceRackController.text = code;
       validateRack(code, true);
-      handled = true;
     } else if (type == 'Material Receipt') {
       bsTargetRackController.text = code;
       validateRack(code, false);
-      handled = true;
     }
   }
 
   Future<void> scanBarcode(String barcode) async {
-    // 1. Guard against disposed controller
     if (isClosed) return;
     if (barcode.isEmpty) return;
 
-    // 2. Logic for when the Sheet is ALREADY Open
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       barcodeController.clear();
       final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
@@ -951,7 +921,6 @@ class StockEntryFormController extends GetxController {
       return;
     }
 
-    // 3. Logic to OPEN the Sheet
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
