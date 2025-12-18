@@ -12,7 +12,7 @@ class DataWedgeService extends GetxService {
   // Observable to listen to in controllers
   final scannedCode = ''.obs;
 
-  // Queue to handle burst scans (MultiBarcode) sequentially
+  // Queue to handle burst scans (SimulScan/Workflow) sequentially
   final Queue<String> _scanQueue = Queue<String>();
   bool _isProcessing = false;
 
@@ -26,23 +26,52 @@ class DataWedgeService extends GetxService {
     try {
       _scanSubscription = _eventChannel.receiveBroadcastStream().listen(
             (dynamic event) {
-          // 1. Handle Single String (Existing Functionality)
           if (event is String) {
+            // 1. Standard Single Scan
             _enqueueScan(event);
-          }
-          // 2. Handle List (New NextGen SimulScan Functionality)
-          else if (event is List) {
+          } else if (event is List) {
+            // 2. MultiBarcode / SimulScan List
+            // Extract all valid strings from the list (handles Strings and Maps)
+            List<String> detectedCodes = [];
+
             for (var item in event) {
               if (item is String) {
-                _enqueueScan(item);
+                detectedCodes.add(item);
+              } else if (item is Map) {
+                // Handle Map from Workflow if applicable
+                final val = item['string_data'] ?? item['scanData'];
+                if (val is String) detectedCodes.add(val);
               }
             }
-          }
-          // 3. Handle Map (Existing Functionality)
-          else if (event is Map) {
-            final code = event['scanData'] as String?;
-            if (code != null) {
+
+            // --- PRIORITY SORTING LOGIC ---
+            // Ensure EAN-8 (Item) is processed BEFORE Batch No.
+            // This prevents the "Batch" from being set on a null Item.
+            detectedCodes.sort((a, b) {
+              final aIsEan8 = _isLikelyEan8(a);
+              final bIsEan8 = _isLikelyEan8(b);
+
+              if (aIsEan8 && !bIsEan8) return -1; // 'a' (EAN8) comes first
+              if (!aIsEan8 && bIsEan8) return 1;  // 'b' (EAN8) comes first
+              return 0; // Keep original order if both or neither are EAN8
+            });
+
+            // Enqueue sorted codes
+            for (var code in detectedCodes) {
               _enqueueScan(code);
+            }
+
+          } else if (event is Map) {
+            // 3. Fallback for single complex object
+            if (event.containsKey('data_string_list')) {
+              final list = event['data_string_list'];
+              if (list is List) {
+                // Recursively handle list if wrapped in map
+                // (Simplified here for brevity, assuming direct list usually)
+                for (var s in list) if (s is String) _enqueueScan(s);
+              }
+            } else if (event.containsKey('scanData')) {
+              _enqueueScan(event['scanData'] as String);
             }
           }
         },
@@ -66,7 +95,7 @@ class DataWedgeService extends GetxService {
     }
   }
 
-  /// Processes the queue one item at a time to ensure listeners catch every code.
+  /// Processes the queue one item at a time with delays to satisfy UI debounce.
   Future<void> _processQueue() async {
     _isProcessing = true;
 
@@ -76,18 +105,24 @@ class DataWedgeService extends GetxService {
       // Update the observable
       scannedCode.value = code;
 
-      // Wait for the duration required by your listeners (Debounce logic).
-      // 800ms gives enough time for a 500ms debounce in the controller to fire.
+      // WAIT: Give Controllers enough time to trigger their debounce (usually 500ms)
+      // 800ms ensures the first code (EAN8) is fully "accepted" before the next one arrives.
       await Future.delayed(const Duration(milliseconds: 800));
 
-      // Reset the code to trigger "cleared" state if needed, or prepare for next change
+      // RESET: clear logic to allow re-scanning identical codes if needed
       scannedCode.value = '';
 
-      // Small buffer before next scan to ensure state changes are distinct
+      // BUFFER: Small gap before next code
       await Future.delayed(const Duration(milliseconds: 100));
     }
 
     _isProcessing = false;
+  }
+
+  /// Simple helper to identify EAN-8 for sorting purposes.
+  /// Matches ScanService logic: 8 chars long and numeric.
+  bool _isLikelyEan8(String code) {
+    return code.length == 8 && RegExp(r'^\d+$').hasMatch(code);
   }
 
   @override
