@@ -63,6 +63,7 @@ class DeliveryNoteFormController extends GetxController {
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
+  var customerError = RxnString();
   var bsBatchError = RxnString();
   var bsIsBatchValid = false.obs;
   var batchInfoTooltip = RxnString();
@@ -345,6 +346,8 @@ class DeliveryNoteFormController extends GetxController {
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     isSaving.value = true;
+    customerError.value = null; // Clear previous error
+
     try {
       final String docName = deliveryNote.value?.name ?? '';
       final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
@@ -372,8 +375,17 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
       }
     } on DioException catch (e) {
+      // Check response data for specific Frappe/ERPNext error messages
+      final errorMsg = e.response?.data.toString() ?? e.message ?? '';
+      if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
+        customerError.value = 'Customer not found in the system';
+      }
       GlobalSnackbar.error(message: 'Save failed: ${e.message}');
     } catch (e) {
+      final errorMsg = e.toString();
+      if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
+        customerError.value = 'Customer not found in the system';
+      }
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;

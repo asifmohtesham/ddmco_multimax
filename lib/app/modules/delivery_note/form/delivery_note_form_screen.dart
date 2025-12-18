@@ -120,18 +120,19 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 ),
                 const Divider(height: 24),
               ],
-              TextFormField(
+              Obx(() => TextFormField(
                 initialValue: note.customer,
                 readOnly: true,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Customer',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person_outline),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.person_outline),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   filled: true,
                   fillColor: Colors.white,
+                  errorText: controller.customerError.value, // Bind error text here
                 ),
-              ),
+              )),
             ],
           ),
 
