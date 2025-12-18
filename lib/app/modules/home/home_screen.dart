@@ -1,22 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
-import 'package:multimax/app/data/utils/formatting_helper.dart'; // Added for formatting
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text("Dashboard"),
+        title: const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.w600)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -30,7 +37,7 @@ class HomeScreen extends GetView<HomeController> {
             icon: const Icon(Icons.notifications_outlined),
             tooltip: 'Notifications',
             onPressed: () {
-              Get.snackbar('Notifications', 'No new notifications');
+              GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
             },
           ),
         ],
@@ -45,19 +52,27 @@ class HomeScreen extends GetView<HomeController> {
                 await controller.fetchPerformanceData();
               },
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildUserContextCard(context),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+
+                    // 1. Quick Access Grid (Revamped from Bottom Sheet)
+                    Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    _buildQuickAccessGrid(context),
+
+                    const SizedBox(height: 24),
+
+                    // 2. Timeline
                     Obx(() => PerformanceTimelineCard(
-                      viewMode: controller.timelineViewMode.value, // Changed
+                      viewMode: controller.timelineViewMode.value,
                       onToggleView: controller.toggleTimelineView,
                       data: controller.timelineData,
                       isLoading: controller.isLoadingTimeline.value,
-                      // Pass selected date for both Daily and Hourly modes
                       selectedDate: controller.timelineViewMode.value != 'Weekly'
                           ? controller.selectedDailyDate.value
                           : null,
@@ -67,8 +82,11 @@ class HomeScreen extends GetView<HomeController> {
                       onDateChanged: controller.onDailyDateChanged,
                       onRangeChanged: controller.onWeeklyRangeChanged,
                     )),
+
                     const SizedBox(height: 24),
-                    const Text('Daily Goals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+
+                    // 3. KPIs
+                    Text('Daily Goals', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Obx(() {
                       if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
@@ -103,93 +121,99 @@ class HomeScreen extends GetView<HomeController> {
               ),
             ),
           ),
-          Obx(() => BarcodeInputWidget(
-            onScan: controller.onScan,
-            controller: controller.barcodeController,
-            isLoading: controller.isScanning.value,
-            hintText: 'Scan Item / Batch / Rack',
-            activeRoute: AppRoutes.HOME,
-          )),
+
+          // Persistent Scan Input
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, -2))],
+            ),
+            child: Obx(() => BarcodeInputWidget(
+              onScan: controller.onScan,
+              controller: controller.barcodeController,
+              isLoading: controller.isScanning.value,
+              hintText: 'Scan Item / Batch / Rack',
+              activeRoute: AppRoutes.HOME,
+            )),
+          ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 60.0),
-        child: FloatingActionButton(
-          onPressed: () => _showQuickCreateSheet(context),
-          tooltip: 'Quick Create',
-          child: const Icon(Icons.add),
-        ),
-      ),
+      // Dedicated Scan Button
+      // floatingActionButton: FloatingActionButton(
+      //   onPressed: () => controller.barcodeController.clear(), // Focus scan logic
+      //   backgroundColor: theme.primaryColor,
+      //   child: const Icon(Icons.qr_code_scanner, size: 28),
+      // ),
     );
   }
 
-  void _showQuickCreateSheet(BuildContext context) {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                const Text('Select a module to manage or create documents.', style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 24),
-                // NEW Fulfilment Tile
-                _buildActionTile(
-                    context,
-                    'Fulfilment',
-                    Icons.shopping_bag_outlined,
-                    Colors.deepPurple,
-                        () => _showFulfillmentSelectionSheet(context)
+  // New: Grid for immediate access to modules
+  Widget _buildQuickAccessGrid(BuildContext context) {
+    return LayoutBuilder(
+        builder: (context, constraints) {
+          final double itemWidth = (constraints.maxWidth - 24) / 3; // 3 items per row
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
+                      () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
+              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth,
+                      () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})),
+              _buildQuickActionItem(context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
+                      () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})),
+              _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
+                      () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
+              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth,
+                      () => _showFulfillmentSelectionSheet(context)),
+              _buildQuickActionItem(context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
+                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }), // Placeholder for expanded menu
+            ],
+          );
+        }
+    );
+  }
+
+  Widget _buildQuickActionItem(BuildContext context, String title, IconData icon, Color color, double width, VoidCallback onTap) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      elevation: 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: width,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                _buildActionTile(
-                    context,
-                    'Purchase Receipt',
-                    Icons.receipt_long_outlined,
-                    Colors.green,
-                        () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})
-                ),
-                _buildActionTile(
-                    context,
-                    'Stock Entry',
-                    Icons.compare_arrows_outlined,
-                    Colors.orange,
-                        () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})
-                ),
-                _buildActionTile(
-                    context,
-                    'Delivery Note',
-                    Icons.local_shipping_outlined,
-                    Colors.blue,
-                        () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})
-                ),
-                _buildActionTile(
-                    context,
-                    'Packing Slip',
-                    Icons.assignment_return_outlined,
-                    Colors.purple,
-                        () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+              ),
+            ],
           ),
         ),
       ),
-      isScrollControlled: true, // <--- Added property
     );
   }
 
+  // ... (Keep existing _showFulfillmentSelectionSheet, _buildUserContextCard, _showUserSearchModal, SpeedometerKpiCard)
+  // [Code truncated for brevity as logic remains similar, focus is on new UI structure]
+
   void _showFulfillmentSelectionSheet(BuildContext context) {
     controller.fetchFulfillmentPosUploads();
-
     Get.bottomSheet(
       SafeArea(
         child: DraggableScrollableSheet(
@@ -272,23 +296,6 @@ class HomeScreen extends GetView<HomeController> {
         ),
       ),
       isScrollControlled: true,
-    );
-  }
-
-  Widget _buildActionTile(BuildContext context, String title, IconData icon, Color color, VoidCallback onTap) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-        child: Icon(icon, color: color),
-      ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: () {
-        Get.back();
-        onTap();
-      },
-      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
     );
   }
 
@@ -425,7 +432,6 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
-// ... SpeedometerKpiCard (Unchanged)
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
