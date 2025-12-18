@@ -57,7 +57,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
             child: TextFormField(
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
-              focusNode: controller.batchFocusNode,
               readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
               style: const TextStyle(fontFamily: 'ShureTechMono'),
@@ -129,7 +128,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
                       child: Obx(() => TextFormField(
                         key: const ValueKey('source_rack_field'),
                         controller: controller.bsSourceRackController,
-                        focusNode: controller.sourceRackFocusNode,
                         readOnly: controller.isSourceRackValid.value,
                         autofocus: false,
                         decoration: InputDecoration(
@@ -162,6 +160,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
                     ),
                   ),
 
+                if (showSource && showTarget) const SizedBox(width: 12),
+
                 if (showTarget)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12.0),
@@ -172,7 +172,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
                       child: Obx(() => TextFormField(
                         key: const ValueKey('target_rack_field'),
                         controller: controller.bsTargetRackController,
-                        focusNode: controller.targetRackFocusNode,
                         readOnly: controller.isTargetRackValid.value,
                         autofocus: false,
                         decoration: InputDecoration(
@@ -204,7 +203,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
                       )),
                     ),
                   ),
-
                 Obx(() {
                   if (controller.rackError.value != null) {
                     return Padding(

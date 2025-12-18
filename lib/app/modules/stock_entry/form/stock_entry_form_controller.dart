@@ -92,11 +92,6 @@ class StockEntryFormController extends GetxController {
   var currentItemNameKey = RxnString();
   var selectedSerial = RxnString();
 
-  // Focus Nodes
-  final batchFocusNode = FocusNode();
-  final sourceRackFocusNode = FocusNode();
-  final targetRackFocusNode = FocusNode();
-
   String _initialQty = '';
   String _initialBatch = '';
   String _initialSourceRack = '';
@@ -177,9 +172,6 @@ class StockEntryFormController extends GetxController {
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
-    batchFocusNode.dispose();
-    sourceRackFocusNode.dispose();
-    targetRackFocusNode.dispose();
     customReferenceNoController.dispose();
     super.onClose();
   }
@@ -193,8 +185,6 @@ class StockEntryFormController extends GetxController {
     );
   }
 
-  // ... [fetchWarehouses, fetchStockEntryTypes, etc. methods omitted for brevity as they are unchanged] ...
-  // [Please ensure you include the full unchanged methods in your file, they are skipped here only to focus on the fix]
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -443,7 +433,6 @@ class StockEntryFormController extends GetxController {
         modifiedBy: existing.modifiedBy,
       );
     } else {
-      // Find duplicate with same key properties
       final duplicateIndex = currentItems.indexWhere((i) =>
       i.itemCode == currentItemCode &&
           (i.batchNo ?? '') == batch &&
@@ -515,7 +504,6 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  // ... [Helper functions like toggleInvoiceExpand, _markDirty, etc. maintained] ...
   void toggleInvoiceExpand(String key) {
     if (expandedInvoice.value == key) {
       expandedInvoice.value = '';
@@ -870,7 +858,6 @@ class StockEntryFormController extends GetxController {
     final type = selectedStockEntryType.value;
 
     if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
-      // 1. If Source is empty, fill Source
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
         validateRack(code, true);
@@ -883,9 +870,6 @@ class StockEntryFormController extends GetxController {
           // GlobalSnackbar.error(message: 'Source and Target Racks cannot be the same');
           return;
         }
-
-        // Only set Target if it's currently empty or we are intentionally overwriting
-        // (Logic here prioritizes filling empty Target over overwriting Source)
         bsTargetRackController.text = code;
         validateRack(code, false);
       }
