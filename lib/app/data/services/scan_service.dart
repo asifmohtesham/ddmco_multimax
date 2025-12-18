@@ -12,10 +12,12 @@ class ScanService extends GetxService {
       return ScanResult(type: ScanType.error, rawCode: barcode, message: "Empty barcode");
     }
 
+    final cleanCode = barcode.trim();
+
     // 1. RACK DETECTION
     // Rack codes usually have 3 parts (e.g., WH-ZONE-RACK) and don't start with SHIPMENT
-    if (barcode.contains('-') && barcode.split('-').length >= 3 && !barcode.startsWith('SHIPMENT')) {
-      return ScanResult(type: ScanType.rack, rawCode: barcode, rackId: barcode);
+    if (cleanCode.contains('-') && cleanCode.split('-').length >= 3 && !cleanCode.startsWith('SHIPMENT')) {
+      return ScanResult(type: ScanType.rack, rawCode: cleanCode, rackId: cleanCode);
     }
 
     // 2. BATCH CONTEXT LOGIC (Suffix Extraction)
@@ -23,18 +25,18 @@ class ScanService extends GetxService {
       String? extractedSuffix;
 
       // Handle "SHIPMENT-24-{BatchID}-..."
-      if (barcode.startsWith('SHIPMENT-24-')) {
-        final raw = barcode.substring('SHIPMENT-24-'.length);
+      if (cleanCode.startsWith('SHIPMENT-24-')) {
+        final raw = cleanCode.substring('SHIPMENT-24-'.length);
         extractedSuffix = raw.split('-').first;
       }
       // Handle "SHIPMENT-{BatchID}-..."
-      else if (barcode.startsWith('SHIPMENT-')) {
-        final raw = barcode.substring('SHIPMENT-'.length);
+      else if (cleanCode.startsWith('SHIPMENT-')) {
+        final raw = cleanCode.substring('SHIPMENT-'.length);
         extractedSuffix = raw.split('-').first;
       }
       // Handle Simple Alphanumeric (3+ chars, no hyphens)
-      else if (!barcode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(barcode)) {
-        extractedSuffix = barcode;
+      else if (!cleanCode.contains('-') && RegExp(r'^[a-zA-Z0-9]{3,}$').hasMatch(cleanCode)) {
+        extractedSuffix = cleanCode;
       }
 
       // If valid suffix found, construct full batch: {ItemCode}-{Suffix}
@@ -42,111 +44,106 @@ class ScanService extends GetxService {
         final fullBatchNo = '$contextItemCode-$extractedSuffix';
         return ScanResult(
             type: ScanType.batch,
-            rawCode: barcode,
+            rawCode: cleanCode,
             itemCode: contextItemCode,
             batchNo: fullBatchNo
         );
       }
     }
 
-    // 3. ITEM / FULL BATCH PARSING (Main Context)
-    String parsedItemCode = barcode;
+    // 3. STRICT ITEM & EAN8 VALIDATION
+    String? derivedItemCode;
     String? parsedBatchNo;
 
-    if (barcode.contains('-')) {
-      // Format: {EAN}-{BatchID} -> The scanned barcode IS the batch document name
-      final parts = barcode.split('-');
+    if (cleanCode.contains('-')) {
+      // Hyphenated Case: {EAN8}-{BatchID}
+      final parts = cleanCode.split('-');
       final String prefix = parts.first;
 
-      // UX Fix: If the prefix looks like an EAN (8+ digits), strip the checksum digit to get Item Code
-      // This handles cases like `20014643-BATCH` -> Item `2001464`
-      if (prefix.length > 7 && RegExp(r'^\d+$').hasMatch(prefix)) {
-        parsedItemCode = prefix.substring(0, prefix.length - 1);
+      // Validate Prefix is strict EAN-8
+      if (_isValidEan8(prefix)) {
+        // Discard the last digit (checksum) to derive Item Code
+        derivedItemCode = prefix.substring(0, 7);
+        parsedBatchNo = cleanCode;
       } else {
-        parsedItemCode = prefix;
+        return ScanResult(
+            type: ScanType.error,
+            rawCode: cleanCode,
+            message: "Invalid Item Barcode: Prefix must be EAN-8"
+        );
       }
-
-      parsedBatchNo = barcode;
     } else {
-      // Pure EAN / Item Code logic
-      // Strip checksum if EAN (digits > 7)
-      if (barcode.length > 7 && RegExp(r'^\d+$').hasMatch(barcode)) {
-        parsedItemCode = barcode.substring(0, barcode.length - 1);
+      // Non-Hyphenated Case: Must be strict EAN-8
+      if (_isValidEan8(cleanCode)) {
+        // Discard the last digit (checksum) to derive Item Code
+        derivedItemCode = cleanCode.substring(0, 7);
+        parsedBatchNo = null; // Pure Item Scan
       } else {
-        parsedItemCode = barcode;
+        return ScanResult(
+            type: ScanType.error,
+            rawCode: cleanCode,
+            message: "Invalid Barcode. Please scan a valid EAN-8 Item."
+        );
       }
     }
 
-    // 4. API VERIFICATION & SEARCH
+    // 4. API VERIFICATION (Only performed if validation passed)
     try {
-      // Step A: Try Exact Match
-      try {
-        final response = await _apiProvider.getDocument('Item', parsedItemCode);
-        if (response.statusCode == 200 && response.data['data'] != null) {
-          final item = Item.fromJson(response.data['data']);
-          return ScanResult(
-            type: parsedBatchNo != null ? ScanType.batch : ScanType.item,
-            rawCode: barcode,
-            itemCode: item.itemCode,
-            batchNo: parsedBatchNo,
-            itemData: item,
-          );
-        }
-      } catch (e) {
-        // Ignore initial lookup failure, proceed to search
-      }
-
-      // Step B: Fallback Search (Variant Of OR Item Code like)
-      final futures = <Future<Response>>[];
-      futures.add(_apiProvider.getDocumentList('Item', filters: {'item_code': ['like', '%$barcode%']}, limit: 10));
-      futures.add(_apiProvider.getDocumentList('Item', filters: {'variant_of': ['like', '%$barcode%']}, limit: 10));
-
-      final results = await Future.wait(futures);
-      final Map<String, Item> mergedItems = {};
-
-      for (var response in results) {
-        if (response.statusCode == 200 && response.data['data'] != null) {
-          for (var json in response.data['data']) {
-            final item = Item.fromJson(json);
-            mergedItems[item.itemCode] = item;
-          }
-        }
-      }
-
-      if (mergedItems.isNotEmpty) {
-        final candidates = mergedItems.values.toList();
+      final response = await _apiProvider.getDocument('Item', derivedItemCode);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final item = Item.fromJson(response.data['data']);
         return ScanResult(
-          type: ScanType.multiple,
-          rawCode: barcode,
-          candidates: candidates,
+          type: parsedBatchNo != null ? ScanType.batch : ScanType.item,
+          rawCode: cleanCode,
+          itemCode: item.itemCode,
+          batchNo: parsedBatchNo,
+          itemData: item,
         );
       }
-
+      // Explicit Not Found
       return ScanResult(
           type: ScanType.error,
-          rawCode: barcode,
-          message: "Item not found: $parsedItemCode"
+          rawCode: cleanCode,
+          message: "Item not found: $derivedItemCode"
       );
-
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         return ScanResult(
             type: ScanType.error,
-            rawCode: barcode,
-            message: "Item not found in database: $parsedItemCode"
+            rawCode: cleanCode,
+            message: "Item not found in database: $derivedItemCode"
         );
       }
       return ScanResult(
           type: ScanType.error,
-          rawCode: barcode,
+          rawCode: cleanCode,
           message: "Network Error: ${e.message}"
       );
     } catch (e) {
       return ScanResult(
           type: ScanType.error,
-          rawCode: barcode,
-          message: "Error: $e"
+          rawCode: cleanCode,
+          message: "Scan Error: $e"
       );
     }
+  }
+
+  /// strict EAN-8 validation helper
+  bool _isValidEan8(String code) {
+    if (code.length != 8) return false;
+    if (!RegExp(r'^\d+$').hasMatch(code)) return false;
+
+    // EAN-8 Weights: 3 1 3 1 3 1 3
+    int sum = 0;
+    for (int i = 0; i < 7; i++) {
+      int digit = int.parse(code[i]);
+      // Alternate weights: Even indices (0, 2...) are *3, Odd indices (1, 3...) are *1
+      sum += (i % 2 == 0) ? digit * 3 : digit;
+    }
+
+    int checksum = (10 - (sum % 10)) % 10;
+    int lastDigit = int.parse(code[7]);
+
+    return checksum == lastDigit;
   }
 }
