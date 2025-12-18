@@ -30,8 +30,6 @@ class AppNavDrawer extends StatelessWidget {
                 margin: EdgeInsets.zero,
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
-                  // Optional: Add logo asset if available
-                  // image: DecorationImage(...)
                 ),
                 accountName: Text(
                   user?.name ?? 'Guest',
@@ -88,10 +86,21 @@ class AppNavDrawer extends StatelessWidget {
                   _ModuleGroup(
                     title: 'Stock',
                     icon: Icons.inventory_2_rounded,
-                    initiallyExpanded: [AppRoutes.ITEM, AppRoutes.BATCH, AppRoutes.STOCK_ENTRY].contains(currentRoute),
+                    initiallyExpanded: [
+                      AppRoutes.ITEM,
+                      AppRoutes.BATCH,
+                      AppRoutes.STOCK_ENTRY,
+                      AppRoutes.MATERIAL_REQUEST
+                    ].contains(currentRoute),
                     children: [
                       DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
                       DocTypeGuard(doctype: 'Batch', loading: skeleton, child: _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch)),
+                      DocTypeGuard(doctype: 'Material Request', loading: skeleton, child: _DrawerItem(
+                          title: 'Material Request',
+                          icon: Icons.playlist_add_check_rounded,
+                          isSelected: currentRoute == AppRoutes.MATERIAL_REQUEST,
+                          onTap: () { Get.back(); Get.toNamed(AppRoutes.MATERIAL_REQUEST); }
+                      )),
                       DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
                       DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
                       DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
@@ -149,6 +158,7 @@ class AppNavDrawer extends StatelessWidget {
               ),
             ),
 
+            // ... (Rest of existing footer code)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Divider(height: 1),
@@ -179,7 +189,7 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
-// --- Skeleton Drawer Item ---
+// ... (Rest of existing helper classes: _SkeletonDrawerItem, _ModuleGroup, _DrawerItem)
 class _SkeletonDrawerItem extends StatelessWidget {
   const _SkeletonDrawerItem();
 
@@ -195,25 +205,9 @@ class _SkeletonDrawerItem extends StatelessWidget {
         child: Row(
           children: [
             const SizedBox(width: 16),
-            // Icon Placeholder
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8)
-              ),
-            ),
+            Container(width: 24, height: 24, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8))),
             const SizedBox(width: 16),
-            // Text Placeholder
-            Container(
-              width: 120,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(4)
-              ),
-            ),
+            Container(width: 120, height: 12, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4))),
           ],
         ),
       ),
@@ -221,7 +215,6 @@ class _SkeletonDrawerItem extends StatelessWidget {
   }
 }
 
-// --- Existing Helpers ---
 class _ModuleGroup extends StatelessWidget {
   final String title;
   final IconData icon;

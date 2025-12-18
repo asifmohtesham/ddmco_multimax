@@ -23,6 +23,8 @@ abstract class AppRoutes {
   static const JOB_CARD = _Paths.JOB_CARD;
   static const BATCH = _Paths.BATCH;
   static const BATCH_FORM = _Paths.BATCH_FORM;
+  static const MATERIAL_REQUEST = _Paths.MATERIAL_REQUEST;
+  static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
 }
 
 abstract class _Paths {
@@ -48,4 +50,6 @@ abstract class _Paths {
   static const JOB_CARD = '/job-card';
   static const BATCH = '/batch';
   static const BATCH_FORM = '/batch/form';
+  static const MATERIAL_REQUEST = '/material-request';
+  static const MATERIAL_REQUEST_FORM = '/material-request/form';
 }
