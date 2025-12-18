@@ -575,6 +575,18 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
+
+    // STRICT VALIDATION: Batch ID cannot be the same as EAN (e.g., 12345678-12345678)
+    if (batchNo.contains('-')) {
+      final parts = batchNo.split('-');
+      if (parts.length >= 2 && parts[0] == parts[1]) {
+        bsIsBatchValid.value = false;
+        bsBatchError.value = "Invalid Batch: ID cannot match EAN";
+        validateSheet();
+        return;
+      }
+    }
+
     isValidatingBatch.value = true;
     bsBatchError.value = null;
     batchInfoTooltip.value = null; // Reset Tooltip

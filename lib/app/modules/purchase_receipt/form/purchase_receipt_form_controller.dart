@@ -66,6 +66,9 @@ class PurchaseReceiptFormController extends GetxController {
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
 
+  // NEW: Batch Error Observable
+  var batchError = RxnString();
+
   var isTargetRackValid = false.obs;
   var isValidatingTargetRack = false.obs;
 
@@ -464,6 +467,7 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
     bsIsLoadingBatch.value = false;
+    batchError.value = null; // Reset Error
 
     isTargetRackValid.value = false;
     isSheetValid.value = false;
@@ -506,6 +510,7 @@ class PurchaseReceiptFormController extends GetxController {
       isScrollControlled: true,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
+      batchError.value = null;
     });
   }
 
@@ -551,8 +556,20 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   Future<void> validateBatch(String batch) async {
+    batchError.value = null;
     if (!isEditable) return;
     if (batch.isEmpty) return;
+
+    // VALIDATION: Batch ID cannot be the same as EAN (e.g., 12345678-12345678)
+    if (batch.contains('-')) {
+      final parts = batch.split('-');
+      if (parts.length >= 2 && parts[0] == parts[1]) {
+        bsIsBatchValid.value = false;
+        batchError.value = "Invalid Batch: Batch ID cannot match EAN";
+        validateSheet();
+        return;
+      }
+    }
 
     bsIsLoadingBatch.value = true;
     try {
@@ -588,6 +605,7 @@ class PurchaseReceiptFormController extends GetxController {
     if (!isEditable) return;
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
+    batchError.value = null;
     validateSheet();
   }
 
@@ -671,6 +689,8 @@ class PurchaseReceiptFormController extends GetxController {
     bsIsBatchReadOnly.value = true;
     isTargetRackValid.value = item.rack != null && item.rack!.isNotEmpty;
 
+    batchError.value = null;
+
     validateSheet();
 
     isItemSheetOpen.value = true;
@@ -688,6 +708,7 @@ class PurchaseReceiptFormController extends GetxController {
     ).whenComplete(() {
       isItemSheetOpen.value = false;
       currentItemNameKey.value = null;
+      batchError.value = null;
     });
   }
 

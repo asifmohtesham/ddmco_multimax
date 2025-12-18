@@ -44,7 +44,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
 
         customFields: [
           // Batch Input
-          GlobalItemFormSheet.buildInputGroup(
+          Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',
             color: Colors.purple,
             bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
@@ -56,14 +56,20 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
               autofocus: false, // DISABLED AUTOFOCUS
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
+                // UX FIX: Display Validation Error Gracefully
+                helperText: controller.batchError.value,
+                helperStyle: TextStyle(
+                    color: controller.batchError.value != null ? Colors.red : Colors.grey,
+                    fontWeight: controller.batchError.value != null ? FontWeight.bold : FontWeight.normal
+                ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.purple.shade200),
+                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple.shade200),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.purple, width: 2),
+                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple, width: 2),
                 ),
                 filled: true,
                 fillColor: (controller.bsIsBatchReadOnly.value || !isEditable) ? Colors.purple.shade50 : Colors.white,
@@ -77,7 +83,7 @@ class PurchaseReceiptItemFormSheet extends GetView<PurchaseReceiptFormController
               ),
               onFieldSubmitted: isEditable ? (value) => controller.validateBatch(value) : null,
             ),
-          ),
+          )),
 
           // Rack Input
           GlobalItemFormSheet.buildInputGroup(

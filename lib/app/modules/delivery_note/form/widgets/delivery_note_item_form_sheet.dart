@@ -90,14 +90,20 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               autofocus: false,
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
+                // UX FIX: Use helperText for Validation Errors
+                helperText: controller.bsBatchError.value,
+                helperStyle: TextStyle(
+                    color: controller.bsBatchError.value != null ? Colors.red : Colors.grey,
+                    fontWeight: controller.bsBatchError.value != null ? FontWeight.bold : FontWeight.normal
+                ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.purple.shade200),
+                  borderSide: BorderSide(color: controller.bsBatchError.value != null ? Colors.red : Colors.purple.shade200),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.purple, width: 2),
+                  borderSide: BorderSide(color: controller.bsBatchError.value != null ? Colors.red : Colors.purple, width: 2),
                 ),
                 filled: true,
                 fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
