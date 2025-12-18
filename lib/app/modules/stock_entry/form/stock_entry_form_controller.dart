@@ -84,6 +84,10 @@ class StockEntryFormController extends GetxController {
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
   var rackError = RxnString();
+
+  // NEW: Observable for Batch Error Message
+  var batchError = RxnString();
+
   var isSheetValid = false.obs;
   var currentItemCode = '';
   var currentVariantOf = '';
@@ -304,6 +308,7 @@ class StockEntryFormController extends GetxController {
     isTargetRackValid.value = false;
     isSheetValid.value = false;
     rackError.value = null;
+    batchError.value = null; // Reset
     selectedSerial.value = null;
     currentItemNameKey.value = null;
     bsItemOwner.value = null;
@@ -338,6 +343,7 @@ class StockEntryFormController extends GetxController {
     ).whenComplete(() {
       isItemSheetOpen.value = false;
       rackError.value = null;
+      batchError.value = null;
     });
   }
 
@@ -374,6 +380,7 @@ class StockEntryFormController extends GetxController {
 
     isItemSheetOpen.value = true;
     rackError.value = null;
+    batchError.value = null;
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -392,6 +399,7 @@ class StockEntryFormController extends GetxController {
       isItemSheetOpen.value = false;
       currentItemNameKey.value = null;
       rackError.value = null;
+      batchError.value = null;
     });
   }
 
@@ -583,7 +591,20 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<void> validateBatch(String batch) async {
+    batchError.value = null; // Reset Error
     if (batch.isEmpty) return;
+
+    // VALIDATION: Batch ID cannot be the same as EAN (e.g., 12345678-12345678)
+    if (batch.contains('-')) {
+      final parts = batch.split('-');
+      if (parts.length >= 2 && parts[0] == parts[1]) {
+        bsIsBatchValid.value = false;
+        batchError.value = "Invalid Batch: Batch ID cannot match EAN";
+        validateSheet();
+        return;
+      }
+    }
+
     isValidatingBatch.value = true;
     try {
       final response = await _apiProvider.getDocumentList('Batch', filters: {
@@ -668,6 +689,7 @@ class StockEntryFormController extends GetxController {
   void resetBatchValidation() {
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
+    batchError.value = null;
     validateSheet();
   }
 
@@ -710,7 +732,7 @@ class StockEntryFormController extends GetxController {
   }
 
   void validateSheet() {
-    rackError.value = null; // Reset error first
+    rackError.value = null;
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) {
       isSheetValid.value = false;
@@ -728,13 +750,21 @@ class StockEntryFormController extends GetxController {
     final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
     if (requiresSource) {
-      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
+      if (bsSourceRackController.text.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+      if (!isSourceRackValid.value) {
         isSheetValid.value = false;
         return;
       }
     }
     if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+      if (bsTargetRackController.text.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+      if (!isTargetRackValid.value) {
         isSheetValid.value = false;
         return;
       }
@@ -742,7 +772,6 @@ class StockEntryFormController extends GetxController {
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
-      // FIX: Check for duplicate Racks explicitly
       if (source.isNotEmpty && target.isNotEmpty && source == target) {
         isSheetValid.value = false;
         rackError.value = "Source and Target Racks cannot be the same";
