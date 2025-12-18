@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection'; // Required for Queue
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
@@ -11,6 +12,10 @@ class DataWedgeService extends GetxService {
   // Observable to listen to in controllers
   final scannedCode = ''.obs;
 
+  // Queue to handle burst scans (MultiBarcode) sequentially
+  final Queue<String> _scanQueue = Queue<String>();
+  bool _isProcessing = false;
+
   @override
   void onInit() {
     super.onInit();
@@ -21,17 +26,23 @@ class DataWedgeService extends GetxService {
     try {
       _scanSubscription = _eventChannel.receiveBroadcastStream().listen(
             (dynamic event) {
+          // 1. Handle Single String (Existing Functionality)
           if (event is String) {
-            scannedCode.value = event;
-            // Debounce or reset logic can be handled here if needed
-            // Resetting after a short delay allows re-scanning same code if logic depends on change
-            Future.delayed(const Duration(milliseconds: 500), () => scannedCode.value = '');
-          } else if (event is Map) {
-            // Handle map if native sends more details like symbology
+            _enqueueScan(event);
+          }
+          // 2. Handle List (New NextGen SimulScan Functionality)
+          else if (event is List) {
+            for (var item in event) {
+              if (item is String) {
+                _enqueueScan(item);
+              }
+            }
+          }
+          // 3. Handle Map (Existing Functionality)
+          else if (event is Map) {
             final code = event['scanData'] as String?;
             if (code != null) {
-              scannedCode.value = code;
-              Future.delayed(const Duration(milliseconds: 500), () => scannedCode.value = '');
+              _enqueueScan(code);
             }
           }
         },
@@ -42,6 +53,41 @@ class DataWedgeService extends GetxService {
     } catch (e) {
       print('Failed to start DataWedge listener: $e');
     }
+  }
+
+  /// Adds a scan to the queue and starts processing if idle.
+  void _enqueueScan(String code) {
+    if (code.isEmpty) return;
+
+    _scanQueue.add(code);
+
+    if (!_isProcessing) {
+      _processQueue();
+    }
+  }
+
+  /// Processes the queue one item at a time to ensure listeners catch every code.
+  Future<void> _processQueue() async {
+    _isProcessing = true;
+
+    while (_scanQueue.isNotEmpty) {
+      final code = _scanQueue.removeFirst();
+
+      // Update the observable
+      scannedCode.value = code;
+
+      // Wait for the duration required by your listeners (Debounce logic).
+      // 800ms gives enough time for a 500ms debounce in the controller to fire.
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // Reset the code to trigger "cleared" state if needed, or prepare for next change
+      scannedCode.value = '';
+
+      // Small buffer before next scan to ensure state changes are distinct
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    _isProcessing = false;
   }
 
   @override

@@ -18,6 +18,8 @@ class MainActivity : FlutterActivity() {
     private val ZEBRA_PROFILE_NAME = "MultimaxProfile"
     private val ZEBRA_INTENT_ACTION = "com.ddmco.multimax.SCAN"
     private val ZEBRA_DATA_KEY = "com.symbol.datawedge.data_string"
+    // New Key for MultiBarcode/SimulScan Output
+    private val ZEBRA_DATA_KEY_LIST = "com.symbol.datawedge.data_string_list"
 
     // Netum / Generic Scanner Constants
     private val NETUM_INTENT_ACTION = "com.android.server.scannerservice.broadcast"
@@ -29,23 +31,33 @@ class MainActivity : FlutterActivity() {
     private val scanReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
-            // Debug Log: If this prints, the Intent connection is working!
             Log.d("ScanCheck", "Broadcast Received. Action: $action")
 
-            var scanData: String? = null
-
             if (action == ZEBRA_INTENT_ACTION) {
-                scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
-                Log.d("ScanCheck", "Source: Zebra | Data: $scanData")
-            } else if (action == NETUM_INTENT_ACTION) {
-                scanData = intent.getStringExtra(NETUM_DATA_KEY)
-                Log.d("ScanCheck", "Source: Netum | Data: $scanData")
-            }
+                // Check for MultiBarcode List first
+                if (intent.hasExtra(ZEBRA_DATA_KEY_LIST)) {
+                    val scanList = intent.getStringArrayListExtra(ZEBRA_DATA_KEY_LIST)
+                    if (!scanList.isNullOrEmpty()) {
+                        Log.d("ScanCheck", "Source: Zebra Multi | Data: $scanList")
+                        // Send the entire list to Flutter
+                        eventSink?.success(scanList)
+                        return
+                    }
+                }
 
-            if (!scanData.isNullOrEmpty()) {
-                val cleanData = scanData.trim()
-                Log.d("ScanCheck", "Sending to Flutter: $cleanData")
-                eventSink?.success(cleanData)
+                // Fallback to Single Barcode
+                val scanData = intent.getStringExtra(ZEBRA_DATA_KEY)
+                Log.d("ScanCheck", "Source: Zebra Single | Data: $scanData")
+                if (!scanData.isNullOrEmpty()) {
+                    eventSink?.success(scanData.trim())
+                }
+
+            } else if (action == NETUM_INTENT_ACTION) {
+                val scanData = intent.getStringExtra(NETUM_DATA_KEY)
+                Log.d("ScanCheck", "Source: Netum | Data: $scanData")
+                if (!scanData.isNullOrEmpty()) {
+                    eventSink?.success(scanData.trim())
+                }
             }
         }
     }
@@ -114,7 +126,7 @@ class MainActivity : FlutterActivity() {
 
         sendDataWedgeIntent("com.symbol.datawedge.api.SET_CONFIG", profileConfig)
 
-        // --- Step 2: Configure Barcode Input (Enable QR/EAN) ---
+        // --- Step 2: Configure Barcode Input (Enable QR/EAN + MultiBarcode) ---
         val barcodeConfig = Bundle()
         barcodeConfig.putString("PLUGIN_NAME", "BARCODE")
         barcodeConfig.putString("RESET_CONFIG", "true")
@@ -124,6 +136,14 @@ class MainActivity : FlutterActivity() {
         barcodeProps.putString("decoder_ean13", "true")
         barcodeProps.putString("decoder_ean8", "true")
         barcodeProps.putString("decoder_qrcode", "true")
+
+        // --- NEXTGEN SIMULSCAN / MULTIBARCODE CONFIGURATION ---
+        // scanning_mode: 1=Single, 3=MultiBarcode (NextGen)
+        barcodeProps.putString("scanning_mode", "3")
+        // multi_barcode_count: Number of barcodes to capture (Set to 5 to be safe)
+        barcodeProps.putString("multi_barcode_count", "5")
+        // Optional: Instant reporting allows data to come in as decoded (improves speed)
+        barcodeProps.putString("instant_reporting_enable", "true")
 
         barcodeConfig.putBundle("PARAM_LIST", barcodeProps)
 
