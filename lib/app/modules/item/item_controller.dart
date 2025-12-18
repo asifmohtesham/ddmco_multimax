@@ -99,6 +99,50 @@ class ItemController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
+    // --- ARGUMENT HANDLING LOGIC START ---
+    // Check if arguments were passed (e.g. from ScanService/HomeController)
+    if (Get.arguments != null && Get.arguments is Map) {
+      final args = Get.arguments as Map;
+
+      // Handle 'filters' argument: {'field_name': ['operator', 'value']}
+      if (args.containsKey('filters') && args['filters'] is Map) {
+        final filtersMap = args['filters'] as Map;
+        final List<FilterRow> parsedFilters = [];
+
+        filtersMap.forEach((key, valueList) {
+          if (valueList is List && valueList.length >= 2) {
+            final String op = valueList[0];
+            String val = valueList[1].toString();
+
+            // Clean wildcards for UI consistency (fetchItems re-adds them if needed)
+            if (op == 'like') {
+              val = val.replaceAll('%', '');
+            }
+
+            // Find matching config to ensure correct label and type
+            final config = availableFields.firstWhereOrNull((f) => f.field == key);
+
+            parsedFilters.add(FilterRow(
+              field: key,
+              label: config?.label ?? key, // Fallback to key if not found in availableFields
+              operator: op,
+              value: val,
+              fieldType: config?.fieldType ?? 'Data',
+              doctype: config?.doctype,
+            ));
+          }
+        });
+
+        if (parsedFilters.isNotEmpty) {
+          activeFilters.assignAll(parsedFilters);
+          // Disable "Show Images Only" if a specific filter is applied to broaden results
+          showImagesOnly.value = false;
+        }
+      }
+    }
+    // --- ARGUMENT HANDLING LOGIC END ---
+
     fetchItems();
     fetchItemGroups();
     fetchTemplateItems();

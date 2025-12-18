@@ -1,6 +1,6 @@
 import 'package:multimax/app/data/models/item_model.dart';
 
-enum ScanType { item, batch, rack, unknown, error, multiple }
+enum ScanType { item, batch, rack, variant_of, unknown, error, multiple }
 
 class ScanResult {
   final ScanType type;

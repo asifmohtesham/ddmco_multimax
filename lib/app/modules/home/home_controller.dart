@@ -311,9 +311,19 @@ class HomeController extends GetxController {
       if (result.type == ScanType.rack && result.rackId != null) {
         await _handleRackScan(result.rackId!);
       }
-      // FIX: Add check for ScanType.batch
       else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
         _openItemDetailSheet(result.itemData!.itemCode);
+      }
+      // NEW: Handle Variant Of Scan
+      else if (result.type == ScanType.variant_of) {
+        barcodeController.clear();
+        // Open Item List with Filter
+        Get.toNamed(AppRoutes.ITEM, arguments: {
+          'filters': {
+            'variant_of': ['like', '%${result.rawCode}%']
+          },
+          'pageTitle': 'Variant: ${result.rawCode}'
+        });
       }
       else if (result.type == ScanType.multiple && result.candidates != null) {
         // Open Disambiguation Sheet
