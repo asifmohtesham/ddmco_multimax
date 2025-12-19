@@ -11,6 +11,7 @@ class ItemDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String _baseUrl = Get.find<ApiProvider>().baseUrl;
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: const BoxDecoration(
@@ -39,7 +40,7 @@ class ItemDetailSheet extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
-                      'https://erp.multimax.cloud${item.image}',
+                      '$_baseUrl${item.image}',
                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,

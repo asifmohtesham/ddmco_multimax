@@ -9,7 +9,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  static const String defaultBaseUrl = "https://erp.multimax.cloud";
+  static const String defaultBaseUrl = "https://erp.mohtesham.com";
 
   bool _dioInitialised = false;
   late Dio _dio;
