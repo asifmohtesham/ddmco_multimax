@@ -46,7 +46,7 @@ class LoginController extends GetxController {
       return;
     }
 
-    // Normalize URL
+    // Normalise URL
     if (!url.startsWith('http')) {
       url = 'https://$url';
     }
@@ -65,21 +65,40 @@ class LoginController extends GetxController {
       final response = await dio.get('$url/api/method/ping');
 
       if (response.statusCode == 200) {
-        if (Get.isRegistered<StorageService>()) {
-          await Get.find<StorageService>().saveBaseUrl(url);
-        }
-        serverUrlController.text = url;
-        Get.back();
+        await _confirmAndSave(url); // Success path
         GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
       } else {
-        throw Exception('Invalid response from server');
+        throw Exception('Invalid response from server (Status: ${response.statusCode})');
       }
 
     } catch (e) {
-      GlobalSnackbar.error(title: 'Connection Failed', message: 'Could not connect to server: $url');
+      // Connection Failed: Ask user if they want to force it
+      isCheckingConnection.value = false; // Stop loading before showing dialog
+      Get.defaultDialog(
+        title: "Connection Failed",
+        middleText: "Could not verify connection to the server.\n\nError: $e\n\nDo you want to save this URL anyway?",
+        textConfirm: "Save Anyway",
+        textCancel: "Cancel",
+        confirmTextColor: Colors.white,
+        onConfirm: () async {
+          Get.back(); // Close dialog
+          await _confirmAndSave(url); // Force save
+          GlobalSnackbar.success(title: 'Saved', message: 'Server URL saved (Validation skipped)');
+        },
+      );
     } finally {
       isCheckingConnection.value = false;
     }
+  }
+
+  // Helper function to save and close
+  Future<void> _confirmAndSave(String url) async {
+    if (Get.isRegistered<StorageService>()) {
+      await Get.find<StorageService>().saveBaseUrl(url);
+    }
+    serverUrlController.text = url;
+    _apiProvider.setBaseUrl(url); // Ensure provider is updated
+    Get.back(); // Close the BottomSheet
   }
 
   @override

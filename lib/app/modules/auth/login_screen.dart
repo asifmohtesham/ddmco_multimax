@@ -31,7 +31,7 @@ class LoginScreen extends GetView<LoginController> {
                 controller: controller.serverUrlController,
                 decoration: const InputDecoration(
                   labelText: 'Server URL',
-                  hintText: 'https://example.erpnext.com',
+                  hintText: 'https://erp.domain.com',
                   prefixIcon: Icon(Icons.link),
                   border: OutlineInputBorder(),
                 ),
