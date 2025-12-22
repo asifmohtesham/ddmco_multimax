@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
@@ -18,8 +19,8 @@ class ItemFormScreen extends GetView<ItemFormController> {
     return DefaultTabController(
       length: 4,
       child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() => Text(controller.item.value?.itemName ?? 'Item Details')),
+        appBar: MainAppBar(
+          title: controller.item.value?.itemName ?? 'Item Details',
           leading: isModal
               ? IconButton(
             icon: const Icon(Icons.close),

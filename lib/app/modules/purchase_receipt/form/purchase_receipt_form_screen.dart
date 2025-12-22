@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
@@ -23,21 +24,9 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Obx(() {
-              final receipt = controller.purchaseReceipt.value;
-              final name = receipt?.name ?? 'Loading...';
-              final supplier = receipt?.supplier;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                  if (supplier != null && supplier.isNotEmpty)
-                    Text(supplier, style: const TextStyle(fontSize: 16)),
-                ],
-              );
-            }),
+          appBar: MainAppBar(
+            title: controller.purchaseReceipt.value?.name ?? 'Loading...',
+            status: controller.purchaseReceipt.value?.status,
             actions: [
               Obx(() {
                 if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();

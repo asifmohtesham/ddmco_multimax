@@ -1,6 +1,6 @@
-// app/modules/batch/form/batch_form_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -22,8 +22,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
       },
       child: Scaffold(
         backgroundColor: colorScheme.surface,
-        appBar: AppBar(
-          title: Obx(() => Text(controller.batch.value?.name ?? 'Batch Details')),
+        appBar: MainAppBar(
+          title: controller.batch.value?.name ?? 'Batch Details',
           actions: [
             // Export Button
             Obx(() {

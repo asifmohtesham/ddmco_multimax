@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_card.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -21,8 +22,9 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Obx(() => Text(controller.purchaseOrder.value?.name ?? 'Loading...')),
+          appBar: MainAppBar(
+            title: controller.purchaseOrder.value?.name ?? 'Loading...',
+            status: controller.purchaseOrder.value?.status,
             actions: [
               Obx(() => controller.isSaving.value
                   ? const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))

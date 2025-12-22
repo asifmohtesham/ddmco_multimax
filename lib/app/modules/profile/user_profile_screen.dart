@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/profile/user_profile_controller.dart';
 
 class UserProfileScreen extends GetView<UserProfileController> {
@@ -8,8 +9,8 @@ class UserProfileScreen extends GetView<UserProfileController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
+      appBar: MainAppBar(
+        title: 'My Profile',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

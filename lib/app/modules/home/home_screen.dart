@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
@@ -19,11 +20,8 @@ class HomeScreen extends GetView<HomeController> {
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.w600)),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+      appBar: MainAppBar(
+        title: "Dashboard",
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -208,9 +206,6 @@ class HomeScreen extends GetView<HomeController> {
       ),
     );
   }
-
-  // ... (Keep existing _showFulfillmentSelectionSheet, _buildUserContextCard, _showUserSearchModal, SpeedometerKpiCard)
-  // [Code truncated for brevity as logic remains similar, focus is on new UI structure]
 
   void _showFulfillmentSelectionSheet(BuildContext context) {
     controller.fetchFulfillmentPosUploads();

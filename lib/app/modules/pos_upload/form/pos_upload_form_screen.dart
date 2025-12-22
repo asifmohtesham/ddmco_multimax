@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
@@ -10,8 +11,9 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
-          title: Obx(() => Text(controller.posUpload.value?.name ?? 'Loading...')),
+        appBar: MainAppBar(
+          title: controller.posUpload.value?.name ?? 'Loading...',
+          status: controller.posUpload.value?.status,
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Details'),

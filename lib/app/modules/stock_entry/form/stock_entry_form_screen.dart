@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
@@ -25,15 +26,9 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(controller.stockEntry.value?.name ?? 'Loading...', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                if (controller.stockEntry.value?.status != null)
-                  Text(controller.stockEntry.value!.status, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            ),
+          appBar: MainAppBar(
+            title: controller.stockEntry.value?.name ?? 'Loading...',
+            status: controller.stockEntry.value?.status,
             actions: [
               Obx(() => controller.isSaving.value
                   ? const Center(

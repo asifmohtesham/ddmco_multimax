@@ -1,6 +1,6 @@
-//
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -24,21 +24,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Obx(() {
-              final note = controller.deliveryNote.value;
-              final name = note?.name ?? 'Loading...';
-              final poNo = note?.poNo;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                  if (poNo != null && poNo.isNotEmpty)
-                    Text(poNo, style: const TextStyle(fontSize: 16)),
-                ],
-              );
-            }),
+          appBar: MainAppBar(
+            title: controller.deliveryNote.value?.name ?? 'Loading...',
+            status: controller.deliveryNote.value?.status,
             actions: [
               // Save Button Logic
               Obx(() {

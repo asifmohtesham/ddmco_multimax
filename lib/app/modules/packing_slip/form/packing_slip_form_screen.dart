@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -24,18 +25,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Obx(() {
-              final slip = controller.packingSlip.value;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(slip?.name ?? 'Loading...', style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                  if (slip?.customPoNo != null)
-                    Text(slip!.customPoNo!, style: const TextStyle(fontSize: 16)),
-                ],
-              );
-            }),
+          appBar: MainAppBar(
+            title: controller.packingSlip.value?.name ?? 'Loading...',
+            status: controller.packingSlip.value?.status,
             bottom: const TabBar(
               tabs: [
                 Tab(text: 'Details'),
