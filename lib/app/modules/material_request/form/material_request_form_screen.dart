@@ -77,6 +77,20 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           ),
           const SizedBox(height: 16),
 
+          // Warehouse Field
+          TextField(
+            controller: controller.setWarehouseController,
+            readOnly: !isEditable,
+            onChanged: controller.onWarehouseChanged,
+            decoration: const InputDecoration(
+                labelText: 'Target Warehouse',
+                prefixIcon: Icon(Icons.warehouse_outlined),
+                border: OutlineInputBorder(),
+                hintText: 'e.g., Stores - C'
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Dates
           Row(
             children: [

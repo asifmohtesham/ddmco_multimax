@@ -26,6 +26,7 @@ class MaterialRequestFormController extends GetxController {
   final selectedType = 'Material Transfer'.obs;
   final scheduleDateController = TextEditingController();
   final transactionDateController = TextEditingController();
+  final setWarehouseController = TextEditingController();
 
   final List<String> requestTypes = [
     'Purchase',
@@ -66,6 +67,7 @@ class MaterialRequestFormController extends GetxController {
   void onClose() {
     scheduleDateController.dispose();
     transactionDateController.dispose();
+    setWarehouseController.dispose();
     bsQtyController.dispose();
     bsDateController.dispose();
     barcodeController.dispose();
@@ -80,6 +82,7 @@ class MaterialRequestFormController extends GetxController {
     selectedType.value = 'Material Transfer';
     transactionDateController.text = dateStr;
     scheduleDateController.text = dateStr;
+    setWarehouseController.clear();
 
     materialRequest.value = MaterialRequest(
       name: 'New Material Request',
@@ -105,6 +108,7 @@ class MaterialRequestFormController extends GetxController {
         selectedType.value = entry.materialRequestType;
         transactionDateController.text = entry.transactionDate;
         scheduleDateController.text = entry.scheduleDate;
+        setWarehouseController.text = entry.setWarehouse ?? '';
 
         isDirty.value = false;
       } else {
@@ -143,6 +147,10 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
+  void onWarehouseChanged(String val) {
+    _markDirty();
+  }
+
   void setDate(TextEditingController controller) async {
     if (materialRequest.value?.docstatus != 0) return;
 
@@ -167,7 +175,7 @@ class MaterialRequestFormController extends GetxController {
 
     if (item != null) {
       currentItemCode = item.itemCode;
-      currentItemName = item.description ?? item.itemCode;
+      currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
       bsQtyController.text = item.qty.toString();
       validateSheet();
@@ -218,7 +226,11 @@ class MaterialRequestFormController extends GetxController {
         currentItems[index] = MaterialRequestItem(
             name: existing.name,
             itemCode: existing.itemCode,
+            itemName: existing.itemName,
             qty: qty,
+            receivedQty: existing.receivedQty,
+            orderedQty: existing.orderedQty,
+            actualQty: existing.actualQty,
             warehouse: existing.warehouse,
             uom: existing.uom,
             description: existing.description
@@ -228,8 +240,10 @@ class MaterialRequestFormController extends GetxController {
       currentItems.add(MaterialRequestItem(
         name: 'local_${DateTime.now().millisecondsSinceEpoch}',
         itemCode: currentItemCode,
+        itemName: currentItemName,
         qty: qty,
         description: currentItemName,
+        // Default warehouse if header has one could be logic here, but backend usually handles it or UI prompts
       ));
     }
 
@@ -283,6 +297,7 @@ class MaterialRequestFormController extends GetxController {
       'material_request_type': selectedType.value,
       'transaction_date': transactionDateController.text,
       'schedule_date': scheduleDateController.text,
+      'set_warehouse': setWarehouseController.text,
       'items': materialRequest.value?.items.map((i) {
         final Map<String, dynamic> map = {
           'item_code': i.itemCode,

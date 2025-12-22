@@ -6,6 +6,7 @@ class MaterialRequest {
   final int docstatus;
   final String materialRequestType;
   final String? owner;
+  final String? setWarehouse;
   final List<MaterialRequestItem> items;
 
   MaterialRequest({
@@ -16,6 +17,7 @@ class MaterialRequest {
     required this.docstatus,
     required this.materialRequestType,
     this.owner,
+    this.setWarehouse,
     required this.items,
   });
 
@@ -31,6 +33,7 @@ class MaterialRequest {
       docstatus: _parseInt(json['docstatus']),
       materialRequestType: json['material_request_type']?.toString() ?? 'Purchase',
       owner: json['owner']?.toString(),
+      setWarehouse: json['set_warehouse']?.toString(),
       items: items,
     );
   }
@@ -52,7 +55,11 @@ class MaterialRequest {
 class MaterialRequestItem {
   final String? name;
   final String itemCode;
+  final String? itemName;
   final double qty;
+  final double receivedQty;
+  final double orderedQty;
+  final double actualQty;
   final double? scheduleDate;
   final String? warehouse;
   final String? description;
@@ -61,7 +68,11 @@ class MaterialRequestItem {
   MaterialRequestItem({
     this.name,
     required this.itemCode,
+    this.itemName,
     required this.qty,
+    this.receivedQty = 0.0,
+    this.orderedQty = 0.0,
+    this.actualQty = 0.0,
     this.scheduleDate,
     this.warehouse,
     this.description,
@@ -72,7 +83,11 @@ class MaterialRequestItem {
     return MaterialRequestItem(
       name: json['name']?.toString(),
       itemCode: json['item_code']?.toString() ?? '',
+      itemName: json['item_name']?.toString(),
       qty: double.tryParse(json['qty']?.toString() ?? '0') ?? 0.0,
+      receivedQty: double.tryParse(json['received_qty']?.toString() ?? '0') ?? 0.0,
+      orderedQty: double.tryParse(json['ordered_qty']?.toString() ?? '0') ?? 0.0,
+      actualQty: double.tryParse(json['actual_qty']?.toString() ?? '0') ?? 0.0,
       warehouse: json['warehouse']?.toString(),
       description: json['description']?.toString(),
       uom: json['uom']?.toString(),
