@@ -32,4 +32,8 @@ class MaterialRequestProvider {
   Future<Response> updateMaterialRequest(String name, Map<String, dynamic> data) async {
     return _apiProvider.updateDocument('Material Request', name, data);
   }
+
+  Future<Response> deleteMaterialRequest(String name) async {
+    return _apiProvider.deleteDocument('Material Request', name);
+  }
 }

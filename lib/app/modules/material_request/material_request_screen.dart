@@ -4,7 +4,8 @@ import 'package:multimax/app/modules/material_request/material_request_controlle
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/data/models/material_request_model.dart';
 
 class MaterialRequestScreen extends GetView<MaterialRequestController> {
   const MaterialRequestScreen({super.key});
@@ -54,21 +55,24 @@ class MaterialRequestScreen extends GetView<MaterialRequestController> {
                       (context, index) {
                     if (index >= controller.materialRequests.length) return null;
                     final req = controller.materialRequests[index];
-                    return GenericDocumentCard(
-                      title: req.materialRequestType,
-                      subtitle: req.name,
-                      status: req.status,
-                      stats: [
-                        GenericDocumentCard.buildIconStat(context, Icons.calendar_today, req.transactionDate),
-                        if (req.scheduleDate.isNotEmpty)
-                          GenericDocumentCard.buildIconStat(context, Icons.event, 'Due: ${req.scheduleDate}'),
-                      ],
-                      onTap: () {
-                        // Navigation to Detail/Form would go here
-                        // Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name});
-                      },
-                      isExpanded: false,
-                    );
+
+                    return Obx(() {
+                      final isExpanded = controller.expandedRequestId.value == req.name;
+
+                      return GenericDocumentCard(
+                        title: req.materialRequestType,
+                        subtitle: req.name,
+                        status: req.status,
+                        stats: [
+                          GenericDocumentCard.buildIconStat(context, Icons.calendar_today, req.transactionDate),
+                          if (req.scheduleDate.isNotEmpty)
+                            GenericDocumentCard.buildIconStat(context, Icons.event, 'Due: ${req.scheduleDate}'),
+                        ],
+                        isExpanded: isExpanded,
+                        onTap: () => controller.toggleExpand(req.name),
+                        expandedContent: isExpanded ? _buildExpandedActions(context, req) : null,
+                      );
+                    });
                   },
                   childCount: controller.materialRequests.length,
                 ),
@@ -77,12 +81,67 @@ class MaterialRequestScreen extends GetView<MaterialRequestController> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': '', 'mode': 'new'});
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Create'),
+      floatingActionButton: Obx(() => RoleGuard(
+        roles: controller.writeRoles.toList(),
+        child: FloatingActionButton.extended(
+          onPressed: () {
+            Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': '', 'mode': 'new'});
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Create'),
+        ),
+      )),
+    );
+  }
+
+  Widget _buildExpandedActions(BuildContext context, MaterialRequest req) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // View Button (Available for Submitted documents or if user lacks write access)
+          if (req.docstatus != 0)
+            FilledButton.tonalIcon(
+              onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'view'}),
+              icon: const Icon(Icons.visibility),
+              label: const Text('View Details'),
+            ),
+
+          // Draft Actions (Edit/Delete)
+          if (req.docstatus == 0) ...[
+            // Delete Button
+            RoleGuard(
+              roles: controller.writeRoles.toList(),
+              child: IconButton.filled(
+                onPressed: () => controller.deleteMaterialRequest(req.name),
+                icon: const Icon(Icons.delete_outline),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.red.shade50,
+                  foregroundColor: Colors.red,
+                ),
+                tooltip: 'Delete',
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            // Edit Button
+            RoleGuard(
+              roles: controller.writeRoles.toList(),
+              fallback: FilledButton.tonalIcon(
+                onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'view'}),
+                icon: const Icon(Icons.visibility),
+                label: const Text('View'),
+              ),
+              child: FilledButton.tonalIcon(
+                onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'edit'}),
+                icon: const Icon(Icons.edit),
+                label: const Text('Edit'),
+              ),
+            ),
+          ]
+        ],
       ),
     );
   }

@@ -9,7 +9,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  static const String defaultBaseUrl = "https://erp.mohtesham.com";
+  static const String defaultBaseUrl = "https://erp.multimax.cloud";
 
   bool _dioInitialised = false;
   late Dio _dio;
@@ -106,7 +106,7 @@ class ApiProvider {
     }
   }
 
-  // NEW: Support for Frappe Desk Report View (allows advanced joins/filtering)
+  // Support for Frappe Desk Report View (allows advanced joins/filtering)
   Future<Response> getReportView(String doctype, {
     int start = 0,
     int pageLength = 20,
@@ -150,6 +150,11 @@ class ApiProvider {
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
 
+  Future<Response> deleteDocument(String doctype, String name) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.delete('/api/resource/$doctype/$name');
+  }
+
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
@@ -159,7 +164,6 @@ class ApiProvider {
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
 
-  // ... (Rest of the file remains unchanged) ...
   Future<List<String>> getList(String doctype) async {
     try {
       if (!_dioInitialised) await _initDio();
@@ -264,7 +268,7 @@ class ApiProvider {
     );
   }
 
-  // Module specific getters would remain here...
+  // Module specific getters
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
   Future<Response> getPurchaseReceipt(String name) async => getDocument('Purchase Receipt', name);
