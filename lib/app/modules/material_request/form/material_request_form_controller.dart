@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart'; // Added Import
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -10,6 +11,7 @@ import 'package:intl/intl.dart';
 
 class MaterialRequestFormController extends GetxController {
   final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>(); // Injected ApiProvider
   final ScanService _scanService = Get.find<ScanService>();
 
   String name = Get.arguments['name'] ?? '';
@@ -36,6 +38,10 @@ class MaterialRequestFormController extends GetxController {
     'Customer Provided'
   ];
 
+  // Warehouse Data
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+
   // Item Form State
   final bsQtyController = TextEditingController();
   final bsDateController = TextEditingController();
@@ -55,6 +61,7 @@ class MaterialRequestFormController extends GetxController {
   void onInit() {
     super.onInit();
     bsQtyController.addListener(validateSheet);
+    fetchWarehouses(); // Fetch warehouses on init
 
     if (mode == 'new') {
       _initNewRequest();
@@ -73,6 +80,21 @@ class MaterialRequestFormController extends GetxController {
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
+  }
+
+  Future<void> fetchWarehouses() async {
+    isFetchingWarehouses.value = true;
+    try {
+      // Filter out group warehouses
+      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+      }
+    } catch (e) {
+      print('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
   }
 
   void _initNewRequest() {
@@ -243,7 +265,6 @@ class MaterialRequestFormController extends GetxController {
         itemName: currentItemName,
         qty: qty,
         description: currentItemName,
-        // Default warehouse if header has one could be logic here, but backend usually handles it or UI prompts
       ));
     }
 

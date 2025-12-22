@@ -77,16 +77,20 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           ),
           const SizedBox(height: 16),
 
-          // Warehouse Field
-          TextField(
-            controller: controller.setWarehouseController,
-            readOnly: !isEditable,
-            onChanged: controller.onWarehouseChanged,
-            decoration: const InputDecoration(
-                labelText: 'Target Warehouse',
-                prefixIcon: Icon(Icons.warehouse_outlined),
-                border: OutlineInputBorder(),
-                hintText: 'e.g., Stores - C'
+          // Warehouse Field (Searchable Dropdown)
+          GestureDetector(
+            onTap: isEditable ? () => _showWarehousePicker(context) : null,
+            child: AbsorbPointer(
+              child: TextField(
+                controller: controller.setWarehouseController,
+                decoration: const InputDecoration(
+                  labelText: 'Target Warehouse',
+                  prefixIcon: Icon(Icons.warehouse_outlined),
+                  suffixIcon: Icon(Icons.arrow_drop_down),
+                  border: OutlineInputBorder(),
+                  hintText: 'Select Warehouse',
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -158,6 +162,68 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             ),
           )
       ],
+    );
+  }
+
+  void _showWarehousePicker(BuildContext context) {
+    final searchCtrl = TextEditingController();
+    final filteredList = controller.warehouses.toList().obs;
+
+    Get.bottomSheet(
+      Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            const Text('Select Warehouse', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: searchCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Search...',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              onChanged: (val) {
+                if (val.isEmpty) {
+                  filteredList.assignAll(controller.warehouses);
+                } else {
+                  filteredList.assignAll(controller.warehouses.where((w) => w.toLowerCase().contains(val.toLowerCase())));
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Obx(() {
+                if (controller.isFetchingWarehouses.value) return const Center(child: CircularProgressIndicator());
+                if (filteredList.isEmpty) return const Center(child: Text("No warehouses found"));
+
+                return ListView.separated(
+                  itemCount: filteredList.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final wh = filteredList[i];
+                    return ListTile(
+                      title: Text(wh),
+                      onTap: () {
+                        controller.setWarehouseController.text = wh;
+                        controller.onWarehouseChanged(wh);
+                        Get.back();
+                      },
+                    );
+                  },
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 }
