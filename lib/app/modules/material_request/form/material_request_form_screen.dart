@@ -147,24 +147,20 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     return Stack(
       children: [
         ListView.separated(
-          // Ensure list content ends above the bottom widget
           padding: const EdgeInsets.only(bottom: 100, top: 8),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 4),
           itemBuilder: (ctx, i) => MaterialRequestItemCard(
             item: items[i],
             onTap: isEditable ? () => controller.openItemSheet(item: items[i]) : null,
-            // Only show delete if there is more than 1 item
-            onDelete: (isEditable && items.length > 1)
-                ? () => controller.deleteItem(items[i])
-                : null,
+            onDelete: isEditable ? () => controller.deleteItem(items[i]) : null,
           ),
         ),
         if (isEditable)
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Container(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 0),
               color: Colors.white,
               child: BarcodeInputWidget(
                 controller: controller.barcodeController,
