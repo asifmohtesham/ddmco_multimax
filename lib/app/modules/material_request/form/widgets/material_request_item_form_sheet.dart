@@ -35,6 +35,25 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
             onDecrement: () => controller.adjustSheetQty(-1),
           ),
 
+          const SizedBox(height: 16),
+
+          // Warehouse Dropdown
+          GestureDetector(
+            onTap: () => controller.showWarehousePicker(forItem: true),
+            child: AbsorbPointer(
+              child: TextField(
+                controller: controller.bsWarehouseController,
+                decoration: const InputDecoration(
+                  labelText: 'Warehouse',
+                  prefixIcon: Icon(Icons.store_outlined),
+                  suffixIcon: Icon(Icons.arrow_drop_down),
+                  border: OutlineInputBorder(),
+                  hintText: 'Select Warehouse',
+                ),
+              ),
+            ),
+          ),
+
           const SizedBox(height: 24),
 
           Obx(() => SizedBox(

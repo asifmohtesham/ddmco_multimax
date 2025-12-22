@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart'; // Added Import
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -11,7 +11,7 @@ import 'package:intl/intl.dart';
 
 class MaterialRequestFormController extends GetxController {
   final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>(); // Injected ApiProvider
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
 
   String name = Get.arguments['name'] ?? '';
@@ -45,6 +45,7 @@ class MaterialRequestFormController extends GetxController {
   // Item Form State
   final bsQtyController = TextEditingController();
   final bsDateController = TextEditingController();
+  final bsWarehouseController = TextEditingController(); // Added Item Warehouse Controller
 
   // Item Sheet State
   var currentItemCode = '';
@@ -61,7 +62,7 @@ class MaterialRequestFormController extends GetxController {
   void onInit() {
     super.onInit();
     bsQtyController.addListener(validateSheet);
-    fetchWarehouses(); // Fetch warehouses on init
+    fetchWarehouses();
 
     if (mode == 'new') {
       _initNewRequest();
@@ -77,6 +78,7 @@ class MaterialRequestFormController extends GetxController {
     setWarehouseController.dispose();
     bsQtyController.dispose();
     bsDateController.dispose();
+    bsWarehouseController.dispose(); // Dispose
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
@@ -85,7 +87,6 @@ class MaterialRequestFormController extends GetxController {
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
-      // Filter out group warehouses
       final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
       if (response.statusCode == 200 && response.data['data'] != null) {
         warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
@@ -149,7 +150,7 @@ class MaterialRequestFormController extends GetxController {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
         isDirty.value = false;
-        Get.back(); // Pop the screen
+        Get.back();
       },
     );
   }
@@ -188,11 +189,81 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
+  // --- Warehouse Picker Logic ---
+
+  void showWarehousePicker({bool forItem = false}) {
+    final searchCtrl = TextEditingController();
+    final filteredList = warehouses.toList().obs;
+
+    Get.bottomSheet(
+      Container(
+        height: Get.height * 0.7,
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            const Text('Select Warehouse', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: searchCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Search...',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              onChanged: (val) {
+                if (val.isEmpty) {
+                  filteredList.assignAll(warehouses);
+                } else {
+                  filteredList.assignAll(warehouses.where((w) => w.toLowerCase().contains(val.toLowerCase())));
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Obx(() {
+                if (isFetchingWarehouses.value) return const Center(child: CircularProgressIndicator());
+                if (filteredList.isEmpty) return const Center(child: Text("No warehouses found"));
+
+                return ListView.separated(
+                  itemCount: filteredList.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final wh = filteredList[i];
+                    return ListTile(
+                      title: Text(wh),
+                      onTap: () {
+                        if (forItem) {
+                          bsWarehouseController.text = wh;
+                          // Item sheet doesn't need immediate dirty mark, saveItem handles it
+                        } else {
+                          setWarehouseController.text = wh;
+                          onWarehouseChanged(wh);
+                        }
+                        Get.back();
+                      },
+                    );
+                  },
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   // --- Item Management ---
 
   void openItemSheet({MaterialRequestItem? item, String? newCode, String? newName}) {
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
+    bsWarehouseController.clear(); // Reset
     isSheetValid.value = false;
 
     if (item != null) {
@@ -200,15 +271,19 @@ class MaterialRequestFormController extends GetxController {
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
       bsQtyController.text = item.qty.toString();
+      bsWarehouseController.text = item.warehouse ?? '';
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
+      // Default to header warehouse for new items
+      bsWarehouseController.text = setWarehouseController.text;
     } else {
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
+      bsWarehouseController.text = setWarehouseController.text;
     }
 
     isItemSheetOpen.value = true;
@@ -253,7 +328,7 @@ class MaterialRequestFormController extends GetxController {
             receivedQty: existing.receivedQty,
             orderedQty: existing.orderedQty,
             actualQty: existing.actualQty,
-            warehouse: existing.warehouse,
+            warehouse: bsWarehouseController.text, // Use sheet value
             uom: existing.uom,
             description: existing.description
         );
@@ -264,6 +339,7 @@ class MaterialRequestFormController extends GetxController {
         itemCode: currentItemCode,
         itemName: currentItemName,
         qty: qty,
+        warehouse: bsWarehouseController.text, // Use sheet value
         description: currentItemName,
       ));
     }
@@ -324,6 +400,7 @@ class MaterialRequestFormController extends GetxController {
           'item_code': i.itemCode,
           'qty': i.qty,
           'schedule_date': scheduleDateController.text,
+          'warehouse': i.warehouse, // Include item warehouse
         };
         final itemName = i.name;
         if (itemName != null && !itemName.startsWith('local_')) {
