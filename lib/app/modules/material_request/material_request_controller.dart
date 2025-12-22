@@ -81,6 +81,9 @@ class MaterialRequestController extends GetxController {
             if (response.statusCode == 200 || response.statusCode == 202) {
               GlobalSnackbar.success(message: 'Material Request deleted successfully');
               fetchMaterialRequests(clear: true);
+              if (expandedRequestId.value == name) {
+                expandedRequestId.value = '';
+              }
             } else {
               GlobalSnackbar.error(message: 'Failed to delete document');
             }
@@ -129,7 +132,7 @@ class MaterialRequestController extends GetxController {
         _currentPage++;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch material requests');
+      GlobalSnackbar.error(message: 'Failed to fetch material requests');
     } finally {
       if (isLoadMore) isFetchingMore.value = false;
       else isLoading.value = false;

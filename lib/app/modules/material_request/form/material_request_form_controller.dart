@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart'; // Import Dio
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -45,7 +46,7 @@ class MaterialRequestFormController extends GetxController {
   // Item Form State
   final bsQtyController = TextEditingController();
   final bsDateController = TextEditingController();
-  final bsWarehouseController = TextEditingController(); // Added Item Warehouse Controller
+  final bsWarehouseController = TextEditingController();
 
   // Item Sheet State
   var currentItemCode = '';
@@ -78,7 +79,7 @@ class MaterialRequestFormController extends GetxController {
     setWarehouseController.dispose();
     bsQtyController.dispose();
     bsDateController.dispose();
-    bsWarehouseController.dispose(); // Dispose
+    bsWarehouseController.dispose();
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
@@ -189,8 +190,6 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
-  // --- Warehouse Picker Logic ---
-
   void showWarehousePicker({bool forItem = false}) {
     final searchCtrl = TextEditingController();
     final filteredList = warehouses.toList().obs;
@@ -239,7 +238,6 @@ class MaterialRequestFormController extends GetxController {
                       onTap: () {
                         if (forItem) {
                           bsWarehouseController.text = wh;
-                          // Item sheet doesn't need immediate dirty mark, saveItem handles it
                         } else {
                           setWarehouseController.text = wh;
                           onWarehouseChanged(wh);
@@ -263,7 +261,7 @@ class MaterialRequestFormController extends GetxController {
   void openItemSheet({MaterialRequestItem? item, String? newCode, String? newName}) {
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
-    bsWarehouseController.clear(); // Reset
+    bsWarehouseController.clear();
     isSheetValid.value = false;
 
     if (item != null) {
@@ -277,7 +275,6 @@ class MaterialRequestFormController extends GetxController {
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
-      // Default to header warehouse for new items
       bsWarehouseController.text = setWarehouseController.text;
     } else {
       currentItemCode = '';
@@ -328,7 +325,7 @@ class MaterialRequestFormController extends GetxController {
             receivedQty: existing.receivedQty,
             orderedQty: existing.orderedQty,
             actualQty: existing.actualQty,
-            warehouse: bsWarehouseController.text, // Use sheet value
+            warehouse: bsWarehouseController.text,
             uom: existing.uom,
             description: existing.description
         );
@@ -339,7 +336,7 @@ class MaterialRequestFormController extends GetxController {
         itemCode: currentItemCode,
         itemName: currentItemName,
         qty: qty,
-        warehouse: bsWarehouseController.text, // Use sheet value
+        warehouse: bsWarehouseController.text,
         description: currentItemName,
       ));
     }
@@ -400,7 +397,7 @@ class MaterialRequestFormController extends GetxController {
           'item_code': i.itemCode,
           'qty': i.qty,
           'schedule_date': scheduleDateController.text,
-          'warehouse': i.warehouse, // Include item warehouse
+          'warehouse': i.warehouse,
         };
         final itemName = i.name;
         if (itemName != null && !itemName.startsWith('local_')) {
@@ -419,16 +416,32 @@ class MaterialRequestFormController extends GetxController {
           mode = 'edit';
           await fetchMaterialRequest();
           GlobalSnackbar.success(message: 'Material Request Created');
+        } else {
+          // Fallback if exception is not thrown but status is not 200 (unlikely with dio)
+          GlobalSnackbar.error(message: 'Failed to create request');
         }
       } else {
         final response = await _provider.updateMaterialRequest(name, data);
         if (response.statusCode == 200) {
           await fetchMaterialRequest();
           GlobalSnackbar.success(message: 'Material Request Updated');
+        } else {
+          GlobalSnackbar.error(message: 'Failed to update request');
         }
       }
+    } on DioException catch (e) {
+      String errorMessage = 'Save failed';
+      if (e.response != null && e.response!.data != null) {
+        if (e.response!.data is Map && e.response!.data['exception'] != null) {
+          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+          // Provide a generic message if server messages are complex JSON
+          errorMessage = 'Validation Error: Check form details';
+        }
+      }
+      GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to save: $e');
+      GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }

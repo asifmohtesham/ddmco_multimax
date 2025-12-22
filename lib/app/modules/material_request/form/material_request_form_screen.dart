@@ -34,10 +34,20 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             ),
             actions: [
               if (controller.materialRequest.value?.docstatus == 0)
-                IconButton(
+                Obx(() => controller.isSaving.value
+                    ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5)
+                  ),
+                )
+                    : IconButton(
                   icon: const Icon(Icons.save),
                   // Disable button if form is not dirty
                   onPressed: controller.isDirty.value ? controller.saveMaterialRequest : null,
+                )
                 )
             ],
             bottom: const TabBar(
@@ -137,13 +147,17 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     return Stack(
       children: [
         ListView.separated(
-          padding: const EdgeInsets.only(bottom: 80, top: 8),
+          // Ensure list content ends above the bottom widget
+          padding: const EdgeInsets.only(bottom: 100, top: 8),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 4),
           itemBuilder: (ctx, i) => MaterialRequestItemCard(
             item: items[i],
             onTap: isEditable ? () => controller.openItemSheet(item: items[i]) : null,
-            onDelete: isEditable ? () => controller.deleteItem(items[i]) : null,
+            // Only show delete if there is more than 1 item
+            onDelete: (isEditable && items.length > 1)
+                ? () => controller.deleteItem(items[i])
+                : null,
           ),
         ),
         if (isEditable)

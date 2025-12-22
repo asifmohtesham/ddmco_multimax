@@ -15,8 +15,6 @@ class MaterialRequestItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: 0,
@@ -63,14 +61,14 @@ class MaterialRequestItemCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       child: Padding(
                         padding: const EdgeInsets.all(4),
-                        child: Icon(Icons.close, size: 18, color: Colors.grey.shade400),
+                        child: Icon(Icons.close, size: 20, color: Colors.grey.shade400),
                       ),
                     ),
                 ],
               ),
 
               const SizedBox(height: 12),
-              const Divider(height: 1),
+              Divider(height: 1, color: Colors.grey.shade100),
               const SizedBox(height: 12),
 
               // Stats Row
