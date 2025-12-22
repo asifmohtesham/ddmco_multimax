@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -22,14 +22,22 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: MainAppBar(
-            title: controller.materialRequest.value?.name ?? 'New Request',
-            status: controller.materialRequest.value?.status,
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(controller.materialRequest.value?.name ?? 'New Request',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                if (controller.materialRequest.value?.status != null)
+                  StatusPill(status: controller.materialRequest.value!.status),
+              ],
+            ),
             actions: [
               if (controller.materialRequest.value?.docstatus == 0)
                 IconButton(
                   icon: const Icon(Icons.save),
-                  onPressed: controller.saveMaterialRequest,
+                  // Disable button if form is not dirty
+                  onPressed: controller.isDirty.value ? controller.saveMaterialRequest : null,
                 )
             ],
             bottom: const TabBar(
@@ -65,7 +73,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             value: controller.selectedType.value,
             decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
             items: controller.requestTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-            onChanged: isEditable ? (val) => controller.selectedType.value = val! : null,
+            onChanged: isEditable ? controller.onTypeChanged : null,
           ),
           const SizedBox(height: 16),
 

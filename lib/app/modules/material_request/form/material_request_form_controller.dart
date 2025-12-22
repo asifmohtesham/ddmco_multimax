@@ -23,7 +23,7 @@ class MaterialRequestFormController extends GetxController {
   var materialRequest = Rx<MaterialRequest?>(null);
 
   // Form Fields
-  final selectedType = 'Purchase'.obs;
+  final selectedType = 'Material Transfer'.obs;
   final scheduleDateController = TextEditingController();
   final transactionDateController = TextEditingController();
 
@@ -39,7 +39,7 @@ class MaterialRequestFormController extends GetxController {
   final bsQtyController = TextEditingController();
   final bsDateController = TextEditingController();
 
-  // State variables for the Item Sheet
+  // Item Sheet State
   var currentItemCode = '';
   var currentItemName = '';
   var currentUom = '';
@@ -117,13 +117,30 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
+  // --- Dirty Check & Navigation ---
+
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
         isDirty.value = false;
-        Get.back();
+        Get.back(); // Pop the screen
       },
     );
+  }
+
+  void _markDirty() {
+    if (!isLoading.value && !isDirty.value) {
+      isDirty.value = true;
+    }
+  }
+
+  // --- Form Interactions ---
+
+  void onTypeChanged(String? val) {
+    if (val != null && val != selectedType.value) {
+      selectedType.value = val;
+      _markDirty();
+    }
   }
 
   void setDate(TextEditingController controller) async {
@@ -141,34 +158,24 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
-  void _markDirty() {
-    if (!isLoading.value && !isDirty.value) isDirty.value = true;
-  }
-
   // --- Item Management ---
 
-  /// Opens the Item Sheet.
-  /// [item] - Pass this if editing an existing row.
-  /// [newCode] & [newName] - Pass these if adding a new item (e.g., from scanner).
   void openItemSheet({MaterialRequestItem? item, String? newCode, String? newName}) {
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
     isSheetValid.value = false;
 
     if (item != null) {
-      // CASE 1: Editing an existing item
       currentItemCode = item.itemCode;
       currentItemName = item.description ?? item.itemCode;
       currentItemNameKey.value = item.name;
       bsQtyController.text = item.qty.toString();
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
-      // CASE 2: Adding a new item from Scan
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
-      currentItemNameKey.value = null; // New item has no key yet
+      currentItemNameKey.value = null;
     } else {
-      // CASE 3: Manual Add (Fallback / Reset)
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
@@ -192,7 +199,6 @@ class MaterialRequestFormController extends GetxController {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = (current + delta);
     if (newVal >= 0) {
-      // If result is integer, format as integer, else keep decimal
       bsQtyController.text = newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
       validateSheet();
     }
@@ -201,11 +207,10 @@ class MaterialRequestFormController extends GetxController {
   Future<void> saveItem() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
-    if (currentItemCode.isEmpty) return; // Prevent empty item code
+    if (currentItemCode.isEmpty) return;
 
     final currentItems = materialRequest.value?.items.toList() ?? [];
 
-    // Check if we are updating an existing row or adding a new one
     if (currentItemNameKey.value != null) {
       final index = currentItems.indexWhere((i) => i.name == currentItemNameKey.value);
       if (index != -1) {
@@ -220,9 +225,8 @@ class MaterialRequestFormController extends GetxController {
         );
       }
     } else {
-      // Add new item
       currentItems.add(MaterialRequestItem(
-        name: 'local_${DateTime.now().millisecondsSinceEpoch}', // Temporary local ID
+        name: 'local_${DateTime.now().millisecondsSinceEpoch}',
         itemCode: currentItemCode,
         qty: qty,
         description: currentItemName,
@@ -256,7 +260,6 @@ class MaterialRequestFormController extends GetxController {
     try {
       final result = await _scanService.processScan(code);
       if (result.isSuccess && result.itemData != null) {
-        // Pass the scanned data directly to the open method
         openItemSheet(
             newCode: result.itemData!.itemCode,
             newName: result.itemData!.itemName
@@ -284,9 +287,8 @@ class MaterialRequestFormController extends GetxController {
         final Map<String, dynamic> map = {
           'item_code': i.itemCode,
           'qty': i.qty,
-          'schedule_date': scheduleDateController.text, // Default to header date
+          'schedule_date': scheduleDateController.text,
         };
-        // Use a local variable for 'name' to allow type promotion
         final itemName = i.name;
         if (itemName != null && !itemName.startsWith('local_')) {
           map['name'] = itemName;
