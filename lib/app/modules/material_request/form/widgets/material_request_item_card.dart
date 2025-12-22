@@ -61,7 +61,7 @@ class MaterialRequestItemCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       child: Padding(
                         padding: const EdgeInsets.all(4),
-                        child: Icon(Icons.close, size: 20, color: Colors.grey.shade400),
+                        child: Icon(Icons.delete_outline, size: 20, color: Colors.red.shade400),
                       ),
                     ),
                 ],

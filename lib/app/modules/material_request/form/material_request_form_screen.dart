@@ -40,7 +40,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                   child: SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.5)
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white,)
                   ),
                 )
                     : IconButton(
@@ -153,7 +153,9 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           itemBuilder: (ctx, i) => MaterialRequestItemCard(
             item: items[i],
             onTap: isEditable ? () => controller.openItemSheet(item: items[i]) : null,
-            onDelete: isEditable ? () => controller.deleteItem(items[i]) : null,
+            onDelete: (isEditable && items.length > 1)
+                ? () => controller.deleteItem(items[i])
+                : null,
           ),
         ),
         if (isEditable)
