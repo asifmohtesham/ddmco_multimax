@@ -316,16 +316,19 @@ class _StockEntryFilterBottomSheetState extends State<StockEntryFilterBottomShee
           ),
           onTap: _pickDateRange,
         ),
+        const SizedBox(height: 16),
         TextFormField(
           controller: purposeController,
           decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => purpose.value = val,
         ),
+        const SizedBox(height: 16),
         TextFormField(
           controller: referenceController,
           decoration: const InputDecoration(labelText: 'Reference No', border: OutlineInputBorder(), isDense: true),
           onChanged: (val) => reference.value = val,
         ),
+        const SizedBox(height: 16),
         TextFormField(
           controller: ownerController,
           readOnly: true,
