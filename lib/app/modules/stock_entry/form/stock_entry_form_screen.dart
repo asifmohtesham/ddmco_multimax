@@ -193,7 +193,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   controller: controller.customReferenceNoController,
                   readOnly: !isEditable,
                   decoration: InputDecoration(
-                    labelText: 'Reference / Work Order',
+                    labelText: 'Reference No',
+                    hintText: 'Enter reference number',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.confirmation_number_outlined),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
