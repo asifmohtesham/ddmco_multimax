@@ -10,6 +10,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
@@ -592,15 +593,7 @@ class StockEntryController extends GetxController {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(mr.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                              color: Colors.teal.shade50,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: Colors.teal.shade200)
-                                          ),
-                                          child: Text(mr.status, style: TextStyle(fontSize: 11, color: Colors.teal.shade800, fontWeight: FontWeight.bold)),
-                                        )
+                                        StatusPill(status: mr.status)
                                       ],
                                     ),
                                     const SizedBox(height: 4),
