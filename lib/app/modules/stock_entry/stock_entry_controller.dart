@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -12,6 +14,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+  final MaterialRequestProvider _materialRequestProvider = Get.find<MaterialRequestProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
@@ -38,6 +41,11 @@ class StockEntryController extends GetxController {
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
+
+  // For Material Request Selection
+  var isFetchingMaterialRequests = false.obs;
+  var materialRequestsForSelection = <MaterialRequest>[].obs;
+  List<MaterialRequest> _allFetchedMaterialRequests = [];
 
   // Stock Entry Types for Filter
   var stockEntryTypes = <String>[].obs;
@@ -284,6 +292,43 @@ class StockEntryController extends GetxController {
     }
   }
 
+  Future<void> fetchPendingMaterialRequests() async {
+    isFetchingMaterialRequests.value = true;
+    try {
+      final response = await _materialRequestProvider.getMaterialRequests(
+          limit: 50,
+          filters: {
+            'docstatus': 1, // Submitted
+            'status': ['!=', 'Stopped'], // Not stopped
+            'material_request_type': ['!=', 'Purchase'], // Not Purchase
+          },
+          orderBy: 'modified desc'
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        _allFetchedMaterialRequests = data.map((json) => MaterialRequest.fromJson(json)).toList();
+        materialRequestsForSelection.value = _allFetchedMaterialRequests;
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to fetch Material Requests: $e');
+    } finally {
+      isFetchingMaterialRequests.value = false;
+    }
+  }
+
+  void filterMaterialRequests(String query) {
+    if (query.isEmpty) {
+      materialRequestsForSelection.value = _allFetchedMaterialRequests;
+    } else {
+      final q = query.toLowerCase();
+      materialRequestsForSelection.value = _allFetchedMaterialRequests.where((mr) {
+        return mr.name.toLowerCase().contains(q) ||
+            mr.materialRequestType.toLowerCase().contains(q);
+      }).toList();
+    }
+  }
+
   void openCreateDialog() {
     Get.bottomSheet(
       Container(
@@ -303,11 +348,24 @@ class StockEntryController extends GetxController {
                   backgroundColor: Colors.orange,
                   child: Icon(Icons.outbond, color: Colors.white),
                 ),
-                title: const Text('Material Issue'),
-                subtitle: const Text('From POS Upload (KX/MX only)'),
+                title: const Text('From POS Upload'),
+                subtitle: const Text('Material Issue (KX/MX)'),
                 onTap: () {
                   Get.back();
                   _showPosSelectionBottomSheet();
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.assignment, color: Colors.white),
+                ),
+                title: const Text('From Material Request'),
+                subtitle: const Text('Transfer / Issue / Manufacture'),
+                onTap: () {
+                  Get.back();
+                  _showMaterialRequestSelectionBottomSheet();
                 },
               ),
               const Divider(),
@@ -439,6 +497,128 @@ class StockEntryController extends GetxController {
                                           ],
                                         ),
                                         Text(pos.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  void _showMaterialRequestSelectionBottomSheet() {
+    fetchPendingMaterialRequests();
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Material Request', style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: filterMaterialRequests,
+                    decoration: InputDecoration(
+                      labelText: 'Search',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingMaterialRequests.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (materialRequestsForSelection.isEmpty) {
+                        return const Center(child: Text('No matching Material Requests found.'));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: materialRequestsForSelection.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final mr = materialRequestsForSelection[index];
+                          return Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                            child: InkWell(
+                              onTap: () {
+                                Get.back();
+                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+                                  'name': '',
+                                  'mode': 'new',
+                                  'stockEntryType': mr.materialRequestType,
+                                  'customReferenceNo': mr.name
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(mr.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                              color: Colors.teal.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.teal.shade200)
+                                          ),
+                                          child: Text(mr.status, style: TextStyle(fontSize: 11, color: Colors.teal.shade800, fontWeight: FontWeight.bold)),
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text('Type: ${mr.materialRequestType}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.date_range, size: 14, color: Colors.grey),
+                                            const SizedBox(width: 4),
+                                            Text(mr.transactionDate, style: const TextStyle(fontSize: 12)),
+                                          ],
+                                        ),
+                                        Text('Items: ${mr.items.length}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                       ],
                                     ),
                                   ],
