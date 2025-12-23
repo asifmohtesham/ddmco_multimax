@@ -17,7 +17,7 @@ class StockEntry {
   final String? toWarehouse;
   final double? customTotalQty;
   final String? customReferenceNo;
-  final String currency; // Added currency field
+  final String currency;
   final List<StockEntryItem> items;
 
   StockEntry({
@@ -37,7 +37,7 @@ class StockEntry {
     this.toWarehouse,
     this.customTotalQty,
     this.customReferenceNo,
-    required this.currency, // Required in constructor
+    required this.currency,
     required this.items,
   });
 
@@ -62,7 +62,7 @@ class StockEntry {
       toWarehouse: json['to_warehouse']?.toString(),
       customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
       customReferenceNo: json['custom_reference_no']?.toString(),
-      currency: json['currency']?.toString() ?? 'AED', // Parse currency, default to AED
+      currency: json['currency']?.toString() ?? 'AED',
       items: items,
     );
   }
@@ -81,14 +81,10 @@ class StockEntry {
 
   static String _getStatusFromDocstatus(int docstatus) {
     switch (docstatus) {
-      case 0:
-        return 'Draft';
-      case 1:
-        return 'Submitted';
-      case 2:
-        return 'Cancelled';
-      default:
-        return 'Unknown';
+      case 0: return 'Draft';
+      case 1: return 'Submitted';
+      case 2: return 'Cancelled';
+      default: return 'Unknown';
     }
   }
 
@@ -102,10 +98,7 @@ class StockEntry {
   static double? _parseDoubleNullable(dynamic value) {
     if (value == null) return null;
     if (value is num) return value.toDouble();
-    if (value is String) {
-      if (value.isEmpty) return null;
-      return double.tryParse(value);
-    }
+    if (value is String) return value.isEmpty ? null : double.tryParse(value);
     return null;
   }
 
@@ -132,6 +125,9 @@ class StockEntryItem {
   final String? sWarehouse;
   final String? tWarehouse;
   final String? customInvoiceSerialNumber;
+  // Link Fields
+  final String? materialRequest;
+  final String? materialRequestItem;
   // Metadata Fields
   final String? owner;
   final String? creation;
@@ -152,6 +148,8 @@ class StockEntryItem {
     this.sWarehouse,
     this.tWarehouse,
     this.customInvoiceSerialNumber,
+    this.materialRequest,
+    this.materialRequestItem,
     this.owner,
     this.creation,
     this.modified,
@@ -173,6 +171,8 @@ class StockEntryItem {
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      materialRequest: json['material_request']?.toString(),
+      materialRequestItem: json['material_request_item']?.toString(),
       owner: json['owner']?.toString(),
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
@@ -191,6 +191,8 @@ class StockEntryItem {
       'rack': rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
+      'material_request': materialRequest,
+      'material_request_item': materialRequestItem,
     };
     if (name != null) {
       data['name'] = name;

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:collection/collection.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -15,8 +15,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Obx(() => PopScope(
       canPop: !controller.isDirty.value,
       onPopInvokedWithResult: (didPop, result) async {
@@ -37,8 +35,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   child: SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2.5)),
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
+                  ),
                 ),
               )
                   : IconButton(
@@ -93,7 +91,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Visual Route Card
               if (type != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 24),
@@ -124,7 +121,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                       const Divider(height: 24),
                       Row(
                         children: [
-                          // Source
                           Expanded(
                             child: GestureDetector(
                               onTap: (isEditable && (isMaterialIssue || isMaterialTransfer)) ? () => _showWarehousePicker(context, true) : null,
@@ -146,12 +142,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                               ),
                             ),
                           ),
-                          // Arrow
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             child: Icon(Icons.arrow_forward_rounded, color: Colors.blue.shade300),
                           ),
-                          // Target
                           Expanded(
                             child: GestureDetector(
                               onTap: (isEditable && (isMaterialReceipt || isMaterialTransfer)) ? () => _showWarehousePicker(context, false) : null,
@@ -180,7 +174,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   ),
                 ),
 
-              // 2. Meta Data
               const Text("Reference & Schedule", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Row(
@@ -209,7 +202,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               ],
 
               const SizedBox(height: 24),
-              // 3. Summary
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
@@ -226,6 +218,173 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           );
         }),
       ),
+    );
+  }
+
+  Widget _buildItemsView(BuildContext context, StockEntry entry) {
+    return Stack(
+      children: [
+        Column(
+          children: [
+            Expanded(
+              // REMOVED Obx() here. 'entry' is a plain object passed from parent Obx.
+              // 'controller.entrySource' is not an Rx variable in the provided controller logic (it's a plain Enum property set at init).
+              child: Builder(builder: (context) {
+                // 1. Handle Empty State
+                if (entry.items.isEmpty && controller.entrySource != StockEntrySource.posUpload) {
+                  return _buildEmptyState();
+                }
+
+                // 2. Dispatch Layout based on Entry Source
+                switch (controller.entrySource) {
+                  case StockEntrySource.posUpload:
+                  // Wrap POS View in Obx because it listens to controller.posUpload Rx
+                    return Obx(() => _buildPosUploadItemsView(entry));
+                  case StockEntrySource.materialRequest:
+                    return _buildMaterialRequestItemsView(entry);
+                  case StockEntrySource.manual:
+                  default:
+                    return _buildStandardItemsView(entry);
+                }
+              }),
+            ),
+          ],
+        ),
+
+        Positioned(
+          left: 0, right: 0, bottom: 0,
+          child: _buildBottomScanField(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStandardItemsView(StockEntry entry) {
+    return ListView.separated(
+      controller: controller.scrollController,
+      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
+      itemCount: entry.items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 0),
+      itemBuilder: (context, index) {
+        final item = entry.items[index];
+        _ensureItemKey(item);
+
+        return StockEntryItemCard(
+          item: item,
+          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
+          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildMaterialRequestItemsView(StockEntry entry) {
+    return ListView.separated(
+      controller: controller.scrollController,
+      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
+      itemCount: entry.items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 0),
+      itemBuilder: (context, index) {
+        final item = entry.items[index];
+        _ensureItemKey(item);
+
+        double? maxQty;
+        final refItem = controller.mrReferenceItems.firstWhereOrNull(
+                (r) => r['item_code'] == item.itemCode
+        );
+        if (refItem != null) {
+          maxQty = (refItem['qty'] as num).toDouble();
+        }
+
+        return StockEntryItemCard(
+          item: item,
+          maxQty: maxQty,
+          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
+          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildPosUploadItemsView(StockEntry entry) {
+    if (controller.posUpload.value == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final posUpload = controller.posUpload.value!;
+    final groupedItems = controller.groupedItems;
+
+    return ListView.builder(
+      controller: controller.scrollController,
+      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
+      itemCount: posUpload.items.length,
+      itemBuilder: (context, index) {
+        final posItem = posUpload.items[index];
+        final serialNumber = posItem.idx.toString();
+        final expansionKey = '$serialNumber';
+
+        final itemsInGroup = groupedItems[serialNumber] ?? [];
+        final currentScannedQty = itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
+
+        return Obx(() {
+          final isExpanded = controller.expandedInvoice.value == expansionKey;
+
+          return ItemGroupCard(
+            isExpanded: isExpanded,
+            serialNo: posItem.idx,
+            itemName: posItem.itemName,
+            rate: posItem.rate,
+            totalQty: posItem.quantity,
+            scannedQty: currentScannedQty,
+            onToggle: () => controller.toggleInvoiceExpand(expansionKey),
+            children: itemsInGroup.map((item) {
+              _ensureItemKey(item);
+              return Container(
+                  key: item.name != null ? controller.itemKeys[item.name] : null,
+                  child: StockEntryItemCard(
+                    item: item,
+                    onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
+                    onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+                  )
+              );
+            }).toList(),
+          );
+        });
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.qr_code_scanner, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text('Ready to Scan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+          const SizedBox(height: 8),
+          const Text('Scan items, batches or racks to start.', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomScanField(BuildContext context) {
+    if (controller.stockEntry.value?.docstatus != 0) return Container();
+
+    return Container(
+      decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
+      ),
+      padding: const EdgeInsets.only(bottom: 0),
+      child: Obx(() => BarcodeInputWidget(
+        onScan: (code) => controller.scanBarcode(code),
+        isLoading: controller.isScanning.value,
+        controller: controller.barcodeController,
+        activeRoute: AppRoutes.STOCK_ENTRY_FORM,
+        hintText: 'Scan Item / Batch ...',
+      )),
     );
   }
 
@@ -252,20 +411,39 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  // Helper to show Warehouse Picker
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w500, fontSize: isBold ? 16 : 14, color: isBold ? Colors.black87 : Colors.black54)),
+        ],
+      ),
+    );
+  }
+
   void _showWarehousePicker(BuildContext context, bool isSource) {
+    if (controller.warehouses.isEmpty && !controller.isFetchingWarehouses.value) {
+      controller.fetchWarehouses();
+    }
+
     Get.bottomSheet(
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(isSource ? 'Select Source Warehouse' : 'Select Target Warehouse', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.builder(
+      Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        child: Column(
+          children: [
+            Text(isSource ? 'Select Source Warehouse' : 'Select Target Warehouse', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Obx(() {
+                if (controller.isFetchingWarehouses.value) return const Center(child: CircularProgressIndicator());
+                return ListView.separated(
                   itemCount: controller.warehouses.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final wh = controller.warehouses[i];
                     return ListTile(
@@ -277,17 +455,17 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                       },
                     );
                   },
-                ),
-              )
-            ],
-          ),
-        )
+                );
+              }),
+            )
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 
-  // --- Reuse existing helper methods with slight UI tweaks ---
   void _showStockEntryTypePicker(BuildContext context) {
-    // ... (Keep existing implementation but ensure UI matches)
     final searchController = TextEditingController();
     final RxList<String> filteredTypes = RxList<String>(controller.stockEntryTypes);
 
@@ -370,140 +548,9 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w500, fontSize: isBold ? 16 : 14, color: isBold ? Colors.black87 : Colors.black54)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemsView(BuildContext context, StockEntry entry) {
-    return Stack(
-      children: [
-        Column(
-          children: [
-            Expanded(
-              child: Obx(() {
-                // Empty State Illustration
-                if (entry.items.isEmpty && controller.posUpload.value == null) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.qr_code_scanner, size: 80, color: Colors.grey.shade300),
-                        const SizedBox(height: 16),
-                        Text('Ready to Scan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
-                        const SizedBox(height: 8),
-                        const Text('Scan items, batches or racks to start.', style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  );
-                }
-
-                // CHECK: Material Issue + POS Reference
-                if (controller.selectedStockEntryType.value == 'Material Issue' &&
-                    controller.posUpload.value != null) {
-                  return _buildGroupedItemsList(entry);
-                }
-
-                // Standard Flat List
-                return ListView.separated(
-                  controller: controller.scrollController,
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
-                  itemCount: entry.items.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 0),
-                  itemBuilder: (context, index) {
-                    final item = entry.items[index];
-
-                    // Register & Attach Key
-                    if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
-                      controller.itemKeys[item.name!] = GlobalKey();
-                    }
-
-                    return StockEntryItemCard(item: item, index: index);
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
-
-        // Bottom Scan Input Overlay
-        Positioned(
-          left: 0, right: 0, bottom: 0,
-          child: _buildBottomScanField(context),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGroupedItemsList(StockEntry entry) {
-    final posUpload = controller.posUpload.value!;
-    final groupedItems = controller.groupedItems;
-
-    return ListView.builder(
-      controller: controller.scrollController,
-      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
-      itemCount: posUpload.items.length,
-      itemBuilder: (context, index) {
-        final posItem = posUpload.items[index];
-        final serialNumber = posItem.idx.toString();
-        final expansionKey = '$serialNumber';
-
-        // Get items and calculate scan qty
-        final itemsInGroup = groupedItems[serialNumber] ?? [];
-        final currentScannedQty = itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
-
-        return Obx(() {
-          final isExpanded = controller.expandedInvoice.value == expansionKey;
-
-          return ItemGroupCard(
-            isExpanded: isExpanded,
-            serialNo: posItem.idx,
-            itemName: posItem.itemName,
-            rate: posItem.rate,
-            totalQty: posItem.quantity,
-            scannedQty: currentScannedQty,
-            onToggle: () => controller.toggleInvoiceExpand(expansionKey),
-            children: itemsInGroup.map((item) {
-              final globalIndex = entry.items.indexOf(item);
-              if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
-                controller.itemKeys[item.name!] = GlobalKey();
-              }
-
-              return Container(
-                  key: item.name != null ? controller.itemKeys[item.name] : null,
-                  child: StockEntryItemCard(item: item, index: globalIndex)
-              );
-            }).toList(),
-          );
-        });
-      },
-    );
-  }
-
-  Widget _buildBottomScanField(BuildContext context) {
-    if (controller.stockEntry.value?.docstatus != 0) return Container();
-
-    return Container(
-      decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0,-4))]
-      ),
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Obx(() => BarcodeInputWidget(
-        onScan: (code) => controller.scanBarcode(code),
-        isLoading: controller.isScanning.value,
-        controller: controller.barcodeController,
-        activeRoute: AppRoutes.STOCK_ENTRY_FORM,
-        hintText: 'Scan Item / Batch ...',
-      )),
-    );
+  void _ensureItemKey(StockEntryItem item) {
+    if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
+      controller.itemKeys[item.name!] = GlobalKey();
+    }
   }
 }
