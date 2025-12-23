@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -205,7 +206,7 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
-  void _initNewStockEntry() {
+  Future<void> _initNewStockEntry() async {
     isLoading.value = true;
     final now = DateTime.now();
     final type = argStockEntryType ?? 'Material Transfer';
@@ -217,9 +218,9 @@ class StockEntryFormController extends GetxController {
     _determineSource(type, ref);
 
     if (entrySource == StockEntrySource.materialRequest) {
-      _initMaterialRequestFlow();
+      await _initMaterialRequestFlow(ref);
     } else if (entrySource == StockEntrySource.posUpload) {
-      _initPosUploadFlow(ref);
+      await _initPosUploadFlow(ref);
     }
 
     stockEntry.value = StockEntry(
@@ -248,20 +249,42 @@ class StockEntryFormController extends GetxController {
       entrySource = StockEntrySource.materialRequest;
     } else if (type == 'Material Issue' && (ref.startsWith('KX') || ref.startsWith('MX'))) {
       entrySource = StockEntrySource.posUpload;
+    } else if (ref.isNotEmpty) {
+      // If items are not passed but a reference exists (and not POS), treat as Material Request fetch
+      entrySource = StockEntrySource.materialRequest;
     } else {
       entrySource = StockEntrySource.manual;
     }
   }
 
-  void _initMaterialRequestFlow() {
-    if (Get.arguments?['items'] is List) {
+  Future<void> _initMaterialRequestFlow(String ref) async {
+    if (Get.arguments?['items'] is List && Get.arguments?['items'].isNotEmpty) {
       final rawItems = Get.arguments['items'] as List;
-      mrReferenceItems = rawItems.map((e) => e as Map<String, dynamic>).toList();
+      mrReferenceItems = rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } else {
+      // Fetch MR Items if not passed in arguments
+      try {
+        final response = await _apiProvider.getDocument('Material Request', ref);
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final data = response.data['data'];
+          final items = data['items'] as List? ?? [];
+          mrReferenceItems = items.map((i) => {
+            'item_code': i['item_code'],
+            'qty': i['qty'],
+            'material_request': ref,
+            'material_request_item': i['name']
+          }).toList();
+        } else {
+          GlobalSnackbar.error(message: 'Failed to fetch Material Request details');
+        }
+      } catch (e) {
+        GlobalSnackbar.error(message: 'Error fetching Material Request: $e');
+      }
     }
   }
 
-  void _initPosUploadFlow(String ref) {
-    _fetchPosUploadDetails(ref);
+  Future<void> _initPosUploadFlow(String ref) async {
+    await _fetchPosUploadDetails(ref);
   }
 
   Future<void> fetchStockEntry() async {
@@ -281,9 +304,11 @@ class StockEntryFormController extends GetxController {
           final ref = entry.customReferenceNo!;
           if (ref.startsWith('KX') || ref.startsWith('MX')) {
             entrySource = StockEntrySource.posUpload;
-            _fetchPosUploadDetails(ref);
+            await _fetchPosUploadDetails(ref);
           } else if (entry.items.any((i) => i.materialRequest != null)) {
             entrySource = StockEntrySource.materialRequest;
+            // Note: For existing entries, we might want to fetch MR details if we needed validation
+            // but usually existing entries are already validated.
           } else {
             entrySource = StockEntrySource.manual;
           }
@@ -319,9 +344,20 @@ class StockEntryFormController extends GetxController {
   bool _validateScanContext(ScanResult result) {
     if (entrySource == StockEntrySource.materialRequest) {
       if (mrReferenceItems.isEmpty) return true;
-      final found = mrReferenceItems.any((r) => r['item_code'] == result.itemData?.itemCode);
+
+      final scannedItemCode = result.itemData?.itemCode ?? '';
+      bool found = false;
+
+      // Case-insensitive check
+      for (var item in mrReferenceItems) {
+        if (item['item_code'].toString().trim().toLowerCase() == scannedItemCode.trim().toLowerCase()) {
+          found = true;
+          break;
+        }
+      }
+
       if (!found) {
-        GlobalSnackbar.error(message: 'Item ${result.itemData?.itemCode} not found in Material Request');
+        GlobalSnackbar.error(message: 'Item $scannedItemCode not found in Material Request');
         return false;
       }
     }
@@ -331,7 +367,9 @@ class StockEntryFormController extends GetxController {
   bool _checkMrConstraints() {
     if (mrReferenceItems.isEmpty) return true;
 
-    final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
+    final ref = mrReferenceItems.firstWhereOrNull((r) =>
+    r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
+
     if (ref != null) {
       final double allowed = (ref['qty'] as num).toDouble();
       bsValidationMaxQty.value = allowed;
@@ -342,13 +380,6 @@ class StockEntryFormController extends GetxController {
       }
     }
     return true;
-  }
-
-  // Backward compatibility wrapper if needed, but preferably used internally
-  void _validateMrConstraints() {
-    if (!_checkMrConstraints()) {
-      isSheetValid.value = false;
-    }
   }
 
   void _validatePosConstraints() {
@@ -364,12 +395,14 @@ class StockEntryFormController extends GetxController {
   }
 
   StockEntryItem _enrichItemWithSourceData(StockEntryItem item) {
-    String? matReq;
-    String? matReqItem;
+    String? matReq = item.materialRequest;
+    String? matReqItem = item.materialRequestItem;
     String? serial = item.customInvoiceSerialNumber;
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == item.itemCode);
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+      r['item_code'].toString().trim().toLowerCase() == item.itemCode.trim().toLowerCase());
+
       if (ref != null) {
         matReq = ref['material_request'];
         matReqItem = ref['material_request_item'];
@@ -393,8 +426,8 @@ class StockEntryFormController extends GetxController {
       sWarehouse: item.sWarehouse,
       tWarehouse: item.tWarehouse,
       customInvoiceSerialNumber: serial,
-      materialRequest: matReq ?? item.materialRequest,
-      materialRequestItem: matReqItem ?? item.materialRequestItem,
+      materialRequest: matReq,
+      materialRequestItem: matReqItem,
       owner: item.owner,
       creation: item.creation,
       modified: item.modified,
@@ -559,7 +592,8 @@ class StockEntryFormController extends GetxController {
     bsValidationMaxQty.value = 0.0;
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+      r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
       if (ref != null) {
         bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
       }
@@ -647,7 +681,8 @@ class StockEntryFormController extends GetxController {
 
     bsValidationMaxQty.value = 0.0;
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == item.itemCode);
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+      r['item_code'].toString().trim().toLowerCase() == item.itemCode.trim().toLowerCase());
       if (ref != null) {
         bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
       }
@@ -1061,6 +1096,25 @@ class StockEntryFormController extends GetxController {
       if (json['basic_rate'] == 0.0) {
         json.remove('basic_rate');
       }
+
+      // Safety Patch: If material request link is missing in the item but exists in context, try to resolve it now
+      if (json['material_request'] == null && entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
+        final ref = mrReferenceItems.firstWhereOrNull((r) =>
+        r['item_code'].toString().trim().toLowerCase() == i.itemCode.trim().toLowerCase());
+        if (ref != null) {
+          json['material_request'] = ref['material_request'];
+          json['material_request_item'] = ref['material_request_item'];
+        }
+      }
+
+      // Explicitly preserve if present
+      if (i.materialRequest != null) {
+        json['material_request'] = i.materialRequest;
+      }
+      if (i.materialRequestItem != null) {
+        json['material_request_item'] = i.materialRequestItem;
+      }
+
       json.removeWhere((key, value) => value == null);
       return json;
     }).toList() ?? [];
