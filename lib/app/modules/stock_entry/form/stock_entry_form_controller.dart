@@ -328,8 +328,8 @@ class StockEntryFormController extends GetxController {
     return true;
   }
 
-  void _validateMrConstraints() {
-    if (mrReferenceItems.isEmpty) return;
+  bool _checkMrConstraints() {
+    if (mrReferenceItems.isEmpty) return true;
 
     final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
     if (ref != null) {
@@ -338,8 +338,16 @@ class StockEntryFormController extends GetxController {
 
       final current = double.tryParse(bsQtyController.text) ?? 0;
       if (current > allowed) {
-        isSheetValid.value = false;
+        return false;
       }
+    }
+    return true;
+  }
+
+  // Backward compatibility wrapper if needed, but preferably used internally
+  void _validateMrConstraints() {
+    if (!_checkMrConstraints()) {
+      isSheetValid.value = false;
     }
   }
 
@@ -365,13 +373,10 @@ class StockEntryFormController extends GetxController {
       if (ref != null) {
         matReq = ref['material_request'];
         matReqItem = ref['material_request_item'];
+        serial = "0";
       }
     } else if (entrySource == StockEntrySource.posUpload) {
-      if (customReferenceNoController.text.startsWith('MAT-STE-')) {
-        serial = "0";
-      } else {
-        serial = selectedSerial.value;
-      }
+      serial = selectedSerial.value;
     }
 
     return StockEntryItem(
@@ -388,8 +393,8 @@ class StockEntryFormController extends GetxController {
       sWarehouse: item.sWarehouse,
       tWarehouse: item.tWarehouse,
       customInvoiceSerialNumber: serial,
-      // materialRequest: matReq ?? item.materialRequest,
-      // materialRequestItem: matReqItem ?? item.materialRequestItem,
+      materialRequest: matReq ?? item.materialRequest,
+      materialRequestItem: matReqItem ?? item.materialRequestItem,
       owner: item.owner,
       creation: item.creation,
       modified: item.modified,
@@ -443,8 +448,8 @@ class StockEntryFormController extends GetxController {
         sWarehouse: sWh,
         tWarehouse: tWh,
         customInvoiceSerialNumber: selectedSerial.value,
-        // materialRequest: existing.materialRequest,
-        // materialRequestItem: existing.materialRequestItem,
+        materialRequest: existing.materialRequest,
+        materialRequestItem: existing.materialRequestItem,
         owner: existing.owner,
         creation: existing.creation,
         modified: existing.modified,
@@ -489,8 +494,24 @@ class StockEntryFormController extends GetxController {
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) { isSheetValid.value = false; return; }
 
     if (entrySource == StockEntrySource.materialRequest) {
-      _validateMrConstraints();
-      if (!isSheetValid.value) return;
+      // Must have serial, item code, batch, rack, and qty set
+      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+      if (currentItemCode.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+      if (bsBatchController.text.isEmpty) {
+        isSheetValid.value = false;
+        return;
+      }
+
+      if (!_checkMrConstraints()) {
+        isSheetValid.value = false;
+        return;
+      }
     } else if (entrySource == StockEntrySource.posUpload) {
       _validatePosConstraints();
       if (!isSheetValid.value) return;
@@ -568,7 +589,7 @@ class StockEntryFormController extends GetxController {
       validateBatch(scannedBatch);
     }
 
-    if (entrySource == StockEntrySource.materialRequest && selectedStockEntryType.value == 'Material Issue') {
+    if (entrySource == StockEntrySource.materialRequest) {
       selectedSerial.value = '0';
     }
 
@@ -611,6 +632,12 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
+
+    // Ensure serial is '0' if null when editing MR items (handling legacy/uninitialised items)
+    if (entrySource == StockEntrySource.materialRequest && (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
+      selectedSerial.value = '0';
+    }
+
     _initialQty = qtyStr;
     _initialBatch = item.batchNo ?? '';
     _initialSourceRack = item.rack ?? '';

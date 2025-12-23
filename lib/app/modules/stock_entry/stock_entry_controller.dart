@@ -576,11 +576,21 @@ class StockEntryController extends GetxController {
                             child: InkWell(
                               onTap: () {
                                 Get.back();
+
+                                // Map the items to include keys expected by StockEntryFormController
+                                final itemsList = mr.items.map((i) => {
+                                  'item_code': i.itemCode,
+                                  'qty': i.qty,
+                                  'material_request': mr.name,
+                                  'material_request_item': i.name, // Correctly linking the child item ID
+                                }).toList();
+
                                 Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                                   'name': '',
                                   'mode': 'new',
                                   'stockEntryType': mr.materialRequestType,
-                                  'customReferenceNo': mr.name
+                                  'customReferenceNo': mr.name,
+                                  'items': itemsList
                                 });
                               },
                               borderRadius: BorderRadius.circular(12),
