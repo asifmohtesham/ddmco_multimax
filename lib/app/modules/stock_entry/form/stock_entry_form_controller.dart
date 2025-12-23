@@ -156,7 +156,11 @@ class StockEntryFormController extends GetxController {
       if (entrySource == StockEntrySource.manual &&
           selectedStockEntryType.value == 'Material Issue' &&
           customReferenceNoController.text.isNotEmpty) {
-        _fetchPosUploadDetails(customReferenceNoController.text);
+        // Prevent fetching POS details for non-POS references
+        final ref = customReferenceNoController.text;
+        if (ref.startsWith('KX') || ref.startsWith('MX')) {
+          _fetchPosUploadDetails(ref);
+        }
       }
     });
 
@@ -243,7 +247,8 @@ class StockEntryFormController extends GetxController {
   void _determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {
       entrySource = StockEntrySource.materialRequest;
-    } else if (type == 'Material Issue' && ref.isNotEmpty) {
+    } else if (type == 'Material Issue' && (ref.startsWith('KX') || ref.startsWith('MX'))) {
+      // Only treat as POS upload if ref looks like POS ID
       entrySource = StockEntrySource.posUpload;
     } else {
       entrySource = StockEntrySource.manual;
@@ -275,12 +280,18 @@ class StockEntryFormController extends GetxController {
         customReferenceNoController.text = entry.customReferenceNo ?? '';
 
         if (entry.stockEntryType == 'Material Issue' && entry.customReferenceNo != null) {
-          if (entry.items.any((i) => i.materialRequest != null)) {
+          final ref = entry.customReferenceNo!;
+          // Stricter check to prevent non-POS entries from being treated as POS uploads
+          if (ref.startsWith('KX') || ref.startsWith('MX')) {
+            entrySource = StockEntrySource.posUpload;
+            _fetchPosUploadDetails(ref);
+          } else if (entry.items.any((i) => i.materialRequest != null)) {
             entrySource = StockEntrySource.materialRequest;
           } else {
-            entrySource = StockEntrySource.posUpload;
-            _fetchPosUploadDetails(entry.customReferenceNo!);
+            entrySource = StockEntrySource.manual;
           }
+        } else {
+          entrySource = StockEntrySource.manual;
         }
 
         isDirty.value = false;
@@ -558,6 +569,11 @@ class StockEntryFormController extends GetxController {
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
       validateBatch(scannedBatch);
+    }
+
+    // Default to '0' for Material Request of Purpose Material Issue
+    if (entrySource == StockEntrySource.materialRequest && selectedStockEntryType.value == 'Material Issue') {
+      selectedSerial.value = '0';
     }
 
     isItemSheetOpen.value = true;
