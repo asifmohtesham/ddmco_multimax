@@ -193,6 +193,7 @@ class StockEntryItem {
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
+      'use_serial_batch_fields': 1,
     };
     if (name != null) {
       data['name'] = name;

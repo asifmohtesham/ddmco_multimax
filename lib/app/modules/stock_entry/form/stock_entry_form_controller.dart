@@ -156,7 +156,6 @@ class StockEntryFormController extends GetxController {
       if (entrySource == StockEntrySource.manual &&
           selectedStockEntryType.value == 'Material Issue' &&
           customReferenceNoController.text.isNotEmpty) {
-        // Prevent fetching POS details for non-POS references
         final ref = customReferenceNoController.text;
         if (ref.startsWith('KX') || ref.startsWith('MX')) {
           _fetchPosUploadDetails(ref);
@@ -248,7 +247,6 @@ class StockEntryFormController extends GetxController {
     if (Get.arguments?['items'] != null) {
       entrySource = StockEntrySource.materialRequest;
     } else if (type == 'Material Issue' && (ref.startsWith('KX') || ref.startsWith('MX'))) {
-      // Only treat as POS upload if ref looks like POS ID
       entrySource = StockEntrySource.posUpload;
     } else {
       entrySource = StockEntrySource.manual;
@@ -281,7 +279,6 @@ class StockEntryFormController extends GetxController {
 
         if (entry.stockEntryType == 'Material Issue' && entry.customReferenceNo != null) {
           final ref = entry.customReferenceNo!;
-          // Stricter check to prevent non-POS entries from being treated as POS uploads
           if (ref.startsWith('KX') || ref.startsWith('MX')) {
             entrySource = StockEntrySource.posUpload;
             _fetchPosUploadDetails(ref);
@@ -571,7 +568,6 @@ class StockEntryFormController extends GetxController {
       validateBatch(scannedBatch);
     }
 
-    // Default to '0' for Material Request of Purpose Material Issue
     if (entrySource == StockEntrySource.materialRequest && selectedStockEntryType.value == 'Material Issue') {
       selectedSerial.value = '0';
     }
@@ -666,6 +662,9 @@ class StockEntryFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
     if (barcode.isEmpty) return;
+
+    // Prevent double processing if scan is already in progress
+    if (isScanning.value) return;
 
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       _handleSheetScan(barcode);
