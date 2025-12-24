@@ -36,7 +36,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: true,
 
-        isLoading: controller.isValidatingBatch.value,
+        // UPDATED: Show loading if validating batch OR if adding/submitting (auto-submit)
+        isLoading: controller.isValidatingBatch.value || controller.isAddingItem.value,
 
         onSubmit: controller.submitSheet,
         onDelete: isEditing

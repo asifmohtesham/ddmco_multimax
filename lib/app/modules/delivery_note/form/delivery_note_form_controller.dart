@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
@@ -70,9 +71,9 @@ class DeliveryNoteFormController extends GetxController {
   // Rack Validation State
   var bsIsRackValid = false.obs;
   var isValidatingRack = false.obs;
-  var rackStockTooltip = RxnString(); // NEW: Stores "Rack A: 10, Rack B: 5"
-  var rackStockMap = <String, double>{}.obs; // NEW: Map of Rack -> Qty
-  var rackError = RxnString(); // NEW: Error if qty > rack stock
+  var rackStockTooltip = RxnString();
+  var rackStockMap = <String, double>{}.obs;
+  var rackError = RxnString();
 
   var bsInvoiceSerialNo = RxnString();
   var editingItemName = RxnString();
@@ -105,6 +106,8 @@ class DeliveryNoteFormController extends GetxController {
   String currentItemName = '';
   String currentScannedEan = '';
 
+  Timer? _autoSubmitTimer;
+
   @override
   void onInit() {
     super.onInit();
@@ -117,6 +120,8 @@ class DeliveryNoteFormController extends GetxController {
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _markDirty());
 
+    _setupAutoSubmit();
+
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
@@ -126,6 +131,7 @@ class DeliveryNoteFormController extends GetxController {
 
   @override
   void onClose() {
+    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsBatchController.dispose();
     bsRackController.dispose();
@@ -133,6 +139,27 @@ class DeliveryNoteFormController extends GetxController {
     bsRackFocusNode.dispose();
     scrollController.dispose();
     super.onClose();
+  }
+
+  void _setupAutoSubmit() {
+    ever(isSheetValid, (bool valid) {
+      _autoSubmitTimer?.cancel();
+      // Check if valid, sheet is open, and document is editable (docstatus == 0)
+      if (valid && isItemSheetOpen.value && deliveryNote.value?.docstatus == 0) {
+        if (_storageService.getAutoSubmitEnabled()) {
+          final int delay = _storageService.getAutoSubmitDelay();
+          _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
+            if (isSheetValid.value && isItemSheetOpen.value) {
+              // Trigger loading state only during auto-submit
+              isAddingItem.value = true;
+              await Future.delayed(const Duration(milliseconds: 500));
+              await submitSheet();
+              isAddingItem.value = false;
+            }
+          });
+        }
+      }
+    });
   }
 
   // --- PopScope Logic ---
@@ -501,7 +528,6 @@ class DeliveryNoteFormController extends GetxController {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
-log(name: 'initBS', 'initBS');
     bsItemOwner.value = null;
     bsItemCreation.value = null;
     bsItemModifiedBy.value = null;
@@ -564,8 +590,7 @@ log(name: 'initBS', 'initBS');
     }
 
     validateSheet();
-    log(name: 'fARS', 'initBottomSheet');
-    _fetchAllRackStocks(); // NEW: Fetch all racks for tooltip and validation context
+    _fetchAllRackStocks();
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
@@ -573,7 +598,6 @@ log(name: 'initBS', 'initBS');
     isItemSheetOpen.value = true;
   }
 
-  // NEW: Helper to fetch stocks for all racks to build the tooltip
   Future<void> _fetchAllRackStocks() async {
     final warehouse = setWarehouse.value;
     if (warehouse == null || warehouse.isEmpty) return;
@@ -747,7 +771,6 @@ log(name: 'initBS', 'initBS');
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
-    isAddingItem.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
     try {
@@ -795,7 +818,6 @@ log(name: 'initBS', 'initBS');
       isScrollControlled: true,
     ).then((_) {
       isItemSheetOpen.value = false;
-      isAddingItem.value = false;
       editingItemName.value = null;
     });
   }
@@ -851,7 +873,6 @@ log(name: 'initBS', 'initBS');
         }
 
         isScanning.value = false;
-        isAddingItem.value = true;
         barcodeController.clear();
 
         initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
@@ -869,7 +890,6 @@ log(name: 'initBS', 'initBS');
         );
 
         isItemSheetOpen.value = false;
-        isAddingItem.value = false;
 
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
