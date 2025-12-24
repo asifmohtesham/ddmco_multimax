@@ -118,7 +118,7 @@ class DeliveryNoteFormController extends GetxController {
     bsBatchController.addListener(validateSheet);
     bsRackController.addListener(validateSheet);
     ever(bsInvoiceSerialNo, (_) => validateSheet());
-    ever(setWarehouse, (_) => _markDirty());
+    ever(setWarehouse, (_) => _checkForChanges());
 
     _setupAutoSubmit();
 
@@ -172,10 +172,41 @@ class DeliveryNoteFormController extends GetxController {
     );
   }
 
-  void _markDirty() {
-    if (!isLoading.value && !isDirty.value && deliveryNote.value?.docstatus == 0) {
+  void _checkForChanges() {
+    if (deliveryNote.value == null) return;
+    if (mode == 'new') {
       isDirty.value = true;
+      return;
     }
+    // Prevent dirty check if document is not editable (submitted/cancelled)
+    if (deliveryNote.value?.docstatus != 0) {
+      isDirty.value = false;
+      return;
+    }
+
+    final tempNote = DeliveryNote(
+      name: deliveryNote.value!.name,
+      customer: deliveryNote.value!.customer,
+      grandTotal: deliveryNote.value!.grandTotal,
+      postingDate: deliveryNote.value!.postingDate,
+      modified: deliveryNote.value!.modified,
+      creation: deliveryNote.value!.creation,
+      status: deliveryNote.value!.status,
+      currency: deliveryNote.value!.currency,
+      items: deliveryNote.value!.items,
+      poNo: deliveryNote.value!.poNo,
+      totalQty: deliveryNote.value!.totalQty,
+      docstatus: deliveryNote.value!.docstatus,
+      setWarehouse: setWarehouse.value,
+    );
+
+    final currentJson = jsonEncode(tempNote.toJson());
+    isDirty.value = currentJson != _originalJson;
+  }
+
+  void _updateOriginalState(DeliveryNote note) {
+    _originalJson = jsonEncode(note.toJson());
+    isDirty.value = false;
   }
 
   Future<void> fetchWarehouses() async {
@@ -226,8 +257,7 @@ class DeliveryNoteFormController extends GetxController {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
         setWarehouse.value = note.setWarehouse;
-        _originalJson = jsonEncode(note.toJson());
-        isDirty.value = false;
+        _updateOriginalState(note);
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -266,7 +296,7 @@ class DeliveryNoteFormController extends GetxController {
 
     Get.back();
     barcodeController.clear();
-    _markDirty();
+    _checkForChanges();
 
     await saveDeliveryNote();
 
@@ -349,7 +379,7 @@ class DeliveryNoteFormController extends GetxController {
     deliveryNote.update((val) {
       val?.items.assignAll(currentItems);
     });
-    _markDirty();
+    _checkForChanges();
     GlobalSnackbar.success(message: 'Item removed');
   }
 
@@ -378,8 +408,7 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final savedNote = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = savedNote;
-        _originalJson = jsonEncode(savedNote.toJson());
-        isDirty.value = false;
+        _updateOriginalState(savedNote);
         GlobalSnackbar.success(message: 'Delivery Note Saved');
       } else {
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
