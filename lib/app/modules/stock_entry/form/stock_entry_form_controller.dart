@@ -307,8 +307,11 @@ class StockEntryFormController extends GetxController {
             await _fetchPosUploadDetails(ref);
           } else if (entry.items.any((i) => i.materialRequest != null)) {
             entrySource = StockEntrySource.materialRequest;
-            // Note: For existing entries, we might want to fetch MR details if we needed validation
-            // but usually existing entries are already validated.
+            // If items are linked to a Material Request, fetch its details to restore context (like max qty)
+            final firstLinkedItem = entry.items.firstWhereOrNull((i) => i.materialRequest != null);
+            if (firstLinkedItem != null && firstLinkedItem.materialRequest!.isNotEmpty) {
+              await _initMaterialRequestFlow(firstLinkedItem.materialRequest!);
+            }
           } else {
             entrySource = StockEntrySource.manual;
           }
@@ -348,7 +351,6 @@ class StockEntryFormController extends GetxController {
       final scannedItemCode = result.itemData?.itemCode ?? '';
       bool found = false;
 
-      // Case-insensitive check
       for (var item in mrReferenceItems) {
         if (item['item_code'].toString().trim().toLowerCase() == scannedItemCode.trim().toLowerCase()) {
           found = true;
@@ -592,8 +594,7 @@ class StockEntryFormController extends GetxController {
     bsValidationMaxQty.value = 0.0;
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) =>
-      r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
+      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
       if (ref != null) {
         bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
       }
@@ -681,8 +682,7 @@ class StockEntryFormController extends GetxController {
 
     bsValidationMaxQty.value = 0.0;
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) =>
-      r['item_code'].toString().trim().toLowerCase() == item.itemCode.trim().toLowerCase());
+      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == item.itemCode);
       if (ref != null) {
         bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
       }
