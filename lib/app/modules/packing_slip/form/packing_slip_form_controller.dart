@@ -364,6 +364,8 @@ class PackingSlipFormController extends GetxController {
   }
 
   Future<void> scanBarcode(String barcode) async {
+    if (isItemSheetOpen.value) return; // Prevent multiple sheets if scanner sends multiple codes
+
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
       GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
