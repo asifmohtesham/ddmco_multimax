@@ -46,13 +46,13 @@ class DeliveryNoteItemCard extends StatelessWidget {
                       text: item.itemCode,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontFamily: 'monospace',
+                        fontFamily: 'ShureTechMono',
                         fontFeatures: [FontFeature.slashedZero()], // Added
                       ),
                     ),
                     TextSpan(
                       text: ': ${item.itemName ?? ''}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'ShureTechMono'),
                     ),
                   ],
                 ),
@@ -60,7 +60,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
               subtitle: Text(
                 item.batchNo ?? '',
                 style: const TextStyle(
-                  fontFamily: 'monospace',
+                  fontFamily: 'ShureTechMono',
                   fontFeatures: [FontFeature.slashedZero()], // Added
                 ),
               ),

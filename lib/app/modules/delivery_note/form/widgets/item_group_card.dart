@@ -116,7 +116,7 @@ class ItemGroupCard extends StatelessWidget {
           value,
           style: const TextStyle(
             fontSize: 16,
-            fontFamily: 'monospace',
+            fontFamily: 'ShureTechMono',
             fontWeight: FontWeight.bold,
           ),
         ),

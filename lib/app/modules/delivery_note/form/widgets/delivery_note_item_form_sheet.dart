@@ -88,6 +88,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               // Strictly lock field if valid
               readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
+              style: TextStyle(fontFamily: 'ShureTechMono',),
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 // UX FIX: Use helperText for Validation Errors
@@ -160,6 +161,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               controller: controller.bsRackController,
               focusNode: controller.bsRackFocusNode, // Added Focus Node Binding
               readOnly: controller.bsIsRackValid.value,
+              style: TextStyle(fontFamily: 'ShureTechMono',),
               decoration: InputDecoration(
                 hintText: 'Enter or scan rack',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
