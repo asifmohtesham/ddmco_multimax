@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
@@ -71,6 +70,9 @@ class DeliveryNoteFormController extends GetxController {
   // Rack Validation State
   var bsIsRackValid = false.obs;
   var isValidatingRack = false.obs;
+  var rackStockTooltip = RxnString(); // NEW: Stores "Rack A: 10, Rack B: 5"
+  var rackStockMap = <String, double>{}.obs; // NEW: Map of Rack -> Qty
+  var rackError = RxnString(); // NEW: Error if qty > rack stock
 
   var bsInvoiceSerialNo = RxnString();
   var editingItemName = RxnString();
@@ -103,8 +105,6 @@ class DeliveryNoteFormController extends GetxController {
   String currentItemName = '';
   String currentScannedEan = '';
 
-  Timer? _autoSubmitTimer;
-
   @override
   void onInit() {
     super.onInit();
@@ -117,22 +117,6 @@ class DeliveryNoteFormController extends GetxController {
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _markDirty());
 
-    // Auto-Submit Logic
-    ever(isSheetValid, (bool valid) {
-      _autoSubmitTimer?.cancel();
-
-      if (valid && isItemSheetOpen.value && deliveryNote.value?.docstatus == 0) {
-        if (_storageService.getAutoSubmitEnabled()) {
-          final int delay = _storageService.getAutoSubmitDelay();
-          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
-            if (isSheetValid.value && isItemSheetOpen.value) {
-              submitSheet();
-            }
-          });
-        }
-      }
-    });
-
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
@@ -142,7 +126,6 @@ class DeliveryNoteFormController extends GetxController {
 
   @override
   void onClose() {
-    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsBatchController.dispose();
     bsRackController.dispose();
@@ -198,7 +181,7 @@ class DeliveryNoteFormController extends GetxController {
       poNo: posUploadNameArg,
       totalQty: 0.0,
       docstatus: 0,
-      setWarehouse: '', // Init empty
+      setWarehouse: '',
     );
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
@@ -215,7 +198,7 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = note;
-        setWarehouse.value = note.setWarehouse; // Populate warehouse
+        setWarehouse.value = note.setWarehouse;
         _originalJson = jsonEncode(note.toJson());
         isDirty.value = false;
         if (note.poNo != null && note.poNo!.isNotEmpty) {
@@ -476,6 +459,8 @@ class DeliveryNoteFormController extends GetxController {
 
   void validateSheet() {
     bool valid = true;
+    rackError.value = null; // Reset error
+
     final qty = double.tryParse(bsQtyController.text) ?? 0;
 
     if (qty <= 0) valid = false;
@@ -483,6 +468,16 @@ class DeliveryNoteFormController extends GetxController {
 
     // Strict Validation Check
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
+
+    // RACK-WISE VALIDATION LOGIC
+    final selectedRack = bsRackController.text;
+    if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
+      final availableInRack = rackStockMap[selectedRack] ?? 0.0;
+      if (qty > availableInRack) {
+        valid = false;
+        rackError.value = 'Only $availableInRack available in $selectedRack';
+      }
+    }
 
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
       if (bsAvailableInvoiceSerialNos.isNotEmpty) {
@@ -506,7 +501,7 @@ class DeliveryNoteFormController extends GetxController {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
-
+log(name: 'initBS', 'initBS');
     bsItemOwner.value = null;
     bsItemCreation.value = null;
     bsItemModifiedBy.value = null;
@@ -518,6 +513,9 @@ class DeliveryNoteFormController extends GetxController {
     bsItemPackedQty.value = null;
     bsItemCompanyTotalStock.value = null;
     isFormDirty.value = false;
+    rackStockTooltip.value = null;
+    rackStockMap.clear();
+    rackError.value = null;
 
     if (editingItem != null) {
       bsItemOwner.value = editingItem.owner;
@@ -566,6 +564,8 @@ class DeliveryNoteFormController extends GetxController {
     }
 
     validateSheet();
+    log(name: 'fARS', 'initBottomSheet');
+    _fetchAllRackStocks(); // NEW: Fetch all racks for tooltip and validation context
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
@@ -573,23 +573,56 @@ class DeliveryNoteFormController extends GetxController {
     isItemSheetOpen.value = true;
   }
 
+  // NEW: Helper to fetch stocks for all racks to build the tooltip
+  Future<void> _fetchAllRackStocks() async {
+    final warehouse = setWarehouse.value;
+    if (warehouse == null || warehouse.isEmpty) return;
+
+    try {
+      final response = await _apiProvider.getStockBalance(
+        itemCode: currentItemCode,
+        warehouse: warehouse,
+        batchNo: bsBatchController.text.isNotEmpty ? bsBatchController.text : null,
+        // No rack filter = get all racks
+      );
+
+      if (response.statusCode == 200 && response.data['message'] != null) {
+        final result = response.data['message']['result'];
+        log(name: 'Fetch Rack Stocks', result is List ? result.slice(0,result.length-1).toString() : '');
+        if (result is List && result.isNotEmpty) {
+          final Map<String, double> tempMap = {};
+          final List<String> tooltipLines = [];
+
+          // The last item is the total row, discard it.
+          for (int i = 0; i < result.length - 1; i++) {
+            final row = result[i];
+            final String? r = row['rack'];
+            final double qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+
+            if (r != null && r.isNotEmpty && qty > 0) {
+              tempMap[r] = qty;
+              tooltipLines.add('$r: $qty');
+            }
+          }
+
+          rackStockMap.assignAll(tempMap);
+          if (tooltipLines.isNotEmpty) {
+            rackStockTooltip.value = tooltipLines.join('\n');
+          } else {
+            rackStockTooltip.value = "No stock in racks";
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching rack stocks: $e');
+    }
+  }
+
   Future<void> validateAndFetchBatch(String batchNo) async {
     if (batchNo.isEmpty) return;
-
-    // STRICT VALIDATION: Batch ID cannot be the same as EAN (e.g., 12345678-12345678)
-    if (batchNo.contains('-')) {
-      final parts = batchNo.split('-');
-      if (parts.length >= 2 && parts[0] == parts[1]) {
-        bsIsBatchValid.value = false;
-        bsBatchError.value = "Invalid Batch: ID cannot match EAN";
-        validateSheet();
-        return;
-      }
-    }
-
     isValidatingBatch.value = true;
     bsBatchError.value = null;
-    batchInfoTooltip.value = null; // Reset Tooltip
+    batchInfoTooltip.value = null;
 
     try {
       final batchResponse = await _apiProvider.getDocumentList('Batch',
@@ -606,6 +639,9 @@ class DeliveryNoteFormController extends GetxController {
       if (pkgQty > 0) {
         bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
+
+      // Refresh Rack Stocks whenever Batch changes
+      await _fetchAllRackStocks();
 
       // --- Determine Warehouse ---
       String? determinedWarehouse = setWarehouse.value;
@@ -634,41 +670,15 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
 
-      // 2. Get Rack-Specific Stock Balance (if rack exists)
-      double? fetchedRackQty;
-      if (bsRackController.text.isNotEmpty && determinedWarehouse != null) {
-        try {
-          final stockBalRes = await _apiProvider.getStockBalance(
-            itemCode: currentItemCode,
-            warehouse: determinedWarehouse,
-            batchNo: batchNo,
-            rack: bsRackController.text, // Specific Rack Filter
-          );
-          log(name: 'stockBalRes', stockBalRes.toString());
-          if (stockBalRes.statusCode == 200 && stockBalRes.data['message'] != null) {
-            final result = stockBalRes.data['message']['result'];
-            if (result is List && result.isNotEmpty) {
-              fetchedRackQty = result
-                  .whereType<Map<String, dynamic>>() // Ignore List/Total rows
-                  .fold(0.0, (sum, row) => sum! + (row['bal_qty'] as num).toDouble());
-            } else {
-              fetchedRackQty = 0.0;
-            }
-          }
-        } catch (e) {
-          print('Error fetching rack stock: $e');
-        }
-      }
-
       bsMaxQty.value = fetchedBatchQty;
 
-      // Construct Tooltip
+      // Construct Batch Tooltip
       final sb = StringBuffer();
       sb.writeln('Batch Stock: $fetchedBatchQty');
-      if (fetchedRackQty != null) {
-        sb.writeln('Rack Stock: $fetchedRackQty');
-      } else if (bsRackController.text.isNotEmpty) {
-        sb.writeln('Rack Stock: 0.0');
+      // Add Rack Info to this tooltip if available
+      if (rackStockTooltip.value != null) {
+        sb.writeln('\nRack Availability:');
+        sb.write(rackStockTooltip.value);
       }
       batchInfoTooltip.value = sb.toString().trim();
 
@@ -706,6 +716,9 @@ class DeliveryNoteFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         bsIsRackValid.value = true;
         // GlobalSnackbar.success(message: 'Rack validated');
+
+        // Re-run validation to check stock quantities against this new rack
+        validateSheet();
       } else {
         bsIsRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');
@@ -824,7 +837,6 @@ class DeliveryNoteFormController extends GetxController {
 
         if (result.batchNo != null) {
           try {
-            // Scan Logic: uses setWarehouse only as we don't have a rack yet
             final balanceResponse = await _apiProvider.getBatchWiseBalance(
                 itemData.itemCode,
                 result.batchNo!,
