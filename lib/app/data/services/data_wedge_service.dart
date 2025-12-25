@@ -6,6 +6,8 @@ import 'package:get/get.dart';
 class DataWedgeService extends GetxService {
   // Define the EventChannel name. Ensure this matches your MainActivity.kt
   static const EventChannel _eventChannel = EventChannel('com.ddmco.multimax/scan');
+  // New MethodChannel matching Kotlin
+  static const MethodChannel _methodChannel = MethodChannel('com.ddmco.multimax/command');
 
   StreamSubscription? _scanSubscription;
 
@@ -20,6 +22,19 @@ class DataWedgeService extends GetxService {
   void onInit() {
     super.onInit();
     _initDataWedgeListener();
+  }
+
+  /// Fetches the DataWedge version via MethodChannel.
+  /// Returns 'Unavailable' if timed out (e.g., on generic devices).
+  Future<String?> getVersion() async {
+    try {
+      final String? version = await _methodChannel
+          .invokeMethod<String>('getDWVersion')
+          .timeout(const Duration(milliseconds: 1500)); // 1.5s Timeout
+      return version;
+    } catch (e) {
+      return 'Unavailable';
+    }
   }
 
   void _initDataWedgeListener() {

@@ -10,9 +10,11 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val EVENT_CHANNEL = "com.ddmco.multimax/scan"
+    private val COMMAND_CHANNEL = "com.ddmco.multimax/command" // New Channel
 
     // Zebra DataWedge Constants
     private val ZEBRA_PROFILE_NAME = "MultimaxProfile"
@@ -21,11 +23,18 @@ class MainActivity : FlutterActivity() {
     // New Key for MultiBarcode/SimulScan Output
     private val ZEBRA_DATA_KEY_LIST = "com.symbol.datawedge.data_string_list"
 
+    // DataWedge API Constants (New)
+    private val DW_API_ACTION = "com.symbol.datawedge.api.ACTION"
+    private val DW_RESULT_ACTION = "com.symbol.datawedge.api.RESULT_ACTION"
+    private val DW_GET_VERSION = "com.symbol.datawedge.api.GET_VERSION_INFO"
+    private val DW_RESULT_VERSION_KEY = "com.symbol.datawedge.api.RESULT_GET_VERSION_INFO"
+
     // Netum / Generic Scanner Constants
     private val NETUM_INTENT_ACTION = "com.android.server.scannerservice.broadcast"
     private val NETUM_DATA_KEY = "scannerdata"
 
     private var eventSink: EventChannel.EventSink? = null
+    private var versionResult: MethodChannel.Result? = null // To hold the pending result
 
     // 1. Define Receiver as a class property so it persists
     private val scanReceiver = object : BroadcastReceiver() {
@@ -58,6 +67,21 @@ class MainActivity : FlutterActivity() {
                 if (!scanData.isNullOrEmpty()) {
                     eventSink?.success(scanData.trim())
                 }
+            } else if (action == DW_RESULT_ACTION) {
+                // --- Handle DataWedge Version Result ---
+                if (intent.hasExtra(DW_RESULT_VERSION_KEY)) {
+                    val bundle = intent.getBundleExtra(DW_RESULT_VERSION_KEY)
+                    val dwVersion = bundle?.getString("DATAWEDGE")
+
+                    if (versionResult != null) {
+                        if (dwVersion != null) {
+                            versionResult?.success(dwVersion)
+                        } else {
+                            versionResult?.error("UNAVAILABLE", "Version not found", null)
+                        }
+                        versionResult = null // Clear callback
+                    }
+                }
             }
         }
     }
@@ -77,6 +101,21 @@ class MainActivity : FlutterActivity() {
                 }
             }
         )
+
+        // New MethodChannel for Commands
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, COMMAND_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "getDWVersion") {
+                versionResult = result // Save result to answer later in Receiver
+
+                // Send API Intent
+                val i = Intent()
+                i.action = DW_API_ACTION
+                i.putExtra(DW_GET_VERSION, "") // Value is empty string per API specs
+                sendBroadcast(i)
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +125,7 @@ class MainActivity : FlutterActivity() {
         val filter = IntentFilter()
         filter.addAction(ZEBRA_INTENT_ACTION)
         filter.addAction(NETUM_INTENT_ACTION)
+        filter.addAction(DW_RESULT_ACTION) // Register API Result Action
         filter.addCategory(Intent.CATEGORY_DEFAULT)
 
         try {

@@ -4,6 +4,10 @@ import 'package:path/path.dart';
 
 class DatabaseService extends GetxService {
   late Database _db;
+  String _dbPath = '';
+
+  // Expose the path for debugging/about screen
+  String get dbPath => _dbPath;
 
   // Configuration Keys
   static const String serverUrlKey = 'server_url';
@@ -16,6 +20,7 @@ class DatabaseService extends GetxService {
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'app_config.db');
+    _dbPath = path; // Store the full path
 
     return await openDatabase(
       path,

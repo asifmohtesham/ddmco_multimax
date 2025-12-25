@@ -157,6 +157,14 @@ class AppNavDrawer extends StatelessWidget {
                 ],
               ),
             ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About'),
+              onTap: () {
+                Get.back(); // Close drawer
+                Get.toNamed(AppRoutes.ABOUT);
+              },
+            ),
 
             // ... (Rest of existing footer code)
             const Padding(

@@ -25,6 +25,7 @@ abstract class AppRoutes {
   static const BATCH_FORM = _Paths.BATCH_FORM;
   static const MATERIAL_REQUEST = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
+  static const ABOUT = '/about';
 }
 
 abstract class _Paths {

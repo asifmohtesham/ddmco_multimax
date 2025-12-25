@@ -53,6 +53,8 @@ import 'package:multimax/app/modules/material_request/material_request_binding.d
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/material_request/material_request_binding.dart';
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
+import 'package:multimax/app/modules/about/about_binding.dart';
+import 'package:multimax/app/modules/about/about_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -199,6 +201,11 @@ class AppPages {
       page: () => const MaterialRequestFormScreen(),
       binding: MaterialRequestFormBinding(),
       transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ABOUT,
+      page: () => const AboutScreen(),
+      binding: AboutBinding(),
     ),
   ];
 }
