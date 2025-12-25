@@ -11,6 +11,9 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
+    // Reset guide flag when user opens the sheet
+    controller.showServerGuide.value = false;
+
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(24.0),
@@ -148,15 +151,36 @@ class LoginScreen extends GetView<LoginController> {
               ),
             ),
           ),
-          // Settings Icon Positioned at top right
+
+          // Settings Icon with Guide Overlay
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             right: 16,
-            child: IconButton(
-              icon: const Icon(Icons.settings, color: Colors.grey),
-              tooltip: 'Server Configuration',
-              onPressed: () => _showServerConfigSheet(context),
-            ),
+            child: Obx(() => Stack(
+              alignment: Alignment.center,
+              children: [
+                // Pulse effect or guide background if calling for attention
+                if (controller.showServerGuide.value)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.orange.withValues(alpha: 0.3),
+                      border: Border.all(color: Colors.orange, width: 2),
+                    ),
+                  ),
+
+                IconButton(
+                  icon: Icon(
+                      Icons.settings,
+                      color: controller.showServerGuide.value ? Colors.orange : Colors.grey
+                  ),
+                  tooltip: 'Server Configuration',
+                  onPressed: () => _showServerConfigSheet(context),
+                ),
+              ],
+            )),
           ),
         ],
       ),

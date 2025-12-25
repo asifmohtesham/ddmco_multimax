@@ -4,6 +4,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -31,6 +32,16 @@ class ApiProvider {
 
   Future<void> _initDio() async {
     if (_dioInitialised) return;
+
+    // Load URL from SQLite Database
+    if (Get.isRegistered<DatabaseService>()) {
+      final dbService = Get.find<DatabaseService>();
+      final storedUrl = await dbService.getConfig(DatabaseService.serverUrlKey);
+      if (storedUrl != null && storedUrl.isNotEmpty) {
+        _baseUrl = storedUrl;
+      }
+    }
+
     if (Get.isRegistered<StorageService>()) {
       final storedUrl = Get.find<StorageService>().getBaseUrl();
       if (storedUrl != null && storedUrl.isNotEmpty) {

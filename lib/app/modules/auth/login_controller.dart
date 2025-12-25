@@ -5,11 +5,14 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class LoginController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final AuthenticationController _authController = Get.find<AuthenticationController>();
+
+  final DatabaseService _dbService = Get.find<DatabaseService>();
 
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
@@ -21,6 +24,9 @@ class LoginController extends GetxController {
 
   var isLoading = false.obs;
   var isPasswordHidden = true.obs;
+
+  // UI State for Guide
+  var showServerGuide = false.obs;
 
   @override
   void onInit() {
@@ -67,6 +73,8 @@ class LoginController extends GetxController {
       if (response.statusCode == 200) {
         await _confirmAndSave(url); // Success path
         GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
+        // Disable guide if successful
+        showServerGuide.value = false;
       } else {
         throw Exception('Invalid response from server (Status: ${response.statusCode})');
       }
@@ -93,12 +101,11 @@ class LoginController extends GetxController {
 
   // Helper function to save and close
   Future<void> _confirmAndSave(String url) async {
-    if (Get.isRegistered<StorageService>()) {
-      await Get.find<StorageService>().saveBaseUrl(url);
-    }
+    // Save to SQLite
+    await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
     serverUrlController.text = url;
-    _apiProvider.setBaseUrl(url); // Ensure provider is updated
-    Get.back(); // Close the BottomSheet
+    _apiProvider.setBaseUrl(url);
+    Get.back();
   }
 
   @override
@@ -131,6 +138,24 @@ class LoginController extends GetxController {
   }
 
   Future<void> loginUser() async {
+    // Check if Server URL is configured in DB
+    final storedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
+
+    if (storedUrl == null || storedUrl.isEmpty) {
+      showServerGuide.value = true;
+      Get.snackbar(
+        "Configuration Required",
+        "Please set the Server URL using the settings icon above before logging in.",
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.orangeAccent,
+        colorText: Colors.white,
+        icon: const Icon(Icons.settings_suggest, color: Colors.white),
+        duration: const Duration(seconds: 5),
+        margin: const EdgeInsets.all(16),
+      );
+      return;
+    }
+
     if (loginFormKey.currentState!.validate()) {
       isLoading.value = true;
       try {
@@ -140,9 +165,7 @@ class LoginController extends GetxController {
         );
 
         if (response.statusCode == 200 && response.data?['message'] == "Logged In") {
-
           await _authController.fetchUserDetails();
-
           if (_authController.currentUser.value != null) {
             _authController.processSuccessfulLogin(_authController.currentUser.value!);
           } else {
@@ -155,7 +178,6 @@ class LoginController extends GetxController {
             );
             _authController.processSuccessfulLogin(user);
           }
-
         } else if (response.statusCode == 401 || response.statusCode == 403) {
           GlobalSnackbar.error(title: 'Login Failed', message: response.data?['message'] ?? 'Invalid credentials.');
         } else {

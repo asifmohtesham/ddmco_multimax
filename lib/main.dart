@@ -5,15 +5,21 @@ import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart'; // Import AppRoutes
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/data/services/database_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // --- Initialize Services & Global Controllers ---
+  // --- Initialise Services & Global Controllers ---
+  // Initialise SQLite Database Service first
+  await Get.putAsync<DatabaseService>(() => DatabaseService().init());
+  // Initialise API Provider (which now depends on DatabaseService)
+  await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
   // Removed explicit put of HomeController to avoid dependency issues. 
-  // It will be initialized via HomeBinding when needed.
+  // It will be initialised via HomeBinding when needed.
 
   // --- Determine Initial Route ---
   final authController = Get.find<AuthenticationController>();
