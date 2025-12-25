@@ -4,14 +4,12 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class LoginController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final AuthenticationController _authController = Get.find<AuthenticationController>();
-
   final DatabaseService _dbService = Get.find<DatabaseService>();
 
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
@@ -20,8 +18,11 @@ class LoginController extends GetxController {
 
   // Server Config
   final TextEditingController serverUrlController = TextEditingController();
-  var isCheckingConnection = false.obs;
 
+  // Observable string for UI indication
+  var currentServerUrl = ''.obs;
+
+  var isCheckingConnection = false.obs;
   var isLoading = false.obs;
   var isPasswordHidden = true.obs;
 
@@ -34,15 +35,19 @@ class LoginController extends GetxController {
     _loadSavedServerUrl();
   }
 
-  void _loadSavedServerUrl() {
-    if (Get.isRegistered<StorageService>()) {
-      final savedUrl = Get.find<StorageService>().getBaseUrl();
-      if (savedUrl != null) {
-        serverUrlController.text = savedUrl;
-      } else {
-        serverUrlController.text = ApiProvider.defaultBaseUrl; // Changed
-      }
-    }
+  Future<void> _loadSavedServerUrl() async {
+    final savedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
+    // Use saved URL or fallback to default
+    final targetUrl = savedUrl ?? ApiProvider.defaultBaseUrl;
+
+    // Populate the Text Field Controller
+    serverUrlController.text = targetUrl;
+
+    // Update the observable for the UI label
+    currentServerUrl.value = targetUrl;
+
+    // Ensure API Provider is synced
+    _apiProvider.setBaseUrl(targetUrl);
   }
 
   Future<void> saveServerConfiguration() async {
@@ -71,7 +76,7 @@ class LoginController extends GetxController {
       final response = await dio.get('$url/api/method/ping');
 
       if (response.statusCode == 200) {
-        await _confirmAndSave(url); // Success path
+        await _confirmAndSave(url);
         GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
         // Disable guide if successful
         showServerGuide.value = false;
@@ -80,8 +85,7 @@ class LoginController extends GetxController {
       }
 
     } catch (e) {
-      // Connection Failed: Ask user if they want to force it
-      isCheckingConnection.value = false; // Stop loading before showing dialog
+      isCheckingConnection.value = false;
       Get.defaultDialog(
         title: "Connection Failed",
         middleText: "Could not verify connection to the server.\n\nError: $e\n\nDo you want to save this URL anyway?",
@@ -89,9 +93,10 @@ class LoginController extends GetxController {
         textCancel: "Cancel",
         confirmTextColor: Colors.white,
         onConfirm: () async {
-          Get.back(); // Close dialog
-          await _confirmAndSave(url); // Force save
+          Get.back();
+          await _confirmAndSave(url);
           GlobalSnackbar.success(title: 'Saved', message: 'Server URL saved (Validation skipped)');
+          showServerGuide.value = false;
         },
       );
     } finally {
@@ -104,6 +109,7 @@ class LoginController extends GetxController {
     // Save to SQLite
     await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
     serverUrlController.text = url;
+    currentServerUrl.value = url; // Update the UI label
     _apiProvider.setBaseUrl(url);
     Get.back();
   }
@@ -117,25 +123,17 @@ class LoginController extends GetxController {
   }
 
   String? validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your email';
-    }
+    if (value == null || value.isEmpty) return 'Please enter your email';
     return null;
   }
 
   String? validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your password';
-    }
-    if (value.length < 6) {
-      return 'Password must be at least 6 characters';
-    }
+    if (value == null || value.isEmpty) return 'Please enter your password';
+    if (value.length < 6) return 'Password must be at least 6 characters';
     return null;
   }
 
-  void togglePasswordVisibility() {
-    isPasswordHidden.value = !isPasswordHidden.value;
-  }
+  void togglePasswordVisibility() => isPasswordHidden.value = !isPasswordHidden.value;
 
   Future<void> loginUser() async {
     // Check if Server URL is configured in DB
@@ -196,7 +194,6 @@ class LoginController extends GetxController {
       GlobalSnackbar.error(message: 'Please enter your email address first');
       return;
     }
-
     isLoading.value = true;
     try {
       final response = await _apiProvider.resetPassword(emailController.text.trim());
