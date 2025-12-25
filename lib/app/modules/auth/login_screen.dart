@@ -25,7 +25,7 @@ class LoginScreen extends GetView<LoginController> {
             children: [
               Text('Connect to Instance', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('Enter the URL of your ERPNext instance.', style: TextStyle(color: Colors.grey)),
+              const Text('Enter the URL of your instance.', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 24),
               TextField(
                 controller: controller.serverUrlController,
