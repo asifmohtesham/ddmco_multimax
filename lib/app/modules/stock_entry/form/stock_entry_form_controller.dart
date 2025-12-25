@@ -366,34 +366,62 @@ class StockEntryFormController extends GetxController {
     return true;
   }
 
+  /// Checks if the entered quantity exceeds the remaining quantity in the Material Request.
   bool _checkMrConstraints() {
-    if (mrReferenceItems.isEmpty) return true;
+    // If we have no reference items loaded, we cannot validate, so we assume true (or handle as error depending on strictness).
+    if (mrReferenceItems.isEmpty) {
+      print('Warning: mrReferenceItems is empty, skipping constraint check.');
+      return true;
+    }
 
+    // Step 1: Find the item in the Reference List (loaded from the MR document)
     final ref = mrReferenceItems.firstWhereOrNull((r) =>
     r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
 
+    // Step 2: If item exists in MR, validate quantity
     if (ref != null) {
       final double allowed = (ref['qty'] as num).toDouble();
-      bsValidationMaxQty.value = allowed;
+      bsValidationMaxQty.value = allowed; // Update UI hint
 
       final current = double.tryParse(bsQtyController.text) ?? 0;
+
+      print('MR Constraint Check: Item $currentItemCode | Current: $current | Allowed: $allowed');
+
+      // Failure: User is trying to return/transfer more than the MR allowed.
       if (current > allowed) {
+        print('[Context Failure] MR Qty Exceeded');
         return false;
       }
+    } else {
+      // Failure Check (Optional): If strict, you might want to return false here if the item isn't in the MR at all.
+      // Currently, it allows items not in the MR (returns true).
+      print('Info: Item $currentItemCode not found in MR reference list.');
     }
+
     return true;
   }
 
-  void _validatePosConstraints() {
-    if (selectedStockEntryType.value != 'Material Issue') return;
+  /// Validates POS Upload specific logic.
+  bool _checkPosConstraints() {
+    // Only applies to 'Material Issue' types (Selling logic)
+    if (selectedStockEntryType.value != 'Material Issue') return true;
 
+    // Step 1: Check if Serial is missing
     if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
+
+      // Step 2: Bypass for 'MAT-STE-' references (Legacy/Manual overrides)
       if (!customReferenceNoController.text.startsWith('MAT-STE-')) {
+
+        // Step 3: Failure Condition
+        // If we have Serial Options available (fetched from API) but none is selected, FAIL.
+        // This forces the user to select which Invoice/Serial this item belongs to.
         if (posUploadSerialOptions.isNotEmpty) {
-          isSheetValid.value = false;
+          print('[Context Failure] POS Upload: Serial Options available (${posUploadSerialOptions.length}) but none selected.');
+          return false;
         }
       }
     }
+    return true;
   }
 
   StockEntryItem _enrichItemWithSourceData(StockEntryItem item) {
@@ -520,66 +548,139 @@ class StockEntryFormController extends GetxController {
   }
 
   void validateSheet() {
-    rackError.value = null;
+    // Aggregates validation results from isolated helpers
+    // rackError is managed internally by _isValidRacks to preserve async stock errors
+    log(name: 'Sheet', 'Validating sheet...');
+    log(name: 'Sheet Qty', _isValidQty().toString());
+    log(name: 'Sheet Batch', _isValidBatch().toString());
+    log(name: 'Sheet Context', _isValidContext().toString());
+    log(name: 'Sheet Racks', _isValidRacks().toString());
+    isSheetValid.value = _isValidQty() &&
+        _isValidBatch() &&
+        _isValidContext() &&
+        _isValidRacks() &&
+        _hasChanges();
+  }
+
+  bool _isValidQty() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) { isSheetValid.value = false; return; }
+    if (qty <= 0) return false;
+    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
+    return true;
+  }
 
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) { isSheetValid.value = false; return; }
+  bool _isValidBatch() {
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
+    // MR Requirement: Batch cannot be empty if context is Material Request
+    if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
+    return true;
+  }
 
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) { isSheetValid.value = false; return; }
+  /// Validates the context-specific rules for Material Requests or POS Uploads.
+  /// If this returns false, the [Sheet] validation fails.
+  bool _isValidContext() {
+    print('--- Checking Context Validity ---');
+    print('Current Entry Source: $entrySource');
 
+    // SCENARIO 1: Material Request
+    // Rules: Must have a valid Serial (Invoice/Ref), Item Code, and Qty within limits.
     if (entrySource == StockEntrySource.materialRequest) {
-      // Must have serial, item code, batch, rack, and qty set
+
+      // Step 1: Check Serial Number
+      // Why it fails: The UI dropdown for 'Invoice Serial No' is empty or unselected.
+      // Note: For MRs, we often default this to '0'. If it's null/empty, we block it.
       if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
-        isSheetValid.value = false;
-        return;
+        print('[Context Failure] Material Request: selectedSerial is empty/null');
+        return false;
       }
+
+      // Step 2: Check Item Code
+      // Why it fails: The scan result didn't populate currentItemCode correctly.
       if (currentItemCode.isEmpty) {
-        isSheetValid.value = false;
-        return;
-      }
-      if (bsBatchController.text.isEmpty) {
-        isSheetValid.value = false;
-        return;
+        print('[Context Failure] Material Request: currentItemCode is empty');
+        return false;
       }
 
-      if (!_checkMrConstraints()) {
-        isSheetValid.value = false;
-        return;
+      // Step 3: Check Limits vs Material Request Reference
+      // See _checkMrConstraints below for details.
+      bool mrValid = _checkMrConstraints();
+      if (!mrValid) {
+        print('[Context Failure] Material Request: _checkMrConstraints returned false');
       }
-    } else if (entrySource == StockEntrySource.posUpload) {
-      _validatePosConstraints();
-      if (!isSheetValid.value) return;
+      return mrValid;
     }
 
+    // SCENARIO 2: POS Upload (Point of Sale)
+    // Rules: Must link to a specific invoice serial if available.
+    else if (entrySource == StockEntrySource.posUpload) {
+      bool posValid = _checkPosConstraints();
+      if (!posValid) {
+        print('[Context Failure] POS Upload: _checkPosConstraints returned false');
+      }
+      return posValid;
+    }
+
+    // SCENARIO 3: Manual Entry
+    // No special context rules apply.
+    print('--- Context Valid (Manual) ---');
+    return true;
+  }
+
+  bool _isValidRacks() {
     final type = selectedStockEntryType.value;
-    final requiresSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-    final requiresTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final requiresSource = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+    final requiresTarget = ['Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
 
+    // 1. Source Rack Validation
     if (requiresSource) {
-      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) { isSheetValid.value = false; return; }
-    }
-    if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) { isSheetValid.value = false; return; }
-    }
-    if (requiresSource && requiresTarget) {
-      if (bsSourceRackController.text.trim() == bsTargetRackController.text.trim()) {
-        isSheetValid.value = false;
-        rackError.value = "Source and Target Racks cannot be the same";
-        return;
+      if (bsSourceRackController.text.isNotEmpty) {
+        // If rack entered, it must be valid (async check sets isSourceRackValid)
+        if (!isSourceRackValid.value) return false;
+      } else {
+        // If rack empty, fallback to Global Warehouse
+        if (selectedFromWarehouse.value == null || selectedFromWarehouse.value!.isEmpty) {
+          rackError.value = 'Source Warehouse or Rack required';
+          return false;
+        } else if (rackError.value == 'Source Warehouse or Rack required' || rackError.value == 'No Warehouse Selected') {
+          // Clear specific errors if resolved by warehouse selection
+          rackError.value = null;
+        }
       }
     }
 
-    if (currentItemNameKey.value != null) {
-      bool isChanged = false;
-      if (bsQtyController.text != _initialQty) isChanged = true;
-      if (bsBatchController.text != _initialBatch) isChanged = true;
-      if (bsSourceRackController.text != _initialSourceRack) isChanged = true;
-      if (bsTargetRackController.text != _initialTargetRack) isChanged = true;
-      if (!isChanged) { isSheetValid.value = false; return; }
+    // 2. Target Rack Validation
+    if (requiresTarget) {
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) return false;
     }
 
-    isSheetValid.value = true;
+    // 3. Cross-Check (Source != Target)
+    if (requiresSource && requiresTarget) {
+      final source = bsSourceRackController.text.trim();
+      final target = bsTargetRackController.text.trim();
+      if (source.isNotEmpty && source == target) {
+        rackError.value = "Source and Target Racks cannot be the same";
+        return false;
+      }
+    }
+
+    // Clear cross-check error if valid
+    if (rackError.value == "Source and Target Racks cannot be the same") {
+      rackError.value = null;
+    }
+
+    return true;
+  }
+
+  bool _hasChanges() {
+    // New items are always considered "changed" / valid for submission
+    if (currentItemNameKey.value == null) return true;
+
+    if (bsQtyController.text != _initialQty) return true;
+    if (bsBatchController.text != _initialBatch) return true;
+    if (bsSourceRackController.text != _initialSourceRack) return true;
+    if (bsTargetRackController.text != _initialTargetRack) return true;
+
+    return false;
   }
 
   void _openQtySheet({String? scannedBatch}) {
@@ -855,19 +956,40 @@ class StockEntryFormController extends GetxController {
   Future<void> _updateAvailableStock() async {
     final type = selectedStockEntryType.value;
     final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+    // If not a source operation, we don't need to validate stock balance against a warehouse
     if (!isSourceOp) {
       bsMaxQty.value = 999999.0;
       return;
     }
 
-    String? warehouse = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    // 1. Determine the effective warehouse
+    // Default to the 'From Warehouse' selected in the Details tab
+    String? effectiveWarehouse = selectedFromWarehouse.value;
+
+    // If a specific warehouse is derived from the scanned rack, use it
+    if (derivedSourceWarehouse.value != null && derivedSourceWarehouse.value!.isNotEmpty) {
+      effectiveWarehouse = derivedSourceWarehouse.value;
+    }
+
+    // 2. Validate Warehouse Existence
+    // If no warehouse is determined (neither globally selected nor derived), we cannot fetch stock.
+    // This prevents the "Failed to fetch Stock Balance report" error.
+    if (effectiveWarehouse == null || effectiveWarehouse.isEmpty) {
+      bsMaxQty.value = 0.0;
+      // Optional: You might want to set a warning string here if needed,
+      // but for now we just silently prevent the crash and 0 out the qty.
+      rackError.value = 'No Warehouse Selected';
+      return;
+    }
+
     String batch = bsBatchController.text.trim();
     String rack = bsSourceRackController.text.trim();
 
     try {
       final response = await _apiProvider.getStockBalance(
           itemCode: currentItemCode,
-          warehouse: warehouse,
+          warehouse: effectiveWarehouse,
           batchNo: batch.isNotEmpty ? batch : null
       );
 
@@ -876,12 +998,16 @@ class StockEntryFormController extends GetxController {
         double totalBalance = 0.0;
         for (var row in result) {
           if (row is! Map) continue;
+          // Filter by rack if specified in the Stock Balance row results
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
         }
         bsMaxQty.value = totalBalance;
+
+        // Validation: If rack was specified but result is 0/neg
         if (rack.isNotEmpty && totalBalance <= 0) {
-          GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack');
+          rackError.value = 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)';
+          GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)');
           isSourceRackValid.value = false;
         }
       }
@@ -889,7 +1015,7 @@ class StockEntryFormController extends GetxController {
       print('Failed to fetch stock balance: $e');
       GlobalSnackbar.error(message: e.toString().contains('Session Defaults')
           ? 'Please set Session Defaults in Dashboard'
-          : 'Failed to fetch stock');
+          : 'Failed to fetch stock for $effectiveWarehouse');
     }
   }
 
@@ -937,26 +1063,43 @@ class StockEntryFormController extends GetxController {
 
   Future<void> validateRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
-      if (isSource) isSourceRackValid.value = false;
-      else isTargetRackValid.value = false;
+      if (isSource) {
+        isSourceRackValid.value = false;
+        derivedSourceWarehouse.value = null; // Reset derived warehouse
+      } else {
+        isTargetRackValid.value = false;
+        derivedTargetWarehouse.value = null;
+      }
       validateSheet();
       return;
     }
+
+    // Reset derived warehouse before parsing to ensure old values don't persist
+    // if the new rack string doesn't imply a warehouse.
+    if (isSource) derivedSourceWarehouse.value = null;
+    else derivedTargetWarehouse.value = null;
+
+    // Parse Warehouse from Rack Code (Format: ZONE-WH-RACK or similar)
+    // Adjust logic based on actual rack code naming convention
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
+        // Example logic: reconstructing warehouse name from rack parts
         final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
         if (isSource) derivedSourceWarehouse.value = wh;
         else derivedTargetWarehouse.value = wh;
       }
     }
+
     if (isSource) isValidatingSourceRack.value = true;
     else isValidatingTargetRack.value = true;
+
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
+          // Refetch stock availability now that we have a valid rack (and potentially a new derived warehouse)
           await _updateAvailableStock();
         } else {
           isTargetRackValid.value = true;
