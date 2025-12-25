@@ -72,6 +72,7 @@ class HomeController extends GetxController {
   var fulfillmentPosUploads = <PosUpload>[].obs;
   var fulfillmentSearchQuery = ''.obs;
   List<PosUpload> _allFulfillmentUploads = [];
+  List<String> _fulfillmentPrefixFilters = [];
 
   List<BottomNavigationBarItem> get homeBottomBarItems => [
     const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
@@ -417,7 +418,9 @@ class HomeController extends GetxController {
       if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         _allFulfillmentUploads = (data as List).map((e)=>PosUpload.fromJson(e)).toList();
-        fulfillmentPosUploads.assignAll(_allFulfillmentUploads);
+
+        // Re-apply filters to the fresh data
+        filterFulfillmentList(fulfillmentSearchQuery.value);
       }
     } catch(e){
       GlobalSnackbar.error(message: 'Error fetching fulfillment list');
@@ -426,9 +429,36 @@ class HomeController extends GetxController {
     }
   }
 
+  void setFulfillmentPrefixFilter(List<String> prefixes) {
+    _fulfillmentPrefixFilters = prefixes;
+    // Clear search query when switching modes to avoid confusion
+    fulfillmentSearchQuery.value = '';
+    // Apply filters immediately if data exists
+    if (_allFulfillmentUploads.isNotEmpty) {
+      filterFulfillmentList('');
+    }
+  }
+
   void filterFulfillmentList(String query) {
-    if(query.isEmpty) fulfillmentPosUploads.assignAll(_allFulfillmentUploads);
-    else fulfillmentPosUploads.assignAll(_allFulfillmentUploads.where((d) => d.name.toLowerCase().contains(query.toLowerCase()) || d.customer.toLowerCase().contains(query.toLowerCase())).toList());
+    fulfillmentSearchQuery.value = query;
+    List<PosUpload> filtered = _allFulfillmentUploads;
+
+    // 1. Apply Prefix Filter (if any)
+    if (_fulfillmentPrefixFilters.isNotEmpty) {
+      filtered = filtered.where((doc) {
+        return _fulfillmentPrefixFilters.any((prefix) => doc.name.startsWith(prefix));
+      }).toList();
+    }
+
+    // 2. Apply Search Query
+    if (query.isNotEmpty) {
+      filtered = filtered.where((d) =>
+      d.name.toLowerCase().contains(query.toLowerCase()) ||
+          d.customer.toLowerCase().contains(query.toLowerCase())
+      ).toList();
+    }
+
+    fulfillmentPosUploads.assignAll(filtered);
   }
 
   Future<void> handleFulfillmentSelection(PosUpload posUpload) async {

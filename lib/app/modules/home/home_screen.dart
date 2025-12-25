@@ -58,7 +58,7 @@ class HomeScreen extends GetView<HomeController> {
                     _buildUserContextCard(context),
                     const SizedBox(height: 24),
 
-                    // 1. Quick Access Grid (Revamped from Bottom Sheet)
+                    // 1. Quick Access Grid
                     Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     _buildQuickAccessGrid(context),
@@ -136,16 +136,9 @@ class HomeScreen extends GetView<HomeController> {
           ),
         ],
       ),
-      // Dedicated Scan Button
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () => controller.barcodeController.clear(), // Focus scan logic
-      //   backgroundColor: theme.primaryColor,
-      //   child: const Icon(Icons.qr_code_scanner, size: 28),
-      // ),
     );
   }
 
-  // New: Grid for immediate access to modules
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
         builder: (context, constraints) {
@@ -156,16 +149,26 @@ class HomeScreen extends GetView<HomeController> {
             children: [
               _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
                       () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
-              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth,
-                      () => Get.toNamed(AppRoutes.DELIVERY_NOTE, arguments: {'openCreate': true})),
+
+              // Modified: Delivery Note now opens the selection sheet with KA/ML filter
+              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
+                controller.setFulfillmentPrefixFilter(['KA', 'ML']);
+                _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
+              }),
+
               _buildQuickActionItem(context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
                       () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})),
               _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
                       () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
-              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth,
-                      () => _showFulfillmentSelectionSheet(context)),
+
+              // Modified: Fulfilment POS explicitly clears filters
+              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
+                controller.setFulfillmentPrefixFilter([]); // Empty list = No filter
+                _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
+              }),
+
               _buildQuickActionItem(context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
-                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }), // Placeholder for expanded menu
+                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }),
             ],
           );
         }
@@ -207,7 +210,7 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
-  void _showFulfillmentSelectionSheet(BuildContext context) {
+  void _showFulfillmentSelectionSheet(BuildContext context, {String title = 'Select POS Upload'}) {
     controller.fetchFulfillmentPosUploads();
     Get.bottomSheet(
       SafeArea(
@@ -228,7 +231,7 @@ class HomeScreen extends GetView<HomeController> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Select POS Upload', style: Theme.of(context).textTheme.titleLarge),
+                        Text(title, style: Theme.of(context).textTheme.titleLarge),
                         IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
                       ],
                     ),
