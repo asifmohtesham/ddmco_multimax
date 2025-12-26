@@ -6,15 +6,15 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
 class AppNavDrawer extends StatelessWidget {
-  AppNavDrawer({super.key});
-
-  // Reactive state to manage the visibility of the user menu using GetX
-  final RxBool _isUserMenuOpen = false.obs;
+  // Restored const constructor to fix compilation errors in other files
+  const AppNavDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {
     final HomeController homeController = Get.find<HomeController>();
     final AuthenticationController authController = Get.find<AuthenticationController>();
+    // Inject a local controller to manage UI state while keeping the widget const
+    final _AppNavDrawerController drawerController = Get.put(_AppNavDrawerController());
     final String currentRoute = Get.currentRoute;
 
     // Reusable Skeleton Instance
@@ -50,9 +50,9 @@ class AppNavDrawer extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Tapping details toggles the menu view state
+                // Tapping details toggles the menu view state via the controller
                 onDetailsPressed: () {
-                  _isUserMenuOpen.toggle();
+                  drawerController.toggleUserMenu();
                 },
                 arrowColor: Colors.white,
               );
@@ -61,7 +61,7 @@ class AppNavDrawer extends StatelessWidget {
             // 2. Scrollable Menu Items (Reactive Switch)
             Expanded(
               child: Obx(() {
-                if (_isUserMenuOpen.value) {
+                if (drawerController.isUserMenuOpen.value) {
                   // --- USER MENU (Revealed on Header Tap) ---
                   return ListView(
                     padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -220,6 +220,17 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
+/// Internal Controller to handle Drawer State (User Menu toggle)
+/// allows AppNavDrawer to remain a const Widget.
+class _AppNavDrawerController extends GetxController {
+  final isUserMenuOpen = false.obs;
+
+  void toggleUserMenu() {
+    isUserMenuOpen.toggle();
+  }
+}
+
+// ... (Helper classes remain unchanged)
 class _SkeletonDrawerItem extends StatelessWidget {
   const _SkeletonDrawerItem();
 

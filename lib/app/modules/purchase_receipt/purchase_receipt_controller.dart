@@ -140,7 +140,7 @@ class PurchaseReceiptController extends GetxController {
   Future<void> fetchPurchaseOrdersForSelection() async {
     isFetchingPOs.value = true;
     try {
-      final response = await _poProvider.getPurchaseOrders(limit: 50, filters: {'docstatus': 1, 'status': ['!=', 'Completed']}); // Only Submitted & Not Completed
+      final response = await _poProvider.getPurchaseOrders(limit: 0, filters: {'docstatus': 1, 'status': ['!=', 'Closed']}); // Only Submitted & Not Completed
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         _allFetchedPOs = data.map((json) => PurchaseOrder.fromJson(json)).toList();
