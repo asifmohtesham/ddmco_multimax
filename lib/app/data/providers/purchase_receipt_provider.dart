@@ -5,8 +5,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class PurchaseReceiptProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    return _apiProvider.getPurchaseReceipts(limit: limit, limitStart: limitStart, filters: filters);
+  Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async {
+    return _apiProvider.getPurchaseReceipts(limit: limit, limitStart: limitStart, filters: filters, orderBy: orderBy);
   }
 
   Future<Response> getPurchaseReceipt(String name) async {

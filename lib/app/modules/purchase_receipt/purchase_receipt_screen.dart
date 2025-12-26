@@ -8,6 +8,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
+import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_filter_bottom_sheet.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
   const PurchaseReceiptScreen({super.key});
@@ -46,55 +47,6 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterDialog(BuildContext context) {
-    final supplierController = TextEditingController(text: controller.activeFilters['supplier']);
-    String? selectedStatus = controller.activeFilters['status'];
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter Purchase Receipts'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: supplierController,
-              decoration: const InputDecoration(labelText: 'Supplier'),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: ['Draft', 'Submitted', 'Completed', 'Cancelled']
-                  .map((status) => DropdownMenuItem(value: status, child: Text(status)))
-                  .toList(),
-              onChanged: (value) => selectedStatus = value,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.clearFilters();
-              Get.back();
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final filters = {
-                if (supplierController.text.isNotEmpty) 'supplier': supplierController.text,
-                if (selectedStatus != null) 'status': selectedStatus,
-              };
-              controller.applyFilters(filters);
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return GenericListPage(
@@ -106,10 +58,24 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
       searchHint: 'Search...',
       onSearch: null, // Add search logic to controller if needed
       actions: [
-        IconButton(
-          icon: const Icon(Icons.filter_alt_outlined),
-          onPressed: () => _showFilterDialog(context),
-        ),
+        Obx(() {
+          final count = controller.activeFilters.length;
+          return IconButton(
+            icon: Badge(
+              isLabelVisible: count > 0,
+              label: Text('$count'),
+              child: Icon(
+                Icons.filter_list,
+                color: count > 0 ? Colors.amber : null,
+              ),
+            ),
+            onPressed: () => Get.bottomSheet(
+              const PurchaseReceiptFilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            ),
+          );
+        }),
       ],
       emptyTitle: 'No Purchase Receipts',
       onClearFilters: controller.activeFilters.isNotEmpty ? controller.clearFilters : null,

@@ -18,6 +18,10 @@ class PurchaseReceiptController extends GetxController {
   final int _limit = 20;
   int _currentPage = 0;
 
+  // Sorting State
+  var sortField = 'creation'.obs;
+  var sortOrder = 'desc'.obs;
+
   var expandedReceiptName = ''.obs;
   var isLoadingDetails = false.obs;
   final _detailedReceiptsCache = <String, PurchaseReceipt>{}.obs;
@@ -28,7 +32,7 @@ class PurchaseReceiptController extends GetxController {
   var isFetchingPOs = false.obs;
   var purchaseOrdersForSelection = <PurchaseOrder>[].obs;
   List<PurchaseOrder> _allFetchedPOs = [];
-  var poSearchQuery = ''.obs; // Added for filtering
+  var poSearchQuery = ''.obs;
 
   PurchaseReceipt? get detailedReceipt => _detailedReceiptsCache[expandedReceiptName.value];
 
@@ -46,7 +50,11 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
-  // ... (Existing Filters, Sorting, Fetch logic unchanged) ...
+  void setSort(String field, String order) {
+    sortField.value = field;
+    sortOrder.value = order;
+    fetchPurchaseReceipts(isLoadMore: false, clear: true);
+  }
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -55,9 +63,9 @@ class PurchaseReceiptController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    // Reset sort to default if desired, or keep user preference. keeping preference here.
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
-
 
   Future<void> fetchPurchaseReceipts({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
@@ -72,11 +80,16 @@ class PurchaseReceiptController extends GetxController {
     }
 
     try {
+      // FIX: Do not mix order_by into filters. Pass it separately.
+      final orderBy = '${sortField.value} ${sortOrder.value}';
+
       final response = await _provider.getPurchaseReceipts(
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
+        orderBy: orderBy,       // Pass sorting here
       );
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newReceipts = data.map((json) => PurchaseReceipt.fromJson(json)).toList();
@@ -136,11 +149,10 @@ class PurchaseReceiptController extends GetxController {
   }
 
   // --- Creation Logic ---
-
   Future<void> fetchPurchaseOrdersForSelection() async {
     isFetchingPOs.value = true;
     try {
-      final response = await _poProvider.getPurchaseOrders(limit: 0, filters: {'docstatus': 1, 'status': ['!=', 'Closed']}); // Only Submitted & Not Completed
+      final response = await _poProvider.getPurchaseOrders(limit: 0, filters: {'docstatus': 1, 'status': ['!=', 'Closed']});
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         _allFetchedPOs = data.map((json) => PurchaseOrder.fromJson(json)).toList();
@@ -174,7 +186,6 @@ class PurchaseReceiptController extends GetxController {
     });
   }
 
-  // Moved from Screen
   void openCreateDialog() {
     fetchPurchaseOrdersForSelection();
 
