@@ -55,6 +55,12 @@ class _ItemScreenState extends State<ItemScreen> {
       data: controller.displayedItems,
       onRefresh: () => controller.fetchItems(clear: true),
       scrollController: _scrollController,
+
+      // Global API Search Configuration
+      searchDoctype: 'Item',
+      searchRoute: AppRoutes.ITEM_FORM,
+
+      // Local List Search
       onSearch: controller.onSearchChanged,
       searchHint: 'Search Items (Name, Code, Desc...)',
 

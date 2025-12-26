@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
 class GenericListPage extends StatelessWidget {
   final String title;
@@ -16,6 +17,10 @@ class GenericListPage extends StatelessWidget {
   final Function(String)? onSearch;
   final String searchHint;
   final Widget? filterHeader;
+
+  // Global API Search Configuration
+  final String? searchDoctype;
+  final String? searchRoute;
 
   // Empty State configuration
   final String emptyTitle;
@@ -44,6 +49,8 @@ class GenericListPage extends StatelessWidget {
     this.onSearch,
     this.searchHint = 'Search...',
     this.filterHeader,
+    this.searchDoctype,
+    this.searchRoute,
     this.emptyTitle = 'No records found',
     this.emptyMessage = 'Pull to refresh to load data.',
     this.emptyIcon = Icons.description_outlined,
@@ -59,6 +66,25 @@ class GenericListPage extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // Construct Actions: Append Global Search Icon if configuration is present
+    final List<Widget> pageActions = [
+      if (searchDoctype != null && searchRoute != null)
+        IconButton(
+          tooltip: 'Search $searchDoctype',
+          icon: const Icon(Icons.search),
+          onPressed: () {
+            showSearch(
+              context: context,
+              delegate: GlobalSearchDelegate(
+                doctype: searchDoctype!,
+                targetRoute: searchRoute!,
+              ),
+            );
+          },
+        ),
+      ...(actions ?? []),
+    ];
+
     // --- Tabbed Layout (NestedScrollView) ---
     if (tabs != null && tabBarView != null) {
       return Scaffold(
@@ -69,7 +95,7 @@ class GenericListPage extends StatelessWidget {
             return [
               SliverAppBar.large(
                 title: Text(title),
-                actions: actions,
+                actions: pageActions,
                 scrolledUnderElevation: 0,
                 bottom: TabBar(
                   controller: tabController,
@@ -98,11 +124,11 @@ class GenericListPage extends StatelessWidget {
           slivers: [
             SliverAppBar.large(
               title: Text(title),
-              actions: actions,
+              actions: pageActions,
               scrolledUnderElevation: 0,
             ),
 
-            // Pinned Search Bar (optional)
+            // Pinned Search Bar (optional - local list filtering)
             if (onSearch != null)
               SliverToBoxAdapter(
                 child: Padding(

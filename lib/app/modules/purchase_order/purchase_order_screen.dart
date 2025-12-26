@@ -55,6 +55,10 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
       data: controller.purchaseOrders,
       onRefresh: () => controller.fetchPurchaseOrders(clear: true),
       scrollController: _scrollController,
+      // Global API Search Configuration
+      searchDoctype: 'Purchase Order',
+      searchRoute: AppRoutes.PURCHASE_ORDER_FORM,
+
       searchHint: 'Search Supplier or ID...',
       // Assuming controller has search logic, passing null if not implemented yet
       // or implement onSearchChanged in controller similar to others
