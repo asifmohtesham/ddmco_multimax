@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -6,9 +7,20 @@ import 'package:multimax/app/data/routes/app_routes.dart'; // Import AppRoutes
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform; // Required for platform checks
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up the database factory based on the platform
+  if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
+    // Initialise FFI
+    sqfliteFfiInit();
+    // Change the default factory for sqflite
+    databaseFactory = databaseFactoryFfi;
+  }
+  // For Android and iOS, the default factory is usually sufficient (unless you are replacing the default sqlite_flutter_lib)
 
   // --- Initialise Services & Global Controllers ---
   // Initialise SQLite Database Service first
