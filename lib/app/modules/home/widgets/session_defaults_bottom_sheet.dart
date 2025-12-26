@@ -24,7 +24,7 @@ class _SessionDefaultsBottomSheetState extends State<SessionDefaultsBottomSheet>
 
   // Auto Submit State
   bool _autoSubmitEnabled = true;
-  double _autoSubmitDelay = 1.0;
+  double _autoSubmitDelay = 2.0;
 
   @override
   void initState() {
