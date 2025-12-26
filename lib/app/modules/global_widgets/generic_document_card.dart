@@ -76,7 +76,7 @@ class GenericDocumentCard extends StatelessWidget {
                           subtitle,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
-                            fontFamily: 'monospace',
+                            fontFamily: 'ShureTechMono',
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
