@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -27,6 +27,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           appBar: MainAppBar(
             title: controller.deliveryNote.value?.name ?? 'Loading...',
             status: controller.deliveryNote.value?.status,
+            isDirty: controller.isDirty.value, // Pass dirty state
             actions: [
               // Save Button Logic
               Obx(() {
@@ -103,7 +104,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                         ],
                       ),
                     ),
-                    StatusPill(status: note.status),
+                    // StatusPill is now handled in AppBar, but we keep the row layout for ID if needed,
+                    // or redundant StatusPill here can also use the isDirty check if you want it duplicated in the body.
+                    // Assuming centralised AppBar is primary, but if you kept this body widget:
+                    StatusPill(status: controller.isDirty.value ? 'Not Saved' : note.status),
                   ],
                 ),
                 const Divider(height: 24),
@@ -118,14 +122,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   filled: true,
                   fillColor: Colors.white,
-                  errorText: controller.customerError.value, // Bind error text here
+                  errorText: controller.customerError.value,
                 ),
               )),
             ],
           ),
-
           const SizedBox(height: 16),
-
           // 2. Settings Card (Warehouse)
           _buildSectionCard(
             title: 'Settings',
@@ -146,9 +148,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               )),
             ],
           ),
-
           const SizedBox(height: 16),
-
           // 3. References Card
           if (note.poNo != null && note.poNo!.isNotEmpty)
             _buildSectionCard(
@@ -166,9 +166,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 ),
               ],
             ),
-
           if (note.poNo != null && note.poNo!.isNotEmpty) const SizedBox(height: 16),
-
           // 4. Schedule Card
           _buildSectionCard(
             title: 'Schedule',
@@ -185,9 +183,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               ),
             ],
           ),
-
           const SizedBox(height: 16),
-
           // 5. Summary Card
           _buildSectionCard(
             title: 'Summary',
@@ -201,7 +197,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               ),
             ],
           ),
-
           const SizedBox(height: 80),
         ],
       ),
@@ -291,7 +286,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               }
 
               final currentExpandedKey = controller.expandedInvoice.value;
-
               final posUpload = controller.posUpload.value;
               final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
 
@@ -305,11 +299,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   itemCount: deliveryNoteItems.length,
                   itemBuilder: (context, index) {
                     final item = deliveryNoteItems[index];
-                    // Register Key
                     if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
                       controller.itemKeys[item.name!] = GlobalKey();
                     }
-
                     return DeliveryNoteItemCard(item: item);
                   },
                 );
@@ -318,7 +310,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               final posItems = posUpload.items;
               final groupedDnItems = controller.groupedItems;
 
-              // Apply filtering logic
               final filteredItems = posItems.where((posItem) {
                 final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
@@ -346,7 +337,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
                   final expansionKey = '${posItem.idx}';
 
-                  // Register Key
                   if (!controller.itemKeys.containsKey(expansionKey)) {
                     controller.itemKeys[expansionKey] = GlobalKey();
                   }
@@ -354,7 +344,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
 
                   return Container(
-                    key: controller.itemKeys[expansionKey], // Attach Key
+                    key: controller.itemKeys[expansionKey],
                     child: ItemGroupCard(
                       isExpanded: currentExpandedKey == expansionKey,
                       serialNo: posItem.idx,
@@ -364,11 +354,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       scannedQty: cumulativeQty,
                       onToggle: () => controller.toggleInvoiceExpand(expansionKey),
                       children: dnItemsForThisPosItem.map((item) {
-                        // Register Key
                         if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
                           controller.itemKeys[item.name!] = GlobalKey();
                         }
-
                         return DeliveryNoteItemCard(item: item);
                       }).toList(),
                     ),
@@ -385,7 +373,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
             if (controller.isScanning.value || controller.isAddingItem.value) {
               return BarcodeInputWidget(
-                onScan: (code) {}, // No-op when busy
+                onScan: (code) {},
                 isLoading: controller.isScanning.value,
                 isSuccess: controller.isAddingItem.value,
                 controller: controller.barcodeController,
@@ -393,7 +381,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               );
             }
             return BarcodeInputWidget(
-              onScan: (code) => controller.scanBarcode(code), // Updated to use scanBarcode
+              onScan: (code) => controller.scanBarcode(code),
               controller: controller.barcodeController,
               activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
             );

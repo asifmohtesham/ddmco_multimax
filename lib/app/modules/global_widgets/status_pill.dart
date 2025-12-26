@@ -19,6 +19,8 @@ class StatusPill extends StatelessWidget {
         return const Color(0xFFFFF3E1); // Frappe Orange Light
       case 'In Progress':
         return const Color(0xFFEBF5FF); // Frappe Blue Light
+      case 'Not Saved':
+        return const Color(0xFFFFF5CC); // Frappe Yellow Light (Warning/Dirty)
       default:
         return const Color(0xFFF0F4F7); // Frappe Grey Light
     }
@@ -38,6 +40,8 @@ class StatusPill extends StatelessWidget {
         return const Color(0xFFFFA00A); // Frappe Orange
       case 'In Progress':
         return const Color(0xFF3688E5); // Frappe Blue
+      case 'Not Saved':
+        return const Color(0xFFD97706); // Frappe Yellow Dark (Warning/Dirty)
       default:
         return const Color(0xFF5A6673); // Frappe Grey
     }

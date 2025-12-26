@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -19,7 +19,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       canPop: !controller.isDirty.value,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        // Logic handled by GlobalDialog in controller
         await controller.confirmDiscard();
       },
       child: DefaultTabController(
@@ -28,6 +27,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           appBar: MainAppBar(
             title: controller.packingSlip.value?.name ?? 'Loading...',
             status: controller.packingSlip.value?.status,
+            isDirty: controller.isDirty.value, // Pass dirty state to AppBar
             bottom: const TabBar(
               tabs: [
                 Tab(text: 'Details'),
@@ -91,7 +91,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(child: Text(slip.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                    StatusPill(status: slip.status),
+                    // Also reflect dirty state here in the body if desired
+                    StatusPill(status: controller.isDirty.value ? 'Not Saved' : slip.status),
                   ],
                 ),
                 const Divider(height: 24),

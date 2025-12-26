@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
@@ -27,6 +27,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           appBar: MainAppBar(
             title: controller.purchaseReceipt.value?.name ?? 'Loading...',
             status: controller.purchaseReceipt.value?.status,
+            isDirty: controller.isDirty.value, // Pass dirty state
             actions: [
               Obx(() {
                 if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
@@ -43,7 +44,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     )
                 )
                     : IconButton(
-                  icon: const Icon(Icons.save),
+                  icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
                   // Enable save only if dirty AND draft
                   onPressed: (controller.isDirty.value && controller.isEditable)
                       ? controller.savePurchaseReceipt
@@ -107,7 +108,9 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                           ],
                         ),
                       ),
-                      StatusPill(status: receipt.status),
+                      // Mirroring status in the body as well using StatusPill directly if desired,
+                      // or just relying on AppBar. Keeping existing structure:
+                      StatusPill(status: controller.isDirty.value ? 'Not Saved' : receipt.status),
                     ],
                   ),
                   const Divider(height: 24),
@@ -128,7 +131,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             ),
 
             const SizedBox(height: 16),
-
             _buildSectionCard(
               title: 'Schedule',
               children: [
@@ -163,9 +165,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
             _buildSectionCard(
               title: 'Settings',
               children: [
@@ -184,9 +184,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 )),
               ],
             ),
-
             const SizedBox(height: 16),
-
             _buildSectionCard(
                 title: 'Summary',
                 children: [
@@ -199,15 +197,12 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                   ),
                 ]
             ),
-
             const SizedBox(height: 80),
           ],
         ),
       ),
     );
   }
-
-  // ... (Helpers _buildSectionCard, _buildSummaryRow remain the same) ...
 
   Widget _buildSectionCard({required String title, required List<Widget> children}) {
     return Card(
@@ -257,18 +252,17 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           child: items.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
               : ListView.separated(
-            controller: controller.scrollController, // ADDED
+            controller: controller.scrollController,
             padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
             itemCount: items.length,
             separatorBuilder: (context, index) => const SizedBox(height: 0),
             itemBuilder: (context, index) {
               final item = items[index];
-              // Register Key
               if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
                 controller.itemKeys[item.name!] = GlobalKey();
               }
               return Container(
-                  key: item.name != null ? controller.itemKeys[item.name] : null, // ATTACH KEY
+                  key: item.name != null ? controller.itemKeys[item.name] : null,
                   child: PurchaseReceiptItemCard(item: item, index: index)
               );
             },

@@ -9,6 +9,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? leading;
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
+  final bool isDirty;
 
   const MainAppBar({
     super.key,
@@ -18,12 +19,16 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.leading,
     this.bottom,
     this.centerTitle = false,
+    this.isDirty = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Centralised Logic: If dirty, override status to 'Not Saved'
+    final String? displayStatus = isDirty ? 'Not Saved' : status;
+
     return AppBar(
-      title: status != null
+      title: displayStatus != null
           ? Column(
         crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
@@ -32,7 +37,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
           ),
           const SizedBox(height: 2),
-          StatusPill(status: status!),
+          StatusPill(status: displayStatus),
         ],
       )
           : Text(

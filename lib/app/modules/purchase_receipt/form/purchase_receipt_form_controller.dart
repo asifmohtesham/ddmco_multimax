@@ -230,7 +230,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
 
     isLoading.value = false;
-    isDirty.value = false;
+    isDirty.value = true; // NEW: Set true for new documents to show "Not Saved"
   }
 
   Future<void> fetchPurchaseReceipt() async {

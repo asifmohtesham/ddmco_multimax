@@ -27,26 +27,32 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           appBar: MainAppBar(
             title: controller.stockEntry.value?.name ?? 'Loading...',
             status: controller.stockEntry.value?.status,
+            isDirty: controller.isDirty.value, // Pass dirty state to AppBar
             actions: [
-              Obx(() => controller.isSaving.value
-                  ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.0),
-                  child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
-                  ),
-                ),
-              )
-                  : IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: (controller.isDirty.value &&
+              Obx(() {
+                if (controller.isSaving.value) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
+                      ),
+                    ),
+                  );
+                }
+
+                // Define Save Enabled Condition
+                final bool canSave = controller.isDirty.value &&
                     controller.stockEntry.value?.docstatus == 0 &&
-                    (controller.stockEntry.value?.items.isNotEmpty ?? false))
-                    ? controller.saveStockEntry
-                    : null,
-              )),
+                    (controller.stockEntry.value?.items.isNotEmpty ?? false);
+
+                return IconButton(
+                  icon: Icon(Icons.save, color: canSave ? Colors.white : Colors.white54),
+                  onPressed: canSave ? controller.saveStockEntry : null,
+                );
+              }),
             ],
             bottom: const TabBar(
               tabs: [
