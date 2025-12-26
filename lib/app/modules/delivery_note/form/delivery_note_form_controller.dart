@@ -27,7 +27,10 @@ class DeliveryNoteFormController extends GetxController {
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
-  final String mode = Get.arguments['mode'];
+
+  // CHANGED: Removed 'final' so we can update mode to 'edit' after saving a new doc
+  String mode = Get.arguments['mode'];
+
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg = Get.arguments['posUploadName'];
 
@@ -174,11 +177,14 @@ class DeliveryNoteFormController extends GetxController {
 
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
+
+    // Explicitly mark new documents as dirty
     if (mode == 'new') {
       isDirty.value = true;
       return;
     }
-    // Prevent dirty check if document is not editable (submitted/cancelled)
+
+    // Prevent dirty check if document is not editable
     if (deliveryNote.value?.docstatus != 0) {
       isDirty.value = false;
       return;
@@ -244,6 +250,8 @@ class DeliveryNoteFormController extends GetxController {
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
     }
+
+    // CHANGED: Explicitly set dirty for new doc
     isDirty.value = true;
     _originalJson = '';
     isLoading.value = false;
@@ -409,6 +417,12 @@ class DeliveryNoteFormController extends GetxController {
         final savedNote = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = savedNote;
         _updateOriginalState(savedNote);
+
+        // CHANGED: Update mode to 'edit' so _checkForChanges logic works correctly for subsequent edits
+        if (isNew) {
+          mode = 'edit';
+        }
+
         GlobalSnackbar.success(message: 'Delivery Note Saved');
       } else {
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
@@ -515,7 +529,7 @@ class DeliveryNoteFormController extends GetxController {
 
   void validateSheet() {
     bool valid = true;
-    rackError.value = null; // Reset error
+    rackError.value = null;
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
 
