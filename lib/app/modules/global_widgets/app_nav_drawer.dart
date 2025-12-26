@@ -5,15 +5,10 @@ import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
-class AppNavDrawer extends StatefulWidget {
-  const AppNavDrawer({super.key});
+class AppNavDrawer extends StatelessWidget {
+  AppNavDrawer({super.key});
 
-  @override
-  State<AppNavDrawer> createState() => _AppNavDrawerState();
-}
-
-class _AppNavDrawerState extends State<AppNavDrawer> {
-  // Reactive state to manage the visibility of the user menu
+  // Reactive state to manage the visibility of the user menu using GetX
   final RxBool _isUserMenuOpen = false.obs;
 
   @override
@@ -55,18 +50,19 @@ class _AppNavDrawerState extends State<AppNavDrawer> {
                     ),
                   ),
                 ),
-                // Tapping details toggles the menu view
+                // Tapping details toggles the menu view state
                 onDetailsPressed: () {
                   _isUserMenuOpen.toggle();
                 },
+                arrowColor: Colors.white,
               );
             }),
 
-            // 2. Scrollable Menu Items (Reactive)
+            // 2. Scrollable Menu Items (Reactive Switch)
             Expanded(
               child: Obx(() {
                 if (_isUserMenuOpen.value) {
-                  // --- USER MENU ---
+                  // --- USER MENU (Revealed on Header Tap) ---
                   return ListView(
                     padding: const EdgeInsets.symmetric(vertical: 12.0),
                     children: [
@@ -224,7 +220,6 @@ class _AppNavDrawerState extends State<AppNavDrawer> {
   }
 }
 
-// ... (Helper classes remain unchanged)
 class _SkeletonDrawerItem extends StatelessWidget {
   const _SkeletonDrawerItem();
 
