@@ -55,7 +55,7 @@ class BatchScreen extends GetView<BatchController> {
 
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
@@ -183,8 +183,8 @@ class BatchScreen extends GetView<BatchController> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(),
-        const SizedBox(height: 8),
+        // const Divider(),
+        // const SizedBox(height: 8),
 
         // Purchase Order Field
         _buildInfoRow(

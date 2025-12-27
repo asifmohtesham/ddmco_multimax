@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'dart:ui';
@@ -24,6 +25,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
         backgroundColor: colorScheme.surface,
         appBar: MainAppBar(
           title: controller.batch.value?.name ?? 'Batch Details',
+          status: controller.batchStatus,
+          isDirty: controller.isDirty.value,
           actions: [
             // Export Button
             Obx(() {
@@ -73,6 +76,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());
           }
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -92,7 +96,21 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 _buildSectionCard(
                   context,
                   title: 'General Information',
+                  headerAction: StatusPill(
+                    status: controller.batchStatus, // Simple string pass
+                  ),
                   children: [
+                    // Status Toggle
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Disabled'),
+                      subtitle: const Text('Prevent usage in transactions'),
+                      value: controller.isDisabled.value,
+                      onChanged: (val) => controller.isDisabled.value = val,
+                    ),
+                    const Divider(),
+                    const SizedBox(height: 8),
+
                     // Item Code
                     GestureDetector(
                       onTap: controller.isEditMode ? null : () => _showItemPicker(context),
@@ -106,7 +124,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                             prefixIcon: Icon(Icons.inventory_2_outlined),
                             suffixIcon: Icon(Icons.arrow_drop_down),
                           ),
-                          readOnly: true, // Always handled by picker or locked in edit
+                          readOnly: true,
                         ),
                       ),
                     ),
@@ -202,7 +220,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
     ));
   }
 
-  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children}) {
+  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children, Widget? headerAction}) {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 16),
@@ -216,12 +234,18 @@ class BatchFormScreen extends GetView<BatchFormController> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (headerAction != null) headerAction,
+              ],
             ),
             const SizedBox(height: 16),
             ...children,
@@ -254,7 +278,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
         padding: const EdgeInsets.all(8.0),
         child: Row(
           children: [
-            // Column 1: 60% Width (Variant + EAN)
             Expanded(
               flex: 60,
               child: Column(
@@ -268,7 +291,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
-                  // Linear Barcode
                   SizedBox(
                     height: 100,
                     width: double.infinity,
@@ -288,8 +310,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
               ),
             ),
             const SizedBox(width: 24),
-
-            // Column 2: 30% Width (QR + Batch ID)
             Expanded(
               flex: 30,
               child: Column(

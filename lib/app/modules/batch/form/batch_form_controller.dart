@@ -38,6 +38,9 @@ class BatchFormController extends GetxController {
   final customPackagingQtyController = TextEditingController();
   final customPurchaseOrderController = TextEditingController();
 
+  // Status State
+  var isDisabled = false.obs;
+
   // New State
   var generatedBatchId = ''.obs;
   var itemBarcode = ''.obs;
@@ -52,6 +55,31 @@ class BatchFormController extends GetxController {
 
   bool get isEditMode => mode == 'edit';
 
+  // --- Status Logic ---
+  // Returns a simple String. Colors are handled by StatusPill.
+  String get batchStatus {
+    // 1. Not Saved (Dirty)
+    if (isDirty.value) {
+      return 'Not Saved';
+    }
+
+    // 2. Disabled
+    if (isDisabled.value) {
+      return 'Disabled';
+    }
+
+    // 3. Expired
+    if (expDateController.text.isNotEmpty) {
+      final expiry = DateTime.tryParse(expDateController.text);
+      if (expiry != null && expiry.isBefore(DateTime.now())) {
+        return 'Expired';
+      }
+    }
+
+    // 4. Active (Default)
+    return 'Active';
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -64,6 +92,8 @@ class BatchFormController extends GetxController {
     expDateController.addListener(_checkForChanges);
     customPackagingQtyController.addListener(_checkForChanges);
     customPurchaseOrderController.addListener(_checkForChanges);
+
+    isDisabled.listen((_) => _checkForChanges());
 
     if (isEditMode) {
       fetchBatch();
@@ -117,6 +147,7 @@ class BatchFormController extends GetxController {
 
     mfgDateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
     customPackagingQtyController.text = '12';
+    isDisabled.value = false;
 
     isDirty.value = true;
     _originalJson = '';
@@ -137,8 +168,8 @@ class BatchFormController extends GetxController {
         mfgDateController.text = b.manufacturingDate ?? '';
         expDateController.text = b.expiryDate ?? '';
         customPackagingQtyController.text = b.customPackagingQty.toString();
-        // FIX: Use b.purchaseOrder instead of b.customPurchaseOrder
         customPurchaseOrderController.text = b.purchaseOrder ?? '';
+        isDisabled.value = b.disabled == 1;
         generatedBatchId.value = b.name;
 
         if(b.item.isNotEmpty) {
@@ -172,6 +203,7 @@ class BatchFormController extends GetxController {
       'expiry_date': expDateController.text.isEmpty ? null : expDateController.text,
       'custom_packaging_qty': double.tryParse(customPackagingQtyController.text) ?? 0.0,
       'purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
+      'disabled': isDisabled.value ? 1 : 0,
     };
   }
 
@@ -219,8 +251,6 @@ class BatchFormController extends GetxController {
       final response = await _provider.getItemDetails(itemCode);
       if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
-
-        // Extract Barcode
         String barcode = '';
         if (data['barcodes'] != null && (data['barcodes'] as List).isNotEmpty) {
           barcode = data['barcodes'][0]['barcode'] ?? '';
@@ -229,12 +259,8 @@ class BatchFormController extends GetxController {
         } else {
           barcode = itemCode;
         }
-
         itemBarcode.value = barcode;
-
-        // Extract Variant Of
         itemVariantOf.value = data['variant_of'] ?? '';
-
         if (generateId && !isEditMode) {
           _generateBatchId(barcode);
         }
@@ -249,21 +275,17 @@ class BatchFormController extends GetxController {
     final rnd = Random();
     final randomId = String.fromCharCodes(Iterable.generate(
         6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
-
     generatedBatchId.value = '$ean-$randomId';
   }
 
   Future<void> saveBatch() async {
     if (!isDirty.value && isEditMode) return;
-
     if (itemController.text.isEmpty) {
       GlobalSnackbar.warning(message: 'Item Code is required');
       return;
     }
-
     isSaving.value = true;
     final data = _getCurrentFormData();
-
     try {
       if (isEditMode) {
         final response = await _provider.updateBatch(name, data);
@@ -276,7 +298,6 @@ class BatchFormController extends GetxController {
       } else {
         data['batch_id'] = generatedBatchId.value;
         data['name'] = generatedBatchId.value;
-
         final response = await _provider.createBatch(data);
         if (response.statusCode == 200) {
           GlobalSnackbar.success(message: 'Batch created: ${generatedBatchId.value}');
@@ -306,7 +327,6 @@ class BatchFormController extends GetxController {
 
   Future<void> exportQrAsPng() async {
     if (generatedBatchId.value.isEmpty) return;
-
     isExporting.value = true;
     try {
       final qrValidationResult = QrValidator.validate(
@@ -314,7 +334,6 @@ class BatchFormController extends GetxController {
         version: QrVersions.auto,
         errorCorrectionLevel: QrErrorCorrectLevel.L,
       );
-
       if (qrValidationResult.isValid) {
         final qrCode = qrValidationResult.qrCode!;
         final painter = QrPainter.withQr(
@@ -323,20 +342,14 @@ class BatchFormController extends GetxController {
           emptyColor: const Color(0xFFFFFFFF),
           gapless: true,
         );
-
         final pic = painter.toPicture(1024);
         final img = await pic.toImage(1024, 1024);
         final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
         final buffer = byteData!.buffer.asUint8List();
-
         final tempDir = await getTemporaryDirectory();
         final file = File('${tempDir.path}/${generatedBatchId.value}.png');
         await file.writeAsBytes(buffer);
-
-        await Share.shareXFiles(
-            [XFile(file.path)],
-            text: 'Batch QR Code: ${generatedBatchId.value}'
-        );
+        await Share.shareXFiles([XFile(file.path)], text: 'Batch QR Code: ${generatedBatchId.value}');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to export PNG: $e');
@@ -347,17 +360,12 @@ class BatchFormController extends GetxController {
 
   Future<void> exportQrAsPdf() async {
     if (generatedBatchId.value.isEmpty) return;
-
     isExporting.value = true;
     try {
       final pdf = pw.Document();
-
-      // Label Size: 51mm x 26mm
       final pageFormat = PdfPageFormat(51 * PdfPageFormat.mm, 26 * PdfPageFormat.mm);
-
       final String variant = itemVariantOf.value.isNotEmpty ? itemVariantOf.value : itemController.text;
       final String barcodeData = itemBarcode.value.isNotEmpty ? itemBarcode.value : itemController.text;
-
       pdf.addPage(
         pw.Page(
           pageFormat: pageFormat,
@@ -366,43 +374,30 @@ class BatchFormController extends GetxController {
             return pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
-                // Column 1: 65% Width
                 pw.Expanded(
                   flex: 65,
                   child: pw.Column(
                     mainAxisAlignment: pw.MainAxisAlignment.center,
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      // Variant Of Field / Item Code
                       pw.Text(
                         variant,
-                        style: pw.TextStyle(
-                          fontSize: 7,
-                          fontWeight: pw.FontWeight.bold,
-                          font: pw.Font.courier(),
-                        ),
+                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, font: pw.Font.courier()),
                         maxLines: 2,
                         overflow: pw.TextOverflow.clip,
                       ),
                       pw.SizedBox(height: 2),
-
-                      // Barcode Symbol
                       pw.BarcodeWidget(
                         barcode: pw.Barcode.code128(),
                         data: barcodeData,
                         height: 32,
                         drawText: true,
-                        textStyle: pw.TextStyle(
-                          font: pw.Font.courier(),
-                          fontSize: 6,
-                        ),
+                        textStyle: pw.TextStyle(font: pw.Font.courier(), fontSize: 6),
                       ),
                     ],
                   ),
                 ),
                 pw.SizedBox(width: 4),
-
-                // Column 2: 35% Width
                 pw.Expanded(
                   flex: 35,
                   child: pw.Column(
@@ -410,19 +405,12 @@ class BatchFormController extends GetxController {
                     children: [
                       pw.AspectRatio(
                         aspectRatio: 1,
-                        child: pw.BarcodeWidget(
-                          barcode: pw.Barcode.qrCode(),
-                          data: generatedBatchId.value,
-                          drawText: false,
-                        ),
+                        child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: generatedBatchId.value, drawText: false),
                       ),
                       pw.SizedBox(height: 2),
                       pw.Text(
                         generatedBatchId.value,
-                        style: pw.TextStyle(
-                          font: pw.Font.courier(),
-                          fontSize: 5,
-                        ),
+                        style: pw.TextStyle(font: pw.Font.courier(), fontSize: 5),
                         maxLines: 2,
                         overflow: pw.TextOverflow.clip,
                         textAlign: pw.TextAlign.center,
@@ -435,15 +423,10 @@ class BatchFormController extends GetxController {
           },
         ),
       );
-
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/${generatedBatchId.value}_label.pdf');
       await file.writeAsBytes(await pdf.save());
-
-      await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Batch Label: ${generatedBatchId.value}'
-      );
+      await Share.shareXFiles([XFile(file.path)], text: 'Batch Label: ${generatedBatchId.value}');
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to export PDF: $e');
     } finally {

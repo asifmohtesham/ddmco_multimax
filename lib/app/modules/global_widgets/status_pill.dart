@@ -5,45 +5,98 @@ class StatusPill extends StatelessWidget {
 
   const StatusPill({super.key, required this.status});
 
+  static const _successBg = Color(0xFFE5F8ED);
+  static const _successText = Color(0xFF36A564);
+
+  static const _dangerBg = Color(0xFFFFF5F5);
+  static const _dangerText = Color(0xFFE54D4D);
+
+  static const _warningBg = Color(0xFFFFF3E1);
+  static const _warningText = Color(0xFFFFA00A);
+
+  static const _infoBg = Color(0xFFEBF5FF);
+  static const _infoText = Color(0xFF3688E5);
+
+  static const _greyBg = Color(0xFFF0F4F7);
+  static const _greyText = Color(0xFF5A6673);
+
   Color _getBackgroundColor(String status) {
     switch (status) {
+    // Success (Green)
+      case 'Active':
+      case 'Enabled':
       case 'Completed':
-      case 'Submitted': // Often green as well
-        return const Color(0xFFE5F8ED); // Frappe Green Light
-      case 'Draft':
-        return const Color(0xFFFFF5F5); // Frappe Red Light
+      case 'Submitted':
+      case 'Paid':
+      case 'Settled':
+        return _successBg;
+
+    // Danger (Red)
       case 'Cancelled':
-        return const Color(0xFFFDECEC); // Frappe Red Light
-      case 'To Bill':
-      case 'Pending':
-        return const Color(0xFFFFF3E1); // Frappe Orange Light
-      case 'In Progress':
-        return const Color(0xFFEBF5FF); // Frappe Blue Light
+      case 'Rejected':
+      case 'Expired':
+      case 'Overdue':
+      case 'Draft': // Kept as Red per your existing design, standard Frappe V15 uses Grey
+        return _dangerBg;
+
+    // Warning (Orange)
       case 'Not Saved':
-        return const Color(0xFFFFF5CC); // Frappe Yellow Light (Warning/Dirty)
+      case 'Pending':
+      case 'To Bill':
+      case 'Hold':
+        return _warningBg;
+
+    // Info (Blue)
+      case 'In Progress':
+      case 'Open':
+        return _infoBg;
+
+    // Grey (Neutral)
+      case 'Disabled':
+      case 'Closed':
+      case 'Passive':
       default:
-        return const Color(0xFFF0F4F7); // Frappe Grey Light
+        return _greyBg;
     }
   }
 
   Color _getTextColor(String status) {
     switch (status) {
+    // Success
+      case 'Active':
+      case 'Enabled':
       case 'Completed':
       case 'Submitted':
-        return const Color(0xFF36A564); // Frappe Green
-      case 'Draft':
-        return const Color(0xFFE54D4D); // Frappe Red
+      case 'Paid':
+      case 'Settled':
+        return _successText;
+
+    // Danger
       case 'Cancelled':
-        return const Color(0xFFB34242); // Frappe Red Darker
-      case 'To Bill':
-      case 'Pending':
-        return const Color(0xFFFFA00A); // Frappe Orange
-      case 'In Progress':
-        return const Color(0xFF3688E5); // Frappe Blue
+      case 'Rejected':
+      case 'Expired':
+      case 'Overdue':
+      case 'Draft':
+        return _dangerText;
+
+    // Warning
       case 'Not Saved':
-        return const Color(0xFFD97706); // Frappe Yellow Dark (Warning/Dirty)
+      case 'Pending':
+      case 'To Bill':
+      case 'Hold':
+        return _warningText;
+
+    // Info
+      case 'In Progress':
+      case 'Open':
+        return _infoText;
+
+    // Grey
+      case 'Disabled':
+      case 'Closed':
+      case 'Passive':
       default:
-        return const Color(0xFF5A6673); // Frappe Grey
+        return _greyText;
     }
   }
 
@@ -53,7 +106,7 @@ class StatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
       decoration: BoxDecoration(
         color: _getBackgroundColor(status),
-        borderRadius: BorderRadius.circular(12.0), // Rounded corners like Frappe
+        borderRadius: BorderRadius.circular(12.0),
       ),
       child: Text(
         status,

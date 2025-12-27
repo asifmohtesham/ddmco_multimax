@@ -1,4 +1,3 @@
-// app/data/models/batch_model.dart
 class Batch {
   final String name;
   final String item;
@@ -7,7 +6,8 @@ class Batch {
   final String? expiryDate;
   final double customPackagingQty;
   final String? purchaseOrder;
-  final String? variantOf; // Added
+  final String? variantOf;
+  final int disabled;
   final String creation;
   final String modified;
 
@@ -20,6 +20,7 @@ class Batch {
     this.customPackagingQty = 0.0,
     this.purchaseOrder,
     this.variantOf,
+    this.disabled = 0,
     required this.creation,
     required this.modified,
   });
@@ -34,6 +35,7 @@ class Batch {
       customPackagingQty: (json['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0,
       purchaseOrder: json['purchase_order'],
       variantOf: json['variant_of'],
+      disabled: json['disabled'] ?? 0,
       creation: json['creation'] ?? '',
       modified: json['modified'] ?? '',
     );
@@ -48,6 +50,7 @@ class Batch {
       'custom_packaging_qty': customPackagingQty,
       'purchase_order': purchaseOrder,
       'variant_of': variantOf,
+      'disabled': disabled,
     };
   }
 }
