@@ -183,8 +183,7 @@ class DeliveryNoteFormController extends GetxController {
       isDirty.value = true;
       return;
     }
-
-    // Prevent dirty check if document is not editable
+    // Prevent dirty check if document is not editable (submitted/cancelled)
     if (deliveryNote.value?.docstatus != 0) {
       isDirty.value = false;
       return;
@@ -814,6 +813,7 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
+    // REMOVED: isAddingItem.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
     try {
@@ -861,12 +861,39 @@ class DeliveryNoteFormController extends GetxController {
       isScrollControlled: true,
     ).then((_) {
       isItemSheetOpen.value = false;
+      // REMOVED: isAddingItem.value = false;
       editingItemName.value = null;
     });
   }
 
+  /// UX Validation Helper to prevent scanning if document cannot be saved
+  bool _validateHeaderBeforeScan() {
+    if (deliveryNote.value == null) return false;
+
+    // 1. Check Mandatory Fields (e.g. Customer)
+    if (deliveryNote.value!.customer.isEmpty) {
+      GlobalSnackbar.error(message: 'Missing Customer: Please select a customer before scanning.');
+      return false;
+    }
+
+    // 2. Check for unresolved errors (e.g. from previous failed save)
+    if (customerError.value != null) {
+      GlobalSnackbar.error(message: 'Invalid Customer: ${customerError.value}');
+      return false;
+    }
+
+    // 3. Optional: PO No Check (if required by business logic)
+    // if (deliveryNote.value!.poNo == null) ...
+
+    return true;
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
+
+    // [UX] Rigid Validation: Prevent scanning if header is invalid
+    // This blocks the user from adding items if the document is currently in an unsavable state.
+    if (!_validateHeaderBeforeScan()) return;
 
     if (isItemSheetOpen.value) {
       barcodeController.clear();
@@ -916,6 +943,7 @@ class DeliveryNoteFormController extends GetxController {
         }
 
         isScanning.value = false;
+        // REMOVED: isAddingItem.value = true;
         barcodeController.clear();
 
         initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
@@ -933,6 +961,7 @@ class DeliveryNoteFormController extends GetxController {
         );
 
         isItemSheetOpen.value = false;
+        // REMOVED: isAddingItem.value = false;
 
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
