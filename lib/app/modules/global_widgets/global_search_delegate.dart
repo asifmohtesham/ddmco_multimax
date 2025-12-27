@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/global_search_service.dart';
 
-/// A global search delegate that performs contextual server-side searches for a specific DocType.
-///
-/// It first fetches the DocType metadata to identify:
-/// - [search_fields]: Which fields to query against (e.g. item_name, barcode).
-/// - [title_field]: Which field to display as the main title.
-/// - [image_field]: Which field contains the image URL.
 class GlobalSearchDelegate extends SearchDelegate {
   final String doctype;
   final String targetRoute;
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // Cache metadata to avoid repeated calls during the session
-  Map<String, dynamic>? _meta;
+  // Lazy load the service (ensure it's available)
+  final GlobalSearchService _service = Get.put(GlobalSearchService());
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   GlobalSearchDelegate({
     required this.doctype,
@@ -47,119 +43,66 @@ class GlobalSearchDelegate extends SearchDelegate {
   }
 
   @override
-  Widget buildResults(BuildContext context) {
-    return _buildSearchResults();
-  }
+  Widget buildResults(BuildContext context) => _buildSearchResults();
 
   @override
-  Widget buildSuggestions(BuildContext context) {
-    return _buildSearchResults();
-  }
+  Widget buildSuggestions(BuildContext context) => _buildSearchResults();
 
   Widget _buildSearchResults() {
     if (query.trim().length < 3) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              "Type at least 3 characters to search",
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ],
-        ),
+      return _buildMessageState(
+        icon: Icons.search,
+        message: "Type at least 3 characters",
       );
     }
 
-    return FutureBuilder(
-      future: _searchApi(),
+    return FutureBuilder<List<GlobalSearchItem>>(
+      future: _service.search(doctype, query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: LinearProgressIndicator());
         }
 
         if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Search failed: ${snapshot.error}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
+          return _buildMessageState(
+            icon: Icons.error_outline,
+            message: "Search failed. Please try again.",
+            isError: true,
           );
         }
 
-        final results = snapshot.data as List<dynamic>? ?? [];
+        final results = snapshot.data ?? [];
 
         if (results.isEmpty) {
-          return Center(
-            child: Text(
-              'No $doctype found matching "$query"',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
+          return _buildMessageState(
+            icon: Icons.search_off,
+            message: 'No $doctype found matching "$query"',
           );
         }
 
         return ListView.separated(
           itemCount: results.length,
           separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-          itemBuilder: (context, index) {
-            final item = results[index];
-            return _buildListItem(context, item);
-          },
+          itemBuilder: (context, index) => _buildResultTile(context, results[index]),
         );
       },
     );
   }
 
-  Widget _buildListItem(BuildContext context, Map<String, dynamic> item) {
-    // Determine display fields based on metadata
-    final String name = item['name'] ?? '';
-
-    String title = name;
-    String? subtitle;
-    String? imageUrl;
-
-    if (_meta != null) {
-      // Resolve Title
-      if (_meta!['title_field'] != null) {
-        final tField = _meta!['title_field'];
-        if (item[tField] != null && item[tField].toString().isNotEmpty) {
-          title = item[tField].toString();
-          // If title is different from name, show name as subtitle
-          if (title != name) {
-            subtitle = name;
-          }
-        }
-      }
-
-      // Resolve Image
-      if (_meta!['image_field'] != null) {
-        final iField = _meta!['image_field'];
-        if (item[iField] != null) {
-          imageUrl = item[iField].toString();
-        }
-      }
-    }
-
-    // Fallback subtitle if empty
-    subtitle ??= item['description'] ?? item['item_name'] ?? item['customer_name'] ?? item['supplier_name'];
-
+  Widget _buildResultTile(BuildContext context, GlobalSearchItem item) {
     return ListTile(
-      leading: _buildLeadingIcon(imageUrl),
+      leading: _buildLeadingIcon(item.imageUrl),
       title: Text(
-        title,
+        item.title,
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: subtitle != null ? Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
+      subtitle: item.subtitle != null
+          ? Text(item.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : null,
       trailing: const Icon(Icons.chevron_right),
       onTap: () {
         close(context, null);
-        Get.toNamed(targetRoute, arguments: name); // Always pass ID (name)
+        Get.toNamed(targetRoute, arguments: item.id);
       },
     );
   }
@@ -191,70 +134,19 @@ class GlobalSearchDelegate extends SearchDelegate {
     );
   }
 
-  Future<List<dynamic>> _searchApi() async {
-    try {
-      // 1. Ensure Metadata is loaded to identify fields
-      await _ensureMetadata();
-
-      // 2. Determine Search Fields
-      final List<String> searchTargetFields = ['name'];
-      final List<String> selectFields = ['name'];
-
-      if (_meta != null) {
-        // Add Title Field
-        if (_meta!['title_field'] != null) {
-          selectFields.add(_meta!['title_field']);
-        }
-        // Add Image Field
-        if (_meta!['image_field'] != null) {
-          selectFields.add(_meta!['image_field']);
-        }
-        // Parse and Add Search Fields
-        if (_meta!['search_fields'] != null) {
-          final String sf = _meta!['search_fields'];
-          final splitFields = sf.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
-          searchTargetFields.addAll(splitFields);
-          selectFields.addAll(splitFields); // Fetch them too for context if needed
-        }
-      }
-
-      // Ensure 'description' is fetched if we don't have good metadata, as a fallback
-      if (!selectFields.contains('description')) selectFields.add('description');
-
-      // 3. Construct OR Filters
-      // Query: (name LIKE %q% OR field1 LIKE %q% OR field2 LIKE %q%)
-      final Map<String, dynamic> orFilters = {};
-      for (var field in searchTargetFields.toSet()) { // toSet to remove duplicates
-        orFilters[field] = ['like', '%$query%'];
-      }
-
-      // 4. Execute Search
-      final response = await _apiProvider.getDocumentList(
-        doctype,
-        orFilters: orFilters,
-        limit: 20,
-        fields: selectFields.toSet().toList(),
-      );
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        return response.data['data'];
-      }
-    } catch (e) {
-      debugPrint('GlobalSearchDelegate Error ($doctype): $e');
-    }
-    return [];
-  }
-
-  Future<void> _ensureMetadata() async {
-    if (_meta != null) return;
-    try {
-      // Fetch DocType definition to get metadata
-      final response = await _apiProvider.getDocument('DocType', doctype);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        _meta = response.data['data'];
-      }
-    } catch (e) {
-      debugPrint('Failed to load metadata for $doctype. Using defaults. Error: $e');
-    }
+  Widget _buildMessageState({required IconData icon, required String message, bool isError = false}) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 64, color: isError ? Colors.red.shade300 : Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: TextStyle(color: isError ? Colors.red : Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
   }
 }

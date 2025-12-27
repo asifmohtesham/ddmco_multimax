@@ -35,10 +35,17 @@ class ItemFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Support standard navigation arguments
-    if (Get.arguments != null && Get.arguments is Map && Get.arguments['itemCode'] != null) {
-      itemCode = Get.arguments['itemCode'];
-      _loadAllData();
+    // Support standard navigation arguments AND direct string args (from Global Search)
+    final args = Get.arguments;
+    if (args != null) {
+      if (args is Map && args['itemCode'] != null) {
+        itemCode = args['itemCode'];
+        _loadAllData();
+      } else if (args is String) {
+        // Direct ID from Search
+        itemCode = args;
+        _loadAllData();
+      }
     }
   }
 

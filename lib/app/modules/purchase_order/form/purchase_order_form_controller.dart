@@ -18,11 +18,29 @@ class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
-  final StorageService _storageService = Get.find<StorageService>(); // Get StorageService
+  final StorageService _storageService = Get.find<StorageService>();
 
   var itemFormKey = GlobalKey<FormState>();
-  final String name = Get.arguments['name'];
-  final String mode = Get.arguments['mode'];
+
+  // Robust Argument Handling
+  late final String name;
+  late final String mode;
+
+  PurchaseOrderFormController() {
+    final args = Get.arguments;
+    if (args is Map) {
+      name = args['name'] ?? '';
+      mode = args['mode'] ?? 'view';
+    } else if (args is String) {
+      // Handle ID passed directly (e.g., from Global Search)
+      name = args;
+      mode = 'view';
+    } else {
+      // Fallback
+      name = '';
+      mode = 'new';
+    }
+  }
 
   var isLoading = true.obs;
   var isSaving = false.obs;
@@ -42,11 +60,12 @@ class PurchaseOrderFormController extends GetxController {
 
   // Item Sheet State
   var isItemSheetOpen = false.obs;
-  var isSheetValid = false.obs; // Added for validation tracking
+  var isSheetValid = false.obs;
 
   final bsQtyController = TextEditingController();
   final bsRateController = TextEditingController();
   final bsScheduleDateController = TextEditingController();
+
   // Metadata Observables
   var bsItemOwner = RxnString();
   var bsItemCreation = RxnString();
@@ -94,7 +113,6 @@ class PurchaseOrderFormController extends GetxController {
     // Auto-Submit Logic
     ever(isSheetValid, (bool valid) {
       _autoSubmitTimer?.cancel();
-
       if (valid && isItemSheetOpen.value && isEditable) {
         if (_storageService.getAutoSubmitEnabled()) {
           final int delay = _storageService.getAutoSubmitDelay();
@@ -130,8 +148,8 @@ class PurchaseOrderFormController extends GetxController {
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
-        isDirty.value = false; // Reset dirty flag
-        Get.back(); // Pop the screen (Navigation)
+        isDirty.value = false;
+        Get.back();
       },
     );
   }
@@ -309,7 +327,7 @@ class PurchaseOrderFormController extends GetxController {
         rate: item.rate,
         qty: item.qty,
         rowId: item.name,
-        scheduleDate: item.scheduleDate // Pass existing date
+        scheduleDate: item.scheduleDate
     );
     // Set after opening
     bsItemOwner.value = item.owner;
@@ -392,7 +410,7 @@ class PurchaseOrderFormController extends GetxController {
       rate: rate,
       amount: qty * rate,
       uom: currentUom,
-      scheduleDate: bsScheduleDateController.text, // Save Date
+      scheduleDate: bsScheduleDateController.text,
     );
 
     if (currentItemNameKey != null) {
@@ -410,7 +428,7 @@ class PurchaseOrderFormController extends GetxController {
           amount: qty * rate,
           uom: existing.uom,
           description: existing.description,
-          scheduleDate: bsScheduleDateController.text, // Update Date
+          scheduleDate: bsScheduleDateController.text,
         );
       }
     } else {
