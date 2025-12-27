@@ -418,9 +418,15 @@ class PurchaseReceiptFormController extends GetxController {
       return;
     }
 
+    // --- Prevent multiple scans when one is already processing ---
+    if (isScanning.value) return;
+
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
+
+      // --- Check if sheet was opened by another process while awaiting ---
+      if (isItemSheetOpen.value) return;
 
       if (result.isSuccess && result.itemData != null) {
         // Handle EAN stripping suffix if present
