@@ -1,9 +1,10 @@
-// app/modules/batch/batch_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 
 class BatchScreen extends GetView<BatchController> {
@@ -33,18 +34,33 @@ class BatchScreen extends GetView<BatchController> {
           controller: scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            const SliverAppBar.large(
-              title: Text('Batches'),
+            SliverAppBar.large(
+              title: const Text('Batch'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Global Search',
+                  onPressed: () {
+                    showSearch(
+                      context: context,
+                      delegate: GlobalSearchDelegate(
+                        doctype: 'Batch',
+                        targetRoute: AppRoutes.BATCH_FORM,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
 
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
-                    hintText: 'Search Batch ID or Item...',
-                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                    hintText: 'Filter List...',
+                    prefixIcon: Icon(Icons.filter_list, color: colorScheme.onSurfaceVariant),
                     filled: true,
                     fillColor: colorScheme.surfaceContainerHighest,
                     border: OutlineInputBorder(
@@ -167,8 +183,8 @@ class BatchScreen extends GetView<BatchController> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // const Divider(),
-        // const SizedBox(height: 8),
+        const Divider(),
+        const SizedBox(height: 8),
 
         // Purchase Order Field
         _buildInfoRow(
@@ -200,7 +216,7 @@ class BatchScreen extends GetView<BatchController> {
           return _buildInfoRow(
             context,
             'Variant Of',
-            variant ?? 'N/A', // Display N/A if null/empty
+            variant ?? 'N/A',
             icon: Icons.style_outlined,
           );
         }),

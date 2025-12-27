@@ -1,4 +1,3 @@
-// app/modules/batch/form/batch_form_controller.dart
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -7,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -19,8 +18,9 @@ import 'package:share_plus/share_plus.dart';
 class BatchFormController extends GetxController {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
-  final String name = Get.arguments['name'];
-  final String mode = Get.arguments['mode'];
+  // Initialise with defaults, populated in onInit
+  String name = '';
+  String mode = 'new';
 
   var isLoading = true.obs;
   var isSaving = false.obs;
@@ -55,6 +55,7 @@ class BatchFormController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _parseArguments();
 
     // Attach Listeners for Dirty Check
     itemController.addListener(_checkForChanges);
@@ -68,6 +69,20 @@ class BatchFormController extends GetxController {
       fetchBatch();
     } else {
       _initNewBatch();
+    }
+  }
+
+  void _parseArguments() {
+    final args = Get.arguments;
+    if (args != null) {
+      if (args is Map) {
+        name = args['name'] ?? '';
+        mode = args['mode'] ?? 'new';
+      } else if (args is String) {
+        // Handle GlobalSearchDelegate argument (just the ID)
+        name = args;
+        mode = 'edit';
+      }
     }
   }
 
