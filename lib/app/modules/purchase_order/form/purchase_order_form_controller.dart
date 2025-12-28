@@ -47,7 +47,10 @@ class PurchaseOrderFormController extends GetxController {
   var isScanning = false.obs;
 
   var isDirty = false.obs;
+
+  // Track original state for dirty checks
   String _originalJson = '';
+  String _originalStatus = 'Draft';
 
   var purchaseOrder = Rx<PurchaseOrder?>(null);
 
@@ -210,7 +213,7 @@ class PurchaseOrderFormController extends GetxController {
       transactionDate: DateFormat('yyyy-MM-dd').format(now),
       grandTotal: 0.0,
       currency: 'AED',
-      status: 'Draft',
+      status: 'Not Saved', // Initial status for new doc
       docstatus: 0,
       modified: '',
       creation: now.toString(),
@@ -220,6 +223,7 @@ class PurchaseOrderFormController extends GetxController {
 
     isDirty.value = true;
     _originalJson = '';
+    _originalStatus = 'Draft'; // Default server status will be Draft
   }
 
   Future<void> fetchPO() async {
@@ -244,29 +248,65 @@ class PurchaseOrderFormController extends GetxController {
 
   void _updateOriginalState(PurchaseOrder po) {
     _originalJson = jsonEncode(po.toJson());
+    _originalStatus = po.status;
     isDirty.value = false;
   }
 
   void _checkForChanges() {
     if (purchaseOrder.value == null) return;
+
+    // Always dirty if new
     if (mode == 'new') {
       isDirty.value = true;
+      if (purchaseOrder.value!.status != 'Not Saved') {
+        _updateStatusOnly('Not Saved');
+      }
       return;
     }
+
+    // 1. Create a temporary object mirroring the current form state
+    //    CRITICAL: Use _originalStatus to isolate data changes from status changes
     final tempPO = PurchaseOrder(
       name: purchaseOrder.value!.name,
       supplier: supplierController.text,
       transactionDate: dateController.text,
       grandTotal: purchaseOrder.value!.grandTotal,
       currency: purchaseOrder.value!.currency,
-      status: purchaseOrder.value!.status,
+      status: _originalStatus, // Force original status for comparison
       docstatus: purchaseOrder.value!.docstatus,
       modified: purchaseOrder.value!.modified,
       creation: purchaseOrder.value!.creation,
       items: purchaseOrder.value!.items,
     );
+
+    // 2. Compare against original JSON
     final currentJson = jsonEncode(tempPO.toJson());
-    isDirty.value = currentJson != _originalJson;
+    final dirty = currentJson != _originalJson;
+    isDirty.value = dirty;
+
+    // 3. Dynamically update Status Pill based on dirty state
+    if (dirty && purchaseOrder.value!.status != 'Not Saved') {
+      _updateStatusOnly('Not Saved');
+    } else if (!dirty && purchaseOrder.value!.status == 'Not Saved') {
+      _updateStatusOnly(_originalStatus);
+    }
+  }
+
+  void _updateStatusOnly(String newStatus) {
+    if (purchaseOrder.value == null) return;
+    final old = purchaseOrder.value!;
+    purchaseOrder.value = PurchaseOrder(
+      name: old.name,
+      supplier: old.supplier,
+      transactionDate: old.transactionDate,
+      grandTotal: old.grandTotal,
+      currency: old.currency,
+      status: newStatus,
+      docstatus: old.docstatus,
+      modified: old.modified,
+      creation: old.creation,
+      items: old.items,
+    );
   }
 
   Future<void> scanBarcode(String barcode) async {
