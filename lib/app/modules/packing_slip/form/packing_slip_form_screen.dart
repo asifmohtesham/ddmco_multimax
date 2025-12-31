@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -24,10 +22,18 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: MainAppBar(
-            title: controller.packingSlip.value?.name ?? 'Loading...',
-            status: controller.packingSlip.value?.status,
-            isDirty: controller.isDirty.value, // Pass dirty state to AppBar
+          appBar: AppBar(
+            title: Obx(() {
+              final slip = controller.packingSlip.value;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(slip?.name ?? 'Loading...', style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  if (slip?.customPoNo != null)
+                    Text(slip!.customPoNo!, style: const TextStyle(fontSize: 16)),
+                ],
+              );
+            }),
             bottom: const TabBar(
               tabs: [
                 Tab(text: 'Details'),
@@ -91,8 +97,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(child: Text(slip.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                    // Also reflect dirty state here in the body if desired
-                    StatusPill(status: controller.isDirty.value ? 'Not Saved' : slip.status),
+                    StatusPill(status: slip.status),
                   ],
                 ),
                 const Divider(height: 24),
@@ -191,7 +196,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   Widget _buildItemsView(PackingSlip slip) {
     return Column(
       children: [
-        // 1. Filters (Consolidated with Delivery Note style)
+        // 1. Filters
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -211,7 +216,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         Expanded(
           child: Obx(() {
             final visibleGroups = controller.visibleGroupKeys;
-            final currentSlipItemsGrouped = controller.groupedItems; // Items in CURRENT slip
 
             if (visibleGroups.isEmpty) {
               return const Center(child: Text('No items to display.'));
@@ -223,24 +227,20 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               itemBuilder: (context, index) {
                 final serial = visibleGroups[index];
 
-                // Items present in the CURRENT packing slip for this serial
-                final itemsInCurrentSlip = currentSlipItemsGrouped[serial] ?? [];
-
-                // Use POS Upload Item Name as primary source
-                String itemName = controller.getPosItemName(serial);
-
-                if (itemName.isEmpty) {
-                  // Fallback logic
-                  if (itemsInCurrentSlip.isNotEmpty) {
-                    itemName = itemsInCurrentSlip.first.itemName;
-                  } else {
-                    final dnItem = controller.linkedDeliveryNote.value?.items.firstWhereOrNull((i) => (i.customInvoiceSerialNumber ?? '0') == serial);
-                    itemName = dnItem?.itemName ?? 'Unknown Item';
-                  }
-                }
-
+                // Data for Header
                 final totalRequired = controller.getTotalDnQtyForSerial(serial);
                 final globalPacked = controller.getGlobalPackedQty(serial);
+
+                // Get Header Name from POS Upload
+                String itemName = controller.getPosItemName(serial);
+                if (itemName.isEmpty) {
+                  final dnItems = controller.getDnItemsForSerial(serial);
+                  if (dnItems.isNotEmpty) itemName = dnItems.first.itemName ?? '';
+                  else itemName = 'Unknown Item';
+                }
+
+                // Get All DN Items for this section (checklist)
+                final sectionItems = controller.getDnItemsForSerial(serial);
 
                 return Obx(() {
                   final isExpanded = controller.expandedInvoice.value == serial;
@@ -250,11 +250,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     itemName: itemName,
                     rate: 0.0,
                     totalQty: totalRequired,
-                    scannedQty: globalPacked, // Shows Sum of All Drafts/Submitted + Current
+                    scannedQty: globalPacked,
                     onToggle: () => controller.toggleInvoiceExpand(serial),
-                    children: itemsInCurrentSlip.map((item) {
-                      final globalIndex = slip.items.indexOf(item);
-                      return PackingSlipItemCard(item: item, index: globalIndex);
+                    children: sectionItems.map((dnItem) {
+                      final reqQty = dnItem.qty;
+                      final packedQty = controller.getPackedQtyForDnItem(dnItem.name);
+                      final currentSlipItem = controller.getCurrentSlipItem(dnItem.name);
+
+                      return _buildChecklistRow(dnItem, reqQty, packedQty, currentSlipItem);
                     }).toList(),
                   );
                 });
@@ -273,6 +276,95 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             activeRoute: AppRoutes.PACKING_SLIP_FORM,
           )),
       ],
+    );
+  }
+
+  Widget _buildChecklistRow(dynamic dnItem, double reqQty, double packedQty, PackingSlipItem? currentItem) {
+    final bool isComplete = packedQty >= reqQty;
+    final bool isInCurrentSlip = currentItem != null;
+
+    return InkWell(
+      onTap: () {
+        if (isInCurrentSlip) {
+          controller.editItem(currentItem);
+        } else {
+          // If not in current slip, open add sheet for this DN item
+          // This allows manual "picking" from the list
+          if (controller.packingSlip.value?.docstatus == 0) {
+            controller.prepareSheetForAdd(dnItem);
+          }
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Row(
+          children: [
+            // Status Icon
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isComplete ? Colors.green.shade50 : (packedQty > 0 ? Colors.orange.shade50 : Colors.grey.shade100),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isComplete ? Icons.check : Icons.inventory_2_outlined,
+                size: 16,
+                color: isComplete ? Colors.green.shade700 : (packedQty > 0 ? Colors.orange.shade700 : Colors.grey),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dnItem.itemCode,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  Text(
+                    dnItem.itemName,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (dnItem.batchNo != null)
+                    Text(
+                      'Batch: ${dnItem.batchNo}',
+                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                    ),
+                ],
+              ),
+            ),
+
+            // Progress Text
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${FormattingHelper.formatQty(packedQty)} / ${FormattingHelper.formatQty(reqQty)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isComplete ? Colors.green.shade700 : Colors.black87,
+                  ),
+                ),
+                Text(
+                  dnItem.uom,
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+
+            // Edit Chevron if editable
+            if (controller.packingSlip.value?.docstatus == 0)
+              const Padding(
+                padding: EdgeInsets.only(left: 8.0),
+                child: Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

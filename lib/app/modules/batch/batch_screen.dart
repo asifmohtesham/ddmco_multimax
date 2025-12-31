@@ -190,7 +190,7 @@ class BatchScreen extends GetView<BatchController> {
         _buildInfoRow(
           context,
           'Purchase Order',
-          batch.purchaseOrder ?? 'Not Linked',
+          batch.customPurchaseOrder ?? 'Not Linked',
           icon: Icons.receipt_long,
         ),
 

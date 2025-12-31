@@ -296,10 +296,47 @@ class PackingSlipFormController extends GetxController {
     return item?.itemName ?? '';
   }
 
+  // Helper to get all Delivery Note Items for a specific serial (Group)
+  List<DeliveryNoteItem> getDnItemsForSerial(String serial) {
+    if (linkedDeliveryNote.value == null) return [];
+    return linkedDeliveryNote.value!.items
+        .where((item) => (item.customInvoiceSerialNumber ?? '0') == serial)
+        .toList();
+  }
+
   // Get Total Required Qty for a Serial (Target)
   double getTotalDnQtyForSerial(String serial) {
     if (linkedDeliveryNote.value == null) return 0.0;
     return linkedDeliveryNote.value!.items.where((item) => (item.customInvoiceSerialNumber ?? '0') == serial).fold(0.0, (sum, item) => sum + item.qty);
+  }
+
+  // Get Total Packed Qty for a specific DN Item Line (dnDetail)
+  // Accepts nullable String? to handle nullable `name` in model safely
+  double getPackedQtyForDnItem(String? dnDetail) {
+    if (dnDetail == null) return 0.0;
+    double total = 0.0;
+    final currentSlipName = packingSlip.value?.name;
+
+    // 1. Sum from Related Slips
+    for (var slip in relatedPackingSlips) {
+      if (slip.name == currentSlipName) continue;
+      final items = slip.items.where((i) => i.dnDetail == dnDetail);
+      for (var i in items) total += i.qty;
+    }
+
+    // 2. Sum from Current Slip
+    final currentItems = packingSlip.value?.items ?? [];
+    final activeItems = currentItems.where((i) => i.dnDetail == dnDetail);
+    for (var i in activeItems) total += i.qty;
+
+    return total;
+  }
+
+  // Get the PackingSlipItem object for the current slip corresponding to a DN Item
+  // Accepts nullable String? to handle nullable `name` in model safely
+  PackingSlipItem? getCurrentSlipItem(String? dnDetail) {
+    if (dnDetail == null) return null;
+    return packingSlip.value?.items.firstWhereOrNull((i) => i.dnDetail == dnDetail);
   }
 
   // Get Total Packed Qty for a Serial (Drafts + Current + Submitted)
@@ -388,7 +425,7 @@ class PackingSlipFormController extends GetxController {
     isScanning.value = false;
     barcodeController.clear();
     if (match != null) {
-      _prepareSheetForAdd(match);
+      prepareSheetForAdd(match);
     } else {
       GlobalSnackbar.error(message: 'Item $itemCode not found in Delivery Note or Batch mismatch.');
     }
@@ -402,7 +439,7 @@ class PackingSlipFormController extends GetxController {
     });
   }
 
-  void _prepareSheetForAdd(DeliveryNoteItem item) {
+  void prepareSheetForAdd(DeliveryNoteItem item) {
     itemFormKey = GlobalKey<FormState>();
     isEditing.value = false;
     currentItemNameKey = null;

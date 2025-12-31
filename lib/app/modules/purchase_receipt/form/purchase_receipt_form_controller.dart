@@ -437,6 +437,21 @@ class PurchaseReceiptFormController extends GetxController {
         }
 
         final itemData = result.itemData!;
+
+        // --- VALIDATION: Check if item is in Linked Purchase Order ---
+        if (_cachedPoItems.isNotEmpty) {
+          final isFound = _cachedPoItems.any((data) {
+            final PurchaseOrderItem pi = data['item'];
+            return pi.itemCode == itemData.itemCode;
+          });
+
+          if (!isFound) {
+            GlobalSnackbar.error(message: 'Item ${itemData.itemCode} is not in the linked Purchase Order');
+            return; // Exit here. finally block will reset isScanning.
+          }
+        }
+        // -------------------------------------------------------------
+
         currentItemCode = itemData.itemCode;
         currentVariantOf = itemData.variantOf ?? '';
         currentItemName = itemData.itemName;

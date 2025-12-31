@@ -538,7 +538,10 @@ class DeliveryNoteFormController extends GetxController {
     // Strict Validation Check
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
 
-    // RACK-WISE VALIDATION LOGIC
+    // Strict Rack Validation: If text is entered, it must be validated
+    if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
+
+    // RACK-WISE STOCK AVAILABILITY LOGIC
     final selectedRack = bsRackController.text;
     if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
       final availableInRack = rackStockMap[selectedRack] ?? 0.0;
@@ -548,6 +551,7 @@ class DeliveryNoteFormController extends GetxController {
       }
     }
 
+    // Invoice Serial No Check
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
       if (bsAvailableInvoiceSerialNos.isNotEmpty) {
         valid = false;

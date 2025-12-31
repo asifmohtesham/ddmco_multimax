@@ -60,4 +60,10 @@ class FormattingHelper {
       return '';
     }
   }
+
+  /// Formats quantity, removing trailing zeros if integer.
+  static String formatQty(double? qty) {
+    if (qty == null) return '0';
+    return qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
+  }
 }

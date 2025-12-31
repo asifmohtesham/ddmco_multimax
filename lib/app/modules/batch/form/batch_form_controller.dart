@@ -168,7 +168,7 @@ class BatchFormController extends GetxController {
         mfgDateController.text = b.manufacturingDate ?? '';
         expDateController.text = b.expiryDate ?? '';
         customPackagingQtyController.text = b.customPackagingQty.toString();
-        customPurchaseOrderController.text = b.purchaseOrder ?? '';
+        customPurchaseOrderController.text = b.customPurchaseOrder ?? '';
         isDisabled.value = b.disabled == 1;
         generatedBatchId.value = b.name;
 
@@ -202,7 +202,7 @@ class BatchFormController extends GetxController {
       'manufacturing_date': mfgDateController.text.isEmpty ? null : mfgDateController.text,
       'expiry_date': expDateController.text.isEmpty ? null : expDateController.text,
       'custom_packaging_qty': double.tryParse(customPackagingQtyController.text) ?? 0.0,
-      'purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
+      'custom_purchase_order': customPurchaseOrderController.text.isEmpty ? null : customPurchaseOrderController.text,
       'disabled': isDisabled.value ? 1 : 0,
     };
   }
