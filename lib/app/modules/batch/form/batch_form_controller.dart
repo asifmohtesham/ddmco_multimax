@@ -27,10 +27,12 @@ class BatchFormController extends GetxController {
   var isExporting = false.obs;
   var isDirty = false.obs;
   String _originalJson = '';
+  bool _isFetching = false; // Guard flag to prevent listener noise
 
   var batch = Rx<Batch?>(null);
 
   // Form Controllers
+  final batchIdController = TextEditingController();
   final itemController = TextEditingController();
   final descriptionController = TextEditingController();
   final mfgDateController = TextEditingController();
@@ -54,6 +56,9 @@ class BatchFormController extends GetxController {
   var poList = <Map<String, dynamic>>[].obs;
 
   bool get isEditMode => mode == 'edit';
+
+  // Store the random suffix to persist it across Item Code changes
+  String? _currentRandomSuffix;
 
   // --- Status Logic ---
   // Returns a simple String. Colors are handled by StatusPill.
@@ -149,6 +154,7 @@ class BatchFormController extends GetxController {
     customPackagingQtyController.text = '12';
     isDisabled.value = false;
     itemBarcode.value = '';
+    _currentRandomSuffix = null; // Reset suffix for new batch
 
     isDirty.value = true;
     _originalJson = '';
@@ -158,26 +164,36 @@ class BatchFormController extends GetxController {
 
   Future<void> fetchBatch() async {
     isLoading.value = true;
+    _isFetching = true; // Block dirty checks while programmatic updates happen
     try {
       final response = await _provider.getBatch(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final b = Batch.fromJson(response.data['data']);
         batch.value = b;
 
+        // Populate Controllers
+        batchIdController.text = b.name;
         itemController.text = b.item;
-        itemBarcode.value = b.customItemBarcode ?? '';
         descriptionController.text = b.description ?? '';
         mfgDateController.text = b.manufacturingDate ?? '';
         expDateController.text = b.expiryDate ?? '';
         customPackagingQtyController.text = b.customPackagingQty.toString();
         customPurchaseOrderController.text = b.customPurchaseOrder ?? '';
         isDisabled.value = b.disabled == 1;
+
         generatedBatchId.value = b.name;
 
+        // Pre-fill from Batch document first
+        itemBarcode.value = b.customItemBarcode ?? '';
+        itemVariantOf.value = b.variantOf ?? '';
+
         if(b.item.isNotEmpty) {
-          _fetchItemDetails(b.item, generateId: false);
+          // Await this to ensure itemBarcode/Variant are synced from Item Master
+          // BEFORE we snapshot the form state as "clean"
+          await _fetchItemDetails(b.item, generateId: false);
         }
 
+        // Snapshot original state and reset dirty flag
         _originalJson = jsonEncode(_getCurrentFormData());
         isDirty.value = false;
       }
@@ -185,10 +201,13 @@ class BatchFormController extends GetxController {
       GlobalSnackbar.error(message: 'Failed to load batch: $e');
     } finally {
       isLoading.value = false;
+      _isFetching = false; // Re-enable dirty checks
     }
   }
 
   void _checkForChanges() {
+    if (_isFetching) return; // Ignore changes during fetch
+
     if (mode == 'new') {
       isDirty.value = true;
       return;
@@ -199,6 +218,7 @@ class BatchFormController extends GetxController {
 
   Map<String, dynamic> _getCurrentFormData() {
     return {
+      'name': batchIdController.text,
       'item': itemController.text,
       'custom_item_barcode': itemBarcode.value,
       'description': descriptionController.text,
@@ -274,15 +294,41 @@ class BatchFormController extends GetxController {
   }
 
   void _generateBatchId(String ean) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    final rnd = Random();
-    final randomId = String.fromCharCodes(Iterable.generate(
-        6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
-    generatedBatchId.value = '$ean-$randomId';
+    // Generate suffix only if it doesn't exist yet
+    if (_currentRandomSuffix == null) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      final rnd = Random();
+      _currentRandomSuffix = String.fromCharCodes(Iterable.generate(
+          6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
+    }
+
+    // Format: {ean8}-{6-character alphanumeric}
+    // This preserves the suffix while updating the EAN prefix
+    generatedBatchId.value = '$ean-$_currentRandomSuffix';
+    batchIdController.text = generatedBatchId.value;
+
+    // Update the Batch Model name immediately so UI (AppBar) updates
+    if (batch.value != null) {
+      batch.value = Batch(
+        name: generatedBatchId.value,
+        item: batch.value!.item,
+        description: batch.value!.description,
+        manufacturingDate: batch.value!.manufacturingDate,
+        expiryDate: batch.value!.expiryDate,
+        customPackagingQty: batch.value!.customPackagingQty,
+        customPurchaseOrder: batch.value!.customPurchaseOrder,
+        variantOf: batch.value!.variantOf,
+        customItemBarcode: itemBarcode.value,
+        disabled: batch.value!.disabled,
+        creation: batch.value!.creation,
+        modified: batch.value!.modified,
+      );
+    }
   }
 
   Future<void> saveBatch() async {
     if (!isDirty.value && isEditMode) return;
+
     if (itemController.text.isEmpty) {
       GlobalSnackbar.warning(message: 'Item Code is required');
       return;
@@ -298,22 +344,33 @@ class BatchFormController extends GetxController {
 
     isSaving.value = true;
     final data = _getCurrentFormData();
+
     try {
       if (isEditMode) {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
           GlobalSnackbar.success(message: 'Batch updated successfully');
-          fetchBatch();
+          // Await fetchBatch to ensure isDirty is reset and data is refreshed
+          await fetchBatch();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }
       } else {
-        data['batch_id'] = generatedBatchId.value;
-        data['name'] = generatedBatchId.value;
+        if (batchIdController.text.isEmpty && itemBarcode.value.isNotEmpty) {
+          _generateBatchId(itemBarcode.value);
+        }
+
+        data['batch_id'] = batchIdController.text;
+        data['name'] = batchIdController.text;
+
         final response = await _provider.createBatch(data);
         if (response.statusCode == 200) {
-          GlobalSnackbar.success(message: 'Batch created: ${generatedBatchId.value}');
-          Get.back(result: true);
+          GlobalSnackbar.success(message: 'Batch created: ${data['name']}');
+
+          // Switch to Edit Mode and fetch data to update UI (Status, Title, Actions)
+          name = data['name'];
+          mode = 'edit';
+          await fetchBatch();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }

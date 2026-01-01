@@ -107,6 +107,23 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     const Divider(),
                     const SizedBox(height: 8),
 
+                    // Display Generated Batch ID for new documents
+                    if (controller.generatedBatchId.value.isNotEmpty) ...[
+                      TextFormField(
+                        // key: ValueKey(controller.generatedBatchId.value),
+                        controller: controller.batchIdController,
+                        readOnly: controller.isEditMode,
+                        decoration: const InputDecoration(
+                          labelText: 'Batch ID',
+                          helperText: 'Auto-generated',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.vpn_key_outlined),
+                          filled: true,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // Item Code
                     GestureDetector(
                       onTap: controller.isEditMode ? null : () => _showItemPicker(context),
