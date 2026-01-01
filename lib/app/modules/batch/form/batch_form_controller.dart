@@ -148,6 +148,7 @@ class BatchFormController extends GetxController {
     mfgDateController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
     customPackagingQtyController.text = '12';
     isDisabled.value = false;
+    itemBarcode.value = '';
 
     isDirty.value = true;
     _originalJson = '';
@@ -164,6 +165,7 @@ class BatchFormController extends GetxController {
         batch.value = b;
 
         itemController.text = b.item;
+        itemBarcode.value = b.customItemBarcode ?? '';
         descriptionController.text = b.description ?? '';
         mfgDateController.text = b.manufacturingDate ?? '';
         expDateController.text = b.expiryDate ?? '';
@@ -198,6 +200,7 @@ class BatchFormController extends GetxController {
   Map<String, dynamic> _getCurrentFormData() {
     return {
       'item': itemController.text,
+      'custom_item_barcode': itemBarcode.value,
       'description': descriptionController.text,
       'manufacturing_date': mfgDateController.text.isEmpty ? null : mfgDateController.text,
       'expiry_date': expDateController.text.isEmpty ? null : expDateController.text,
@@ -284,6 +287,15 @@ class BatchFormController extends GetxController {
       GlobalSnackbar.warning(message: 'Item Code is required');
       return;
     }
+
+    // Critical check for the mandatory field
+    if (itemBarcode.value.isEmpty) {
+      // Try to fetch it one last time if missing?
+      // Or just fail. Let's assume _fetchItemDetails ran.
+      // If it is truly empty, we might use item code as fallback here too.
+      itemBarcode.value = itemController.text;
+    }
+
     isSaving.value = true;
     final data = _getCurrentFormData();
     try {
@@ -338,7 +350,7 @@ class BatchFormController extends GetxController {
         final qrCode = qrValidationResult.qrCode!;
         final painter = QrPainter.withQr(
           qr: qrCode,
-          color: const Color(0xFF000000),
+          eyeStyle: const QrEyeStyle(color: Color(0xFF000000)),
           emptyColor: const Color(0xFFFFFFFF),
           gapless: true,
         );

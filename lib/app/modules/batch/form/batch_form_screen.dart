@@ -27,49 +27,45 @@ class BatchFormScreen extends GetView<BatchFormController> {
           title: controller.batch.value?.name ?? 'Batch Details',
           status: controller.batchStatus,
           isDirty: controller.isDirty.value,
+          isSaving: controller.isSaving.value,
+          onSave: controller.saveBatch,
           actions: [
             // Export Button
-            Obx(() {
-              final batchId = controller.generatedBatchId.value;
-              if (controller.isEditMode && batchId.isNotEmpty) {
-                return PopupMenuButton<String>(
-                  icon: controller.isExporting.value
-                      ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: colorScheme.onSurface, strokeWidth: 2))
-                      : const Icon(Icons.share),
-                  onSelected: (value) {
-                    if (value == 'png') controller.exportQrAsPng();
-                    if (value == 'pdf') controller.exportQrAsPdf();
-                  },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'png',
-                      child: ListTile(
-                        leading: Icon(Icons.image, color: Colors.blue),
-                        title: Text('Export PNG'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
+            if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty)
+              PopupMenuButton<String>(
+                icon: controller.isExporting.value
+                    ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2
+                    )
+                )
+                    : const Icon(Icons.share),
+                onSelected: (value) {
+                  if (value == 'png') controller.exportQrAsPng();
+                  if (value == 'pdf') controller.exportQrAsPdf();
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'png',
+                    child: ListTile(
+                      leading: Icon(Icons.image, color: Colors.blue),
+                      title: Text('Export PNG'),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                    const PopupMenuItem<String>(
-                      value: 'pdf',
-                      child: ListTile(
-                        leading: Icon(Icons.picture_as_pdf, color: Colors.red),
-                        title: Text('Export PDF (Vector)'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'pdf',
+                    child: ListTile(
+                      leading: Icon(Icons.picture_as_pdf, color: Colors.red),
+                      title: Text('Export PDF (Vector)'),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                  ],
-                );
-              }
-              return const SizedBox.shrink();
-            }),
-
-            Obx(() => controller.isSaving.value
-                ? const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-                : IconButton(
-              icon: Icon(Icons.save, color: controller.isDirty.value ? colorScheme.primary : Colors.grey),
-              onPressed: controller.isDirty.value ? controller.saveBatch : null,
-            )
-            ),
+                  ),
+                ],
+              ),
           ],
         ),
         body: Obx(() {
@@ -97,7 +93,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   context,
                   title: 'General Information',
                   headerAction: StatusPill(
-                    status: controller.batchStatus, // Simple string pass
+                    status: controller.batchStatus, // Kept for inline visibility
                   ),
                   children: [
                     // Status Toggle

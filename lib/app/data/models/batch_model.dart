@@ -1,6 +1,7 @@
 class Batch {
   final String name;
   final String item;
+  final String? customItemBarcode;
   final String? description;
   final String? manufacturingDate;
   final String? expiryDate;
@@ -14,6 +15,7 @@ class Batch {
   Batch({
     required this.name,
     required this.item,
+    this.customItemBarcode,
     this.description,
     this.manufacturingDate,
     this.expiryDate,
@@ -29,6 +31,7 @@ class Batch {
     return Batch(
       name: json['name'] ?? '',
       item: json['item'] ?? '',
+      customItemBarcode: json['custom_item_barcode'],
       description: json['description'],
       manufacturingDate: json['manufacturing_date'],
       expiryDate: json['expiry_date'],
@@ -44,6 +47,7 @@ class Batch {
   Map<String, dynamic> toJson() {
     return {
       'item': item,
+      'custom_item_barcode': customItemBarcode,
       'description': description,
       'manufacturing_date': manufacturingDate,
       'expiry_date': expiryDate,

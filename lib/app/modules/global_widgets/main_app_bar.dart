@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final String? status;
+  final bool isDirty;
+  final bool isSaving;
+  final VoidCallback? onSave;
   final List<Widget>? actions;
   final Widget? leading;
+  final bool showBack;
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
-  final bool isDirty;
 
   // Search Configuration
   final String? searchDoctype;
@@ -20,8 +24,11 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     required this.title,
     this.status,
+    this.isSaving = false,
+    this.onSave,
     this.actions,
     this.leading,
+    this.showBack = true,
     this.bottom,
     this.centerTitle = false,
     this.isDirty = false,
@@ -31,11 +38,12 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Centralised Logic: If dirty, override status to 'Not Saved'
+    // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // Construct Actions: Append Search Icon if search configuration is present
+    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Save]
     final List<Widget> appActions = [
+      // Global Search Action
       if (searchDoctype != null && searchRoute != null)
         IconButton(
           tooltip: 'Search $searchDoctype',
@@ -50,33 +58,46 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             );
           },
         ),
+
+      // Custom Actions injected by the screen
       ...(actions ?? []),
+
+      // Global Save Action
+      if (onSave != null)
+        SaveIconButton(
+          onPressed: onSave,
+          isSaving: isSaving,
+          isDirty: isDirty,
+        ),
     ];
 
     return AppBar(
-      title: displayStatus != null
-          ? Column(
+      leading: leading ?? (showBack && Navigator.canPop(context)
+          ? IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Get.back(),
+      )
+          : null),
+      title: Column(
         crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
           ),
-          const SizedBox(height: 2),
-          StatusPill(status: displayStatus),
+          if (displayStatus != null) ...[
+            const SizedBox(height: 4),
+            StatusPill(status: displayStatus),
+          ]
         ],
-      )
-          : Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
       ),
+      actions: appActions,
       centerTitle: centerTitle,
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).primaryColor,
       foregroundColor: Theme.of(context).colorScheme.onPrimary,
-      actions: appActions,
-      leading: leading,
       bottom: bottom,
     );
   }

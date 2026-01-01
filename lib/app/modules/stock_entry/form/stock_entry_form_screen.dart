@@ -5,7 +5,6 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -15,72 +14,61 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          appBar: MainAppBar(
-            title: controller.stockEntry.value?.name ?? 'Loading...',
-            status: controller.stockEntry.value?.status,
-            isDirty: controller.isDirty.value, // Pass dirty state to AppBar
-            actions: [
-              Obx(() {
-                if (controller.isSaving.value) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
-                      ),
-                    ),
-                  );
-                }
+    return Obx(() {
+      // Determine if the document is editable and can be saved
+      final entry = controller.stockEntry.value;
+      final bool isEditable = entry?.docstatus == 0;
 
-                // Define Save Enabled Condition
-                final bool canSave = controller.isDirty.value &&
-                    controller.stockEntry.value?.docstatus == 0 &&
-                    (controller.stockEntry.value?.items.isNotEmpty ?? false);
+      // Determine if we should show the save button:
+      // It should be visible if the document is editable.
+      // The button's disabled/enabled state is handled by MainAppBar via 'isDirty'.
+      final VoidCallback? onSave = isEditable ? controller.saveStockEntry : null;
 
-                return IconButton(
-                  icon: Icon(Icons.save, color: canSave ? Colors.white : Colors.white54),
-                  onPressed: canSave ? controller.saveStockEntry : null,
-                );
-              }),
-            ],
-            bottom: const TabBar(
-              tabs: [
-                Tab(text: 'Logistics & Details'),
-                Tab(text: 'Items (Scan)'),
-              ],
+      return PopScope(
+        canPop: !controller.isDirty.value,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            appBar: MainAppBar(
+              title: entry?.name ?? 'Loading...',
+              status: entry?.status,
+              isDirty: controller.isDirty.value,
+              isSaving: controller.isSaving.value,
+              onSave: onSave,
+              // Optional: Enable Search if you want to search other Stock Entries from here
+              // searchDoctype: 'Stock Entry',
+              // searchRoute: AppRoutes.STOCK_ENTRY_LIST,
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'Logistics & Details'),
+                  Tab(text: 'Items (Scan)'),
+                ],
+              ),
             ),
+            body: Builder(builder: (context) {
+              if (controller.isLoading.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (entry == null) {
+                return const Center(child: Text('Stock entry not found.'));
+              }
+
+              return TabBarView(
+                children: [
+                  _buildDetailsView(context, entry),
+                  _buildItemsView(context, entry),
+                ],
+              );
+            }),
           ),
-          body: Obx(() {
-            if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final entry = controller.stockEntry.value;
-            if (entry == null) {
-              return const Center(child: Text('Stock entry not found.'));
-            }
-
-            return TabBarView(
-              children: [
-                _buildDetailsView(context, entry),
-                _buildItemsView(context, entry),
-              ],
-            );
-          }),
         ),
-      ),
-    ));
+      );
+    });
   }
 
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
