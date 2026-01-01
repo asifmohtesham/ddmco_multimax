@@ -82,6 +82,10 @@ class StockEntryFormController extends GetxController {
   final bsTargetRackController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
 
+  // New Item Level Warehouse Fields
+  var bsItemSourceWarehouse = RxnString();
+  var bsItemTargetWarehouse = RxnString();
+
   var bsMaxQty = 0.0.obs;
   var bsValidationMaxQty = 0.0.obs;
 
@@ -152,6 +156,10 @@ class StockEntryFormController extends GetxController {
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
+
+    // Watch item warehouse changes to update stock balance
+    ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
+
     customReferenceNoController.addListener(() {
       _markDirty();
       if (entrySource == StockEntrySource.manual &&
@@ -169,6 +177,8 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.addListener(validateSheet);
     bsTargetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
+    ever(bsItemSourceWarehouse, (_) => validateSheet());
+    ever(bsItemTargetWarehouse, (_) => validateSheet());
 
     _setupAutoSubmit();
   }
@@ -472,8 +482,10 @@ class StockEntryFormController extends GetxController {
     final batch = bsBatchController.text;
     final sourceRack = bsSourceRackController.text;
     final targetRack = bsTargetRackController.text;
-    final sWh = derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
-    final tWh = derivedTargetWarehouse.value ?? selectedToWarehouse.value;
+
+    // Updated Logic: Prefer Item Level Warehouse, fallback to Derived (scan), fallback to Header
+    final sWh = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    final tWh = bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentItems = stockEntry.value?.items.toList() ?? [];
@@ -637,8 +649,9 @@ class StockEntryFormController extends GetxController {
         // If rack entered, it must be valid (async check sets isSourceRackValid)
         if (!isSourceRackValid.value) return false;
       } else {
-        // If rack empty, fallback to Global Warehouse
-        if (selectedFromWarehouse.value == null || selectedFromWarehouse.value!.isEmpty) {
+        // Updated: Check Item Level Warehouse as valid fallback
+        final effectiveSWh = bsItemSourceWarehouse.value ?? selectedFromWarehouse.value;
+        if (effectiveSWh == null || effectiveSWh.isEmpty) {
           rackError.value = 'Source Warehouse or Rack required';
           return false;
         } else if (rackError.value == 'Source Warehouse or Rack required' || rackError.value == 'No Warehouse Selected') {
@@ -693,6 +706,10 @@ class StockEntryFormController extends GetxController {
     derivedTargetWarehouse.value = null;
     bsMaxQty.value = 0.0;
     bsValidationMaxQty.value = 0.0;
+
+    // Reset Item Warehouses
+    bsItemSourceWarehouse.value = null;
+    bsItemTargetWarehouse.value = null;
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
@@ -768,6 +785,10 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
+
+    // Populate Item Warehouses
+    bsItemSourceWarehouse.value = item.sWarehouse;
+    bsItemTargetWarehouse.value = item.tWarehouse;
 
     // Ensure serial is '0' if null when editing MR items (handling legacy/uninitialised items)
     if (entrySource == StockEntrySource.materialRequest && (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
@@ -965,7 +986,8 @@ class StockEntryFormController extends GetxController {
 
     // 1. Determine the effective warehouse
     // Default to the 'From Warehouse' selected in the Details tab
-    String? effectiveWarehouse = selectedFromWarehouse.value;
+    // Prioritise Item Level Warehouse -> Derived -> Header
+    String? effectiveWarehouse = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
 
     // If a specific warehouse is derived from the scanned rack, use it
     if (derivedSourceWarehouse.value != null && derivedSourceWarehouse.value!.isNotEmpty) {
@@ -1065,7 +1087,7 @@ class StockEntryFormController extends GetxController {
     if (rack.isEmpty) {
       if (isSource) {
         isSourceRackValid.value = false;
-        derivedSourceWarehouse.value = null; // Reset derived warehouse
+        derivedSourceWarehouse.value = null;
       } else {
         isTargetRackValid.value = false;
         derivedTargetWarehouse.value = null;
@@ -1074,20 +1096,24 @@ class StockEntryFormController extends GetxController {
       return;
     }
 
-    // Reset derived warehouse before parsing to ensure old values don't persist
-    // if the new rack string doesn't imply a warehouse.
+    // Reset derived warehouse before parsing
     if (isSource) derivedSourceWarehouse.value = null;
     else derivedTargetWarehouse.value = null;
 
     // Parse Warehouse from Rack Code (Format: ZONE-WH-RACK or similar)
-    // Adjust logic based on actual rack code naming convention
+    // Updates the specific s_warehouse / t_warehouse field values if derived
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
         // Example logic: reconstructing warehouse name from rack parts
         final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
-        if (isSource) derivedSourceWarehouse.value = wh;
-        else derivedTargetWarehouse.value = wh;
+        if (isSource) {
+          derivedSourceWarehouse.value = wh;
+          bsItemSourceWarehouse.value = wh; // Set s_warehouse field
+        } else {
+          derivedTargetWarehouse.value = wh;
+          bsItemTargetWarehouse.value = wh; // Set t_warehouse field
+        }
       }
     }
 
@@ -1099,7 +1125,7 @@ class StockEntryFormController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          // Refetch stock availability now that we have a valid rack (and potentially a new derived warehouse)
+          // Refetch stock availability now that we have a valid rack and potentially new warehouse
           await _updateAvailableStock();
         } else {
           isTargetRackValid.value = true;

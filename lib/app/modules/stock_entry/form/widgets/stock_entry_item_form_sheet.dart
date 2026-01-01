@@ -115,6 +115,57 @@ class StockEntryItemFormSheet extends StatelessWidget {
               ),
             )),
 
+          // --- New Warehouse Fields ---
+          Builder(builder: (context) {
+            final type = controller.selectedStockEntryType.value;
+            final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+            final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+
+            return Column(
+              children: [
+                if (showSource)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: GlobalItemFormSheet.buildInputGroup(
+                      label: 'Source Warehouse',
+                      color: Colors.orange,
+                      child: Obx(() => DropdownButtonFormField<String>(
+                        value: controller.bsItemSourceWarehouse.value,
+                        decoration: InputDecoration(
+                          hintText: 'Default: ${controller.selectedFromWarehouse.value ?? "None"}',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                        isExpanded: true,
+                        items: controller.warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w, overflow: TextOverflow.ellipsis))).toList(),
+                        onChanged: (val) => controller.bsItemSourceWarehouse.value = val,
+                      )),
+                    ),
+                  ),
+
+                if (showTarget)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: GlobalItemFormSheet.buildInputGroup(
+                      label: 'Target Warehouse',
+                      color: Colors.green,
+                      child: Obx(() => DropdownButtonFormField<String>(
+                        value: controller.bsItemTargetWarehouse.value,
+                        decoration: InputDecoration(
+                          hintText: 'Default: ${controller.selectedToWarehouse.value ?? "None"}',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                        isExpanded: true,
+                        items: controller.warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w, overflow: TextOverflow.ellipsis))).toList(),
+                        onChanged: (val) => controller.bsItemTargetWarehouse.value = val,
+                      )),
+                    ),
+                  ),
+              ],
+            );
+          }),
+
           // Rack Fields
           Builder(builder: (context) {
             final type = controller.selectedStockEntryType.value;
