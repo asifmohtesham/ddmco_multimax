@@ -104,6 +104,7 @@ class DeliveryNoteFormController extends GetxController {
   var bsItemImage = RxnString();
   var bsItemPackedQty = RxnDouble();
   var bsItemCompanyTotalStock = RxnDouble();
+  var bsItemWarehouse = RxnString();
 
   String currentItemCode = '';
   String currentItemName = '';
@@ -644,8 +645,11 @@ class DeliveryNoteFormController extends GetxController {
     isItemSheetOpen.value = true;
   }
 
+  // Updated to respect the derived Item Warehouse
   Future<void> _fetchAllRackStocks() async {
-    final warehouse = setWarehouse.value;
+    // Priority: Item Level Warehouse -> Global Set Warehouse
+    final warehouse = bsItemWarehouse.value ?? setWarehouse.value;
+
     if (warehouse == null || warehouse.isEmpty) return;
 
     try {
@@ -658,7 +662,6 @@ class DeliveryNoteFormController extends GetxController {
 
       if (response.statusCode == 200 && response.data['message'] != null) {
         final result = response.data['message']['result'];
-        log(name: 'Fetch Rack Stocks', result is List ? result.slice(0,result.length-1).toString() : '');
         if (result is List && result.isNotEmpty) {
           final Map<String, double> tempMap = {};
           final List<String> tooltipLines = [];
@@ -779,7 +782,23 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   Future<void> validateRack(String rack) async {
-    if (rack.isEmpty) return;
+    if (rack.isEmpty) {
+      bsIsRackValid.value = false;
+      bsItemWarehouse.value = null; // Reset derived warehouse
+      validateSheet();
+      return;
+    }
+
+    // Optimistic derivation: Parse Warehouse from Rack Code (Format: ZONE-WH-RACK)
+    // Example: A-Stores-R1 -> Stores - A
+    if (rack.contains('-')) {
+      final parts = rack.split('-');
+      if (parts.length >= 3) {
+        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
+        bsItemWarehouse.value = wh;
+      }
+    }
+
     isValidatingRack.value = true;
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
@@ -787,8 +806,16 @@ class DeliveryNoteFormController extends GetxController {
         bsIsRackValid.value = true;
         // GlobalSnackbar.success(message: 'Rack validated');
 
-        // Re-run validation to check stock quantities against this new rack
+        // Confirm warehouse from API response
+        if (response.data['data']['warehouse'] != null) {
+          bsItemWarehouse.value = response.data['data']['warehouse'];
+        }
+
+        // Re-run validation (and stock fetch) with the new confirmed warehouse
         validateSheet();
+
+        // Refresh rack stocks using the specific warehouse
+        _fetchAllRackStocks();
       } else {
         bsIsRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');
