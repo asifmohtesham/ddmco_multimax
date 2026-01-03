@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -729,9 +730,11 @@ class DeliveryNoteFormController extends GetxController {
 
       // 1. Get Batch-Wise Balance History (General Stock)
       final balanceResponse = await _apiProvider.getBatchWiseBalance(
-          currentItemCode,
-          batchNo,
-          warehouse: determinedWarehouse
+          itemCode: currentItemCode,
+          batchNo: batchNo,
+          warehouse: determinedWarehouse,
+          fromDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+          toDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
       );
 
       double fetchedBatchQty = 0.0;
@@ -861,9 +864,11 @@ class DeliveryNoteFormController extends GetxController {
         }
 
         final balanceResponse = await _apiProvider.getBatchWiseBalance(
-            item.itemCode,
-            item.batchNo!,
-            warehouse: targetWh
+          itemCode: item.itemCode,
+          batchNo: item.batchNo!,
+          warehouse: targetWh,
+          fromDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+          toDate: DateFormat('yyyy-MM-dd').format(DateTime.now())
         );
 
         if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -961,9 +966,11 @@ class DeliveryNoteFormController extends GetxController {
         if (result.batchNo != null) {
           try {
             final balanceResponse = await _apiProvider.getBatchWiseBalance(
-                itemData.itemCode,
-                result.batchNo!,
-                warehouse: setWarehouse.value
+              itemCode: itemData.itemCode,
+              batchNo: result.batchNo!,
+              warehouse: setWarehouse.value,
+              fromDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+              toDate: DateFormat('yyyy-MM-dd').format(DateTime.now())
             );
 
             if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {

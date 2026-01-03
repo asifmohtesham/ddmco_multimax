@@ -249,7 +249,15 @@ class ApiProvider {
     );
   }
 
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
+  /// Fetches Batch-Wise Balance History
+  /// Updated to accept date range
+  Future<Response> getBatchWiseBalance({
+    required String itemCode,
+    required String batchNo,
+    required String fromDate,
+    required String toDate,
+    String? warehouse,
+  }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
@@ -258,15 +266,14 @@ class ApiProvider {
 
     final Map<String, dynamic> filters = {
       "company": company,
-      "from_date": today,
-      "to_date": today,
-      "item_code": itemCode,
-      "batch_no": batchNo,
+      "from_date": fromDate,
+      "to_date": toDate,
     };
 
-    if (warehouse != null && warehouse.isNotEmpty) {
-      filters["warehouse"] = warehouse;
-    }
+    // ERP typically requires Item Code for this report
+    if (itemCode.isNotEmpty) filters["item_code"] = itemCode;
+    if (batchNo.isNotEmpty) filters["batch_no"] = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
 
     return await _dio.get('/api/method/frappe.desk.query_report.run',
         queryParameters: {
@@ -358,6 +365,40 @@ class ApiProvider {
     return await _dio.post('/api/method/frappe.core.doctype.user.user.update_password',
         data: {'old_password': oldPassword, 'new_password': newPassword, 'logout_all_sessions': 0},
         options: Options(contentType: Headers.formUrlEncodedContentType)
+    );
+  }
+
+  // Updated to include getStockLedger and ensure consistency
+  Future<Response> getStockLedger({
+    required String company,
+    required String fromDate,
+    required String toDate,
+    String? itemCode,
+    String? warehouse,
+    String? batchNo,
+    String? segregateSerialBatchBundle = 'true',
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final Map<String, dynamic> filters = {
+      "company": company,
+      "from_date": fromDate,
+      "to_date": toDate,
+      "segregate_serial_batch_bundle": segregateSerialBatchBundle
+    };
+
+    if (itemCode != null && itemCode.isNotEmpty) filters["item_code"] = itemCode;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
+    if (batchNo != null && batchNo.isNotEmpty) filters["batch_no"] = batchNo;
+
+    return await _dio.get('/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name': 'Stock Ledger',
+          'filters': json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters': 'false',
+          '_': DateTime.now().millisecondsSinceEpoch
+        }
     );
   }
 }

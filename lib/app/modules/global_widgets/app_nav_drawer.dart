@@ -4,6 +4,7 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart'; // Import for type safety if needed, though strictly we use routes
 
 class AppNavDrawer extends StatelessWidget {
   // Restored const constructor to fix compilation errors in other files
@@ -158,6 +159,30 @@ class AppNavDrawer extends StatelessWidget {
                           DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
                           DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
                           DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
+
+                          // --- STOCK REPORTS SUBSECTION ---
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                            child: Text("Reports", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.0)),
+                          ),
+                          _DrawerItem(
+                              title: 'Batch-Wise Balance',
+                              icon: Icons.view_list_rounded,
+                              isSelected: currentRoute == AppRoutes.BATCH_WISE_BALANCE_REPORT,
+                              onTap: () { Get.back(); Get.toNamed(AppRoutes.BATCH_WISE_BALANCE_REPORT); }
+                          ),
+                          _DrawerItem(
+                              title: 'Stock Balance',
+                              icon: Icons.bar_chart_rounded,
+                              isSelected: currentRoute == AppRoutes.STOCK_BALANCE_REPORT,
+                              onTap: () { Get.back(); Get.toNamed(AppRoutes.STOCK_BALANCE_REPORT); }
+                          ),
+                          _DrawerItem(
+                              title: 'Stock Ledger',
+                              icon: Icons.history_edu_rounded,
+                              isSelected: currentRoute == AppRoutes.STOCK_LEDGER_REPORT,
+                              onTap: () { Get.back(); Get.toNamed(AppRoutes.STOCK_LEDGER_REPORT); }
+                          ),
                         ],
                       ),
 
