@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -48,15 +49,26 @@ class ApiProvider {
         _baseUrl = storedUrl;
       }
     }
-    final appSupportDir = await getApplicationSupportDirectory();
-    final cookiePath = '${appSupportDir.path}/.cookies/';
-    _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+
+    if (!kIsWeb) {
+      final appSupportDir = await getApplicationSupportDirectory();
+      final cookiePath = '${appSupportDir.path}/.cookies/';
+      _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+    } else {
+      _cookieJar = CookieJar();
+    }
+
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
     ));
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    
+    // Only add CookieManager on native platforms (Android/iOS/Desktop)
+    if (!kIsWeb) {
+      _dio.interceptors.add(CookieManager(_cookieJar));
+    }
+    
     _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
     _dioInitialised = true;
   }
@@ -336,13 +348,18 @@ class ApiProvider {
     }
   }
   Future<bool> hasSessionCookies() async {
+    // On Web, we assume optimistic true and let API verification fail if invalid
+    if (kIsWeb) return true;
+
     if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
   Future<void> clearSessionCookies() async {
     if (!_dioInitialised) await _initDio();
-    await _cookieJar.deleteAll();
+    if (!kIsWeb) {
+      await _cookieJar.deleteAll();
+    }
   }
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
