@@ -1,13 +1,13 @@
-import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -46,7 +46,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterBottomSheet(BuildContext context) {
+  void _showFilterBottomSheet() {
     Get.bottomSheet(
       const StockEntryFilterBottomSheet(),
       isScrollControlled: true,
@@ -56,174 +56,100 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    return Obx(() {
+      final hasFilters = controller.activeFilters.isNotEmpty || controller.searchQuery.value.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface, // M3 Background
-      drawer: const AppNavDrawer(),
-      body: RefreshIndicator(
+      return GenericListPage(
+        title: 'Stock Entries',
+        isLoading: controller.isLoading,
+        data: controller.stockEntries,
         onRefresh: () => controller.fetchStockEntries(clear: true),
-        color: colorScheme.primary,
-        backgroundColor: colorScheme.surfaceContainerHighest,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            // M3 Large App Bar
-            SliverAppBar.large(
-              title: const Text('Stock Entries'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: () => _showFilterBottomSheet(context),
-                ),
-              ],
-            ),
+        scrollController: _scrollController,
 
-            // Search Bar Pinned to top of list
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: TextField(
-                  onChanged: controller.onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search ID, Purpose...',
-                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest, // M3 Search Bar Color
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30), // Pill Shape
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  ),
-                ),
-              ),
-            ),
+        // Search & Filter Configuration
+        onSearch: controller.onSearchChanged,
+        searchHint: 'Search ID, Purpose...',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showFilterBottomSheet,
+          ),
+        ],
 
-            // List Content
-            Obx(() {
-              if (controller.isLoading.value && controller.stockEntries.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
+        // Floating Action Button
+        fab: RoleGuard(
+          roles: controller.writeRoles.toList(),
+          child: FloatingActionButton.extended(
+            onPressed: controller.openCreateDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('Create'),
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+            elevation: 4,
+          ),
+        ),
 
-              if (controller.stockEntries.isEmpty) {
-                final bool hasFilters = controller.activeFilters.isNotEmpty || controller.searchQuery.value.isNotEmpty;
-                return SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters ? 'No Matching Entries' : 'No Stock Entries',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            hasFilters
-                                ? 'Try adjusting your filters or search query.'
-                                : 'Pull to refresh or create a new one.',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: () => controller.clearFilters(),
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () => controller.fetchStockEntries(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+        // Empty State Configuration
+        emptyTitle: hasFilters ? 'No Matching Entries' : 'No Stock Entries',
+        emptyMessage: hasFilters
+            ? 'Try adjusting your filters or search query.'
+            : 'Pull to refresh or create a new one.',
+        emptyIcon: hasFilters ? Icons.filter_alt_off_outlined : Icons.inventory_2_outlined,
+        onClearFilters: hasFilters ? controller.clearFilters : null,
+
+        // Required dummy builder, as we are using sliverBody for custom list behavior
+        itemBuilder: (context, index) => const SizedBox.shrink(),
+
+        // Custom Sliver Body to support "Load More" indicator
+        sliverBody: SliverList(
+          delegate: SliverChildBuilderDelegate(
+                (context, index) {
+              // Load More Indicator
+              if (index >= controller.stockEntries.length) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
                   ),
                 );
               }
 
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    if (index >= controller.stockEntries.length) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      );
-                    }
-                    final entry = controller.stockEntries[index];
+              final entry = controller.stockEntries[index];
 
-                    // Use Obx to listen to specific card expansion
-                    return Obx(() {
-                      final isExpanded = controller.expandedEntryName.value == entry.name;
-                      final isLoadingDetails = controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
+              // Reactive Card Expansion
+              return Obx(() {
+                final isExpanded = controller.expandedEntryName.value == entry.name;
+                final isLoadingDetails =
+                    controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
 
-                      return GenericDocumentCard(
-                        title: entry.purpose,
-                        subtitle: entry.name,
-                        status: entry.status,
-                        // Convert Model fields to Stat Widgets
-                        stats: [
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.inventory_2_outlined,
-                            '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
-                          ),
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.access_time,
-                            FormattingHelper.getRelativeTime(entry.creation),
-                          ),
-                        ],
-                        isExpanded: isExpanded,
-                        isLoadingDetails: isLoadingDetails && isExpanded,
-                        onTap: () => controller.toggleExpand(entry.name),
-                        // Pass the specific detailed view here
-                        expandedContent: isExpanded ? _buildDetailedContent(context, entry.name) : null,
-                      );
-                    });
-                  },
-                  childCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
-                ),
-              );
-            }),
-          ],
+                return GenericDocumentCard(
+                  title: entry.purpose,
+                  subtitle: entry.name,
+                  status: entry.status,
+                  stats: [
+                    GenericDocumentCard.buildIconStat(
+                      context,
+                      Icons.inventory_2_outlined,
+                      '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"} Items',
+                    ),
+                    GenericDocumentCard.buildIconStat(
+                      context,
+                      Icons.access_time,
+                      FormattingHelper.getRelativeTime(entry.creation),
+                    ),
+                  ],
+                  isExpanded: isExpanded,
+                  isLoadingDetails: isLoadingDetails && isExpanded,
+                  onTap: () => controller.toggleExpand(entry.name),
+                  expandedContent: isExpanded ? _buildDetailedContent(context, entry.name) : null,
+                );
+              });
+            },
+            childCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
+          ),
         ),
-      ),
-      // Create button with Dynamic Permission Guard
-      floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(), // Access list content to trigger Obx
-        child: FloatingActionButton.extended(
-          onPressed: controller.openCreateDialog,
-          icon: const Icon(Icons.add),
-          label: const Text('Create'),
-          backgroundColor: colorScheme.primaryContainer,
-          foregroundColor: colorScheme.onPrimaryContainer,
-          elevation: 4,
-        ),
-      )),
-    );
+      );
+    });
   }
 
   Widget _buildDetailedContent(BuildContext context, String entryName) {
@@ -273,8 +199,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 child: _buildDetailField(
                     context,
                     'Posted',
-                    FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')
-                ),
+                    FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')),
               ),
               if (detailed.totalAmount > 0)
                 Expanded(
@@ -282,7 +207,10 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('Total Value',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 2),
                       Text(
                         '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 2).format(detailed.totalAmount)}',
@@ -303,7 +231,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -414,7 +342,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            style:
+            Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(value, style: Theme.of(context).textTheme.bodyMedium),
       ],
