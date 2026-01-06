@@ -8,8 +8,12 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 
 class DeliveryNoteController extends GetxController {
+  final docType = 'Delivery Note';
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+
+  // UI Controllers
+  final ScrollController scrollController = ScrollController();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -22,7 +26,9 @@ class DeliveryNoteController extends GetxController {
   var isLoadingDetails = false.obs;
   final _detailedNotesCache = <String, DeliveryNote>{}.obs;
 
+  // Search & Filter
   final activeFilters = <String, dynamic>{}.obs;
+  final RxString searchQuery = ''.obs;
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
@@ -38,6 +44,8 @@ class DeliveryNoteController extends GetxController {
   void onInit() {
     super.onInit();
     fetchDeliveryNotes();
+    _setupPagination();
+    _setupSearch();
   }
 
   @override
@@ -48,7 +56,39 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  // ... (Existing Fetch, Filter logic unchanged) ...
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  void _setupPagination() {
+    scrollController.addListener(() {
+      if (scrollController.hasClients) {
+        final maxScroll = scrollController.position.maxScrollExtent;
+        final currentScroll = scrollController.offset;
+        if (currentScroll >= (maxScroll * 0.9) && hasMore.value && !isFetchingMore.value) {
+          fetchDeliveryNotes(isLoadMore: true);
+        }
+      }
+    });
+  }
+
+  void _setupSearch() {
+    debounce(searchQuery, (callback) {
+      final filters = Map<String, dynamic>.from(activeFilters);
+      if (callback.isNotEmpty) {
+        filters['name'] = ['like', '%$callback%'];
+      } else {
+        filters.remove('name');
+      }
+      applyFilters(filters);
+    }, time: const Duration(milliseconds: 500));
+  }
+
+  void onSearch(String val) {
+    searchQuery.value = val;
+  }
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -231,7 +271,6 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  // Moved from Screen
   void openCreateDialog() {
     fetchPosUploadsForSelection();
 
