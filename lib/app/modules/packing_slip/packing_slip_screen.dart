@@ -68,6 +68,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       onRefresh: () async => controller.fetchPackingSlips(clear: true),
       onSearch: controller.onSearchChanged,
       searchHint: 'Search slips, customers...',
+      searchDoctype: controller.docType,
+      searchRoute: AppRoutes.PACKING_SLIP_FORM,
       scrollController: _scrollController,
       // Empty State Config
       emptyTitle: 'No ${controller.docType} Found',
