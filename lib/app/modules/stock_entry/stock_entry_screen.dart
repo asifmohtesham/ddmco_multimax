@@ -69,6 +69,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         // Search & Filter Configuration
         onSearch: controller.onSearchChanged,
         searchHint: 'Search ID, Purpose...',
+        searchDoctype: 'Stock Entry', // Enable Global Search in App Bar
+        searchRoute: AppRoutes.STOCK_ENTRY_FORM, // Route to navigate on selection
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
