@@ -289,7 +289,7 @@ class StockEntryFormController extends GetxController {
   }) {
     final itemController = Get.put(StockEntryItemFormController());
 
-    itemController.initialize(
+    itemController.initialise(
         parentController: this,
         existingItem: existingItem,
         initialItemCode: itemCode,

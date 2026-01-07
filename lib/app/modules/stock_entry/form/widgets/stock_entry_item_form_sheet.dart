@@ -51,8 +51,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
         // --- Custom Form Body ---
         customFields: [
-          _buildBatchIdentificationSection(context),
-          _buildStockMovementSection(context),
+          _buildSerialBatchBundleFields(context),
+          _buildInventoryDimensionFields(context),
           _buildValidationErrors(),
         ],
       );
@@ -66,67 +66,44 @@ class StockEntryItemFormSheet extends StatelessWidget {
   }
 
   // --- Section: Stock Movement (Warehouses & Racks) ---
-  Widget _buildStockMovementSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.compare_arrows_rounded, size: 18, color: Colors.blueGrey),
-              const SizedBox(width: 8),
-              Text('Stock Movement', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.blueGrey)),
-            ],
-          ),
-          const Divider(height: 20),
+  Widget _buildInventoryDimensionFields(BuildContext context) {
+    return Column(
+      children: [
+        // SOURCE
+        _buildLocationColumn(
+          label: 'From',
+          warehouse: controller.itemSourceWarehouse.value,
+          rackController: controller.sourceRackController,
+          isValid: controller.isSourceRackValid.value,
+          onValidate: (v) => controller.validateRack(v, isSource: true),
+          iconColor: Colors.orange,
+        ),
 
-          // Vertically Stacked Movement Fields
-          Column(
+        // Directional Arrow
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
             children: [
-              // SOURCE
-              _buildLocationColumn(
-                label: 'From',
-                warehouse: controller.itemSourceWarehouse.value,
-                rackController: controller.sourceRackController,
-                isValid: controller.isSourceRackValid.value,
-                onValidate: (v) => controller.validateRack(v, isSource: true),
-                iconColor: Colors.orange,
-              ),
-
-              // Vertical Directional Arrow
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 12),
-                      child: Icon(Icons.arrow_downward, color: Colors.grey.shade400, size: 20),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('Transferring to...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
-                  ],
-                ),
+                padding: const EdgeInsets.only(left: 12),
+                child: Icon(Icons.arrow_downward, color: Colors.grey.shade400, size: 20),
               ),
-
-              // TARGET
-              _buildLocationColumn(
-                label: 'To',
-                warehouse: controller.itemTargetWarehouse.value,
-                rackController: controller.targetRackController,
-                isValid: controller.isTargetRackValid.value,
-                onValidate: (v) => controller.validateRack(v, isSource: false),
-                iconColor: Colors.green,
-              ),
+              const SizedBox(width: 8),
+              Text('Transferring to...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
             ],
           ),
-        ],
-      ),
+        ),
+
+        // TARGET
+        _buildLocationColumn(
+          label: 'To',
+          warehouse: controller.itemTargetWarehouse.value,
+          rackController: controller.targetRackController,
+          isValid: controller.isTargetRackValid.value,
+          onValidate: (v) => controller.validateRack(v, isSource: false),
+          iconColor: Colors.green,
+        ),
+      ],
     );
   }
 
@@ -195,140 +172,118 @@ class StockEntryItemFormSheet extends StatelessWidget {
   }
 
   // --- Section: Batch & Serial (Identification) ---
-  Widget _buildBatchIdentificationSection(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        children: [
-          // Toggle Header
-          InkWell(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            onTap: () => controller.useSerialBatchFields.toggle(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.verified_outlined, size: 18, color: Colors.purple),
-                      const SizedBox(width: 8),
-                      Text('Identification', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.purple)),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Text(controller.useSerialBatchFields.value ? 'Legacy' : 'Bundle',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                      const SizedBox(width: 4),
-                      Icon(controller.useSerialBatchFields.value ? Icons.toggle_off : Icons.toggle_on,
-                          color: Colors.purple, size: 24),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: controller.useSerialBatchFields.value
-                ? _buildLegacyBatchInput()
-                : _buildBundleManager(context),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegacyBatchInput() {
-    return TextFormField(
-      controller: controller.batchController,
-      decoration: InputDecoration(
-        labelText: 'Batch Number',
-        hintText: 'Enter Batch No',
-        isDense: true,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        prefixIcon: const Icon(Icons.tag, size: 18),
-        suffixIcon: controller.isBatchValid.value
-            ? const Icon(Icons.check_circle, color: Colors.green, size: 18)
-            : null,
-      ),
-      onChanged: controller.validateBatch,
-    );
-  }
-
-  Widget _buildBundleManager(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Add Batch Input Row
-        Row(
+  Widget _buildSerialBatchBundleFields(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: TextFormField(
-                controller: controller.batchController,
-                decoration: InputDecoration(
-                  hintText: 'Scan/Enter Batch',
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.add, color: Colors.purple),
-                    onPressed: () {
-                      if (controller.batchController.text.isNotEmpty) {
-                        controller.addEntry(controller.batchController.text, 1.0);
-                        controller.batchController.clear();
-                      }
-                    },
+            // Searchable Dropdown for Batch Input
+            RawAutocomplete<Map<String, dynamic>>(
+              textEditingController: controller.batchController,
+              focusNode: FocusNode(),
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                return controller.searchBatches(textEditingValue.text);
+              },
+              displayStringForOption: (option) => option['batch'] ?? '',
+              onSelected: (option) {
+                if (option['batch'] != null) {
+                  controller.addEntry(option['batch'], 1.0);
+                  controller.batchController.clear();
+                }
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4.0,
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      height: 200,
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: options.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final option = options.elementAt(index);
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              option['batch'] ?? '',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              'Balance: ${option['qty']}',
+                              style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                            ),
+                            onTap: () => onSelected(option),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                return TextFormField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Scan/Enter Batch',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add, color: Colors.purple),
+                      onPressed: () {
+                        if (textController.text.isNotEmpty) {
+                          onFieldSubmitted();
+                        }
+                      },
+                    ),
+                  ),
+                  onFieldSubmitted: (val) {
+                    if (val.isNotEmpty) {
+                      controller.addEntry(val, 1.0);
+                      textController.clear();
+                    }
+                  },
+                );
+              },
+            ),
+
+            // Batch List
+            if (controller.currentBundleEntries.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 250),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(8),
+                  itemCount: controller.currentBundleEntries.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) => _buildBatchRow(context, index),
+                ),
+              ),
+            ] else
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Center(
+                  child: Text(
+                    'No batches added',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                 ),
-                onFieldSubmitted: (val) {
-                  if (val.isNotEmpty) {
-                    controller.addEntry(val, 1.0);
-                    controller.batchController.clear();
-                  }
-                },
               ),
-            ),
           ],
-        ),
-
-        // Batch List
-        if (controller.currentBundleEntries.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 250),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.all(8),
-              itemCount: controller.currentBundleEntries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) => _buildBatchRow(context, index),
-            ),
-          ),
-        ] else
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Center(
-              child: Text(
-                'No batches added',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ),
-          ),
-      ],
+        );
+      },
     );
   }
 
@@ -348,28 +303,15 @@ class StockEntryItemFormSheet extends StatelessWidget {
         filled: true,
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-
-        // Requirement: Prepend Batch No as prefix
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
         prefixIcon: Container(
-          width: 150,
+          width: 140,
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.only(left: 12, right: 8),
           child: Text(
             batch.batchNo ?? '-',
-            style: const TextStyle(
-              fontFamily: 'ShureTechMono',
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.black54
-            ),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
             overflow: TextOverflow.ellipsis,
           ),
         ),

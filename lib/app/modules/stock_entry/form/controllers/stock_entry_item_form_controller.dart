@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -67,7 +68,7 @@ class StockEntryItemFormController extends GetxController {
   var itemSourceWarehouse = RxnString();
   var itemTargetWarehouse = RxnString();
 
-  void initialize({
+  void initialise({
     required StockEntryFormController parentController,
     StockEntryItem? existingItem,
     String? initialItemCode,
@@ -94,6 +95,58 @@ class StockEntryItemFormController extends GetxController {
 
     // Update stock when warehouse changes
     ever(itemSourceWarehouse, (_) => _updateStockAvailability());
+  }
+
+  // Add the searchBatches method
+  Future<List<Map<String, dynamic>>> searchBatches(String query) async {
+    // Determine context for filters
+    final type = _parent.selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
+
+    // For outward/transfer, we need the source warehouse's existing batches
+    // For inward (Receipt), we might look at target or just allow new,
+    // but the requirement specifies searching "existing" batches.
+    final warehouse = isOutward
+        ? (itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value)
+        : (itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value);
+
+    if (warehouse == null) return [];
+
+    try {
+      final filters = {
+        'item_code': itemCode.value,
+        'warehouse': warehouse,
+        'is_inward': !isOutward, // False for outward transactions
+        'include_expired_batches': true,
+      };
+
+      final response = await _apiProvider.callMethod(
+        'erpnext.controllers.queries.get_batch_no',
+        params: {
+          'txt': query,
+          'doctype': 'Batch',
+          'filters': jsonEncode(filters),
+        },
+      );
+
+      if (response.statusCode == 200 && response.data['message'] != null) {
+        final List raw = response.data['message'];
+        // ERPNext get_batch_no typically returns [{value: 'BATCH-001', description: '10.0'}, ...]
+        // where 'description' often contains the qty info.
+        return raw.map((e) {
+          if (e is Map) {
+            return {
+              'batch': e['value']?.toString() ?? '',
+              'qty': e['description']?.toString() ?? '0'
+            };
+          }
+          return {'batch': e.toString(), 'qty': 'N/A'};
+        }).toList().cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      print('Error searching batches: $e');
+    }
+    return [];
   }
 
   void _loadExistingItem(StockEntryItem item) {
