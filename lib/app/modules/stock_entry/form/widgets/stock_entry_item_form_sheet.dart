@@ -68,11 +68,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
   // --- Section: Stock Movement (Warehouses & Racks) ---
   Widget _buildStockMovementSection(BuildContext context) {
-    // Determine visibility based on logic (assuming controller has implicit logic, or we check field content)
-    // For visual balance, we always reserve space but may disable fields
-    final showSource = controller.itemSourceWarehouse.value != null || controller.sourceRackController.text.isNotEmpty;
-    // Note: You might want to expose specific 'isSourceRequired' bools from controller for stricter logic
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -91,37 +86,43 @@ class StockEntryItemFormSheet extends StatelessWidget {
             ],
           ),
           const Divider(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+
+          // Vertically Stacked Movement Fields
+          Column(
             children: [
               // SOURCE
-              Expanded(
-                child: _buildLocationColumn(
-                  label: 'From',
-                  warehouse: controller.itemSourceWarehouse.value,
-                  rackController: controller.sourceRackController,
-                  isValid: controller.isSourceRackValid.value,
-                  onValidate: (v) => controller.validateRack(v, isSource: true),
-                  iconColor: Colors.orange,
-                ),
+              _buildLocationColumn(
+                label: 'From',
+                warehouse: controller.itemSourceWarehouse.value,
+                rackController: controller.sourceRackController,
+                isValid: controller.isSourceRackValid.value,
+                onValidate: (v) => controller.validateRack(v, isSource: true),
+                iconColor: Colors.orange,
               ),
 
-              // Directional Arrow
+              // Vertical Directional Arrow
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 30),
-                child: Icon(Icons.arrow_forward, color: Colors.grey.shade400, size: 20),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: Icon(Icons.arrow_downward, color: Colors.grey.shade400, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Transferring to...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
+                  ],
+                ),
               ),
 
               // TARGET
-              Expanded(
-                child: _buildLocationColumn(
-                  label: 'To',
-                  warehouse: controller.itemTargetWarehouse.value,
-                  rackController: controller.targetRackController,
-                  isValid: controller.isTargetRackValid.value,
-                  onValidate: (v) => controller.validateRack(v, isSource: false),
-                  iconColor: Colors.green,
-                ),
+              _buildLocationColumn(
+                label: 'To',
+                warehouse: controller.itemTargetWarehouse.value,
+                rackController: controller.targetRackController,
+                isValid: controller.isTargetRackValid.value,
+                onValidate: (v) => controller.validateRack(v, isSource: false),
+                iconColor: Colors.green,
               ),
             ],
           ),
@@ -138,45 +139,59 @@ class StockEntryItemFormSheet extends StatelessWidget {
     required Function(String) onValidate,
     required Color iconColor,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Warehouse Label
-        if (warehouse != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              warehouse.split('-').first.trim(), // Minimalist: Show Code only
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          )
-        else
-          const Padding(
-            padding: EdgeInsets.only(bottom: 6),
-            child: Text('---', style: TextStyle(color: Colors.grey)),
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row for Label and Warehouse to save vertical space
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                  label,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)
+              ),
+              if (warehouse != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    warehouse.split('-').first.trim(),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
+                  ),
+                ),
+            ],
           ),
+          const SizedBox(height: 8),
 
-        // Rack Input
-        TextFormField(
-          controller: rackController,
-          style: const TextStyle(fontSize: 14),
-          decoration: InputDecoration(
-            labelText: '$label Rack',
-            hintText: 'Scan/Enter',
-            isDense: true,
-            filled: true,
-            fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
-            suffixIcon: Icon(Icons.qr_code_scanner, size: 16, color: iconColor),
+          // Rack Input
+          TextFormField(
+            controller: rackController,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Scan $label Rack',
+              isDense: true,
+              filled: true,
+              fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.grey.shade50,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
+              prefixIcon: Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade400),
+              suffixIcon: Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
+            ),
+            onFieldSubmitted: onValidate,
           ),
-          onFieldSubmitted: onValidate,
-        ),
-      ],
+        ],
+      ),
     );
   }
 
