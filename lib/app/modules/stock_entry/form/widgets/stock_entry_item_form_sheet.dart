@@ -29,6 +29,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
         itemName: controller.currentItemName,
         itemSubtext: controller.currentVariantOf,
 
+        // Disable main Qty field editing if using batches (driven by batch sum)
+        isQtyReadOnly: controller.currentBatches.isEmpty,
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
@@ -49,6 +51,107 @@ class StockEntryItemFormSheet extends StatelessWidget {
         modifiedBy: controller.bsItemModifiedBy.value,
 
         customFields: [
+          // --- Multi-Batch Manager ---
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.purple.shade100),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Batches', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+                const SizedBox(height: 8),
+
+                // 1. Batch Input Row
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: controller.bsBatchController,
+                        decoration: const InputDecoration(
+                          hintText: 'Batch No',
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Helper widget for specific batch qty input could be used here
+                    Expanded(
+                      flex: 1,
+                      child: TextFormField(
+                        // We might need a separate controller for "Add Batch Qty"
+                        // or just use a temporary text field logic in controller
+                        initialValue: "1",
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          hintText: 'Qty',
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        ),
+                        onChanged: (val) => controller.bsMaxQty.value = double.tryParse(val) ?? 0, // Reuse existing var or create new
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle, color: Colors.purple),
+                      onPressed: () {
+                        // Add current inputs to list
+                        controller.addBatchToSheet(
+                            controller.bsBatchController.text,
+                            controller.bsMaxQty.value > 0 ? controller.bsMaxQty.value : 1.0 // Use temporary var
+                        );
+                        controller.bsBatchController.clear();
+                      },
+                    ),
+                  ],
+                ),
+                const Divider(),
+
+                // 2. Batch List
+                if (controller.currentBatches.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Text('No batches added.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: controller.currentBatches.length,
+                    itemBuilder: (context, index) {
+                      final batch = controller.currentBatches[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(batch.batchNo, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('${batch.qty}'),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                              onPressed: () => controller.removeBatchFromSheet(index),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+
           // Batch No
           Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',

@@ -125,6 +125,7 @@ class StockEntryItem {
   final String? sWarehouse;
   final String? tWarehouse;
   final String? customInvoiceSerialNumber;
+  final String? serialAndBatchBundle;
   // Link Fields
   final String? materialRequest;
   final String? materialRequestItem;
@@ -133,6 +134,9 @@ class StockEntryItem {
   final String? creation;
   final String? modified;
   final String? modifiedBy;
+
+  // Local Mutable State for UI
+  List<StockEntryBatch>? localBatches;
 
   StockEntryItem({
     this.name,
@@ -148,6 +152,8 @@ class StockEntryItem {
     this.sWarehouse,
     this.tWarehouse,
     this.customInvoiceSerialNumber,
+    this.serialAndBatchBundle,
+    this.localBatches,
     this.materialRequest,
     this.materialRequestItem,
     this.owner,
@@ -171,6 +177,7 @@ class StockEntryItem {
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
       owner: json['owner']?.toString(),
@@ -191,13 +198,30 @@ class StockEntryItem {
       'rack': rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
+      'serial_and_batch_bundle': serialAndBatchBundle,
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
-      'use_serial_batch_fields': 1,
+      // 'use_serial_batch_fields': 1,
     };
     if (name != null) {
       data['name'] = name;
     }
     return data;
+  }
+}
+
+class StockEntryBatch {
+  String batchNo;
+  double qty;
+
+  StockEntryBatch({required this.batchNo, required this.qty});
+
+  Map<String, dynamic> toJson() => {'batch_no': batchNo, 'qty': qty};
+
+  factory StockEntryBatch.fromJson(Map<String, dynamic> json) {
+    return StockEntryBatch(
+      batchNo: json['batch_no']?.toString() ?? '',
+      qty: double.tryParse(json['qty'].toString()) ?? 0.0,
+    );
   }
 }

@@ -118,6 +118,9 @@ class StockEntryFormController extends GetxController {
   var derivedSourceWarehouse = RxnString();
   var derivedTargetWarehouse = RxnString();
 
+  // --- Batch State ---
+  var currentBatches = <StockEntryBatch>[].obs; // Manages multiple batches for the current item
+
   String _initialQty = '';
   String _initialBatch = '';
   String _initialSourceRack = '';
@@ -466,6 +469,7 @@ class StockEntryFormController extends GetxController {
       sWarehouse: item.sWarehouse,
       tWarehouse: item.tWarehouse,
       customInvoiceSerialNumber: serial,
+      serialAndBatchBundle: item.serialAndBatchBundle,
       materialRequest: matReq,
       materialRequestItem: matReqItem,
       owner: item.owner,
@@ -494,7 +498,7 @@ class StockEntryFormController extends GetxController {
     var newItem = StockEntryItem(
       name: uniqueId,
       itemCode: currentItemCode,
-      qty: qty,
+      // qty: qty,
       basicRate: 0.0,
       itemGroup: null,
       customVariantOf: currentVariantOf,
@@ -505,6 +509,9 @@ class StockEntryFormController extends GetxController {
       sWarehouse: sWh,
       tWarehouse: tWh,
       customInvoiceSerialNumber: selectedSerial.value,
+      qty: double.tryParse(bsQtyController.text) ?? 0,
+      localBatches: List.from(currentBatches), // Store copy of batches
+      serialAndBatchBundle: null, // Bundle is created on Save
     );
 
     if (existingIndex != -1) {
@@ -523,6 +530,7 @@ class StockEntryFormController extends GetxController {
         sWarehouse: sWh,
         tWarehouse: tWh,
         customInvoiceSerialNumber: selectedSerial.value,
+        serialAndBatchBundle: existing.serialAndBatchBundle,
         materialRequest: existing.materialRequest,
         materialRequestItem: existing.materialRequestItem,
         owner: existing.owner,
@@ -698,6 +706,7 @@ class StockEntryFormController extends GetxController {
 
   void _openQtySheet({String? scannedBatch}) {
     itemFormKey = GlobalKey<FormState>();
+    currentBatches.clear(); // Clear previous batch list
     bsQtyController.clear();
     bsBatchController.clear();
     bsSourceRackController.clear();
@@ -710,6 +719,11 @@ class StockEntryFormController extends GetxController {
     // Reset Item Warehouses
     bsItemSourceWarehouse.value = null;
     bsItemTargetWarehouse.value = null;
+
+    // Auto-add scanned batch if present
+    if (scannedBatch != null) {
+      addBatchToSheet(scannedBatch, 1.0); // Default to 1 qty
+    }
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
@@ -766,10 +780,11 @@ class StockEntryFormController extends GetxController {
     });
   }
 
-  void editItem(StockEntryItem item) {
+  void editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
 
     itemFormKey = GlobalKey<FormState>();
+    currentBatches.clear();
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
     currentItemName = item.itemName ?? '';
@@ -785,6 +800,13 @@ class StockEntryFormController extends GetxController {
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
+
+    // If item has an existing Bundle, fetch its details to populate the UI
+    if (item.serialAndBatchBundle != null && item.serialAndBatchBundle!.isNotEmpty) {
+      await _fetchBundleDetails(item.serialAndBatchBundle!);
+    } else if (item.localBatches != null) {
+      currentBatches.assignAll(item.localBatches!);
+    }
 
     // Populate Item Warehouses
     bsItemSourceWarehouse.value = item.sWarehouse;
@@ -841,6 +863,32 @@ class StockEntryFormController extends GetxController {
       rackError.value = null;
       batchError.value = null;
     });
+  }
+
+  /// Adds a batch to the local list and updates the Total Qty
+  void addBatchToSheet(String batch, double qty) {
+    if (qty <= 0) return;
+
+    // Merge if batch already exists in list
+    final existing = currentBatches.firstWhereOrNull((b) => b.batchNo == batch);
+    if (existing != null) {
+      existing.qty += qty;
+      currentBatches.refresh();
+    } else {
+      currentBatches.add(StockEntryBatch(batchNo: batch, qty: qty));
+    }
+
+    // Auto-calculate Total Qty from batches
+    double total = currentBatches.fold(0.0, (sum, b) => sum + b.qty);
+    bsQtyController.text = total.toStringAsFixed(2); // formatting helper recommended
+    validateSheet();
+  }
+
+  void removeBatchFromSheet(int index) {
+    currentBatches.removeAt(index);
+    double total = currentBatches.fold(0.0, (sum, b) => sum + b.qty);
+    bsQtyController.text = total.toStringAsFixed(2);
+    validateSheet();
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -1231,98 +1279,176 @@ class StockEntryFormController extends GetxController {
     });
   }
 
+  // --- Core Logic: Create SABB on Server ---
+  Future<String?> _createSABB(StockEntryItem item) async {
+    if (item.localBatches == null || item.localBatches!.isEmpty) return null;
+
+    final type = selectedStockEntryType.value;
+    // Determine transaction type (simplified logic)
+    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
+    final txnType = isOutward ? 'Outward' : 'Inward';
+    final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
+
+    final payload = {
+      'type_of_transaction': txnType,
+      'item_code': item.itemCode,
+      'warehouse': warehouse,
+      'has_batch_no': 1,
+      'voucher_type': 'Stock Entry',
+      'entries': item.localBatches!.map((b) => b.toJson()).toList(),
+    };
+
+    try {
+      final response = await _apiProvider.createDocument('Serial and Batch Bundle', payload);
+      if (response.statusCode == 200) {
+        return response.data['data']['name'];
+      }
+    } catch (e) {
+      print('SABB Creation Failed: $e');
+      GlobalSnackbar.error(message: 'Failed to create Batch Bundle for ${item.itemCode}');
+      rethrow;
+    }
+    return null;
+  }
+
+  Future<void> _fetchBundleDetails(String bundleId) async {
+    try {
+      final response = await _apiProvider.getDocument('Serial and Batch Bundle', bundleId);
+      if (response.statusCode == 200) {
+        final entries = response.data['data']['entries'] as List;
+        currentBatches.assignAll(entries.map((e) => StockEntryBatch.fromJson(e)).toList());
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load batch details');
+    }
+  }
+
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
-    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
-      final firstItem = stockEntry.value!.items.first;
-      if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
-        selectedFromWarehouse.value = firstItem.sWarehouse;
-      }
-      if (selectedToWarehouse.value == null && firstItem.tWarehouse != null) {
-        selectedToWarehouse.value = firstItem.tWarehouse;
-      }
-    }
-    if (selectedStockEntryType.value == 'Material Transfer') {
-      if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
-        GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
-        return;
-      }
-    }
     isSaving.value = true;
-    final Map<String, dynamic> data = {
-      'stock_entry_type': selectedStockEntryType.value,
-      'posting_date': stockEntry.value?.postingDate,
-      'posting_time': stockEntry.value?.postingTime,
-      'from_warehouse': selectedFromWarehouse.value,
-      'to_warehouse': selectedToWarehouse.value,
-      'custom_reference_no': customReferenceNoController.text,
-    };
-    final itemsJson = stockEntry.value?.items.map((i) {
-      final json = i.toJson();
-      if (json['name'] != null && json['name'].toString().startsWith('local_')) {
-        json.remove('name');
-      }
-      if (json['basic_rate'] == 0.0) {
-        json.remove('basic_rate');
-      }
 
-      // Safety Patch: If material request link is missing in the item but exists in context, try to resolve it now
-      if (json['material_request'] == null && entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-        final ref = mrReferenceItems.firstWhereOrNull((r) =>
-        r['item_code'].toString().trim().toLowerCase() == i.itemCode.trim().toLowerCase());
-        if (ref != null) {
-          json['material_request'] = ref['material_request'];
-          json['material_request_item'] = ref['material_request_item'];
-        }
-      }
-
-      // Explicitly preserve if present
-      if (i.materialRequest != null) {
-        json['material_request'] = i.materialRequest;
-      }
-      if (i.materialRequestItem != null) {
-        json['material_request_item'] = i.materialRequestItem;
-      }
-
-      json.removeWhere((key, value) => value == null);
-      return json;
-    }).toList() ?? [];
-    data['items'] = itemsJson;
     try {
-      if (mode == 'new') {
-        final response = await _provider.createStockEntry(data);
-        if (response.statusCode == 200) {
-          final createdDoc = response.data['data'];
-          name = createdDoc['name'];
-          mode = 'edit';
-          await fetchStockEntry();
-          GlobalSnackbar.success(message: 'Stock Entry created: $name');
+      // 1. Pre-process items: Create SABB for any item with local batches but no Bundle ID
+      final updatedItems = <StockEntryItem>[];
+
+      for (var item in stockEntry.value?.items ?? []) {
+        if (item.localBatches != null && item.localBatches!.isNotEmpty && item.serialAndBatchBundle == null) {
+          // Create Bundle
+          final bundleId = await _createSABB(item);
+          // Return new item instance with bundle ID
+          updatedItems.add(StockEntryItem(
+            name: item.name,
+            itemCode: item.itemCode,
+            qty: item.qty,
+            basicRate: item.basicRate,
+            // ... copy all fields ...
+            serialAndBatchBundle: bundleId, // Assigned
+            localBatches: item.localBatches, // Keep for UI
+            // ...
+          ));
         } else {
-          GlobalSnackbar.error(message: 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
-        }
-      } else {
-        final response = await _provider.updateStockEntry(name, data);
-        if (response.statusCode == 200) {
-          GlobalSnackbar.success(message: 'Stock Entry updated');
-          await fetchStockEntry();
-        } else {
-          GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+          updatedItems.add(item);
         }
       }
-    } on DioException catch (e) {
-      String errorMessage = 'Save failed';
-      if (e.response != null && e.response!.data != null) {
-        if (e.response!.data is Map && e.response!.data['exception'] != null) {
-          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-          errorMessage = 'Validation Error: Check form details';
+
+      // Update local state with new IDs before saving doc
+      stockEntry.update((val) {
+        val?.items.assignAll(updatedItems);
+      });
+
+      if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
+        final firstItem = stockEntry.value!.items.first;
+        if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
+          selectedFromWarehouse.value = firstItem.sWarehouse;
+        }
+        if (selectedToWarehouse.value == null && firstItem.tWarehouse != null) {
+          selectedToWarehouse.value = firstItem.tWarehouse;
         }
       }
-      GlobalSnackbar.error(message: errorMessage);
+      if (selectedStockEntryType.value == 'Material Transfer') {
+        if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
+          GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
+          return;
+        }
+      }
+      final Map<String, dynamic> data = {
+        'stock_entry_type': selectedStockEntryType.value,
+        'posting_date': stockEntry.value?.postingDate,
+        'posting_time': stockEntry.value?.postingTime,
+        'from_warehouse': selectedFromWarehouse.value,
+        'to_warehouse': selectedToWarehouse.value,
+        'custom_reference_no': customReferenceNoController.text,
+      };
+      final itemsJson = stockEntry.value?.items.map((i) {
+        final json = i.toJson();
+        if (json['name'] != null && json['name'].toString().startsWith('local_')) {
+          json.remove('name');
+        }
+        if (json['basic_rate'] == 0.0) {
+          json.remove('basic_rate');
+        }
+
+        // Safety Patch: If material request link is missing in the item but exists in context, try to resolve it now
+        if (json['material_request'] == null && entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
+          final ref = mrReferenceItems.firstWhereOrNull((r) =>
+          r['item_code'].toString().trim().toLowerCase() == i.itemCode.trim().toLowerCase());
+          if (ref != null) {
+            json['material_request'] = ref['material_request'];
+            json['material_request_item'] = ref['material_request_item'];
+          }
+        }
+
+        // Explicitly preserve if present
+        if (i.materialRequest != null) {
+          json['material_request'] = i.materialRequest;
+        }
+        if (i.materialRequestItem != null) {
+          json['material_request_item'] = i.materialRequestItem;
+        }
+
+        json.removeWhere((key, value) => value == null);
+        return json;
+      }).toList() ?? [];
+      data['items'] = itemsJson;
+      try {
+        if (mode == 'new') {
+          final response = await _provider.createStockEntry(data);
+          if (response.statusCode == 200) {
+            final createdDoc = response.data['data'];
+            name = createdDoc['name'];
+            mode = 'edit';
+            await fetchStockEntry();
+            GlobalSnackbar.success(message: 'Stock Entry created: $name');
+          } else {
+            GlobalSnackbar.error(message: 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
+          }
+        } else {
+          final response = await _provider.updateStockEntry(name, data);
+          if (response.statusCode == 200) {
+            GlobalSnackbar.success(message: 'Stock Entry updated');
+            await fetchStockEntry();
+          } else {
+            GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+          }
+        }
+      } on DioException catch (e) {
+        String errorMessage = 'Save failed';
+        if (e.response != null && e.response!.data != null) {
+          if (e.response!.data is Map && e.response!.data['exception'] != null) {
+            errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+          } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+            errorMessage = 'Validation Error: Check form details';
+          }
+        }
+        GlobalSnackbar.error(message: errorMessage);
+      } catch (e) {
+        GlobalSnackbar.error(message: 'Save failed: $e');
+      } finally {
+        isSaving.value = false;
+      }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Save failed: $e');
-    } finally {
       isSaving.value = false;
+      return; // Stop if bundle creation failed
     }
   }
 
