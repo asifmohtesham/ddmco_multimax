@@ -37,7 +37,7 @@ class StockEntryFormController extends GetxController {
   String name = Get.arguments?['name'] ?? '';
   String mode = Get.arguments?['mode'] ?? 'view';
 
-  // --- UI Controllers (Restored for Screen compatibility) ---
+  // --- UI Controllers ---
   final ScrollController scrollController = ScrollController();
   final TextEditingController barcodeController = TextEditingController();
   final TextEditingController customReferenceNoController = TextEditingController();
@@ -277,7 +277,6 @@ class StockEntryFormController extends GetxController {
 
   // --- Item Management ---
 
-  // Called by Screen
   void editItem(StockEntryItem item) => _openItemSheet(existingItem: item);
 
   void onAddItemTap() => _openItemSheet();
@@ -288,10 +287,8 @@ class StockEntryFormController extends GetxController {
     StockEntryItem? existingItem,
     dynamic itemData
   }) {
-    // 1. Initialize Item Controller
     final itemController = Get.put(StockEntryItemFormController());
 
-    // 2. Configure Controller
     itemController.initialize(
         parentController: this,
         existingItem: existingItem,
@@ -302,14 +299,13 @@ class StockEntryFormController extends GetxController {
 
     isItemSheetOpen.value = true;
 
-    // 3. Show Sheet
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (ctx, scroll) => StockEntryItemFormSheet(
-          controller: itemController, // Pass the ITEM controller, not this one
+          controller: itemController,
           scrollController: scroll,
         ),
       ),
@@ -396,11 +392,14 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<List<StockEntryItem>> _processItemsForSave(List<StockEntryItem> items) async {
-    // ... SABB creation logic ...
     var updatedList = <StockEntryItem>[];
     for (var item in items) {
-      if (item.localBatches != null && item.localBatches!.isNotEmpty && item.serialAndBatchBundle == null) {
+      // Logic: If useSerialBatchFields is 0 (false), we MUST ensure an SABB exists if there are entries
+      if ((item.useSerialBatchFields == null || item.useSerialBatchFields == 0) && item.localBundle != null) {
         try {
+          // If the bundle has no name (it's new/modified locally) or we always create new for immutable SABB flow
+          // Note: In typical ERPNext v14+, SABBs are immutable once submitted, but drafts can be edited.
+          // For simplicity and safety, we create a new SABB for the transaction if modified.
           final bundleId = await _createSerialBatchBundle(item);
           updatedList.add(item.copyWith(serialAndBatchBundle: bundleId));
         } catch(e) { rethrow; }
@@ -438,7 +437,6 @@ class StockEntryFormController extends GetxController {
   // --- Private Helpers ---
 
   Future<void> _fetchExistingStockEntry() async {
-    // ... implementation same as before ...
     isLoading.value = true;
     try {
       final response = await _provider.getStockEntry(name);
@@ -468,7 +466,6 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<void> _fetchStockEntryTypes() async {
-    // ... existing implementation ...
     isFetchingTypes.value = true;
     try {
       final response = await _provider.getStockEntryTypes();
@@ -483,19 +480,24 @@ class StockEntryFormController extends GetxController {
   }
 
   Future<String?> _createSerialBatchBundle(StockEntryItem item) async {
-    // ... existing implementation ...
+    if (item.localBundle == null) return item.serialAndBatchBundle;
+
     final type = selectedStockEntryType.value;
     final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
     final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
 
+    // Construct Payload using the SABB Model
+    final bundleData = item.localBundle!;
     final payload = {
       'type_of_transaction': isOutward ? 'Outward' : 'Inward',
       'item_code': item.itemCode,
-      'warehouse': warehouse,
+      'warehouse': warehouse ?? bundleData.warehouse,
       'has_batch_no': 1,
       'voucher_type': 'Stock Entry',
-      'entries': item.localBatches!.map((b) => b.toJson()).toList(),
+      // 'voucher_no': name, // Can be linked later
+      'entries': bundleData.entries.map((b) => b.toJson()).toList(),
     };
+
     final response = await _apiProvider.createDocument('Serial and Batch Bundle', payload);
     return response.statusCode == 200 ? response.data['data']['name'] : null;
   }
@@ -535,11 +537,12 @@ extension StockEntryItemHelpers on StockEntryItem {
   StockEntryItem copyWith({String? serialAndBatchBundle}) {
     return StockEntryItem(
         name: name, itemCode: itemCode, qty: qty, basicRate: basicRate,
-        itemGroup: itemGroup, customVariantOf: customVariantOf, batchNo: batchNo,
+        itemGroup: itemGroup, customVariantOf: customVariantOf,
+        batchNo: batchNo, useSerialBatchFields: useSerialBatchFields,
         itemName: itemName, rack: rack, toRack: toRack, sWarehouse: sWarehouse,
         tWarehouse: tWarehouse, customInvoiceSerialNumber: customInvoiceSerialNumber,
         serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
-        localBatches: localBatches, materialRequest: materialRequest,
+        localBundle: localBundle, materialRequest: materialRequest,
         materialRequestItem: materialRequestItem, owner: owner, creation: creation,
         modified: modified, modifiedBy: modifiedBy
     );
@@ -549,6 +552,10 @@ extension StockEntryItemHelpers on StockEntryItem {
     var json = toJson();
     if (json['name']?.toString().startsWith('local_') == true) json.remove('name');
     if (json['basic_rate'] == 0.0) json.remove('basic_rate');
+
+    // Cleanup internal keys
+    json.remove('localBundle');
+
     if (json['material_request'] == null && mrReferenceItems != null) {
       final ref = mrReferenceItems.firstWhereOrNull((r) =>
       r['item_code'].toString().trim().toLowerCase() == itemCode.trim().toLowerCase());

@@ -30,7 +30,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
         itemSubtext: controller.customVariantOf,
 
         // --- Quantity Control ---
-        isQtyReadOnly: controller.currentBatches.isNotEmpty,
+        // FIX: Check currentBundleEntries instead of currentBatches
+        isQtyReadOnly: controller.currentBundleEntries.isNotEmpty,
         qtyController: controller.qtyController,
         onIncrement: () => _modifyQty(1),
         onDecrement: () => _modifyQty(-1),
@@ -49,11 +50,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
         // --- Custom Form Body ---
         customFields: [
-          // const SizedBox(height: 12),
-          _buildStockMovementSection(context),
-          // const SizedBox(height: 16),
           _buildBatchIdentificationSection(context),
-          // const SizedBox(height: 16),
+          _buildStockMovementSection(context),
           _buildValidationErrors(),
         ],
       );
@@ -293,7 +291,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
               icon: const Icon(Icons.add),
               onPressed: () {
                 if (controller.batchController.text.isNotEmpty) {
-                  controller.addBatch(controller.batchController.text, 1.0);
+                  // FIX: Use addEntry instead of addBatch
+                  controller.addEntry(controller.batchController.text, 1.0);
                   controller.batchController.clear();
                 }
               },
@@ -302,7 +301,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
         ),
 
         // Batch List
-        if (controller.currentBatches.isNotEmpty) ...[
+        // FIX: Use currentBundleEntries instead of currentBatches
+        if (controller.currentBundleEntries.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(
             constraints: const BoxConstraints(maxHeight: 150),
@@ -314,21 +314,25 @@ class StockEntryItemFormSheet extends StatelessWidget {
             child: ListView.separated(
               shrinkWrap: true,
               padding: const EdgeInsets.all(4),
-              itemCount: controller.currentBatches.length,
+              // FIX: Use currentBundleEntries length
+              itemCount: controller.currentBundleEntries.length,
               separatorBuilder: (_, __) => const Divider(height: 1, indent: 10, endIndent: 10),
               itemBuilder: (context, index) {
-                final batch = controller.currentBatches[index];
+                // FIX: Use currentBundleEntries
+                final batch = controller.currentBundleEntries[index];
                 return ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
-                  title: Text(batch.batchNo, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  // FIX: batchNo might be null in model, provide fallback
+                  title: Text(batch.batchNo ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('${batch.qty} units', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       const SizedBox(width: 8),
                       InkWell(
-                        onTap: () => controller.removeBatch(index),
+                        // FIX: Use removeEntry instead of removeBatch
+                        onTap: () => controller.removeEntry(index),
                         child: Icon(Icons.remove_circle_outline, size: 18, color: Colors.red.shade300),
                       ),
                     ],

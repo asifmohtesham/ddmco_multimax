@@ -126,6 +126,7 @@ class StockEntryItem {
   final String? tWarehouse;
   final String? customInvoiceSerialNumber;
   final String? serialAndBatchBundle;
+  final int? useSerialBatchFields;
   // Link Fields
   final String? materialRequest;
   final String? materialRequestItem;
@@ -135,8 +136,8 @@ class StockEntryItem {
   final String? modified;
   final String? modifiedBy;
 
-  // Local Mutable State for UI
-  List<StockEntryBatch>? localBatches;
+  // Local Mutable State for UI (Holds the full SABB object locally)
+  SerialAndBatchBundle? localBundle;
 
   StockEntryItem({
     this.name,
@@ -153,7 +154,8 @@ class StockEntryItem {
     this.tWarehouse,
     this.customInvoiceSerialNumber,
     this.serialAndBatchBundle,
-    this.localBatches,
+    this.useSerialBatchFields,
+    this.localBundle,
     this.materialRequest,
     this.materialRequestItem,
     this.owner,
@@ -178,6 +180,7 @@ class StockEntryItem {
       tWarehouse: json['t_warehouse']?.toString(),
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
       serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
+      useSerialBatchFields: StockEntry._parseInt(json['use_serial_batch_fields']),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
       owner: json['owner']?.toString(),
@@ -199,9 +202,9 @@ class StockEntryItem {
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'serial_and_batch_bundle': serialAndBatchBundle,
+      'use_serial_batch_fields': useSerialBatchFields,
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
-      // 'use_serial_batch_fields': 1,
     };
     if (name != null) {
       data['name'] = name;
@@ -210,18 +213,77 @@ class StockEntryItem {
   }
 }
 
-class StockEntryBatch {
-  String batchNo;
+class SerialAndBatchBundle {
+  String? name;
+  String itemCode;
+  String warehouse;
+  String? typeOfTransaction;
+  String? voucherType;
+  double totalQty;
+  List<SerialAndBatchEntry> entries;
+
+  SerialAndBatchBundle({
+    this.name,
+    required this.itemCode,
+    required this.warehouse,
+    this.typeOfTransaction,
+    this.voucherType,
+    required this.totalQty,
+    required this.entries,
+  });
+
+  factory SerialAndBatchBundle.fromJson(Map<String, dynamic> json) {
+    var entriesList = json['entries'] as List? ?? [];
+    List<SerialAndBatchEntry> entries = entriesList.map((i) => SerialAndBatchEntry.fromJson(i)).toList();
+
+    return SerialAndBatchBundle(
+      name: json['name']?.toString(),
+      itemCode: json['item_code']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      typeOfTransaction: json['type_of_transaction']?.toString(),
+      voucherType: json['voucher_type']?.toString(),
+      totalQty: StockEntry._parseDouble(json['total_qty']),
+      entries: entries,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'item_code': itemCode,
+      'warehouse': warehouse,
+      'total_qty': totalQty,
+      'entries': entries.map((e) => e.toJson()).toList(),
+    };
+    if (name != null) data['name'] = name;
+    if (typeOfTransaction != null) data['type_of_transaction'] = typeOfTransaction;
+    if (voucherType != null) data['voucher_type'] = voucherType;
+    return data;
+  }
+}
+
+class SerialAndBatchEntry {
+  String? batchNo;
+  String? serialNo;
   double qty;
 
-  StockEntryBatch({required this.batchNo, required this.qty});
+  SerialAndBatchEntry({
+    this.batchNo,
+    this.serialNo,
+    required this.qty,
+  });
 
-  Map<String, dynamic> toJson() => {'batch_no': batchNo, 'qty': qty};
-
-  factory StockEntryBatch.fromJson(Map<String, dynamic> json) {
-    return StockEntryBatch(
-      batchNo: json['batch_no']?.toString() ?? '',
-      qty: double.tryParse(json['qty'].toString()) ?? 0.0,
+  factory SerialAndBatchEntry.fromJson(Map<String, dynamic> json) {
+    return SerialAndBatchEntry(
+      batchNo: json['batch_no']?.toString(),
+      serialNo: json['serial_no']?.toString(),
+      qty: StockEntry._parseDouble(json['qty']),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {'qty': qty};
+    if (batchNo != null) data['batch_no'] = batchNo;
+    if (serialNo != null) data['serial_no'] = serialNo;
+    return data;
   }
 }
