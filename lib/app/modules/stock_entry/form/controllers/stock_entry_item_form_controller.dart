@@ -388,14 +388,27 @@ class StockEntryItemFormController extends GetxController {
       currentBundleEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
     }
 
-    // Update Total Qty
-    final total = currentBundleEntries.fold(0.0, (sum, b) => sum + b.qty);
-    qtyController.text = total.toStringAsFixed(2);
-    validateSheet();
+    _recalcTotal();
+  }
+
+  void updateEntryQty(int index, double newQty) {
+    if (newQty < 0) return;
+    if (newQty == 0) {
+      removeEntry(index);
+      return;
+    }
+
+    currentBundleEntries[index].qty = newQty;
+    currentBundleEntries.refresh();
+    _recalcTotal();
   }
 
   void removeEntry(int index) {
     currentBundleEntries.removeAt(index);
+    _recalcTotal();
+  }
+
+  void _recalcTotal() {
     final total = currentBundleEntries.fold(0.0, (sum, b) => sum + b.qty);
     qtyController.text = total.toStringAsFixed(2);
     validateSheet();
@@ -430,7 +443,8 @@ class StockEntryItemFormController extends GetxController {
     SerialAndBatchBundle? finalBundle;
     if (!useSerialBatchFields.value) {
       finalBundle = SerialAndBatchBundle(
-        name: loadedBundle?.name, // Keep name if it was a fetched bundle
+        // CRITICAL: Pass the existing bundle name (key) if we loaded one
+        name: loadedBundle?.name,
         itemCode: itemCode.value,
         warehouse: itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value ?? '',
         totalQty: double.tryParse(qtyController.text) ?? 0,
@@ -439,6 +453,7 @@ class StockEntryItemFormController extends GetxController {
     }
 
     final newItem = StockEntryItem(
+      // Use existing item name if available (editing), else generate temp key
       name: currentItemNameKey.value ?? (_parent.itemKeys.keys.contains(itemCode.value) ? null : 'local_${DateTime.now().millisecondsSinceEpoch}'),
       itemCode: itemCode.value,
       itemName: itemName.value,
@@ -458,7 +473,7 @@ class StockEntryItemFormController extends GetxController {
 
       // New Model Field
       localBundle: finalBundle,
-      serialAndBatchBundle: loadedBundle?.name, // Keep existing link if present
+      serialAndBatchBundle: loadedBundle?.name, // Keep existing link reference
 
       // Metadata
       owner: itemOwner.value,

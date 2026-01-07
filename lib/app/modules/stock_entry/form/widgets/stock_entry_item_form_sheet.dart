@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 
@@ -267,7 +268,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Add Batch Row
+        // Add Batch Input Row
         Row(
           children: [
             Expanded(
@@ -278,34 +279,32 @@ class StockEntryItemFormSheet extends StatelessWidget {
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.add, color: Colors.purple),
+                    onPressed: () {
+                      if (controller.batchController.text.isNotEmpty) {
+                        controller.addEntry(controller.batchController.text, 1.0);
+                        controller.batchController.clear();
+                      }
+                    },
+                  ),
                 ),
+                onFieldSubmitted: (val) {
+                  if (val.isNotEmpty) {
+                    controller.addEntry(val, 1.0);
+                    controller.batchController.clear();
+                  }
+                },
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.purple.shade50,
-                foregroundColor: Colors.purple,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              icon: const Icon(Icons.add),
-              onPressed: () {
-                if (controller.batchController.text.isNotEmpty) {
-                  // FIX: Use addEntry instead of addBatch
-                  controller.addEntry(controller.batchController.text, 1.0);
-                  controller.batchController.clear();
-                }
-              },
             ),
           ],
         ),
 
         // Batch List
-        // FIX: Use currentBundleEntries instead of currentBatches
         if (controller.currentBundleEntries.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(
-            constraints: const BoxConstraints(maxHeight: 150),
+            constraints: const BoxConstraints(maxHeight: 250),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: BorderRadius.circular(8),
@@ -313,40 +312,84 @@ class StockEntryItemFormSheet extends StatelessWidget {
             ),
             child: ListView.separated(
               shrinkWrap: true,
-              padding: const EdgeInsets.all(4),
-              // FIX: Use currentBundleEntries length
+              padding: const EdgeInsets.all(8),
               itemCount: controller.currentBundleEntries.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, indent: 10, endIndent: 10),
-              itemBuilder: (context, index) {
-                // FIX: Use currentBundleEntries
-                final batch = controller.currentBundleEntries[index];
-                return ListTile(
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  // FIX: batchNo might be null in model, provide fallback
-                  title: Text(batch.batchNo ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('${batch.qty} units', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        // FIX: Use removeEntry instead of removeBatch
-                        onTap: () => controller.removeEntry(index),
-                        child: Icon(Icons.remove_circle_outline, size: 18, color: Colors.red.shade300),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) => _buildBatchRow(context, index),
             ),
           ),
         ] else
           const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Center(child: Text('No batches added', style: TextStyle(color: Colors.grey, fontSize: 12))),
+            padding: EdgeInsets.only(top: 12),
+            child: Center(
+              child: Text(
+                'No batches added',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
           ),
       ],
+    );
+  }
+
+  Widget _buildBatchRow(BuildContext context, int index) {
+    final batch = controller.currentBundleEntries[index];
+    final isOutward = ['Material Issue', 'Material Transfer']
+        .contains(controller.parent.selectedStockEntryType.value);
+
+    return TextFormField(
+      // Key ensures focus is preserved correctly if list reorders/updates
+      key: ValueKey(batch.batchNo),
+      initialValue: batch.qty.abs().toString(),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+
+        // Requirement: Prepend Batch No as prefix
+        prefixIcon: Container(
+          width: 150,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 12, right: 8),
+          child: Text(
+            batch.batchNo ?? '-',
+            style: const TextStyle(
+              fontFamily: 'ShureTechMono',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black54
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+
+        // Requirement: Append Remove button as suffix
+        suffixIcon: IconButton(
+          icon: Icon(Icons.close, size: 18, color: Colors.red.shade300),
+          onPressed: () => controller.removeEntry(index),
+          tooltip: 'Remove',
+        ),
+      ),
+      onChanged: (val) {
+        final qty = double.tryParse(val);
+        if (qty != null) {
+          // Requirement: Negative if Outward, Positive if Inward
+          final signedQty = isOutward ? -qty.abs() : qty.abs();
+          controller.updateEntryQty(index, signedQty);
+        }
+      },
     );
   }
 

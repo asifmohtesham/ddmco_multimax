@@ -397,10 +397,8 @@ class StockEntryFormController extends GetxController {
       // Logic: If useSerialBatchFields is 0 (false), we MUST ensure an SABB exists if there are entries
       if ((item.useSerialBatchFields == null || item.useSerialBatchFields == 0) && item.localBundle != null) {
         try {
-          // If the bundle has no name (it's new/modified locally) or we always create new for immutable SABB flow
-          // Note: In typical ERPNext v14+, SABBs are immutable once submitted, but drafts can be edited.
-          // For simplicity and safety, we create a new SABB for the transaction if modified.
-          final bundleId = await _createSerialBatchBundle(item);
+          // Process Bundle (Create or Update based on existence of name)
+          final bundleId = await _processSerialBatchBundle(item);
           updatedList.add(item.copyWith(serialAndBatchBundle: bundleId));
         } catch(e) { rethrow; }
       } else {
@@ -408,6 +406,48 @@ class StockEntryFormController extends GetxController {
       }
     }
     return updatedList;
+  }
+
+  Future<String?> _processSerialBatchBundle(StockEntryItem item) async {
+    if (item.localBundle == null) return item.serialAndBatchBundle;
+
+    final type = selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
+    final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
+    final bundleData = item.localBundle!;
+
+    // Construct Payload
+    final payload = {
+      'type_of_transaction': isOutward ? 'Outward' : 'Inward',
+      'item_code': item.itemCode,
+      'warehouse': warehouse ?? bundleData.warehouse,
+      'has_batch_no': 1,
+      'voucher_type': 'Stock Entry',
+      // 'voucher_no': name, // Optional: link to parent if needed
+      'entries': bundleData.entries.map((b) => b.toJson()).toList(),
+    };
+
+    // --- LOGIC CHANGE: Update if name exists, else Create ---
+    if (bundleData.name != null && bundleData.name!.isNotEmpty) {
+      // UPDATE Existing Bundle
+      try {
+        final response = await _apiProvider.updateDocument('Serial and Batch Bundle', bundleData.name!, payload);
+        if (response.statusCode == 200) {
+          return response.data['data']['name'];
+        } else {
+          // Fallback: If update fails (e.g., submitted), try creating new?
+          // For now, throw error to warn user.
+          throw Exception('Failed to update Bundle ${bundleData.name}: ${response.data}');
+        }
+      } catch (e) {
+        print('Error updating SABB: $e');
+        rethrow;
+      }
+    } else {
+      // CREATE New Bundle
+      final response = await _apiProvider.createDocument('Serial and Batch Bundle', payload);
+      return response.statusCode == 200 ? response.data['data']['name'] : null;
+    }
   }
 
   Map<String, dynamic> _buildSavePayload(List<StockEntryItem> items) {
