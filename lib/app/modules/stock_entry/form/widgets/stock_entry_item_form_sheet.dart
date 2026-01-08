@@ -78,21 +78,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
           onValidate: (v) => controller.validateRack(v, isSource: true),
           iconColor: Colors.orange,
         ),
-
-        // Directional Arrow
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Icon(Icons.arrow_downward, color: Colors.grey.shade400, size: 20),
-              ),
-              const SizedBox(width: 8),
-              Text('Transferring to...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
-            ],
-          ),
-        ),
+        const SizedBox(height: 12),
 
         // TARGET
         _buildLocationColumn(
@@ -115,59 +101,52 @@ class StockEntryItemFormSheet extends StatelessWidget {
     required Function(String) onValidate,
     required Color iconColor,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Row for Label and Warehouse to save vertical space
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                  label,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)
-              ),
-              if (warehouse != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    warehouse,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Rack Input
-          TextFormField(
-            controller: rackController,
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: 'Scan $label Rack',
-              isDense: true,
-              filled: true,
-              fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.grey.shade50,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
-              prefixIcon: Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade400),
-              suffixIcon: Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Row for Label and Warehouse to save vertical space
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+                'Warehouse',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)
             ),
-            onFieldSubmitted: onValidate,
+            if (warehouse != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  warehouse,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Rack Input
+        TextFormField(
+          controller: rackController,
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            label: Text(label),
+            hintText: 'Scan $label Rack',
+            isDense: true,
+            filled: true,
+            fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.grey.shade50,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
+            prefixIcon: Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade400),
+            suffixIcon: Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
           ),
-        ],
-      ),
+          onFieldSubmitted: onValidate,
+        ),
+      ],
     );
   }
 

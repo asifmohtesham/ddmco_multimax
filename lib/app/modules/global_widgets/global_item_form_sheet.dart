@@ -136,7 +136,7 @@ class GlobalItemFormSheet extends StatelessWidget {
 
                   // 2. Dynamic Fields
                   ...customFields.map((w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20.0),
+                    padding: const EdgeInsets.only(bottom: 4.0),
                     child: w,
                   )),
 
