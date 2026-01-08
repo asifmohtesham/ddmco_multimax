@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -57,11 +56,12 @@ class StockEntryItemFormController extends GetxController {
   var isSheetValid = false.obs;
 
   // --- Batches / SABB Entries ---
+  // The working copy of entries
   var currentBundleEntries = <SerialAndBatchEntry>[].obs;
   var isBatchReadOnly = false.obs;
 
-  // Local transient bundle object (if editing an SABB)
-  SerialAndBatchBundle? loadedBundle;
+  // The original pristine bundle fetched from server or parent (for dirty checking)
+  SerialAndBatchBundle? originalBundle;
 
   // --- Context & Warehouse ---
   var selectedSerial = RxnString();
@@ -97,58 +97,6 @@ class StockEntryItemFormController extends GetxController {
     ever(itemSourceWarehouse, (_) => _updateStockAvailability());
   }
 
-  // Add the searchBatches method
-  Future<List<Map<String, dynamic>>> searchBatches(String query) async {
-    // Determine context for filters
-    final type = _parent.selectedStockEntryType.value;
-    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
-
-    // For outward/transfer, we need the source warehouse's existing batches
-    // For inward (Receipt), we might look at target or just allow new,
-    // but the requirement specifies searching "existing" batches.
-    final warehouse = isOutward
-        ? (itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value)
-        : (itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value);
-
-    if (warehouse == null) return [];
-
-    try {
-      final filters = {
-        'item_code': itemCode.value,
-        'warehouse': warehouse,
-        'is_inward': !isOutward, // False for outward transactions
-        'include_expired_batches': true,
-      };
-
-      final response = await _apiProvider.callMethod(
-        'erpnext.controllers.queries.get_batch_no',
-        params: {
-          'txt': query,
-          'doctype': 'Batch',
-          'filters': jsonEncode(filters),
-        },
-      );
-
-      if (response.statusCode == 200 && response.data['message'] != null) {
-        final List raw = response.data['message'];
-        // ERPNext get_batch_no typically returns [{value: 'BATCH-001', description: '10.0'}, ...]
-        // where 'description' often contains the qty info.
-        return raw.map((e) {
-          if (e is Map) {
-            return {
-              'batch': e['value']?.toString() ?? '',
-              'qty': e['description']?.toString() ?? '0'
-            };
-          }
-          return {'batch': e.toString(), 'qty': 'N/A'};
-        }).toList().cast<Map<String, dynamic>>();
-      }
-    } catch (e) {
-      print('Error searching batches: $e');
-    }
-    return [];
-  }
-
   void _loadExistingItem(StockEntryItem item) {
     itemCode.value = item.itemCode;
     itemName.value = item.itemName ?? '';
@@ -163,35 +111,38 @@ class StockEntryItemFormController extends GetxController {
     // Determine mode based on usage flag or data presence
     useSerialBatchFields.value = (item.useSerialBatchFields == 1);
 
-    // Load Quantities
+    // Qty
     qtyController.text = item.qty % 1 == 0 ? item.qty.toInt().toString() : item.qty.toString();
 
-    // Load Batch (Legacy Field)
+    // Batch (Legacy)
     batchController.text = item.batchNo ?? '';
     if (useSerialBatchFields.value && item.batchNo != null && item.batchNo!.isNotEmpty) {
       isBatchValid.value = true;
       isBatchReadOnly.value = true;
     }
 
-    // Load Racks
+    // Racks
     sourceRackController.text = item.rack ?? '';
     targetRackController.text = item.toRack ?? '';
     if (sourceRackController.text.isNotEmpty) isSourceRackValid.value = true;
     if (targetRackController.text.isNotEmpty) isTargetRackValid.value = true;
 
-    // Load Warehouses
+    // Warehouses & Context
     itemSourceWarehouse.value = item.sWarehouse;
     itemTargetWarehouse.value = item.tWarehouse;
     selectedSerial.value = item.customInvoiceSerialNumber;
 
     // Load Bundle Data
-    if (!useSerialBatchFields.value) {
-      if (item.localBundle != null) {
-        // If we have local unsaved changes
-        loadedBundle = item.localBundle;
-        currentBundleEntries.assignAll(item.localBundle!.entries);
-      } else if (item.serialAndBatchBundle != null) {
-        // If we have a saved bundle ID
+    if (!useSerialBatchFields.value && item.serialAndBatchBundle != null) {
+      // Check if parent has an unsaved dirty version of this bundle first
+      if (_parent.unsavedBundles.containsKey(item.serialAndBatchBundle)) {
+        originalBundle = _parent.unsavedBundles[item.serialAndBatchBundle];
+        if (originalBundle != null) {
+          currentBundleEntries.assignAll(originalBundle!.entries.map((e) =>
+              SerialAndBatchEntry.fromJson(e.toJson())).toList()); // Deep copy for editing
+        }
+      } else {
+        // Fetch from server
         _fetchBundleDetails(item.serialAndBatchBundle!);
       }
     }
@@ -220,7 +171,6 @@ class StockEntryItemFormController extends GetxController {
   }
 
   // --- Scanning Logic ---
-
   Future<void> handleScan(String barcode) async {
     final result = await _scanService.processScan(barcode, contextItemCode: itemCode.value);
 
@@ -247,8 +197,7 @@ class StockEntryItemFormController extends GetxController {
     }
   }
 
-  // --- Validation Logic ---
-
+  // --- Validation ---
   void validateSheet() {
     isSheetValid.value = _isValidQty() &&
         _isValidBatch() &&
@@ -289,17 +238,36 @@ class StockEntryItemFormController extends GetxController {
       }
       if (sourceRackController.text.isNotEmpty && !isSourceRackValid.value) return false;
     }
-
     if (needTarget) {
       if (targetRackController.text.isNotEmpty && !isTargetRackValid.value) return false;
       // If strict checking required:
       // if (targetRackController.text.isEmpty && itemTargetWarehouse.value == null && _parent.selectedToWarehouse.value == null) return false;
     }
-
     return true;
   }
 
   // --- Business Logic ---
+  Future<List<Map<String, dynamic>>> searchBatches(String query) async {
+    if (itemCode.value.isEmpty) return [];
+
+    try {
+      final response = await _apiProvider.getDocumentList('Batch',
+          filters: {
+            'item': itemCode.value,
+            'name': ['like', '%$query%']
+          },
+          limit: 10
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        // Return the full data maps instead of just strings
+        return List<Map<String, dynamic>>.from(response.data['data']);
+      }
+    } catch (e) {
+      print('Batch search error: $e');
+    }
+    return [];
+  }
 
   Future<void> _updateStockAvailability() async {
     final sWh = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value;
@@ -340,7 +308,7 @@ class StockEntryItemFormController extends GetxController {
 
     try {
       if (useSerialBatchFields.value) {
-        // --- 1. Validate with Batch DocType (Legacy) ---
+        // Legacy Batch
         final response = await _apiProvider.getDocumentList('Batch', filters: {
           'item': itemCode.value, 'name': batch
         });
@@ -354,7 +322,7 @@ class StockEntryItemFormController extends GetxController {
           batchError.value = 'Invalid Batch';
         }
       } else {
-        // --- 0. Validate with Serial and Batch Bundle DocType ---
+        // Bundle
         final response = await _apiProvider.getDocument('Serial and Batch Bundle', batch);
 
         if (response.statusCode == 200 && response.data['data'] != null) {
@@ -364,15 +332,12 @@ class StockEntryItemFormController extends GetxController {
             isBatchValid.value = true;
             isBatchReadOnly.value = true;
 
-            // Store as loaded bundle
-            loadedBundle = SerialAndBatchBundle.fromJson(data);
+            originalBundle = SerialAndBatchBundle.fromJson(data);
+            if (originalBundle != null) {
+              currentBundleEntries.assignAll(originalBundle!.entries.map((e) =>
+                  SerialAndBatchEntry.fromJson(e.toJson())).toList()); // Deep copy
 
-            // Populate UI List
-            if (loadedBundle?.entries != null) {
-              currentBundleEntries.assignAll(loadedBundle!.entries);
-
-              // Update Qty
-              final total = loadedBundle!.totalQty;
+              final total = originalBundle!.totalQty;
               if (total > 0) {
                 qtyController.text = total % 1 == 0 ? total.toInt().toString() : total.toString();
               }
@@ -423,7 +388,7 @@ class StockEntryItemFormController extends GetxController {
         else isTargetRackValid.value = false;
       }
     } catch (e) {
-      // handle error
+      // ignore
     }
     validateSheet();
   }
@@ -440,7 +405,6 @@ class StockEntryItemFormController extends GetxController {
     } else {
       currentBundleEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
     }
-
     _recalcTotal();
   }
 
@@ -450,7 +414,6 @@ class StockEntryItemFormController extends GetxController {
       removeEntry(index);
       return;
     }
-
     currentBundleEntries[index].qty = newQty;
     currentBundleEntries.refresh();
     _recalcTotal();
@@ -473,18 +436,35 @@ class StockEntryItemFormController extends GetxController {
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
-        loadedBundle = SerialAndBatchBundle.fromJson(data);
-        if (loadedBundle != null) {
-          currentBundleEntries.assignAll(loadedBundle!.entries);
+        originalBundle = SerialAndBatchBundle.fromJson(data);
+        if (originalBundle != null) {
+          currentBundleEntries.assignAll(originalBundle!.entries.map((e) =>
+              SerialAndBatchEntry.fromJson(e.toJson())).toList()); // Deep copy
         }
       } else {
-        print('Failed to fetch bundle $bundleId: ${response.statusCode}');
         GlobalSnackbar.error(message: 'Error fetching bundle: ${response.statusCode}');
       }
     } catch (e) {
-      print('Exception in _fetchBundleDetails: $e');
       GlobalSnackbar.error(message: 'Could not load batch details: $e');
     }
+  }
+
+  bool _isBundleDirty() {
+    if (useSerialBatchFields.value) return false;
+    // If we have entries but no original bundle, it's a new bundle -> Dirty
+    if (originalBundle == null) return currentBundleEntries.isNotEmpty;
+
+    // Compare entries
+    if (originalBundle!.entries.length != currentBundleEntries.length) return true;
+
+    // Sort and compare for deeper equality if order doesn't matter,
+    // or simple strict check if index matters. Usually order matters less, but quantities do.
+    // For simplicity, checking if sums or specific batches changed:
+    for (var entry in currentBundleEntries) {
+      final orig = originalBundle!.entries.firstWhereOrNull((e) => e.batchNo == entry.batchNo);
+      if (orig == null || orig.qty != entry.qty) return true;
+    }
+    return false;
   }
 
   // --- Actions ---
@@ -492,12 +472,12 @@ class StockEntryItemFormController extends GetxController {
   void submit() {
     if (!isSheetValid.value) return;
 
-    // Create a local bundle object from current entries if not using legacy fields
-    SerialAndBatchBundle? finalBundle;
-    if (!useSerialBatchFields.value) {
-      finalBundle = SerialAndBatchBundle(
-        // CRITICAL: Pass the existing bundle name (key) if we loaded one
-        name: loadedBundle?.name,
+    SerialAndBatchBundle? dirtyBundle;
+
+    // If bundle is dirty, prepare the object to pass to parent
+    if (_isBundleDirty()) {
+      dirtyBundle = SerialAndBatchBundle(
+        name: originalBundle?.name, // Keep existing ID if any (to trigger update), else null
         itemCode: itemCode.value,
         warehouse: itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value ?? '',
         totalQty: double.tryParse(qtyController.text) ?? 0,
@@ -513,7 +493,6 @@ class StockEntryItemFormController extends GetxController {
       qty: double.tryParse(qtyController.text) ?? 0,
       basicRate: 0.0,
 
-      // Legacy fields
       batchNo: useSerialBatchFields.value ? batchController.text : null,
       useSerialBatchFields: useSerialBatchFields.value ? 1 : 0,
 
@@ -524,9 +503,8 @@ class StockEntryItemFormController extends GetxController {
       customVariantOf: customVariantOf,
       customInvoiceSerialNumber: selectedSerial.value,
 
-      // New Model Field
-      localBundle: finalBundle,
-      serialAndBatchBundle: loadedBundle?.name, // Keep existing link reference
+      // We pass the existing Bundle ID if we have it, or let parent assign temp ID via dirtyBundle return
+      serialAndBatchBundle: originalBundle?.name,
 
       // Metadata
       owner: itemOwner.value,
@@ -538,7 +516,8 @@ class StockEntryItemFormController extends GetxController {
     // Enrich with Context Data from Parent if needed
     StockEntryItem finalItem = _enrichWithContext(newItem);
 
-    _parent.upsertItem(finalItem);
+    // Pass the dirty bundle side-by-side with the item
+    _parent.upsertItem(finalItem, bundle: dirtyBundle);
     Get.back();
   }
 
@@ -562,7 +541,7 @@ class StockEntryItemFormController extends GetxController {
       batchNo: item.batchNo, useSerialBatchFields: item.useSerialBatchFields,
       itemName: item.itemName, rack: item.rack, toRack: item.toRack, sWarehouse: item.sWarehouse,
       tWarehouse: item.tWarehouse, customInvoiceSerialNumber: item.customInvoiceSerialNumber,
-      serialAndBatchBundle: item.serialAndBatchBundle, localBundle: item.localBundle,
+      serialAndBatchBundle: item.serialAndBatchBundle,
       materialRequest: matReq ?? item.materialRequest,
       materialRequestItem: matReqItem ?? item.materialRequestItem,
       owner: item.owner, creation: item.creation, modified: item.modified, modifiedBy: item.modifiedBy,

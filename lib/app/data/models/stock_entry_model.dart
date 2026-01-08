@@ -210,7 +210,8 @@ class StockEntryItem {
 }
 
 class SerialAndBatchBundle {
-  final String? name;
+  // Mutable ID to allow updating from 'local_' to real ID
+  String? name;
   final String itemCode;
   final String warehouse;
   final String? typeOfTransaction;
@@ -281,7 +282,6 @@ class SerialAndBatchBundle {
       'entries': entries.map((e) => e.toJson()).toList(),
     };
 
-    // Optional fields mapping
     if (name != null) data['name'] = name;
     if (typeOfTransaction != null) data['type_of_transaction'] = typeOfTransaction;
     if (voucherType != null) data['voucher_type'] = voucherType;
@@ -300,11 +300,12 @@ class SerialAndBatchBundle {
 }
 
 class SerialAndBatchEntry {
-  final String? batchNo;
-  final String? serialNo;
-  final String? warehouse;
-  final double qty;
-  final String? incomingRate;
+  // Mutable fields for local editing
+  String? batchNo;
+  String? serialNo;
+  String? warehouse;
+  double qty;
+  String? incomingRate;
 
   SerialAndBatchEntry({
     this.batchNo,

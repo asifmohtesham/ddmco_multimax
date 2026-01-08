@@ -72,6 +72,11 @@ class StockEntryFormController extends GetxController {
   var expandedInvoice = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
 
+  // --- Dirty Data Tracking (Sidecar Pattern) ---
+  // Map of <BundleID, BundleObject>.
+  // Key can be a real ID (if editing existing) or "local_timestamp" (if new).
+  final Map<String, SerialAndBatchBundle> unsavedBundles = {};
+
   Worker? _scanWorker;
 
   // --- Computed Props ---
@@ -316,18 +321,35 @@ class StockEntryFormController extends GetxController {
     });
   }
 
-  void upsertItem(StockEntryItem newItem) {
+  void upsertItem(StockEntryItem newItem, {SerialAndBatchBundle? bundle}) {
+    // Handle dirty bundle
+    StockEntryItem itemToSave = newItem;
+
+    if (bundle != null) {
+      // If the bundle has no ID (new) or we are editing, we need a key to store it in the map
+      String bundleKey = bundle.name ?? 'local_sabb_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Ensure the bundle object has this key set (if it was null)
+      bundle.name = bundleKey;
+
+      // Register in sidecar map
+      unsavedBundles[bundleKey] = bundle;
+
+      // Update item to reference this key
+      itemToSave = newItem.copyWith(serialAndBatchBundle: bundleKey);
+    }
+
     final currentItems = stockEntry.value?.items.toList() ?? [];
-    final index = currentItems.indexWhere((i) => i.name == newItem.name);
+    final index = currentItems.indexWhere((i) => i.name == itemToSave.name);
 
     if (index != -1) {
-      currentItems[index] = newItem;
+      currentItems[index] = itemToSave;
     } else {
-      currentItems.add(newItem);
+      currentItems.add(itemToSave);
     }
 
     stockEntry.update((val) => val?.items.assignAll(currentItems));
-    _triggerHighlight(newItem.name ?? '');
+    _triggerHighlight(itemToSave.name ?? '');
     _autoSaveIfNew();
   }
 
@@ -342,6 +364,12 @@ class StockEntryFormController extends GetxController {
         stockEntry.update((val) {
           val?.items.removeWhere((i) => i.name == uniqueName);
         });
+
+        // Clean up unsaved bundle map if needed
+        if (item.serialAndBatchBundle != null && unsavedBundles.containsKey(item.serialAndBatchBundle)) {
+          unsavedBundles.remove(item.serialAndBatchBundle);
+        }
+
         isDirty.value = true;
       },
     );
@@ -375,6 +403,10 @@ class StockEntryFormController extends GetxController {
       } else {
         await _updateEntry(payload);
       }
+
+      // Clear unsaved bundles after successful save
+      unsavedBundles.clear();
+
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
@@ -394,12 +426,16 @@ class StockEntryFormController extends GetxController {
   Future<List<StockEntryItem>> _processItemsForSave(List<StockEntryItem> items) async {
     var updatedList = <StockEntryItem>[];
     for (var item in items) {
-      // Logic: If useSerialBatchFields is 0 (false), we MUST ensure an SABB exists if there are entries
-      if ((item.useSerialBatchFields == null || item.useSerialBatchFields == 0) && item.localBundle != null) {
+      // Check if this item has a pending dirty bundle in our sidecar map
+      if (item.serialAndBatchBundle != null && unsavedBundles.containsKey(item.serialAndBatchBundle)) {
         try {
-          // Process Bundle (Create or Update based on existence of name)
-          final bundleId = await _processSerialBatchBundle(item);
-          updatedList.add(item.copyWith(serialAndBatchBundle: bundleId));
+          final dirtyBundle = unsavedBundles[item.serialAndBatchBundle]!;
+
+          // Process Bundle (Create or Update based on if name is a real ID or 'local_')
+          final realBundleId = await _processSerialBatchBundle(dirtyBundle);
+
+          // Update item to use the REAL ID returned by server
+          updatedList.add(item.copyWith(serialAndBatchBundle: realBundleId));
         } catch(e) { rethrow; }
       } else {
         updatedList.add(item);
@@ -408,27 +444,26 @@ class StockEntryFormController extends GetxController {
     return updatedList;
   }
 
-  Future<String?> _processSerialBatchBundle(StockEntryItem item) async {
-    if (item.localBundle == null) return item.serialAndBatchBundle;
-
+  Future<String?> _processSerialBatchBundle(SerialAndBatchBundle bundleData) async {
     final type = selectedStockEntryType.value;
     final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
     final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
-    final bundleData = item.localBundle!;
 
     // Construct Payload
     final payload = {
       'type_of_transaction': isOutward ? 'Outward' : 'Inward',
-      'item_code': item.itemCode,
+      'item_code': bundleData.itemCode,
       'warehouse': warehouse ?? bundleData.warehouse,
       'has_batch_no': 1,
       'voucher_type': 'Stock Entry',
-      // 'voucher_no': name, // Optional: link to parent if needed
+      'voucher_no': name, // Optional: link to parent if needed
       'entries': bundleData.entries.map((b) => b.toJson()).toList(),
     };
 
-    // --- LOGIC CHANGE: Update if name exists, else Create ---
-    if (bundleData.name != null && bundleData.name!.isNotEmpty) {
+    // Check if it's a local temp ID or a real existing ID
+    bool isLocal = bundleData.name != null && bundleData.name!.startsWith('local_');
+
+    if (!isLocal && bundleData.name != null && bundleData.name!.isNotEmpty) {
       // UPDATE Existing Bundle
       try {
         final response = await _apiProvider.updateDocument('Serial and Batch Bundle', bundleData.name!, payload);
@@ -519,29 +554,6 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  Future<String?> _createSerialBatchBundle(StockEntryItem item) async {
-    if (item.localBundle == null) return item.serialAndBatchBundle;
-
-    final type = selectedStockEntryType.value;
-    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
-    final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
-
-    // Construct Payload using the SABB Model
-    final bundleData = item.localBundle!;
-    final payload = {
-      'type_of_transaction': isOutward ? 'Outward' : 'Inward',
-      'item_code': item.itemCode,
-      'warehouse': warehouse ?? bundleData.warehouse,
-      'has_batch_no': 1,
-      'voucher_type': 'Stock Entry',
-      // 'voucher_no': name, // Can be linked later
-      'entries': bundleData.entries.map((b) => b.toJson()).toList(),
-    };
-
-    final response = await _apiProvider.createDocument('Serial and Batch Bundle', payload);
-    return response.statusCode == 200 ? response.data['data']['name'] : null;
-  }
-
   Future<void> _createEntry(Map<String, dynamic> data) async {
     final response = await _provider.createStockEntry(data);
     if (response.statusCode == 200) {
@@ -582,7 +594,7 @@ extension StockEntryItemHelpers on StockEntryItem {
         itemName: itemName, rack: rack, toRack: toRack, sWarehouse: sWarehouse,
         tWarehouse: tWarehouse, customInvoiceSerialNumber: customInvoiceSerialNumber,
         serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
-        localBundle: localBundle, materialRequest: materialRequest,
+        materialRequest: materialRequest,
         materialRequestItem: materialRequestItem, owner: owner, creation: creation,
         modified: modified, modifiedBy: modifiedBy
     );
@@ -592,9 +604,6 @@ extension StockEntryItemHelpers on StockEntryItem {
     var json = toJson();
     if (json['name']?.toString().startsWith('local_') == true) json.remove('name');
     if (json['basic_rate'] == 0.0) json.remove('basic_rate');
-
-    // Cleanup internal keys
-    json.remove('localBundle');
 
     if (json['material_request'] == null && mrReferenceItems != null) {
       final ref = mrReferenceItems.firstWhereOrNull((r) =>
