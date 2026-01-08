@@ -364,27 +364,31 @@ class _ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        SizedBox(
-          width: double.infinity,
-          child: isSaveEnabledRx != null
-              ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-              : _buildSaveButton(context, isSaveEnabled),
-        ),
         if (onDelete != null) ...[
           const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: () {
-              Get.back();
-              onDelete!();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-              padding: const EdgeInsets.symmetric(vertical: 12),
+          SizedBox(
+            width: MediaQuery.of(context).size.width * 0.4,
+            child: TextButton.icon(
+              onPressed: () {
+                Get.back();
+                onDelete!();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: const Icon(Icons.delete_outline, size: 20),
+              label: const Text('Remove Item'),
             ),
-            icon: const Icon(Icons.delete_outline, size: 20),
-            label: const Text('Remove Item'),
+          ),
+          SizedBox(
+            width: MediaQuery.of(context).size.width * 0.4,
+            child: isSaveEnabledRx != null
+                ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                : _buildSaveButton(context, isSaveEnabled),
           ),
         ],
       ],
@@ -399,7 +403,7 @@ class _ActionButtons extends StatelessWidget {
       return FilledButton(
         onPressed: canPress ? () => _handlePress(context) : null,
         style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          // padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           elevation: 0,
         ),

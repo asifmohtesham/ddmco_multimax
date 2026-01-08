@@ -101,7 +101,7 @@ class QuantityInputWidget extends StatelessWidget {
               _buildActionButton(
                 icon: Icons.remove,
                 onPressed: onDecrement,
-                color: Colors.grey.shade700,
+                colour: Colors.grey.shade700,
               ),
 
               // Vertical Divider between buttons
@@ -111,7 +111,7 @@ class QuantityInputWidget extends StatelessWidget {
               _buildActionButton(
                 icon: Icons.add,
                 onPressed: onIncrement,
-                color: primaryColor,
+                colour: primaryColor,
                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
               ),
             ],
@@ -124,7 +124,7 @@ class QuantityInputWidget extends StatelessWidget {
   Widget _buildActionButton({
     required IconData icon,
     required VoidCallback onPressed,
-    required Color color,
+    required Color colour,
     BorderRadius? borderRadius,
   }) {
     return Material(
@@ -137,10 +137,10 @@ class QuantityInputWidget extends StatelessWidget {
         },
         child: SizedBox(
           width: 56,
-          height: double.infinity,
+          height: 18,
           child: Icon(
             icon,
-            color: color,
+            color: colour,
             size: 22,
           ),
         ),
