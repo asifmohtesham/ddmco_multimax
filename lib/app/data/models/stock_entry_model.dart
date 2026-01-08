@@ -136,9 +136,6 @@ class StockEntryItem {
   final String? modified;
   final String? modifiedBy;
 
-  // Local Mutable State for UI (Holds the full SABB object locally)
-  SerialAndBatchBundle? localBundle;
-
   StockEntryItem({
     this.name,
     required this.itemCode,
@@ -155,7 +152,6 @@ class StockEntryItem {
     this.customInvoiceSerialNumber,
     this.serialAndBatchBundle,
     this.useSerialBatchFields,
-    this.localBundle,
     this.materialRequest,
     this.materialRequestItem,
     this.owner,
@@ -214,13 +210,23 @@ class StockEntryItem {
 }
 
 class SerialAndBatchBundle {
-  String? name;
-  String itemCode;
-  String warehouse;
-  String? typeOfTransaction;
-  String? voucherType;
-  double totalQty;
-  List<SerialAndBatchEntry> entries;
+  final String? name;
+  final String itemCode;
+  final String warehouse;
+  final String? typeOfTransaction;
+  final String? voucherType;
+  final String? voucherNo;
+  final String? voucherDetailNo;
+  final String? company;
+  final double totalQty;
+  final double totalAmount;
+  final double avgRate;
+  final int isCancelled;
+  final int isRejected;
+  final String? postingDate;
+  final String? postingTime;
+  final int docstatus;
+  final List<SerialAndBatchEntry> entries;
 
   SerialAndBatchBundle({
     this.name,
@@ -228,7 +234,17 @@ class SerialAndBatchBundle {
     required this.warehouse,
     this.typeOfTransaction,
     this.voucherType,
-    required this.totalQty,
+    this.voucherNo,
+    this.voucherDetailNo,
+    this.company,
+    this.totalQty = 0.0,
+    this.totalAmount = 0.0,
+    this.avgRate = 0.0,
+    this.isCancelled = 0,
+    this.isRejected = 0,
+    this.postingDate,
+    this.postingTime,
+    this.docstatus = 0,
     required this.entries,
   });
 
@@ -242,7 +258,17 @@ class SerialAndBatchBundle {
       warehouse: json['warehouse']?.toString() ?? '',
       typeOfTransaction: json['type_of_transaction']?.toString(),
       voucherType: json['voucher_type']?.toString(),
+      voucherNo: json['voucher_no']?.toString(),
+      voucherDetailNo: json['voucher_detail_no']?.toString(),
+      company: json['company']?.toString(),
       totalQty: StockEntry._parseDouble(json['total_qty']),
+      totalAmount: StockEntry._parseDouble(json['total_amount']),
+      avgRate: StockEntry._parseDouble(json['avg_rate']),
+      isCancelled: StockEntry._parseInt(json['is_cancelled']),
+      isRejected: StockEntry._parseInt(json['is_rejected']),
+      postingDate: json['posting_date']?.toString(),
+      postingTime: json['posting_time']?.toString(),
+      docstatus: StockEntry._parseInt(json['docstatus']),
       entries: entries,
     );
   }
@@ -254,29 +280,47 @@ class SerialAndBatchBundle {
       'total_qty': totalQty,
       'entries': entries.map((e) => e.toJson()).toList(),
     };
+
+    // Optional fields mapping
     if (name != null) data['name'] = name;
     if (typeOfTransaction != null) data['type_of_transaction'] = typeOfTransaction;
     if (voucherType != null) data['voucher_type'] = voucherType;
+    if (voucherNo != null) data['voucher_no'] = voucherNo;
+    if (voucherDetailNo != null) data['voucher_detail_no'] = voucherDetailNo;
+    if (company != null) data['company'] = company;
+    if (postingDate != null) data['posting_date'] = postingDate;
+    if (postingTime != null) data['posting_time'] = postingTime;
+
+    data['is_cancelled'] = isCancelled;
+    data['is_rejected'] = isRejected;
+    data['docstatus'] = docstatus;
+
     return data;
   }
 }
 
 class SerialAndBatchEntry {
-  String? batchNo;
-  String? serialNo;
-  double qty;
+  final String? batchNo;
+  final String? serialNo;
+  final String? warehouse;
+  final double qty;
+  final String? incomingRate;
 
   SerialAndBatchEntry({
     this.batchNo,
     this.serialNo,
+    this.warehouse,
     required this.qty,
+    this.incomingRate,
   });
 
   factory SerialAndBatchEntry.fromJson(Map<String, dynamic> json) {
     return SerialAndBatchEntry(
       batchNo: json['batch_no']?.toString(),
       serialNo: json['serial_no']?.toString(),
+      warehouse: json['warehouse']?.toString(),
       qty: StockEntry._parseDouble(json['qty']),
+      incomingRate: json['incoming_rate']?.toString(),
     );
   }
 
@@ -284,6 +328,8 @@ class SerialAndBatchEntry {
     final Map<String, dynamic> data = {'qty': qty};
     if (batchNo != null) data['batch_no'] = batchNo;
     if (serialNo != null) data['serial_no'] = serialNo;
+    if (warehouse != null) data['warehouse'] = warehouse;
+    if (incomingRate != null) data['incoming_rate'] = incomingRate;
     return data;
   }
 }
