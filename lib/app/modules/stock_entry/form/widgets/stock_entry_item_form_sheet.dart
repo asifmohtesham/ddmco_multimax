@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
@@ -171,6 +173,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 }
               },
               optionsViewBuilder: (context, onSelected, options) {
+                log(name: 'BWBH options', options.toString());
                 return Align(
                   alignment: Alignment.topLeft,
                   child: Material(
@@ -192,7 +195,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              'Balance: ${option['qty']}',
+                              '${option['batch']}: ${option['qty']}',
                               style: TextStyle(color: Colors.green.shade700, fontSize: 12),
                             ),
                             onTap: () => onSelected(option),

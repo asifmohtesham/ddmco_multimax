@@ -279,7 +279,7 @@ class StockEntryItemFormController extends GetxController {
           // Filter: Qty > 0 AND Matches Query
           return balance > 0 && batch.contains(search);
         }).map((e) => {
-          'batch': e['batch_no'],
+          'batch': e['batch'],
           'qty': e['balance_qty'] // Mapping 'balance_qty' to 'qty' for the View
         }).toList();
       }
