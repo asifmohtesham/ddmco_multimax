@@ -485,6 +485,7 @@ class StockEntryItemFormController extends GetxController {
       currentBundleEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
     }
     _recalcTotal();
+    _updateBundleOnServer();
   }
 
   void updateEntryQty(int index, double newQty) {
@@ -496,11 +497,35 @@ class StockEntryItemFormController extends GetxController {
     currentBundleEntries[index].qty = newQty;
     currentBundleEntries.refresh();
     _recalcTotal();
+    _updateBundleOnServer();
   }
 
   void removeEntry(int index) {
     currentBundleEntries.removeAt(index);
     _recalcTotal();
+    _updateBundleOnServer();
+  }
+
+  /// Updates the Serial and Batch Bundle on the server if it exists.
+  Future<void> _updateBundleOnServer() async {
+    // Only proceed if we are editing an existing bundle document on the server
+    if (originalBundle?.name == null) return;
+
+    try {
+      final data = {
+        'entries': currentBundleEntries.map((e) => e.toJson()).toList(),
+        'total_qty': double.tryParse(qtyController.text) ?? 0.0,
+      };
+
+      await _apiProvider.updateDocument(
+        'Serial and Batch Bundle',
+        originalBundle!.name!,
+        data,
+      );
+    } catch (e) {
+      log('Error updating bundle on server: $e');
+      GlobalSnackbar.error(message: 'Failed to sync batch updates to server');
+    }
   }
 
   void _recalcTotal() {
