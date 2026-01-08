@@ -6,7 +6,6 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
 class GlobalItemFormSheet extends StatelessWidget {
-  // ... [Keep all original final fields] ...
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
   final String title;
@@ -113,20 +112,34 @@ class GlobalItemFormSheet extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // Drag Handle
-          _buildDragHandle(theme),
+          // 1. Drag Handle
+          const _DragHandle(),
 
+          // 2. Actions Header (Delete Left / Save Right)
+          _FormActionBar(
+            title: title,
+            onDelete: onDelete,
+            onSubmit: onSubmit,
+            formKey: formKey,
+            isSaveEnabled: isSaveEnabled,
+            isSaveEnabledRx: isSaveEnabledRx,
+            isSaving: isSaving,
+            isLoading: isLoading,
+          ),
+
+          const Divider(height: 1),
+
+          // 3. Scrollable Content
           Expanded(
             child: Form(
               key: formKey,
               child: ListView(
                 controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                 shrinkWrap: true,
                 children: [
-                  // 1. Header Section
-                  _HeaderSection(
-                    title: title,
+                  // Item Details (Code & Name)
+                  _ItemIdentityHeader(
                     itemCode: itemCode,
                     itemName: itemName,
                     itemSubtext: itemSubtext,
@@ -134,13 +147,13 @@ class GlobalItemFormSheet extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // 2. Dynamic Fields
+                  // Dynamic Fields
                   ...customFields.map((w) => Padding(
                     padding: const EdgeInsets.only(bottom: 4.0),
                     child: w,
                   )),
 
-                  // 3. Quantity Input
+                  // Quantity Input
                   QuantityInputWidget(
                     controller: qtyController,
                     onIncrement: onIncrement,
@@ -150,26 +163,12 @@ class GlobalItemFormSheet extends StatelessWidget {
                     infoText: qtyInfoText,
                   ),
 
-                  // 4. Metadata Footer
+                  // Metadata
                   _MetadataSection(
                     owner: owner,
                     creation: creation,
                     modified: modified,
                     modifiedBy: modifiedBy,
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // 5. Actions (Save/Delete)
-                  _ActionButtons(
-                    title: title,
-                    isSaveEnabled: isSaveEnabled,
-                    isSaveEnabledRx: isSaveEnabledRx,
-                    isSaving: isSaving,
-                    isLoading: isLoading,
-                    onDelete: onDelete,
-                    formKey: formKey,
-                    onSubmit: onSubmit,
                   ),
 
                   SizedBox(height: math.max(viewInsetsBottom, bottomPadding) + 20),
@@ -178,7 +177,7 @@ class GlobalItemFormSheet extends StatelessWidget {
             ),
           ),
 
-          // 6. Sticky Scanner
+          // 4. Sticky Scanner
           if (onScan != null)
             _ScannerFooter(
               onScan: onScan!,
@@ -190,8 +189,17 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildDragHandle(ThemeData theme) {
+// -----------------------------------------------------------------------------
+// SUB-WIDGETS
+// -----------------------------------------------------------------------------
+
+class _DragHandle extends StatelessWidget {
+  const _DragHandle();
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -200,7 +208,7 @@ class GlobalItemFormSheet extends StatelessWidget {
         width: 32,
         height: 4,
         decoration: BoxDecoration(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -208,14 +216,131 @@ class GlobalItemFormSheet extends StatelessWidget {
   }
 }
 
-class _HeaderSection extends StatelessWidget {
+class _FormActionBar extends StatelessWidget {
   final String title;
+  final VoidCallback? onDelete;
+  final Function onSubmit;
+  final GlobalKey<FormState> formKey;
+  final bool isSaveEnabled;
+  final RxBool? isSaveEnabledRx;
+  final bool isSaving;
+  final bool isLoading;
+
+  final RxBool _isInternalLoading = false.obs;
+
+  _FormActionBar({
+    required this.title,
+    this.onDelete,
+    required this.onSubmit,
+    required this.formKey,
+    required this.isSaveEnabled,
+    this.isSaveEnabledRx,
+    required this.isSaving,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          // Left: Delete Button (if applicable)
+          if (onDelete != null)
+            IconButton(
+              onPressed: () {
+                Get.back(); // Close sheet logic
+                onDelete!();
+              },
+              icon: const Icon(Icons.delete_outline),
+              color: theme.colorScheme.error,
+              tooltip: 'Delete Item',
+              style: IconButton.styleFrom(
+                backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.2),
+              ),
+            )
+          else
+            const SizedBox(width: 48), // Placeholder for alignment if needed
+
+          // Center: Title
+          Expanded(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+
+          // Right: Save Button
+          SizedBox(
+            width: onDelete != null ? null : 80, // Balance width if delete is missing
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: isSaveEnabledRx != null
+                  ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                  : _buildSaveButton(context, isSaveEnabled),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSaveButton(BuildContext context, bool enabled) {
+    return Obx(() {
+      final showLoading = isSaving || isLoading || _isInternalLoading.value;
+      final canPress = enabled && !showLoading;
+
+      return FilledButton(
+        onPressed: canPress ? () => _handlePress(context) : null,
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        child: showLoading
+            ? SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            color: Theme.of(context).colorScheme.onPrimary,
+            strokeWidth: 2,
+          ),
+        )
+            : const Text('Save'),
+      );
+    });
+  }
+
+  Future<void> _handlePress(BuildContext context) async {
+    if (formKey.currentState!.validate()) {
+      FocusScope.of(context).unfocus();
+      _isInternalLoading.value = true;
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      try {
+        var result = onSubmit();
+        if (result is Future) await result;
+        Get.back();
+      } catch (e) {
+        debugPrint('Form Error: $e');
+      } finally {
+        _isInternalLoading.value = false;
+      }
+    }
+  }
+}
+
+class _ItemIdentityHeader extends StatelessWidget {
   final String itemCode;
   final String itemName;
   final String? itemSubtext;
 
-  const _HeaderSection({
-    required this.title,
+  const _ItemIdentityHeader({
     required this.itemCode,
     required this.itemName,
     this.itemSubtext,
@@ -229,30 +354,6 @@ class _HeaderSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top Row: Title + Close Button
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.primary,
-              ),
-            ),
-            IconButton(
-              onPressed: () => Get.back(),
-              icon: const Icon(Icons.close),
-              visualDensity: VisualDensity.compact,
-              style: IconButton.styleFrom(
-                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                foregroundColor: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
         // Item Code Badge
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -283,8 +384,6 @@ class _HeaderSection extends StatelessWidget {
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 16),
-        const Divider(height: 1),
       ],
     );
   }
@@ -332,116 +431,9 @@ class _MetadataSection extends StatelessWidget {
           Text('•', style: style),
           const SizedBox(width: 6),
         ],
-        if (date != null)
-          Text(FormattingHelper.getRelativeTime(date), style: style),
+        if (date != null) Text(FormattingHelper.getRelativeTime(date), style: style),
       ],
     );
-  }
-}
-
-class _ActionButtons extends StatelessWidget {
-  final String title;
-  final bool isSaveEnabled;
-  final RxBool? isSaveEnabledRx;
-  final bool isSaving;
-  final bool isLoading;
-  final VoidCallback? onDelete;
-  final GlobalKey<FormState> formKey;
-  final Function onSubmit;
-
-  final _isInternalLoading = false.obs;
-
-  _ActionButtons({
-    required this.title,
-    required this.isSaveEnabled,
-    this.isSaveEnabledRx,
-    required this.isSaving,
-    required this.isLoading,
-    this.onDelete,
-    required this.formKey,
-    required this.onSubmit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        if (onDelete != null) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: MediaQuery.of(context).size.width * 0.4,
-            child: TextButton.icon(
-              onPressed: () {
-                Get.back();
-                onDelete!();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              icon: const Icon(Icons.delete_outline, size: 20),
-              label: const Text('Remove Item'),
-            ),
-          ),
-          SizedBox(
-            width: MediaQuery.of(context).size.width * 0.4,
-            child: isSaveEnabledRx != null
-                ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                : _buildSaveButton(context, isSaveEnabled),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildSaveButton(BuildContext context, bool enabled) {
-    return Obx(() {
-      final showLoading = isSaving || isLoading || _isInternalLoading.value;
-      final canPress = enabled && !showLoading;
-
-      return FilledButton(
-        onPressed: canPress ? () => _handlePress(context) : null,
-        style: FilledButton.styleFrom(
-          // padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          elevation: 0,
-        ),
-        child: showLoading
-            ? SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            color: Theme.of(context).colorScheme.onPrimary,
-            strokeWidth: 2.5,
-          ),
-        )
-            : Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      );
-    });
-  }
-
-  Future<void> _handlePress(BuildContext context) async {
-    if (formKey.currentState!.validate()) {
-      FocusScope.of(context).unfocus();
-      _isInternalLoading.value = true;
-
-      // UX Delay for feedback
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      try {
-        var result = onSubmit();
-        if (result is Future) await result;
-        Get.back();
-      } catch (e) {
-        debugPrint('Form Error: $e');
-      } finally {
-        _isInternalLoading.value = false;
-      }
-    }
   }
 }
 
