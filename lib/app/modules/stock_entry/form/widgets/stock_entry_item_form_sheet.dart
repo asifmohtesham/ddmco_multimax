@@ -53,9 +53,9 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
         // --- Custom Form Body ---
         customFields: [
+          _buildValidationErrors(),
           _buildSerialBatchBundleFields(context),
           _buildInventoryDimensionFields(context),
-          _buildValidationErrors(),
         ],
       );
     });
