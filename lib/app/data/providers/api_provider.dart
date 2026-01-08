@@ -265,9 +265,9 @@ class ApiProvider {
   /// Updated to accept date range
   Future<Response> getBatchWiseBalance({
     required String itemCode,
-    required String batchNo,
-    required String fromDate,
-    required String toDate,
+    required String? batchNo,
+    required String? fromDate,
+    required String? toDate,
     String? warehouse,
   }) async {
     if (!_dioInitialised) await _initDio();
@@ -278,13 +278,13 @@ class ApiProvider {
 
     final Map<String, dynamic> filters = {
       "company": company,
-      "from_date": fromDate,
-      "to_date": toDate,
+      "from_date": fromDate ?? today,
+      "to_date": toDate ?? today,
     };
 
     // ERP typically requires Item Code for this report
     if (itemCode.isNotEmpty) filters["item_code"] = itemCode;
-    if (batchNo.isNotEmpty) filters["batch_no"] = batchNo;
+    if (batchNo != null && batchNo.isNotEmpty) filters["batch_no"] = batchNo;
     if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
 
     return await _dio.get('/api/method/frappe.desk.query_report.run',

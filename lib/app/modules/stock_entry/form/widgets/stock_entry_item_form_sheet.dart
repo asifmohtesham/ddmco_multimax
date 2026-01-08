@@ -167,8 +167,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
               displayStringForOption: (option) => option['batch'] ?? '',
               onSelected: (option) {
                 if (option['batch'] != null) {
-                  controller.addEntry(option['batch'], 1.0);
-                  controller.batchController.clear();
+                  controller.validateAndAddBatch(option['batch']);
                 }
               },
               optionsViewBuilder: (context, onSelected, options) {
@@ -205,30 +204,33 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 );
               },
               fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-                return TextFormField(
+                return Obx(() => TextFormField(
                   controller: textController,
                   focusNode: focusNode,
+                  enabled: !controller.isValidatingBatch.value,
                   decoration: InputDecoration(
                     hintText: 'Scan/Enter Batch',
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    suffixIcon: IconButton(
+                    // FIX: Show loading indicator if validating, else show Add icon
+                    suffixIcon: controller.isValidatingBatch.value
+                        ? Transform.scale(scale: 0.5, child: const CircularProgressIndicator(strokeWidth: 2))
+                        : IconButton(
                       icon: const Icon(Icons.add, color: Colors.purple),
                       onPressed: () {
                         if (textController.text.isNotEmpty) {
-                          onFieldSubmitted();
+                          controller.validateAndAddBatch(textController.text);
                         }
                       },
                     ),
                   ),
                   onFieldSubmitted: (val) {
                     if (val.isNotEmpty) {
-                      controller.addEntry(val, 1.0);
-                      textController.clear();
+                      controller.validateAndAddBatch(val);
                     }
                   },
-                );
+                ));
               },
             ),
 

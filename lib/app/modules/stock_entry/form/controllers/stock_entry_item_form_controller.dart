@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:intl/intl.dart'; // Added for DateFormat
 import 'package:multimax/app/data/models/scan_result_model.dart';
 
 // Models
@@ -54,6 +55,7 @@ class StockEntryItemFormController extends GetxController {
   var rackError = RxnString();
   var batchError = RxnString();
   var isSheetValid = false.obs;
+  var isValidatingBatch = false.obs;
 
   // --- Batches / SABB Entries ---
   // The working copy of entries
@@ -159,9 +161,8 @@ class StockEntryItemFormController extends GetxController {
     useSerialBatchFields.value = false;
 
     if (batch != null) {
-      addEntry(batch, 1.0);
-      batchController.text = batch;
-      validateBatch(batch);
+      // Logic handled in init now, but for direct addition:
+      validateAndAddBatch(batch);
     }
 
     // Default Serial for MR
@@ -177,9 +178,7 @@ class StockEntryItemFormController extends GetxController {
     if (result.type == ScanType.rack && result.rackId != null) {
       _handleRackScan(result.rackId!);
     } else if (result.batchNo != null) {
-      addEntry(result.batchNo!, 1.0);
-      batchController.text = result.batchNo!;
-      validateBatch(result.batchNo!);
+      validateAndAddBatch(result.batchNo!);
     }
   }
 
@@ -247,26 +246,101 @@ class StockEntryItemFormController extends GetxController {
   }
 
   // --- Business Logic ---
+
+  /// Searches batches using Batch-Wise Balance History.
+  /// Filters for batches with Qty > 0.
   Future<List<Map<String, dynamic>>> searchBatches(String query) async {
     if (itemCode.value.isEmpty) return [];
 
     try {
-      final response = await _apiProvider.getDocumentList('Batch',
-          filters: {
-            'item': itemCode.value,
-            'name': ['like', '%$query%']
-          },
-          limit: 10
+      // Wide date range to capture current balance history
+      final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365 * 2)));
+      final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      // Fetch batch balance history. We fetch all for the item + warehouse (if selected)
+      // then filter client-side by query to support "contains" search and "qty > 0".
+      final response = await _apiProvider.getBatchWiseBalance(
+          itemCode: itemCode.value,
+          batchNo: null,
+          warehouse: itemSourceWarehouse.value, // Filter by source warehouse if available
+          fromDate: fromDate,
+          toDate: toDate
       );
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        // Return the full data maps instead of just strings
-        return List<Map<String, dynamic>>.from(response.data['data']);
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> result = response.data['message']['result'];
+
+        return result.where((e) {
+          if (e is! Map) return false;
+          final batch = (e['batch_no'] ?? '').toString().toLowerCase();
+          final balance = (e['balance_qty'] ?? 0.0);
+          final search = query.toLowerCase();
+
+          // Filter: Qty > 0 AND Matches Query
+          return balance > 0 && batch.contains(search);
+        }).map((e) => {
+          'batch': e['batch_no'],
+          'qty': e['balance_qty'] // Mapping 'balance_qty' to 'qty' for the View
+        }).toList();
       }
     } catch (e) {
       print('Batch search error: $e');
     }
     return [];
+  }
+
+  /// Validates a manually entered batch against Batch-Wise Balance History (Qty > 0)
+  /// If valid, adds it to the bundle entries.
+  Future<void> validateAndAddBatch(String batch) async {
+    if (batch.isEmpty) return;
+    batchError.value = null;
+    isValidatingBatch.value = true; // Show Loading
+
+    try {
+      final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365 * 2)));
+      final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      // We use the same report to validate existence and stock
+      final response = await _apiProvider.getBatchWiseBalance(
+          itemCode: itemCode.value,
+          batchNo: batch, // Strict filter if API supports it, or we filter result
+          warehouse: itemSourceWarehouse.value,
+          fromDate: fromDate,
+          toDate: toDate
+      );
+
+      bool isValid = false;
+
+      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+        final List<dynamic> result = response.data['message']['result'];
+
+        // Check if ANY record matches this batch with positive balance
+        final match = result.firstWhereOrNull((e) =>
+        e is Map &&
+            e['batch_no'] == batch &&
+            (e['balance_qty'] ?? 0) > 0
+        );
+
+        if (match != null) {
+          isValid = true;
+          addEntry(batch, 1.0);
+          batchController.clear();
+
+          // Auto-Save Flow
+          _parent.isDirty.value = true;
+          submit(closeSheet: false); // Commit to parent without closing sheet
+          await _parent.saveStockEntry(); // Trigger API save
+        }
+      }
+
+      if (!isValid) {
+        batchError.value = 'Invalid Batch or Insufficient Stock (Qty must be > 0)';
+      }
+
+    } catch (e) {
+      batchError.value = 'Validation Error: $e';
+      print('Batch Add Error: $e');
+    }
   }
 
   Future<void> _updateStockAvailability() async {
@@ -303,6 +377,9 @@ class StockEntryItemFormController extends GetxController {
   }
 
   Future<void> validateBatch(String batch) async {
+    // This method is primarily for "Legacy" batch fields (useSerialBatchFields == true)
+    // For Bundle/List mode, use validateAndAddBatch
+
     batchError.value = null;
     if (batch.isEmpty) return;
 
@@ -322,7 +399,8 @@ class StockEntryItemFormController extends GetxController {
           batchError.value = 'Invalid Batch';
         }
       } else {
-        // Bundle
+        // Bundle - this block might be redundant if using the list UI,
+        // but kept for compatibility with existing flows calling validateBatch
         final response = await _apiProvider.getDocument('Serial and Batch Bundle', batch);
 
         if (response.statusCode == 200 && response.data['data'] != null) {
@@ -331,18 +409,16 @@ class StockEntryItemFormController extends GetxController {
           if (data['item_code'] == itemCode.value) {
             isBatchValid.value = true;
             isBatchReadOnly.value = true;
-
             originalBundle = SerialAndBatchBundle.fromJson(data);
             if (originalBundle != null) {
               currentBundleEntries.assignAll(originalBundle!.entries.map((e) =>
-                  SerialAndBatchEntry.fromJson(e.toJson())).toList()); // Deep copy
+                  SerialAndBatchEntry.fromJson(e.toJson())).toList());
 
               final total = originalBundle!.totalQty;
               if (total > 0) {
                 qtyController.text = total % 1 == 0 ? total.toInt().toString() : total.toString();
               }
             }
-
             await _updateStockAvailability();
           } else {
             isBatchValid.value = false;
@@ -457,9 +533,7 @@ class StockEntryItemFormController extends GetxController {
     // Compare entries
     if (originalBundle!.entries.length != currentBundleEntries.length) return true;
 
-    // Sort and compare for deeper equality if order doesn't matter,
-    // or simple strict check if index matters. Usually order matters less, but quantities do.
-    // For simplicity, checking if sums or specific batches changed:
+    // Sort and compare for deeper equality
     for (var entry in currentBundleEntries) {
       final orig = originalBundle!.entries.firstWhereOrNull((e) => e.batchNo == entry.batchNo);
       if (orig == null || orig.qty != entry.qty) return true;
@@ -469,7 +543,7 @@ class StockEntryItemFormController extends GetxController {
 
   // --- Actions ---
 
-  void submit() {
+  void submit({bool closeSheet = true}) {
     if (!isSheetValid.value) return;
 
     SerialAndBatchBundle? dirtyBundle;
@@ -519,6 +593,9 @@ class StockEntryItemFormController extends GetxController {
     // Pass the dirty bundle side-by-side with the item
     _parent.upsertItem(finalItem, bundle: dirtyBundle);
     Get.back();
+
+    // Check named parameter before closing
+    if (closeSheet) Get.back();
   }
 
   StockEntryItem _enrichWithContext(StockEntryItem item) {
