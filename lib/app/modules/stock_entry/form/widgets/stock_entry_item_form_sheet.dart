@@ -40,8 +40,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
         onDecrement: () => _modifyQty(-1),
 
         // --- Actions ---
-        isSaveEnabledRx: controller.isSheetValid,
-        isSaveEnabled: true,
+        // Bind enabled state to controller's dirty & valid check
+        isSaveEnabledRx: controller.isSaveEnabled,
         onSubmit: controller.submit,
         onDelete: isEditing ? controller.deleteItem : null,
 

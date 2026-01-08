@@ -57,6 +57,13 @@ class StockEntryItemFormController extends GetxController {
   var isSheetValid = false.obs;
   var isValidatingBatch = false.obs;
 
+  // --- Dirty State Management ---
+  var isFormDirty = false.obs;
+  StockEntryItem? _initialSnapshot;
+
+  // Computed property for UI Save Button
+  RxBool get isSaveEnabled => (isSheetValid.value && isFormDirty.value).obs;
+
   // --- Batches / SABB Entries ---
   // The working copy of entries
   var currentBundleEntries = <SerialAndBatchEntry>[].obs;
@@ -86,17 +93,51 @@ class StockEntryItemFormController extends GetxController {
     }
 
     _setupListeners();
+    _captureSnapshot(); // Capture clean state after loading
     validateSheet();
+    _checkDirty();      // Verify initial dirty state
+  }
+
+  void _captureSnapshot() {
+    _initialSnapshot = StockEntryItem(
+      itemCode: itemCode.value,
+      qty: double.tryParse(qtyController.text) ?? 0,
+      basicRate: 0,
+      batchNo: batchController.text,
+      rack: sourceRackController.text,
+      toRack: targetRackController.text,
+      sWarehouse: itemSourceWarehouse.value,
+      tWarehouse: itemTargetWarehouse.value,
+      useSerialBatchFields: useSerialBatchFields.value ? 1 : 0,
+    );
   }
 
   void _setupListeners() {
-    qtyController.addListener(validateSheet);
-    batchController.addListener(validateSheet);
-    sourceRackController.addListener(validateSheet);
-    targetRackController.addListener(validateSheet);
+    // Listeners trigger dirty checks
+    qtyController.addListener(() { validateSheet(); _checkDirty(); });
+    batchController.addListener(() { validateSheet(); _checkDirty(); });
+    sourceRackController.addListener(() { validateSheet(); _checkDirty(); });
+    targetRackController.addListener(() { validateSheet(); _checkDirty(); });
 
     // Update stock when warehouse changes
-    ever(itemSourceWarehouse, (_) => _updateStockAvailability());
+    ever(itemSourceWarehouse, (_) { _updateStockAvailability(); _checkDirty(); });
+  }
+
+  void _checkDirty() {
+    if (_initialSnapshot == null) return;
+
+    final currentQty = double.tryParse(qtyController.text) ?? 0;
+
+    // Check if basic fields have changed from snapshot
+    bool fieldsDirty =
+        currentQty != _initialSnapshot!.qty ||
+            sourceRackController.text != (_initialSnapshot!.rack ?? '') ||
+            targetRackController.text != (_initialSnapshot!.toRack ?? '') ||
+            (useSerialBatchFields.value && batchController.text != (_initialSnapshot!.batchNo ?? '')) ||
+            itemSourceWarehouse.value != _initialSnapshot!.sWarehouse ||
+            itemTargetWarehouse.value != _initialSnapshot!.tWarehouse;
+
+    isFormDirty.value = fieldsDirty || _isBundleDirty();
   }
 
   void _loadExistingItem(StockEntryItem item) {
@@ -484,8 +525,7 @@ class StockEntryItemFormController extends GetxController {
     } else {
       currentBundleEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
     }
-    _recalcTotal();
-    _updateBundleOnServer();
+    _handleBatchChange(); // Trigger autosave logic
   }
 
   void updateEntryQty(int index, double newQty) {
@@ -496,14 +536,43 @@ class StockEntryItemFormController extends GetxController {
     }
     currentBundleEntries[index].qty = newQty;
     currentBundleEntries.refresh();
-    _recalcTotal();
-    _updateBundleOnServer();
+    _handleBatchChange(); // Trigger autosave logic
   }
 
   void removeEntry(int index) {
     currentBundleEntries.removeAt(index);
+    _handleBatchChange(); // Trigger autosave logic
+  }
+
+  /// Handles batch updates: Recalcs total, Syncs to Server, Updates Parent, Autosaves Parent
+  void _handleBatchChange() {
     _recalcTotal();
-    _updateBundleOnServer();
+    _checkDirty();
+
+    // Trigger Server Sync for the Bundle
+    _updateBundleOnServer().then((_) async {
+      // On success: Sync Original Bundle to Current to reset bundle dirty state
+      if (originalBundle != null) {
+        originalBundle = SerialAndBatchBundle(
+          name: originalBundle!.name,
+          itemCode: originalBundle!.itemCode,
+          warehouse: originalBundle!.warehouse,
+          entries: currentBundleEntries.map((e) => SerialAndBatchEntry.fromJson(e.toJson())).toList(),
+          totalQty: double.tryParse(qtyController.text) ?? 0,
+          docstatus: originalBundle!.docstatus,
+        );
+      }
+
+      // Push changes to Parent State
+      submit(closeSheet: false);
+
+      // Trigger Parent Autosave (Save Stock Entry to Server)
+      await parent.saveStockEntry();
+
+      // Reset Snapshot to Clean State (since we just saved)
+      _captureSnapshot();
+      _checkDirty();
+    });
   }
 
   /// Updates the Serial and Batch Bundle on the server if it exists.
