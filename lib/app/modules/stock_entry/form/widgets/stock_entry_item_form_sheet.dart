@@ -71,7 +71,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
       children: [
         // SOURCE
         _buildLocationColumn(
-          label: 'From',
+          label: 'Source Rack',
           warehouse: controller.itemSourceWarehouse.value,
           rackController: controller.sourceRackController,
           isValid: controller.isSourceRackValid.value,
@@ -96,7 +96,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
         // TARGET
         _buildLocationColumn(
-          label: 'To',
+          label: 'Target Rack',
           warehouse: controller.itemTargetWarehouse.value,
           rackController: controller.targetRackController,
           isValid: controller.isTargetRackValid.value,
@@ -141,7 +141,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    warehouse.split('-').first.trim(),
+                    warehouse,
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
                   ),
                 ),
@@ -318,11 +318,11 @@ class StockEntryItemFormSheet extends StatelessWidget {
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
 
         // Requirement: Append Remove button as suffix
-        suffixIcon: IconButton(
+        suffixIcon: controller.currentBundleEntries.length > 1 ? IconButton(
           icon: Icon(Icons.close, size: 18, color: Colors.red.shade300),
           onPressed: () => controller.removeEntry(index),
           tooltip: 'Remove',
-        ),
+        ) : null,
       ),
       onChanged: (val) {
         final qty = double.tryParse(val);
