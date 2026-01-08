@@ -173,7 +173,6 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 }
               },
               optionsViewBuilder: (context, onSelected, options) {
-                log(name: 'BWBH options', options.toString());
                 return Align(
                   alignment: Alignment.topLeft,
                   child: Material(
@@ -212,6 +211,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
                   focusNode: focusNode,
                   enabled: !controller.isValidatingBatch.value,
                   decoration: InputDecoration(
+                    errorText: controller.batchError.value,
+                    errorMaxLines: null,
                     hintText: 'Scan/Enter Batch',
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -322,8 +323,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
   Widget _buildValidationErrors() {
     return Column(
       children: [
-        if (controller.batchError.value != null)
-          _errorBanner(controller.batchError.value!),
+        // if (controller.batchError.value != null)
+        //   _errorBanner(controller.batchError.value!),
         if (controller.rackError.value != null)
           _errorBanner(controller.rackError.value!),
       ],

@@ -317,7 +317,7 @@ class StockEntryItemFormController extends GetxController {
         // Check if ANY record matches this batch with positive balance
         final match = result.firstWhereOrNull((e) =>
         e is Map &&
-            e['batch_no'] == batch &&
+            e['batch'] == batch &&
             (e['balance_qty'] ?? 0) > 0
         );
 
@@ -340,6 +340,9 @@ class StockEntryItemFormController extends GetxController {
     } catch (e) {
       batchError.value = 'Validation Error: $e';
       print('Batch Add Error: $e');
+    } finally {
+      isValidatingBatch.value = false;
+      validateSheet();
     }
   }
 
