@@ -100,9 +100,10 @@ class StockEntryItemFormController extends GetxController {
 
   void _captureSnapshot() {
     _initialSnapshot = StockEntryItem(
+      name: currentItemNameKey.value, // FIX: Include Name so updates find the correct row
       itemCode: itemCode.value,
       qty: double.tryParse(qtyController.text) ?? 0,
-      basicRate: 0,
+      basicRate: 0, // Should ideally come from existing item if available
       batchNo: batchController.text,
       rack: sourceRackController.text,
       toRack: targetRackController.text,
@@ -198,11 +199,15 @@ class StockEntryItemFormController extends GetxController {
     itemName.value = data?.itemName ?? '';
     customVariantOf = data?.variantOf ?? '';
 
-    // Default to SABB (0) unless specified otherwise, or logic derived from item meta
+    // FIX: Generate a local key immediately so subsequent autosaves update this same item
+    if (currentItemNameKey.value == null) {
+      currentItemNameKey.value = 'local_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    // Default to SABB (0) unless specified otherwise
     useSerialBatchFields.value = false;
 
     if (batch != null) {
-      // Logic handled in init now, but for direct addition:
       validateAndAddBatch(batch);
     }
 
@@ -529,7 +534,7 @@ class StockEntryItemFormController extends GetxController {
   }
 
   void updateEntryQty(int index, double newQty) {
-    if (newQty < 0) return;
+    // if (newQty < 0) return; // Outward qty is negative
     if (newQty == 0) {
       removeEntry(index);
       return;
@@ -549,51 +554,208 @@ class StockEntryItemFormController extends GetxController {
     _recalcTotal();
     _checkDirty();
 
-    // Trigger Server Sync for the Bundle
-    _updateBundleOnServer().then((_) async {
-      // On success: Sync Original Bundle to Current to reset bundle dirty state
-      if (originalBundle != null) {
-        originalBundle = SerialAndBatchBundle(
-          name: originalBundle!.name,
-          itemCode: originalBundle!.itemCode,
-          warehouse: originalBundle!.warehouse,
-          entries: currentBundleEntries.map((e) => SerialAndBatchEntry.fromJson(e.toJson())).toList(),
-          totalQty: double.tryParse(qtyController.text) ?? 0,
-          docstatus: originalBundle!.docstatus,
-        );
-      }
-
-      // Push changes to Parent State
-      submit(closeSheet: false);
-
-      // Trigger Parent Autosave (Save Stock Entry to Server)
-      await parent.saveStockEntry();
-
-      // Reset Snapshot to Clean State (since we just saved)
-      _captureSnapshot();
-      _checkDirty();
-    });
+    if (originalBundle != null && originalBundle!.name != null) {
+      _updateExistingBundleSequence();
+    } else {
+      _createAndLinkBundle(); // Fallback for new items (handled in previous logic)
+    }
   }
 
-  /// Updates the Serial and Batch Bundle on the server if it exists.
-  Future<void> _updateBundleOnServer() async {
-    // Only proceed if we are editing an existing bundle document on the server
-    if (originalBundle?.name == null) return;
+  /// Executes a 3-Step "Safe Update" to prevent validation deadlocks.
+  /// 1. Detach Bundle from Stock Entry (Save SE) -> Valid state (Item Qty X, No Bundle).
+  /// 2. Update Bundle on Server -> Valid state (Bundle Qty Y, Orphan).
+  /// 3. Attach Bundle to Stock Entry & Update Qty (Save SE) -> Valid state (Item Qty Y, Bundle Qty Y).
+  Future<void> _updateExistingBundleSequence() async {
+    final bundleId = originalBundle!.name!;
+    final newTotal = double.tryParse(qtyController.text) ?? 0.0;
+    final stockEntryId = _parent.stockEntry.value?.name;
+
+    if (stockEntryId == null) return;
 
     try {
-      final data = {
-        'entries': currentBundleEntries.map((e) => e.toJson()).toList(),
-        'total_qty': double.tryParse(qtyController.text) ?? 0.0,
-      };
+      // 1. CRITICAL: Fetch fresh Stock Entry data to resolve the REAL Server Row ID.
+      // Relying on local state is dangerous if the parent controller hasn't refreshed
+      // its list after the last save.
+      final docResponse = await _apiProvider.getDocument('Stock Entry', stockEntryId);
+      final remoteItems = (docResponse.data['data']['items'] as List)
+          .map((e) => StockEntryItem.fromJson(e))
+          .toList();
 
-      await _apiProvider.updateDocument(
-        'Serial and Batch Bundle',
-        originalBundle!.name!,
-        data,
-      );
+      // Find the row that is currently linked to our Bundle
+      final targetRow = remoteItems.firstWhereOrNull((i) => i.serialAndBatchBundle == bundleId);
+
+      if (targetRow == null || targetRow.name == null) {
+        GlobalSnackbar.error(message: 'Sync Error: Could not find item row on server. Please refresh.');
+        return;
+      }
+
+      final realRowId = targetRow.name!;
+      currentItemNameKey.value = realRowId; // Sync local key
+
+      // Step 2: UNLINK the Bundle from the Stock Entry Item
+      // Use the resolved 'realRowId' to ensure we update the existing row.
+      final unlinkItem = _reconstructItem(realRowId, targetRow.qty, null);
+      _parent.upsertItem(unlinkItem);
+      await _parent.saveStockEntry();
+
+      // Step 3: UPDATE the Serial and Batch Bundle
+      // Clear voucher_detail_no to remove back-reference.
+      final bundleData = {
+        'voucher_no': null,
+        'voucher_detail_no': null,
+        'entries': currentBundleEntries.map((e) => e.toJson()).toList(),
+        'total_qty': newTotal,
+      };
+      await _apiProvider.updateDocument('Serial and Batch Bundle', bundleId, bundleData);
+
+      // Step 4: UPDATE Item Quantity & RELINK the Bundle
+      // Now update the row to Qty 7 and link the Bundle (Qty 7).
+      log(name: 'updateExistingBundleSequence', 'realRowId: $realRowId, newTotal: $newTotal, bundleId: $bundleId');
+      final relinkItem = _reconstructItem(realRowId, newTotal, bundleId);
+      _parent.upsertItem(relinkItem);
+      await _parent.saveStockEntry();
+
+      // Refresh Local State
+      _initialSnapshot = relinkItem;
+      await _fetchBundleDetails(bundleId);
+
     } catch (e) {
-      log('Error updating bundle on server: $e');
-      GlobalSnackbar.error(message: 'Failed to sync batch updates to server');
+      log('Error updating batch sequence: $e');
+      GlobalSnackbar.error(message: 'Sync Error: $e');
+    }
+  }
+
+  /// Helper to create StockEntryItem with specific Qty and Bundle
+  /// Avoids copyWith nullability issues (where passing null might be ignored)
+  StockEntryItem _reconstructItem(String rowId, double qty, String? bundleId) {
+    log(name: 'reconstructItem', 'rowId: $rowId, qty: $qty, bundleId: $bundleId');
+    return StockEntryItem(
+      name: rowId,
+      itemCode: itemCode.value,
+      qty: qty.abs(),
+      basicRate: _initialSnapshot?.basicRate ?? 0.0,
+      serialAndBatchBundle: bundleId,
+      batchNo: useSerialBatchFields.value ? batchController.text : null,
+      rack: sourceRackController.text,
+      toRack: targetRackController.text,
+      sWarehouse: itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value,
+      tWarehouse: itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value,
+      useSerialBatchFields: useSerialBatchFields.value ? 1 : 0,
+      itemName: itemName.value,
+      customVariantOf: customVariantOf,
+      customInvoiceSerialNumber: selectedSerial.value,
+      owner: itemOwner.value,
+      creation: itemCreation.value,
+      modified: itemModified.value,
+      modifiedBy: itemModifiedBy.value,
+    );
+  }
+
+  Future<void> _createAndLinkBundle() async {
+    final warehouse = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value ?? '';
+    final newTotal = double.tryParse(qtyController.text) ?? 0.0;
+
+    final typeOfTransaction = originalBundle?.typeOfTransaction ??
+        (warehouse.isNotEmpty ? 'Outward' : 'Inward');
+
+    final bundleData = {
+      'item_code': itemCode.value,
+      'warehouse': warehouse,
+      'type_of_transaction': typeOfTransaction,
+      'voucher_type': 'Stock Entry',
+      'voucher_no': null,
+      'total_qty': newTotal,
+      'entries': currentBundleEntries.map((e) => e.toJson()).toList(),
+      'docstatus': 0,
+    };
+
+    try {
+      final response = await _apiProvider.createDocument('Serial and Batch Bundle', bundleData);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final newBundleId = response.data['data']['name'];
+        await _upsertAndSave(newBundleId, newTotal);
+      }
+    } catch (e) {
+      log('Error creating bundle: $e');
+      GlobalSnackbar.error(message: 'Create Error: $e');
+    }
+  }
+
+  /// Helper to construct Item Row, Update Parent, Save, and Sync ID
+  Future<void> _upsertAndSave(String bundleId, double qty) async {
+    // RESOLVE ROW ID: Critical to prevent "Stale Row" errors.
+    // If we rely on a local/null key, upsertItem might create a duplicate,
+    // leaving the old row (Qty 1) linked to the modified Bundle (Qty 15), causing the error.
+
+    String? rowId = currentItemNameKey.value;
+    final parentItems = _parent.stockEntry.value?.items ?? [];
+
+    // If local key is stale, find the REAL row on the server by matching the Bundle ID
+    if (rowId == null || rowId.startsWith('local_')) {
+      final match = parentItems.firstWhereOrNull((i) => i.serialAndBatchBundle == bundleId);
+      if (match != null && match.name != null) {
+        rowId = match.name;
+        currentItemNameKey.value = rowId; // Sync for future updates
+      }
+    }
+
+    // Construct Updated Item
+    StockEntryItem itemToSave;
+    if (_initialSnapshot != null) {
+      itemToSave = _initialSnapshot!.copyWith(
+        name: rowId, // Must use the resolved Server ID
+        qty: qty,
+        serialAndBatchBundle: bundleId,
+        batchNo: useSerialBatchFields.value ? batchController.text : null,
+      );
+    } else {
+      // Fallback manual construction
+      itemToSave = StockEntryItem(
+        name: rowId,
+        itemCode: itemCode.value,
+        qty: qty,
+        basicRate: 0.0,
+        serialAndBatchBundle: bundleId,
+        batchNo: useSerialBatchFields.value ? batchController.text : null,
+        rack: sourceRackController.text,
+        toRack: targetRackController.text,
+        sWarehouse: itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value,
+        tWarehouse: itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value,
+        useSerialBatchFields: useSerialBatchFields.value ? 1 : 0,
+        itemName: itemName.value,
+        customVariantOf: customVariantOf,
+        customInvoiceSerialNumber: selectedSerial.value,
+        owner: itemOwner.value,
+        creation: itemCreation.value,
+        modified: itemModified.value,
+        modifiedBy: itemModifiedBy.value,
+      );
+    }
+
+    // Update Parent State & Trigger Save
+    // This now updates the correct row with Qty 15 + Bundle Link, passing validation.
+    _parent.upsertItem(itemToSave);
+    await _parent.saveStockEntry();
+
+    // Post-Save: Refresh local state to ensure we stay in sync
+    final updatedItem = _parent.stockEntry.value?.items.firstWhereOrNull(
+            (i) => i.serialAndBatchBundle == bundleId
+    );
+
+    if (updatedItem != null) {
+      if (updatedItem.name != null) currentItemNameKey.value = updatedItem.name;
+      _initialSnapshot = updatedItem;
+    }
+
+    await _fetchBundleDetails(bundleId);
+  }
+
+  Future<void> _deleteOrphanBundle(String bundleId) async {
+    if (bundleId.startsWith('local_')) return;
+    try {
+      await _apiProvider.deleteDocument('Serial and Batch Bundle', bundleId);
+    } catch (e) {
+      log('Failed to delete orphan bundle $bundleId: $e');
     }
   }
 

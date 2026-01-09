@@ -313,8 +313,9 @@ class StockEntryItemFormSheet extends StatelessWidget {
         final qty = double.tryParse(val);
         if (qty != null) {
           // Requirement: Negative if Outward, Positive if Inward
-          final signedQty = isOutward ? -qty.abs() : qty.abs();
-          controller.updateEntryQty(index, signedQty);
+          // final signedQty = isOutward ? -qty.abs() : qty.abs();
+          // controller.updateEntryQty(index, signedQty);
+          controller.updateEntryQty(index, qty);
         }
       },
     );

@@ -160,6 +160,54 @@ class StockEntryItem {
     this.modifiedBy,
   });
 
+  StockEntryItem copyWith({
+    String? name,
+    String? itemCode,
+    double? qty,
+    double? basicRate,
+    String? itemGroup,
+    String? customVariantOf,
+    String? batchNo,
+    String? itemName,
+    String? rack,
+    String? toRack,
+    String? sWarehouse,
+    String? tWarehouse,
+    String? customInvoiceSerialNumber,
+    String? serialAndBatchBundle,
+    int? useSerialBatchFields,
+    String? materialRequest,
+    String? materialRequestItem,
+    String? owner,
+    String? creation,
+    String? modified,
+    String? modifiedBy,
+  }) {
+    return StockEntryItem(
+      name: name ?? this.name,
+      itemCode: itemCode ?? this.itemCode,
+      qty: qty ?? this.qty,
+      basicRate: basicRate ?? this.basicRate,
+      itemGroup: itemGroup ?? this.itemGroup,
+      customVariantOf: customVariantOf ?? this.customVariantOf,
+      batchNo: batchNo ?? this.batchNo,
+      itemName: itemName ?? this.itemName,
+      rack: rack ?? this.rack,
+      toRack: toRack ?? this.toRack,
+      sWarehouse: sWarehouse ?? this.sWarehouse,
+      tWarehouse: tWarehouse ?? this.tWarehouse,
+      customInvoiceSerialNumber: customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
+      serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
+      useSerialBatchFields: useSerialBatchFields ?? this.useSerialBatchFields,
+      materialRequest: materialRequest ?? this.materialRequest,
+      materialRequestItem: materialRequestItem ?? this.materialRequestItem,
+      owner: owner ?? this.owner,
+      creation: creation ?? this.creation,
+      modified: modified ?? this.modified,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
+    );
+  }
+
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
       name: json['name']?.toString(),
