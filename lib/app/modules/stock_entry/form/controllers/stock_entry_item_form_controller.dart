@@ -760,7 +760,7 @@ class StockEntryItemFormController extends GetxController {
   }
 
   void _recalcTotal() {
-    final total = currentBundleEntries.fold(0.0, (sum, b) => sum + b.qty);
+    final total = currentBundleEntries.fold(0.0, (sum, b) => sum + b.qty.abs());
     qtyController.text = total.toStringAsFixed(2);
     validateSheet();
   }
