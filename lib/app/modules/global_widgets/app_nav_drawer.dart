@@ -4,17 +4,16 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
-import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart'; // Import for type safety if needed, though strictly we use routes
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart';
+import 'package:multimax/theme/frappe_theme.dart'; // Implements Espresso Design System
 
 class AppNavDrawer extends StatelessWidget {
-  // Restored const constructor to fix compilation errors in other files
   const AppNavDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {
     final HomeController homeController = Get.find<HomeController>();
     final AuthenticationController authController = Get.find<AuthenticationController>();
-    // Inject a local controller to manage UI state while keeping the widget const
     final _AppNavDrawerController drawerController = Get.put(_AppNavDrawerController());
     final String currentRoute = Get.currentRoute;
 
@@ -25,47 +24,69 @@ class AppNavDrawer extends StatelessWidget {
       child: Drawer(
         elevation: 0,
         backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(FrappeTheme.radius),
+            bottomRight: Radius.circular(FrappeTheme.radius),
+          ),
+        ),
         child: Column(
           children: [
-            // 1. User Header
+            // 1. User Header (Frappe Blue Card Style)
             Obx(() {
               final user = authController.currentUser.value;
-              return UserAccountsDrawerHeader(
-                margin: EdgeInsets.zero,
+              return Container(
+                margin: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
+                  color: FrappeTheme.primary,
+                  borderRadius: BorderRadius.circular(FrappeTheme.radius),
+                  boxShadow: [
+                    BoxShadow(
+                      color: FrappeTheme.primary.withValues(alpha: 0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
-                accountName: Text(
-                  user?.name ?? 'Guest',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                accountEmail: Text(user?.email ?? 'Not logged in', style: const TextStyle(color: Colors.white70)),
-                currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'G',
-                    style: TextStyle(
-                      fontSize: 32.0,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
+                child: UserAccountsDrawerHeader(
+                  margin: EdgeInsets.zero,
+                  decoration: const BoxDecoration(
+                    color: Colors.transparent, // Handled by Container
+                  ),
+                  accountName: Text(
+                    user?.name ?? 'Guest',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                  ),
+                  accountEmail: Text(
+                      user?.email ?? 'Not logged in',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)
+                  ),
+                  currentAccountPicture: CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'G',
+                      style: const TextStyle(
+                        fontSize: 24.0,
+                        fontWeight: FontWeight.bold,
+                        color: FrappeTheme.primary,
+                      ),
                     ),
                   ),
+                  onDetailsPressed: () {
+                    drawerController.toggleUserMenu();
+                  },
+                  arrowColor: Colors.white,
                 ),
-                // Tapping details toggles the menu view state via the controller
-                onDetailsPressed: () {
-                  drawerController.toggleUserMenu();
-                },
-                arrowColor: Colors.white,
               );
             }),
 
-            // 2. Scrollable Menu Items (Reactive Switch)
+            // 2. Scrollable Menu Items
             Expanded(
               child: Obx(() {
                 if (drawerController.isUserMenuOpen.value) {
-                  // --- USER MENU (Revealed on Header Tap) ---
+                  // --- USER MENU ---
                   return ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
                     children: [
                       _DrawerItem(
                         icon: Icons.person_outline_rounded,
@@ -77,7 +98,7 @@ class AppNavDrawer extends StatelessWidget {
                         },
                       ),
                       _DrawerItem(
-                        icon: Icons.settings,
+                        icon: Icons.settings_outlined,
                         title: 'Session Defaults',
                         isSelected: false,
                         onTap: () {
@@ -86,7 +107,7 @@ class AppNavDrawer extends StatelessWidget {
                         },
                       ),
                       _DrawerItem(
-                        icon: Icons.info_outline,
+                        icon: Icons.info_outline_rounded,
                         title: 'About',
                         isSelected: currentRoute == AppRoutes.ABOUT,
                         onTap: () {
@@ -94,14 +115,15 @@ class AppNavDrawer extends StatelessWidget {
                           Get.toNamed(AppRoutes.ABOUT);
                         },
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        child: Divider(height: 1, color: Colors.grey.shade200),
                       ),
                       ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FrappeTheme.radius)),
                         leading: Icon(Icons.logout_rounded, color: Colors.red.shade400, size: 22),
-                        title: Text('Logout', style: TextStyle(color: Colors.red.shade600, fontWeight: FontWeight.w600)),
+                        title: Text('Logout', style: TextStyle(color: Colors.red.shade600, fontWeight: FontWeight.w600, fontSize: 14)),
                         onTap: () {
                           Get.back();
                           authController.logoutUser();
@@ -112,7 +134,7 @@ class AppNavDrawer extends StatelessWidget {
                 } else {
                   // --- MAIN MODULE MENU ---
                   return ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
                     children: [
                       _DrawerItem(
                         icon: Icons.dashboard_rounded,
@@ -133,7 +155,7 @@ class AppNavDrawer extends StatelessWidget {
                       ),
 
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
                         child: Divider(height: 1, color: Colors.grey.shade200),
                       ),
 
@@ -148,7 +170,7 @@ class AppNavDrawer extends StatelessWidget {
                           AppRoutes.MATERIAL_REQUEST
                         ].contains(currentRoute),
                         children: [
-                          DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
+                          DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item Master', icon: Icons.category_outlined, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
                           DocTypeGuard(doctype: 'Batch', loading: skeleton, child: _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch)),
                           DocTypeGuard(doctype: 'Material Request', loading: skeleton, child: _DrawerItem(
                               title: 'Material Request',
@@ -157,13 +179,13 @@ class AppNavDrawer extends StatelessWidget {
                               onTap: () { Get.back(); Get.toNamed(AppRoutes.MATERIAL_REQUEST); }
                           )),
                           DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
-                          DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
-                          DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
+                          DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_outlined, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
+                          DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_outlined, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
 
                           // --- STOCK REPORTS SUBSECTION ---
                           const Padding(
-                            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-                            child: Text("Reports", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.0)),
+                            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text("REPORTS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: FrappeTheme.textLabel, letterSpacing: 1.2)),
                           ),
                           _DrawerItem(
                               title: 'Batch-Wise Balance',
@@ -189,18 +211,18 @@ class AppNavDrawer extends StatelessWidget {
                       // --- BUYING MODULE ---
                       _ModuleGroup(
                         title: 'Buying',
-                        icon: Icons.shopping_bag_rounded,
+                        icon: Icons.shopping_bag_outlined,
                         initiallyExpanded: [AppRoutes.PURCHASE_ORDER, AppRoutes.PURCHASE_RECEIPT].contains(currentRoute),
                         children: [
                           DocTypeGuard(doctype: 'Purchase Order', loading: skeleton, child: _DrawerItem(
                             title: 'Purchase Order',
-                            icon: Icons.description_rounded,
+                            icon: Icons.description_outlined,
                             isSelected: currentRoute == AppRoutes.PURCHASE_ORDER,
                             onTap: () { Get.back(); Get.toNamed(AppRoutes.PURCHASE_ORDER); },
                           )),
                           DocTypeGuard(doctype: 'Purchase Receipt', loading: skeleton, child: _DrawerItem(
                             title: 'Purchase Receipt',
-                            icon: Icons.receipt_long_rounded,
+                            icon: Icons.receipt_long_outlined,
                             isSelected: currentRoute == AppRoutes.PURCHASE_RECEIPT,
                             onTap: homeController.goToPurchaseReceipt,
                           )),
@@ -210,29 +232,31 @@ class AppNavDrawer extends StatelessWidget {
                       // --- MANUFACTURING MODULE ---
                       _ModuleGroup(
                         title: 'Manufacturing',
-                        icon: Icons.precision_manufacturing_rounded,
+                        icon: Icons.precision_manufacturing_outlined,
                         initiallyExpanded: [AppRoutes.BOM, AppRoutes.WORK_ORDER, AppRoutes.JOB_CARD].contains(currentRoute),
                         children: [
                           DocTypeGuard(doctype: 'BOM', loading: skeleton, child: _DrawerItem(
                             title: 'Bill of Materials',
-                            icon: Icons.account_tree_rounded,
+                            icon: Icons.account_tree_outlined,
                             isSelected: currentRoute == AppRoutes.BOM,
                             onTap: () { Get.back(); Get.toNamed(AppRoutes.BOM); },
                           )),
-                          DocTypeGuard(doctype: 'Work Order', loading: skeleton, child: _DrawerItem(title: 'Work Order', icon: Icons.assignment_rounded, isSelected: currentRoute == AppRoutes.WORK_ORDER, onTap: homeController.goToWorkOrder)),
-                          DocTypeGuard(doctype: 'Job Card', loading: skeleton, child: _DrawerItem(title: 'Job Card', icon: Icons.assignment_ind_rounded, isSelected: currentRoute == AppRoutes.JOB_CARD, onTap: homeController.goToJobCard)),
+                          DocTypeGuard(doctype: 'Work Order', loading: skeleton, child: _DrawerItem(title: 'Work Order', icon: Icons.assignment_outlined, isSelected: currentRoute == AppRoutes.WORK_ORDER, onTap: homeController.goToWorkOrder)),
+                          DocTypeGuard(doctype: 'Job Card', loading: skeleton, child: _DrawerItem(title: 'Job Card', icon: Icons.assignment_ind_outlined, isSelected: currentRoute == AppRoutes.JOB_CARD, onTap: homeController.goToJobCard)),
                         ],
                       ),
 
                       // --- POS MODULE ---
                       _ModuleGroup(
                         title: 'Selling',
-                        icon: Icons.storefront_rounded,
+                        icon: Icons.storefront_outlined,
                         initiallyExpanded: [AppRoutes.POS_UPLOAD].contains(currentRoute),
                         children: [
-                          DocTypeGuard(doctype: 'POS Upload', loading: skeleton, child: _DrawerItem(title: 'POS Upload', icon: Icons.cloud_upload_rounded, isSelected: currentRoute == AppRoutes.POS_UPLOAD, onTap: homeController.goToPosUpload)),
+                          DocTypeGuard(doctype: 'POS Upload', loading: skeleton, child: _DrawerItem(title: 'POS Upload', icon: Icons.cloud_upload_outlined, isSelected: currentRoute == AppRoutes.POS_UPLOAD, onTap: homeController.goToPosUpload)),
                         ],
                       ),
+
+                      const SizedBox(height: 24),
                     ],
                   );
                 }
@@ -245,20 +269,13 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
-/// Internal Controller to handle Drawer State (User Menu toggle)
-/// allows AppNavDrawer to remain a const Widget.
 class _AppNavDrawerController extends GetxController {
   final isUserMenuOpen = false.obs;
-
-  void toggleUserMenu() {
-    isUserMenuOpen.toggle();
-  }
+  void toggleUserMenu() => isUserMenuOpen.toggle();
 }
 
-// ... (Helper classes remain unchanged)
 class _SkeletonDrawerItem extends StatelessWidget {
   const _SkeletonDrawerItem();
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -266,14 +283,15 @@ class _SkeletonDrawerItem extends StatelessWidget {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(FrappeTheme.radius),
         ),
         child: Row(
           children: [
             const SizedBox(width: 16),
-            Container(width: 24, height: 24, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8))),
+            Container(width: 20, height: 20, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6))),
             const SizedBox(width: 16),
-            Container(width: 120, height: 12, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4))),
+            Container(width: 100, height: 10, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
           ],
         ),
       ),
@@ -300,11 +318,13 @@ class _ModuleGroup extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         initiallyExpanded: initiallyExpanded,
-        leading: Icon(icon, color: Colors.grey.shade700, size: 22),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+        leading: Icon(icon, color: FrappeTheme.textLabel, size: 22),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: FrappeTheme.textBody)),
         childrenPadding: const EdgeInsets.only(bottom: 8),
-        iconColor: Theme.of(context).primaryColor,
-        textColor: Theme.of(context).primaryColor,
+        iconColor: FrappeTheme.primary,
+        textColor: FrappeTheme.primary,
+        collapsedIconColor: FrappeTheme.textLabel,
+        shape: const Border(), // Removes borders
         children: children,
       ),
     );
@@ -326,34 +346,44 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primaryColor = theme.primaryColor;
-
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), // Tighter spacing
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          splashColor: primaryColor.withValues(alpha: 0.1),
-          highlightColor: primaryColor.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(FrappeTheme.radius),
+          splashColor: FrappeTheme.primary.withValues(alpha: 0.1),
+          highlightColor: FrappeTheme.primary.withValues(alpha: 0.05),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
+            duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
             decoration: BoxDecoration(
-              color: isSelected ? primaryColor.withValues(alpha: 0.1) : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-              border: isSelected ? Border.all(color: primaryColor.withValues(alpha: 0.15), width: 1) : Border.all(color: Colors.transparent, width: 1),
+              color: isSelected ? FrappeTheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+              borderRadius: BorderRadius.circular(FrappeTheme.radius),
             ),
             child: ListTile(
               dense: true,
-              visualDensity: const VisualDensity(horizontal: 0, vertical: -1),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              visualDensity: const VisualDensity(horizontal: 0, vertical: -2), // Compact
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FrappeTheme.radius)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              leading: Icon(icon, size: 24, color: isSelected ? primaryColor : Colors.grey.shade600),
-              title: Text(title, style: TextStyle(fontSize: 14, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: isSelected ? primaryColor : Colors.grey.shade800, letterSpacing: 0.2)),
-              trailing: isSelected ? Container(width: 6, height: 6, decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle)) : null,
+              leading: Icon(
+                  icon,
+                  size: 20, // Smaller icons for elegance
+                  color: isSelected ? FrappeTheme.primary : FrappeTheme.textLabel
+              ),
+              title: Text(
+                  title,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? FrappeTheme.primary : FrappeTheme.textBody,
+                      letterSpacing: 0.2
+                  )
+              ),
+              trailing: isSelected
+                  ? Container(width: 6, height: 6, decoration: const BoxDecoration(color: FrappeTheme.primary, shape: BoxShape.circle))
+                  : null,
             ),
           ),
         ),

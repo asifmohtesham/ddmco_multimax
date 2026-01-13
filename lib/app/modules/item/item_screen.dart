@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart'
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/theme/frappe_theme.dart'; // Theme Import
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -62,7 +63,7 @@ class _ItemScreenState extends State<ItemScreen> {
 
       // Local List Search
       onSearch: controller.onSearchChanged,
-      searchHint: 'Search Items (Name, Code, Desc...)',
+      searchHint: 'Search Items...',
 
       actions: [
         Obx(() {
@@ -70,10 +71,11 @@ class _ItemScreenState extends State<ItemScreen> {
           return IconButton(
             icon: Badge(
               isLabelVisible: count > 0,
+              backgroundColor: FrappeTheme.primary,
               label: Text('$count'),
               child: Icon(
-                Icons.filter_list,
-                color: count > 0 ? Colors.amber : null,
+                Icons.filter_list_rounded,
+                color: count > 0 ? FrappeTheme.primary : FrappeTheme.textBody,
               ),
             ),
             onPressed: () => Get.bottomSheet(
@@ -84,7 +86,10 @@ class _ItemScreenState extends State<ItemScreen> {
           );
         }),
         Obx(() => IconButton(
-          icon: Icon(controller.isGridView.value ? Icons.view_list : Icons.grid_view),
+          icon: Icon(
+            controller.isGridView.value ? Icons.view_list_rounded : Icons.grid_view_rounded,
+            color: FrappeTheme.textBody,
+          ),
           onPressed: controller.toggleLayout,
         )),
       ],
@@ -93,13 +98,13 @@ class _ItemScreenState extends State<ItemScreen> {
       sliverBody: Obx(() {
         if (controller.isGridView.value) {
           return SliverPadding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(12.0),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 childAspectRatio: 0.75,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
               ),
               delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -128,7 +133,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // --- List View Card (Standard GenericDocumentCard) ---
+  // --- List View Card ---
   Widget _buildListCard(Item item) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
@@ -139,16 +144,16 @@ class _ItemScreenState extends State<ItemScreen> {
         title: item.itemName,
         subtitle: item.itemCode,
         status: item.itemGroup,
-        leading: _buildImage(item, size: 56),
+        leading: _buildImage(item, size: 48), // Smaller, tighter image
 
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingStock,
         onTap: () => controller.toggleExpand(item.name, item.itemCode),
 
         stats: [
-          GenericDocumentCard.buildIconStat(context, Icons.emoji_flags, item.countryOfOrigin ?? '-'),
+          GenericDocumentCard.buildIconStat(context, Icons.emoji_flags_rounded, item.countryOfOrigin ?? '-'),
           if (item.variantOf != null)
-            GenericDocumentCard.buildIconStat(context, Icons.copy, item.variantOf ?? ''),
+            GenericDocumentCard.buildIconStat(context, Icons.copy_rounded, item.variantOf ?? ''),
         ],
 
         expandedContent: Column(
@@ -157,29 +162,34 @@ class _ItemScreenState extends State<ItemScreen> {
             if (item.description != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
-                child: Text(item.description!, style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 3, overflow: TextOverflow.ellipsis),
+                child: Text(
+                    item.description!,
+                    style: const TextStyle(fontSize: 13, color: FrappeTheme.textBody),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis
+                ),
               ),
 
             // --- Customer Items Section ---
             if (item.customerItems.isNotEmpty) ...[
-              const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textLabel)),
               const SizedBox(height: 8),
               ...item.customerItems.map((ci) => Padding(
                 padding: const EdgeInsets.only(bottom: 4.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(ci.customerName, style: const TextStyle(fontSize: 12)),
-                    Text(ci.refCode, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text(ci.customerName, style: const TextStyle(fontSize: 12, color: FrappeTheme.textBody)),
+                    Text(ci.refCode, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'ShureTechMono')),
                   ],
                 ),
               )),
               const SizedBox(height: 12),
-              const Divider(),
+              const Divider(height: 1),
               const SizedBox(height: 12),
             ],
 
-            const Text('Stock Balance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text('Stock Balance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textLabel)),
             const SizedBox(height: 8),
 
             if (stockList == null || stockList.isEmpty)
@@ -190,10 +200,14 @@ class _ItemScreenState extends State<ItemScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${stock.warehouse}${stock.rack != null ? " (${stock.rack})" : ""}', style: const TextStyle(fontSize: 12)),
+                    Text('${stock.warehouse}${stock.rack != null ? " (${stock.rack})" : ""}', style: const TextStyle(fontSize: 12, color: FrappeTheme.textBody)),
                     Text(
                       '${stock.quantity.toStringAsFixed(2)} ${item.stockUom ?? ''}',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: stock.quantity > 0 ? Colors.green : Colors.red),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: stock.quantity > 0 ? Colors.green[700] : Colors.red[700]
+                      ),
                     ),
                   ],
                 ),
@@ -202,7 +216,14 @@ class _ItemScreenState extends State<ItemScreen> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.tonal(
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: FrappeTheme.surface,
+                    foregroundColor: FrappeTheme.primary,
+                    elevation: 0,
+                    side: const BorderSide(color: FrappeTheme.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FrappeTheme.radius))
+                ),
                 onPressed: () => Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode}),
                 child: const Text('View Full Details'),
               ),
@@ -213,16 +234,22 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // --- Grid View Card (Custom M3 Style) ---
+  // --- Grid View Card ---
   Widget _buildGridCard(Item item) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(FrappeTheme.radius),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+          )
+        ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode}),
         child: Column(
@@ -241,18 +268,17 @@ class _ItemScreenState extends State<ItemScreen> {
                 children: [
                   Text(
                     item.itemName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textBody),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     item.itemCode,
                     style: const TextStyle(
-                      fontFamily: 'monospace',
+                      fontFamily: 'ShureTechMono',
                       fontSize: 11,
-                      color: Colors.grey,
-                      fontFeatures: [FontFeature.slashedZero()],
+                      color: FrappeTheme.textLabel,
                     ),
                   ),
                 ],
@@ -266,17 +292,19 @@ class _ItemScreenState extends State<ItemScreen> {
 
   Widget _buildImage(Item item, {double? size, BoxFit fit = BoxFit.contain}) {
     if (item.image != null && item.image!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+      return Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade100)
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Image.network(
           '$_baseUrl${item.image}',
-          width: size,
-          height: size,
           fit: fit,
-          errorBuilder: (c, o, s) => Container(
-            width: size, height: size,
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+          errorBuilder: (c, o, s) => Center(
+            child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade300, size: size != null ? size * 0.5 : 24),
           ),
         ),
       );
@@ -284,10 +312,11 @@ class _ItemScreenState extends State<ItemScreen> {
     return Container(
       width: size, height: size,
       decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(8),
+          color: FrappeTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade200)
       ),
-      child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade400, size: size != null ? size * 0.5 : 30),
+      child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade400, size: size != null ? size * 0.5 : 24),
     );
   }
 }

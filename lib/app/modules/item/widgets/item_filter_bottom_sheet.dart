@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
+import 'package:multimax/theme/frappe_theme.dart';
 
 class ItemFilterBottomSheet extends StatefulWidget {
   const ItemFilterBottomSheet({super.key});
@@ -21,7 +22,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-    // Initialize Local Filters from Controller
     if (controller.activeFilters.isEmpty) {
       localFilters.add(controller.availableFields[1].clone()); // Default to Item Name
     } else {
@@ -55,21 +55,18 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
               padding: const EdgeInsets.all(16.0),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(FrappeTheme.radius * 1.5)),
               ),
               child: Column(
                 children: [
                   Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 16),
-                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: FrappeTheme.textBody)),
                   const SizedBox(height: 16),
                   TextField(
                     controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: "Search...",
+                    decoration: FrappeTheme.inputDecoration('Search...').copyWith(
                       prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
                       if (val.isEmpty) {
@@ -88,7 +85,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (filteredItems.isEmpty) {
-                        return const Center(child: Text("No items found"));
+                        return const Center(child: Text("No items found", style: TextStyle(color: FrappeTheme.textLabel)));
                       }
                       return ListView.separated(
                         controller: scrollController,
@@ -97,7 +94,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           return ListTile(
-                            title: Text(item),
+                            title: Text(item, style: const TextStyle(color: FrappeTheme.textBody)),
                             onTap: () {
                               onSelected(item);
                               Get.back();
@@ -132,7 +129,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   void _applyFilters() {
     controller.setImagesOnly(showImagesOnly.value);
-    // Remove filters with empty values to ensure clean queries
     final validFilters = localFilters.where((f) => f.value.isNotEmpty).toList();
     controller.applyFilters(validFilters);
     Get.back();
@@ -158,18 +154,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         controller.clearFilters();
       },
       filterWidgets: [
-        // SwitchListTile(
-        //   title: const Text('Show Images Only'),
-        //   value: showImagesOnly.value,
-        //   onChanged: (val) => showImagesOnly.value = val,
-        //   contentPadding: EdgeInsets.zero,
-        // ),
-        // const Divider(),
-        // const SizedBox(height: 8),
-
-        // const Text("Filter Conditions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        // const SizedBox(height: 12),
-
         ...localFilters.asMap().entries.map((entry) {
           final index = entry.key;
           final filter = entry.value;
@@ -180,14 +164,13 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-              boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+              borderRadius: BorderRadius.circular(FrappeTheme.radius),
+              border: Border.all(color: Colors.grey.shade200),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Row: Field Name + Remove Button
+                // Header Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -200,8 +183,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       ),
                       child: Row(
                         children: [
-                          Text(filter.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueAccent)),
-                          const Icon(Icons.arrow_drop_down, color: Colors.blueAccent),
+                          Text(filter.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: FrappeTheme.primary)),
+                          const Icon(Icons.arrow_drop_down, color: FrappeTheme.primary),
                         ],
                       ),
                     ),
@@ -213,9 +196,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                 ),
                 const SizedBox(height: 12),
 
-                // Content Row: Attribute inputs OR Operator+Value
+                // Content Row
                 if (isAttribute) ...[
-                  // Attribute Specific UI
                   Row(
                     children: [
                       Expanded(
@@ -227,13 +209,13 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             isLoading: controller.isLoadingAttributes.value,
                             onSelected: (val) {
                               filter.attributeName = val;
-                              filter.value = ''; // Reset value when attribute changes
+                              filter.value = '';
                               controller.fetchAttributeValues(val);
                               localFilters.refresh();
                             },
                           ),
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Attribute Name', isDense: true, border: OutlineInputBorder()),
+                            decoration: FrappeTheme.inputDecoration('Attribute'),
                             child: Text(filter.attributeName.isEmpty ? 'Select...' : filter.attributeName),
                           ),
                         ),
@@ -258,7 +240,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             );
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Value', isDense: true, border: OutlineInputBorder()),
+                            decoration: FrappeTheme.inputDecoration('Value'),
                             child: Text(filter.value.isEmpty ? 'Select...' : filter.value),
                           ),
                         ),
@@ -266,7 +248,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                     ],
                   )
                 ] else ...[
-                  // Standard Field UI
                   Row(
                     children: [
                       Expanded(
@@ -282,7 +263,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             },
                           ),
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Operator', isDense: true, border: OutlineInputBorder()),
+                            decoration: FrappeTheme.inputDecoration('Op'),
                             child: Text(filter.operator),
                           ),
                         ),
@@ -305,8 +286,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
           icon: const Icon(Icons.add),
           label: const Text('Add Filter Condition'),
           style: OutlinedButton.styleFrom(
+            foregroundColor: FrappeTheme.primary,
+            side: const BorderSide(color: FrappeTheme.primary),
             minimumSize: const Size(double.infinity, 48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FrappeTheme.radius)),
           ),
         ),
       ],
@@ -339,14 +322,14 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
           );
         },
         child: InputDecorator(
-          decoration: const InputDecoration(labelText: 'Value', isDense: true, border: OutlineInputBorder()),
+          decoration: FrappeTheme.inputDecoration('Value'),
           child: Text(filter.value.isEmpty ? 'Select...' : filter.value, overflow: TextOverflow.ellipsis),
         ),
       );
     } else {
       return TextFormField(
         initialValue: filter.value,
-        decoration: const InputDecoration(labelText: 'Value', isDense: true, border: OutlineInputBorder()),
+        decoration: FrappeTheme.inputDecoration('Value'),
         onChanged: (val) => filter.value = val,
       );
     }

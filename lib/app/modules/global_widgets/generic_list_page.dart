@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_list_app_bar.dart';
+import 'package:multimax/theme/frappe_theme.dart'; // Import Theme
 
 class GenericListPage extends StatelessWidget {
   // Core Data
@@ -70,7 +71,7 @@ class GenericListPage extends StatelessWidget {
 
   Widget _buildTabbedLayout() {
     return Scaffold(
-      backgroundColor: Get.theme.colorScheme.surface,
+      backgroundColor: FrappeTheme.surface, // Espresso Background
       drawer: const AppNavDrawer(),
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -91,9 +92,10 @@ class GenericListPage extends StatelessWidget {
 
   Widget _buildStandardLayout() {
     return Scaffold(
-      backgroundColor: Get.theme.colorScheme.surface,
+      backgroundColor: FrappeTheme.surface, // Espresso Background
       drawer: const AppNavDrawer(),
       body: RefreshIndicator(
+        color: FrappeTheme.primary,
         onRefresh: onRefresh,
         child: CustomScrollView(
           controller: scrollController,
@@ -106,6 +108,8 @@ class GenericListPage extends StatelessWidget {
               searchRoute: searchRoute,
             ),
             if (onSearch != null)
+            // Ensure GenericLocalSearchBar uses theme internally or we style it here
+            // For now assuming it adapts or will be refactored later.
               GenericLocalSearchBar(onSearch: onSearch!, hintText: searchHint),
             if (filterHeader != null)
               SliverToBoxAdapter(child: filterHeader),
@@ -121,7 +125,11 @@ class GenericListPage extends StatelessWidget {
   Widget _buildContent() {
     return Obx(() {
       if (isLoading.value && data.isEmpty) {
-        return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
+        return const SliverFillRemaining(
+            child: Center(
+                child: CircularProgressIndicator(color: FrappeTheme.primary)
+            )
+        );
       }
 
       if (data.isEmpty) {

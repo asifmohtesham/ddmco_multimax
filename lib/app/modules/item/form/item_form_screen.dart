@@ -1,58 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
-import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
-import 'package:multimax/app/data/models/item_model.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:intl/intl.dart';
-import 'package:multimax/app/data/providers/api_provider.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/widgets/frappe_field_factory.dart'; // The GENERIC Factory
+import 'package:multimax/models/frappe_field_config.dart'; // The GENERIC Config
+import 'package:multimax/theme/frappe_theme.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
-
     return DefaultTabController(
-      length: 4,
+      length: 3,
       child: Scaffold(
+        backgroundColor: FrappeTheme.surface,
         appBar: MainAppBar(
-          title: controller.item.value?.itemName ?? 'Item Details',
-          leading: isModal
-              ? IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Get.back(),
-          )
-              : null,
+          title: 'Item Details',
+          showBack: true,
+          actions: [
+            IconButton(
+              icon: const Icon(
+                Icons.save_outlined,
+                color: FrappeTheme.textBody,
+              ),
+              onPressed: () => controller.save(),
+            ),
+          ],
           bottom: const TabBar(
             isScrollable: true,
+            indicatorColor: FrappeTheme.primary,
+            labelColor: FrappeTheme.primary,
+            unselectedLabelColor: FrappeTheme.textLabel,
             tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Stock Levels'),
-              Tab(text: 'Attributes'),
-              Tab(text: 'Attachments'),
+              Tab(text: "Overview"),
+              Tab(text: "Stock"),
+              Tab(text: "Attributes"),
             ],
           ),
         ),
         body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final item = controller.item.value;
-          if (item == null) {
-            return const Center(child: Text('Item not found'));
+          // Check the generic 'data' map instead of 'item.value'
+          if (controller.data.isEmpty) {
+            return const Center(
+              child: CircularProgressIndicator(color: FrappeTheme.primary),
+            );
           }
 
           return TabBarView(
             children: [
-              _buildOverviewTab(context, item),
-              _buildStockLevelsTab(context),
-              _buildAttributesTab(context, item),
-              _buildAttachmentsTab(context),
+              _buildOverviewTab(),
+              _buildStockTab(),
+              _buildAttributesTab(),
             ],
           );
         }),
@@ -60,426 +61,282 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ... (Other Tabs remain the same) ...
-  Widget _buildStockLevelsTab(BuildContext context) {
+  // --- TAB 1: OVERVIEW (Using Generic Widgets) ---
+  Widget _buildOverviewTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
+      padding: const EdgeInsets.all(FrappeTheme.spacing),
+      child: Column(
+        children: [
+          // Header Image Card
+          _buildHeaderCard(),
+          const SizedBox(height: 16),
+
+          // 1. General Section
+          _buildSection("General", [
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Item Name",
+                fieldname: "item_name",
+                fieldtype: "Data",
+                readOnly: true,
+              ),
+              controller: controller, // PASSING IT HERE
+            ),
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Item Group",
+                fieldname: "item_group",
+                fieldtype: "Link",
+                optionsLink: "Item Group",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // 2. Inventory Section (Fixes your missing field error!)
+          _buildSection("Inventory", [
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Default UOM",
+                fieldname: "stock_uom",
+                fieldtype: "Link",
+                optionsLink: "UOM",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+            // We safely access 'valuation_method' here via the generic controller logic
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Valuation Method",
+                fieldname: "valuation_method",
+                fieldtype: "Select",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Opening Stock",
+                fieldname: "opening_stock",
+                fieldtype: "Float",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // 3. Description
+          _buildSection("Info", [
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Description",
+                fieldname: "description",
+                fieldtype: "Text",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 2: STOCK (Custom Chart + Generic Data) ---
+  Widget _buildStockTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(FrappeTheme.spacing),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Stock Balance Chart
-          const Text('Warehouse Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            "WAREHOUSE LEVELS",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: FrappeTheme.textLabel,
+            ),
+          ),
           const SizedBox(height: 12),
+
+          // Use the specific observable for the chart
           Obx(() {
-            if (controller.isLoadingStock.value) return const LinearProgressIndicator();
-            if (controller.stockLevels.isEmpty) {
-              return _buildEmptyState('No stock available in any warehouse.');
-            }
+            if (controller.isLoadingStock.value)
+              return const LinearProgressIndicator();
             return StockBalanceChart(stockLevels: controller.stockLevels);
           }),
 
           const SizedBox(height: 24),
-
-          // 2. Batch-Wise History
-          const Text('Batch-Wise Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Obx(() {
-            if (controller.isLoadingBatches.value) return const LinearProgressIndicator();
-            if (controller.batchHistory.isEmpty) {
-              return const Text('No batch history found.', style: TextStyle(color: Colors.grey));
-            }
-
-            return Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
-              children: controller.batchHistory.map((batch) {
-                final dateStr = batch['stock_age_date'];
-                final ageString = controller.getFormattedStockAge(dateStr);
-                final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
-                final qty = batch['balance_qty'];
-                final warehouse = batch['warehouse'];
-
-                return Container(
-                  width: (MediaQuery.of(context).size.width / 1) - 18,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              batchNo,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (warehouse != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
-                              child: Text(warehouse, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                          '$qty ${controller.item.value?.stockUom ?? ''}',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).primaryColor)
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Age: $ageString',
-                        style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            );
-          }),
-
-          const SizedBox(height: 24),
-
-          // 3. Ledger Entries
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Stock Ledger', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              IconButton(
-                icon: Icon(
-                    Icons.calendar_month,
-                    color: controller.ledgerDateRange.value != null ? Theme.of(context).primaryColor : Colors.grey
-                ),
-                onPressed: () async {
-                  final picked = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                      initialDateRange: controller.ledgerDateRange.value
-                  );
-                  if (picked != null) controller.updateLedgerDateRange(picked);
-                },
-              ),
-            ],
-          ),
-
-          if (controller.ledgerDateRange.value != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Chip(
-                label: Text('${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.start)} - ${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.end)}'),
-                deleteIcon: const Icon(Icons.close, size: 16),
-                onDeleted: controller.clearLedgerDateRange,
-                visualDensity: VisualDensity.compact,
-              ),
+          const Text(
+            "SETTINGS",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: FrappeTheme.textLabel,
             ),
+          ),
+          const SizedBox(height: 12),
 
-          Obx(() {
-            if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
-            if (controller.stockLedgerEntries.isEmpty) {
-              return const Text('No transactions found in this period.', style: TextStyle(color: Colors.grey));
-            }
-
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: controller.stockLedgerEntries.length,
-              separatorBuilder: (c,i) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final entry = controller.stockLedgerEntries[index];
-                final qty = (entry['actual_qty'] as num).toDouble();
-                final isPositive = qty > 0;
-
-                String subtitle = '${entry['voucher_no']}';
-                String? extraInfo;
-
-                if (entry['voucher_type'] == 'Delivery Note' && entry['customer'] != null) {
-                  extraInfo = 'Customer: ${entry['customer']}';
-                } else if (entry['voucher_type'] == 'Stock Entry' &&
-                    entry['stock_entry_type'] == 'Material Issue' &&
-                    entry['custom_reference_no'] != null) {
-                  extraInfo = 'Ref: ${entry['custom_reference_no']}';
-                }
-
-                return Card(
-                  elevation: 0,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(entry['voucher_type'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            Text(
-                              '${isPositive ? '+' : ''}$qty',
-                              style: TextStyle(
-                                  color: isPositive ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(subtitle, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                        if (extraInfo != null)
-                          Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (entry['warehouse'] != null)
-                              Text(entry['warehouse'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                            Text(
-                                FormattingHelper.getRelativeTime('${entry['posting_date']} ${entry['posting_time']}'),
-                                style: const TextStyle(fontSize: 11, color: Colors.grey)
-                            ),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
+          // Generic fields for stock settings
+          _buildSection("Configuration", [
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Has Batch No",
+                fieldname: "has_batch_no",
+                fieldtype: "Check",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Has Serial No",
+                fieldname: "has_serial_no",
+                fieldtype: "Check",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+            FrappeFieldFactory(
+              config: FrappeFieldConfig(
+                label: "Shelf Life (Days)",
+                fieldname: "shelf_life_in_days",
+                fieldtype: "Int",
+                readOnly: true,
+              ),
+              controller: controller,
+            ),
+          ]),
         ],
       ),
     );
   }
 
-  Widget _buildAttributesTab(BuildContext context, Item item) {
-    if (item.attributes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.list_alt, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            const Text('No attributes defined.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+  // --- TAB 3: ATTRIBUTES (Child Table) ---
+  Widget _buildAttributesTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(FrappeTheme.spacing),
+      child: FrappeFieldFactory(
+        config: FrappeFieldConfig(
+          label: "Item Attributes",
+          fieldname: "attributes", // Matches the child table key in Frappe
+          fieldtype: "Table",
+          childFields: [
+            FrappeFieldConfig(
+              label: "Attribute",
+              fieldname: "attribute",
+              fieldtype: "Data",
+              inListView: true,
+            ),
+            FrappeFieldConfig(
+              label: "Value",
+              fieldname: "attribute_value",
+              fieldtype: "Data",
+              inListView: true,
+            ),
           ],
         ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: item.attributes.length,
-      separatorBuilder: (context, index) => const Divider(),
-      itemBuilder: (context, index) {
-        final attr = item.attributes[index];
-        return ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(attr.attributeName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          trailing: Text(attr.attributeValue, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        );
-      },
+        controller: controller, // PASSING IT HERE
+      ),
     );
   }
 
-  Widget _buildOverviewTab(BuildContext context, dynamic item) {
-    final String baseUrl = Get.find<ApiProvider>().baseUrl;
+  // --- Helpers ---
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
+  Widget _buildSection(String title, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(FrappeTheme.radius),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.image != null)
-            GestureDetector(
-              onTap: () => _openFullScreenImage(context, '$baseUrl${item.image}'),
-              child: Container(
-                height: 200,
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Hero(
-                  tag: 'item_image_${item.itemCode}',
-                  child: Image.network(
-                    '$baseUrl${item.image}',
-                    fit: BoxFit.contain,
-                    errorBuilder: (c, o, s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                  ),
-                ),
-              ),
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: FrappeTheme.textLabel,
+              letterSpacing: 0.5,
             ),
-
-          _buildSectionCard(
-            title: 'General',
-            children: [
-              _buildDetailRow('Item Code', item.itemCode, isCopyable: true),
-              const Divider(),
-              _buildDetailRow('Item Name', item.itemName),
-              const Divider(),
-              _buildDetailRow('Item Group', item.itemGroup),
-            ],
           ),
-
-          const SizedBox(height: 16),
-
-          _buildSectionCard(
-            title: 'Inventory',
-            children: [
-              _buildDetailRow('Default UOM', item.stockUom ?? '-'),
-              if (item.countryOfOrigin != null) ...[
-                const Divider(),
-                _buildDetailRow('Country of Origin', item.countryOfOrigin!),
-              ]
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          if (item.variantOf != null || item.description != null)
-            _buildSectionCard(
-              title: 'Description',
-              children: [
-                if (item.variantOf != null) ...[
-                  _buildDetailRow('Variant Of', item.variantOf!),
-                  const Divider(),
-                ],
-                if (item.description != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Detailed Description', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      const SizedBox(height: 4),
-                      Text(item.description!, style: const TextStyle(fontSize: 14, height: 1.4)),
-                    ],
-                  ),
-              ],
-            ),
-
-          const SizedBox(height: 80),
+          const Divider(height: 24),
+          ...children,
         ],
       ),
     );
   }
 
-  Widget _buildAttachmentsTab(BuildContext context) {
-    // ... (Same logic for Attachments)
-    return Obx(() {
-      // ... (Same logic)
-      if (controller.attachments.isEmpty) {
-        return const Center(child: Text("No attachments found."));
-      }
-      return GridView.builder(
-        // ...
-        itemCount: controller.attachments.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
-        itemBuilder: (ctx, i) {
-          final file = controller.attachments[i];
-          final String fileUrl = file['file_url'] ?? '';
-          final String fileName = file['file_name'] ?? 'Unknown';
-          final bool isImg = controller.isImage(fileUrl);
-          final String baseUrl = Get.find<ApiProvider>().baseUrl;
-          final fullUrl = '$baseUrl$fileUrl';
+  Widget _buildHeaderCard() {
+    final String? imgUrl = controller.image;
+    final String baseUrl = Get.find<ApiProvider>().baseUrl;
 
-          return Card(
-            // ... (Card construction using fullUrl)
-              child: InkWell(
-                onTap: () {
-                  if (isImg) _openFullScreenImage(context, fullUrl);
-                  else controller.copyLink(fileUrl);
-                },
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: isImg ? Image.network(fullUrl, fit: BoxFit.cover) : const Icon(Icons.file_present),
-                    ),
-                    Text(fileName),
-                    IconButton(icon: const Icon(Icons.share), onPressed: () => controller.shareFile(fileUrl, fileName)),
-                  ],
-                ),
-              )
-          );
-        },
-      );
-    });
-  }
-
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(FrappeTheme.radius),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value, {bool isCopyable = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: FrappeTheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade100),
+              image: (imgUrl != null && imgUrl.isNotEmpty)
+                  ? DecorationImage(
+                      image: NetworkImage('$baseUrl$imgUrl'),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: (imgUrl == null || imgUrl.isEmpty)
+                ? const Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Colors.grey,
+                  )
+                : null,
+          ),
           const SizedBox(width: 16),
-          Flexible(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                    textAlign: TextAlign.right,
+                Text(
+                  controller.itemName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: FrappeTheme.textBody,
                   ),
                 ),
-                if (isCopyable) ...[
-                  const SizedBox(width: 8),
-                  const Icon(Icons.copy, size: 14, color: Colors.grey),
-                ]
+                const SizedBox(height: 4),
+                Text(
+                  controller.itemCode,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: FrappeTheme.textLabel,
+                    fontFamily: 'ShureTechMono',
+                  ),
+                ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(String message) {
-    // ... (Same logic)
-    return Text(message);
-  }
-
-  void _openFullScreenImage(BuildContext context, String url) {
-    Get.dialog(
-      Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: Stack(
-          children: [
-            InteractiveViewer(child: Center(child: Image.network(url))),
-            Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Get.back())),
-          ],
-        ),
       ),
     );
   }

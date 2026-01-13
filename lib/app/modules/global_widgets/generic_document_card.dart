@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/theme/frappe_theme.dart';
 
 class GenericDocumentCard extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String? status; // Made nullable
+  final String? status;
   final List<Widget> stats;
   final bool isExpanded;
   final bool isLoadingDetails;
   final VoidCallback onTap;
   final Widget? expandedContent;
-  final Widget? leading; // Added support for leading image/icon
+  final Widget? leading;
 
   const GenericDocumentCard({
     super.key,
@@ -27,140 +28,167 @@ class GenericDocumentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      elevation: 0,
-      color: colorScheme.surfaceContainer, // M3 Surface
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(FrappeTheme.radius),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+          )
+        ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Optional Leading Widget (Image/Icon)
-                  if (leading != null) ...[
-                    leading!,
-                    const SizedBox(width: 16),
-                  ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(FrappeTheme.radius),
+          splashColor: FrappeTheme.primary.withValues(alpha: 0.05),
+          highlightColor: FrappeTheme.primary.withValues(alpha: 0.02),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Leading Widget (Image/Icon)
+                    if (leading != null) ...[
+                      leading!,
+                      const SizedBox(width: 12),
+                    ],
 
-                  // Title & Subtitle
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
+                    // Title & Subtitle
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: FrappeTheme.textBody,
+                              height: 1.2,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            fontFamily: 'ShureTechMono',
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: FrappeTheme.textLabel,
+                              fontFamily: 'ShureTechMono', // Preserving your custom font
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // Status Pill
-                  if (status != null) ...[
-                    const SizedBox(width: 8),
-                    StatusPill(status: status!),
+                    // Status Pill
+                    if (status != null) ...[
+                      const SizedBox(width: 8),
+                      // Ensure StatusPill is also updated/compatible with the new theme
+                      // if it relies on context. For now, it sits nicely here.
+                      StatusPill(status: status!),
+                    ],
                   ],
-                ],
-              ),
+                ),
 
-              if (stats.isNotEmpty || isExpanded)
-                const SizedBox(height: 16),
+                // Spacing logic for stats/expansion
+                if (stats.isNotEmpty || isExpanded)
+                  const SizedBox(height: 16),
 
-              // Stats Row
-              if (stats.isNotEmpty)
+                // Stats Row & Expand Icon
                 Row(
                   children: [
-                    ...stats.expand((widget) => [widget, const SizedBox(width: 16)]),
+                    if (stats.isNotEmpty)
+                      ...stats.expand((widget) => [widget, const SizedBox(width: 16)]),
+
                     const Spacer(),
+
+                    // Animated Chevron
                     AnimatedRotation(
                       turns: isExpanded ? 0.5 : 0.0,
                       duration: const Duration(milliseconds: 300),
-                      child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
+                      curve: Curves.easeInOutBack,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: isExpanded ? FrappeTheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                            Icons.expand_more_rounded,
+                            color: isExpanded ? FrappeTheme.primary : FrappeTheme.textLabel,
+                            size: 20
+                        ),
+                      ),
                     ),
                   ],
-                )
-              else if (isExpanded)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: Icon(Icons.expand_more, color: colorScheme.onSurfaceVariant),
-                  ),
                 ),
 
-              // Expanded Content
-              AnimatedSize(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: !isExpanded
-                    ? const SizedBox.shrink()
-                    : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Divider(color: colorScheme.outlineVariant, height: 1),
-                    ),
-                    if (isLoadingDetails)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16.0),
-                        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                      )
-                    else if (expandedContent != null)
-                      expandedContent!
-                  ],
+                // Expanded Content Area
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.topCenter,
+                  child: !isExpanded
+                      ? const SizedBox.shrink()
+                      : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(color: Colors.grey.shade100, height: 1),
+                      ),
+                      if (isLoadingDetails)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20.0),
+                          child: Center(
+                              child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: FrappeTheme.primary)
+                              )
+                          ),
+                        )
+                      else if (expandedContent != null)
+                        expandedContent!
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Static helper to build icon stats consistently
+  /// Helper: Builds standard icon stats (Date, Warehouse, etc.)
+  /// Usage: GenericDocumentCard.buildIconStat(context, Icons.calendar_today, "2023-10-10")
   static Widget buildIconStat(BuildContext context, IconData icon, String text) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: color),
+        Icon(icon, size: 14, color: FrappeTheme.textLabel),
         const SizedBox(width: 6),
         Text(
           text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: color,
+          style: const TextStyle(
+            color: FrappeTheme.textLabel,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
         ),
