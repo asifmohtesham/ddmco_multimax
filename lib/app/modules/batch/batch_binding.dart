@@ -1,4 +1,3 @@
-// app/modules/batch/batch_binding.dart
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';

@@ -1,123 +1,128 @@
-// app/modules/batch/batch_controller.dart
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class BatchController extends GetxController {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
-  var batches = <Batch>[].obs;
-  var isLoading = true.obs;
-  var isFetchingMore = false.obs;
-  var hasMore = true.obs;
+  // Observables for GenericListPage
+  final RxList<Batch> batchList = <Batch>[].obs;
+  final RxList<Batch> filteredList = <Batch>[].obs; // FIXED: Added this
+  final RxBool isLoading = true.obs;
+  final RxBool hasMore = true.obs;
+  final RxBool isFetchingMore = false.obs;
+
+  // Search & Filter State
+  final RxString searchQuery = ''.obs;
 
   // Expansion Logic
-  var expandedBatchName = ''.obs;
-  var isLoadingDetails = false.obs;
-  var itemVariants = <String, String>{}.obs; // Cache for Item Variants
+  final RxString expandedBatchName = ''.obs;
+  final RxMap<String, String> itemVariants = <String, String>{}.obs;
+  final RxBool isLoadingDetails = false.obs;
 
-  final int _limit = 20;
+  // Pagination
   int _currentPage = 0;
-  var searchQuery = ''.obs;
+  final int _pageSize = 20;
 
   @override
   void onInit() {
     super.onInit();
-    fetchBatches();
+    fetchBatches(clear: true);
   }
 
-  Future<void> fetchBatches({bool isLoadMore = false, bool clear = false}) async {
-    if (isLoadMore) {
-      isFetchingMore.value = true;
-    } else {
+  Future<void> fetchBatches({bool clear = false, bool isLoadMore = false}) async {
+    if (clear) {
       isLoading.value = true;
-      if (clear) {
-        batches.clear();
-        _currentPage = 0;
-        hasMore.value = true;
-        expandedBatchName.value = ''; // Reset expansion
-      }
+      _currentPage = 0;
+      hasMore.value = true;
+      batchList.clear();
+      expandedBatchName.value = '';
+    } else if (isLoadMore) {
+      isFetchingMore.value = true;
     }
 
     try {
       final filters = <String, dynamic>{};
-      if (searchQuery.value.isNotEmpty) {
+      if (searchQuery.isNotEmpty) {
         filters['name'] = ['like', '%${searchQuery.value}%'];
       }
 
       final response = await _provider.getBatches(
-        limit: _limit,
-        limitStart: _currentPage * _limit,
+        limit: _pageSize,
+        limitStart: _currentPage * _pageSize,
         filters: filters,
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newBatches = data.map((json) => Batch.fromJson(json)).toList();
+        final newBatches = data.map((e) => Batch.fromJson(e)).toList();
 
-        if (newBatches.length < _limit) {
+        if (newBatches.length < _pageSize) {
           hasMore.value = false;
         }
 
-        if (isLoadMore) {
-          batches.addAll(newBatches);
+        if (clear) {
+          batchList.assignAll(newBatches);
         } else {
-          batches.value = newBatches;
+          batchList.addAll(newBatches);
         }
+
         _currentPage++;
+        _applyFilters();
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch batches: $e');
+      GlobalSnackbar.error(message: "Failed to load batches: $e");
     } finally {
       isLoading.value = false;
       isFetchingMore.value = false;
     }
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchBatches(clear: true);
-      }
-    });
+  void onSearchChanged(String query) {
+    searchQuery.value = query;
+    if (query.isEmpty) {
+      fetchBatches(clear: true);
+    } else {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (searchQuery.value == query) fetchBatches(clear: true);
+      });
+    }
+  }
+
+  void _applyFilters() {
+    filteredList.assignAll(batchList);
   }
 
   void openBatchForm([String? name]) {
     Get.toNamed(
         AppRoutes.BATCH_FORM,
         arguments: {'name': name ?? '', 'mode': name != null ? 'edit' : 'new'}
-    )?.then((value) => fetchBatches(clear: true));
+    )?.then((_) => fetchBatches(clear: true));
   }
-
-  // --- Expansion Logic ---
 
   void toggleExpand(String batchName) {
     if (expandedBatchName.value == batchName) {
-      expandedBatchName.value = ''; // Collapse
+      expandedBatchName.value = '';
     } else {
-      expandedBatchName.value = batchName; // Expand
+      expandedBatchName.value = batchName;
       _fetchVariantDetails(batchName);
     }
   }
 
   Future<void> _fetchVariantDetails(String batchName) async {
-    // Find the batch object
-    final batch = batches.firstWhereOrNull((b) => b.name == batchName);
+    final batch = batchList.firstWhereOrNull((b) => b.name == batchName);
     if (batch == null || itemVariants.containsKey(batch.item)) return;
 
     isLoadingDetails.value = true;
     try {
-      // We need to fetch the ITEM details to get 'variant_of'
       final response = await _provider.getItemDetails(batch.item);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        final itemData = response.data['data'];
-        final variantOf = itemData['variant_of'] ?? '';
-        itemVariants[batch.item] = variantOf.isNotEmpty ? variantOf : 'N/A';
+        final variantOf = response.data['data']['variant_of'];
+        itemVariants[batch.item] = (variantOf != null && variantOf.isNotEmpty) ? variantOf : 'N/A';
       }
     } catch (e) {
-      print('Error fetching item variant: $e');
       itemVariants[batch.item] = 'Error';
     } finally {
       isLoadingDetails.value = false;
