@@ -42,7 +42,10 @@ class StockEntryItemFormSheet extends StatelessWidget {
         // --- Actions ---
         // Bind enabled state to controller's dirty & valid check
         isSaveEnabledRx: controller.isSaveEnabled,
-        onSubmit: controller.submit,
+
+        // When pressed manually, we want to close the sheet
+        onSubmit: () => controller.submit(closeSheet: true),
+
         onDelete: isEditing ? controller.deleteItem : null,
 
         // --- Metadata ---
