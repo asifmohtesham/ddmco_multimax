@@ -17,14 +17,51 @@ class ItemFormController extends FrappeFormController {
   @override
   void onInit() {
     super.onInit();
-    final args = Get.arguments;
-    if (args != null) {
-      if (args is Map && args['itemCode'] != null) {
-        load(args['itemCode']);
-      } else if (args is String) {
-        load(args);
+
+    // Safely retrieve arguments
+    final dynamic args = Get.arguments;
+
+    // 1. Determine Mode
+    bool isNew = false;
+    String? loadId;
+
+    if (args == null) {
+      isNew = true;
+    } else if (args is Map) {
+      if (args['mode'] == 'new') {
+        isNew = true;
+      } else if (args['itemCode'] != null) {
+        loadId = args['itemCode'].toString();
       }
+    } else if (args is String) {
+      loadId = args;
     }
+
+    // 2. Execute Action
+    if (isNew) {
+      _initNewItem();
+    } else if (loadId != null && loadId.isNotEmpty) {
+      load(loadId);
+    } else {
+      // Fallback if args are weird but not null
+      _initNewItem();
+    }
+  }
+
+  void _initNewItem() {
+    // Populate data with defaults so the UI renders
+    print("Initializing New Item...");
+    initialize({
+      'docstatus': 0,
+      'item_code': '',
+      'item_name': '',
+      'description': '',
+      'item_group': 'All Item Groups',
+      'is_stock_item': 1,
+      'has_batch_no': 0,
+      'has_serial_no': 0,
+      '__islocal': 1,
+    });
   }
 
   // ALIAS: Keeps home_controller happy
@@ -35,6 +72,7 @@ class ItemFormController extends FrappeFormController {
   @override
   Future<void> load(String docName) async {
     await super.load(docName);
+    // Only fetch stock if we successfully loaded an existing item
     if (data.isNotEmpty) {
       fetchStockLevels(docName);
     }
@@ -44,7 +82,8 @@ class ItemFormController extends FrappeFormController {
     isLoadingStock.value = true;
     try {
       final response = await _itemProvider.getStockLevels(itemCode);
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+      if (response.statusCode == 200 &&
+          response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
         stockLevels.value = result
             .whereType<Map<String, dynamic>>()
@@ -58,8 +97,10 @@ class ItemFormController extends FrappeFormController {
     }
   }
 
-  // Getters for specific UI logic (optional but useful)
+  // Getters for specific UI logic
   String get itemCode => getValue('item_code') ?? '';
+
   String get itemName => getValue('item_name') ?? '';
+
   String? get image => getValue('image');
 }

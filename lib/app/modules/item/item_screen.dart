@@ -8,133 +8,125 @@ import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart'
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/theme/frappe_theme.dart'; // Theme Import
+import 'package:multimax/theme/frappe_theme.dart';
+import 'package:multimax/controllers/frappe_filter_sheet_controller.dart';
 
-class ItemScreen extends StatefulWidget {
+class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
 
   @override
-  State<ItemScreen> createState() => _ItemScreenState();
-}
-
-class _ItemScreenState extends State<ItemScreen> {
-  final ItemController controller = Get.find();
-  final _scrollController = ScrollController();
-  final String _baseUrl = Get.find<ApiProvider>().baseUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
-      controller.fetchItems(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GenericListPage(
-      title: 'Item Master',
-      isLoading: controller.isLoading,
-      data: controller.displayedItems,
-      onRefresh: () => controller.fetchItems(clear: true),
-      scrollController: _scrollController,
+    final scrollController = ScrollController();
+    scrollController.addListener(() {
+      if (scrollController.position.pixels >=
+              scrollController.position.maxScrollExtent * 0.9 &&
+          controller.hasMore.value &&
+          !controller.isFetchingMore.value) {
+        controller.loadMore();
+      }
+    });
 
-      // Global API Search Configuration
-      searchDoctype: 'Item',
-      searchRoute: AppRoutes.ITEM_FORM,
+    final String baseUrl = Get.find<ApiProvider>().baseUrl;
 
-      // Local List Search
-      onSearch: controller.onSearchChanged,
-      searchHint: 'Search Items...',
+    return Obx(() {
+      final isGrid = controller.isGridView.value;
 
-      actions: [
-        Obx(() {
-          final count = controller.filterCount;
-          return IconButton(
+      return GenericListPage(
+        title: 'Item Master',
+        isLoading: controller.isLoading,
+        data: controller.items,
+        onRefresh: () async => controller.refreshList(),
+        scrollController: scrollController,
+
+        onSearch: controller.onSearchChanged,
+        searchHint: 'Search Items...',
+        searchDoctype: 'Item',
+
+        // FIX: Added Floating Action Button for creation
+        // FIX: Ensure this passes {'mode': 'new'}
+        // FIX: Ensure FAB is present and passes correct args
+        fab: FloatingActionButton(
+          backgroundColor: FrappeTheme.primary,
+          child: const Icon(Icons.add, color: Colors.white),
+          onPressed: () => Get.toNamed(
+              AppRoutes.ITEM_FORM,
+              arguments: {'mode': 'new'}
+          ),
+        ),
+
+        actions: [
+          IconButton(
             icon: Badge(
-              isLabelVisible: count > 0,
+              isLabelVisible: controller.filterCount > 0,
               backgroundColor: FrappeTheme.primary,
-              label: Text('$count'),
+              label: Text('${controller.filterCount}'),
               child: Icon(
                 Icons.filter_list_rounded,
-                color: count > 0 ? FrappeTheme.primary : FrappeTheme.textBody,
+                color: controller.filterCount > 0
+                    ? FrappeTheme.primary
+                    : FrappeTheme.textBody,
               ),
             ),
-            onPressed: () => Get.bottomSheet(
-              const ItemFilterBottomSheet(),
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-            ),
-          );
-        }),
-        Obx(() => IconButton(
-          icon: Icon(
-            controller.isGridView.value ? Icons.view_list_rounded : Icons.grid_view_rounded,
-            color: FrappeTheme.textBody,
-          ),
-          onPressed: controller.toggleLayout,
-        )),
-      ],
-
-      // Custom Body for Grid View Toggle
-      sliverBody: Obx(() {
-        if (controller.isGridView.value) {
-          return SliverPadding(
-            padding: const EdgeInsets.all(12.0),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  if (index >= controller.displayedItems.length) return const SizedBox.shrink();
-                  return _buildGridCard(controller.displayedItems[index]);
-                },
-                childCount: controller.displayedItems.length,
-              ),
-            ),
-          );
-        }
-
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-                (context, index) {
-              if (index >= controller.displayedItems.length) {
-                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
-              }
-              return _buildListCard(controller.displayedItems[index]);
+            onPressed: () {
+              final sheetCtrl = Get.put(FrappeFilterSheetController());
+              sheetCtrl.initialize(
+                controller,
+                initialShowImages: controller.showImagesOnly.value,
+              );
+              Get.bottomSheet(
+                const ItemFilterBottomSheet(),
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+              ).then((_) => Get.delete<FrappeFilterSheetController>());
             },
-            childCount: controller.displayedItems.length + (controller.hasMore.value ? 1 : 0),
           ),
-        );
-      }),
-      itemBuilder: (ctx, idx) => const SizedBox.shrink(), // Not used due to sliverBody override
-    );
+          IconButton(
+            icon: Icon(
+              isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+              color: FrappeTheme.textBody,
+            ),
+            onPressed: controller.toggleLayout,
+          ),
+        ],
+
+        sliverBody: isGrid
+            ? SliverPadding(
+                padding: const EdgeInsets.all(12.0),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.75,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    if (index >= controller.items.length)
+                      return const SizedBox.shrink();
+                    return _buildGridCard(controller.items[index], baseUrl);
+                  }, childCount: controller.items.length),
+                ),
+              )
+            : null,
+
+        itemBuilder: (context, index) {
+          if (index >= controller.items.length) {
+            return controller.hasMore.value
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : const SizedBox.shrink();
+          }
+          return _buildListCard(context, controller.items[index], baseUrl);
+        },
+      );
+    });
   }
 
-  // --- List View Card ---
-  Widget _buildListCard(Item item) {
+  // ... (Keep _buildListCard, _buildGridCard, _buildImage methods exactly as they were)
+  Widget _buildListCard(BuildContext context, Item item, String baseUrl) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
@@ -144,16 +136,24 @@ class _ItemScreenState extends State<ItemScreen> {
         title: item.itemName,
         subtitle: item.itemCode,
         status: item.itemGroup,
-        leading: _buildImage(item, size: 48), // Smaller, tighter image
+        leading: _buildImage(item, baseUrl, size: 48),
 
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingStock,
         onTap: () => controller.toggleExpand(item.name, item.itemCode),
 
         stats: [
-          GenericDocumentCard.buildIconStat(context, Icons.emoji_flags_rounded, item.countryOfOrigin ?? '-'),
+          GenericDocumentCard.buildIconStat(
+            context,
+            Icons.emoji_flags_rounded,
+            item.countryOfOrigin ?? '-',
+          ),
           if (item.variantOf != null)
-            GenericDocumentCard.buildIconStat(context, Icons.copy_rounded, item.variantOf ?? ''),
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.copy_rounded,
+              item.variantOf ?? '',
+            ),
         ],
 
         expandedContent: Column(
@@ -163,68 +163,119 @@ class _ItemScreenState extends State<ItemScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
                 child: Text(
-                    item.description!,
-                    style: const TextStyle(fontSize: 13, color: FrappeTheme.textBody),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis
+                  item.description!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: FrappeTheme.textBody,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-
-            // --- Customer Items Section ---
+            // ... Customer refs ...
             if (item.customerItems.isNotEmpty) ...[
-              const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textLabel)),
-              const SizedBox(height: 8),
-              ...item.customerItems.map((ci) => Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(ci.customerName, style: const TextStyle(fontSize: 12, color: FrappeTheme.textBody)),
-                    Text(ci.refCode, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'ShureTechMono')),
-                  ],
+              const Text(
+                'Customer References',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: FrappeTheme.textLabel,
                 ),
-              )),
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-              const SizedBox(height: 12),
+              ),
+              const SizedBox(height: 8),
+              ...item.customerItems.map(
+                (ci) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        ci.customerName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: FrappeTheme.textBody,
+                        ),
+                      ),
+                      Text(
+                        ci.refCode,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'ShureTechMono',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 24),
             ],
 
-            const Text('Stock Balance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textLabel)),
+            const Text(
+              'Stock Balance',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: FrappeTheme.textLabel,
+              ),
+            ),
             const SizedBox(height: 8),
 
             if (stockList == null || stockList.isEmpty)
-              const Text('No stock data available.', style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic))
+              const Text(
+                'No stock data available.',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
             else
-              ...stockList.map((stock) => Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('${stock.warehouse}${stock.rack != null ? " (${stock.rack})" : ""}', style: const TextStyle(fontSize: 12, color: FrappeTheme.textBody)),
-                    Text(
-                      '${stock.quantity.toStringAsFixed(2)} ${item.stockUom ?? ''}',
-                      style: TextStyle(
+              ...stockList.map(
+                (stock) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${stock.warehouse}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: FrappeTheme.textBody,
+                        ),
+                      ),
+                      Text(
+                        '${stock.quantity.toStringAsFixed(2)} ${item.stockUom ?? ''}',
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
-                          color: stock.quantity > 0 ? Colors.green[700] : Colors.red[700]
+                          color: stock.quantity > 0
+                              ? Colors.green[700]
+                              : Colors.red[700],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              )),
+              ),
 
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: FrappeTheme.surface,
-                    foregroundColor: FrappeTheme.primary,
-                    elevation: 0,
-                    side: const BorderSide(color: FrappeTheme.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FrappeTheme.radius))
+                  backgroundColor: FrappeTheme.surface,
+                  foregroundColor: FrappeTheme.primary,
+                  elevation: 0,
+                  side: const BorderSide(color: FrappeTheme.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(FrappeTheme.radius),
+                  ),
                 ),
-                onPressed: () => Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode}),
+                onPressed: () => Get.toNamed(
+                  AppRoutes.ITEM_FORM,
+                  arguments: {'itemCode': item.itemCode},
+                ),
                 child: const Text('View Full Details'),
               ),
             ),
@@ -234,31 +285,26 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // --- Grid View Card ---
-  Widget _buildGridCard(Item item) {
+  Widget _buildGridCard(Item item, String baseUrl) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(FrappeTheme.radius),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            offset: const Offset(0, 2),
-            blurRadius: 4,
-          )
-        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode}),
+        onTap: () => Get.toNamed(
+          AppRoutes.ITEM_FORM,
+          arguments: {'itemCode': item.itemCode},
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: SizedBox(
                 width: double.infinity,
-                child: _buildImage(item, fit: BoxFit.cover),
+                child: _buildImage(item, baseUrl, fit: BoxFit.cover),
               ),
             ),
             Padding(
@@ -268,11 +314,14 @@ class _ItemScreenState extends State<ItemScreen> {
                 children: [
                   Text(
                     item.itemName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: FrappeTheme.textBody),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: FrappeTheme.textBody,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
                   Text(
                     item.itemCode,
                     style: const TextStyle(
@@ -290,33 +339,26 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  Widget _buildImage(Item item, {double? size, BoxFit fit = BoxFit.contain}) {
+  Widget _buildImage(
+    Item item,
+    String baseUrl, {
+    double? size,
+    BoxFit fit = BoxFit.contain,
+  }) {
     if (item.image != null && item.image!.isNotEmpty) {
-      return Container(
-        width: size, height: size,
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade100)
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Image.network(
-          '$_baseUrl${item.image}',
-          fit: fit,
-          errorBuilder: (c, o, s) => Center(
-            child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade300, size: size != null ? size * 0.5 : 24),
-          ),
-        ),
+      return Image.network(
+        '$baseUrl${item.image}',
+        width: size,
+        height: size,
+        fit: fit,
+        errorBuilder: (c, o, s) =>
+            Icon(Icons.broken_image, size: size, color: Colors.grey.shade300),
       );
     }
-    return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(
-          color: FrappeTheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade200)
-      ),
-      child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade400, size: size != null ? size * 0.5 : 24),
+    return Icon(
+      Icons.image_not_supported,
+      size: size,
+      color: Colors.grey.shade300,
     );
   }
 }

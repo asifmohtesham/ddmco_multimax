@@ -17,7 +17,8 @@ class FrappeFormController extends GetxController {
 
   void initialize(Map<String, dynamic>? initialData) {
     if (initialData != null) {
-      data.addAll(initialData);
+      // FIX: Use assignAll to ensure Obx rebuilds
+      data.assignAll(initialData);
     }
   }
 
@@ -31,15 +32,12 @@ class FrappeFormController extends GetxController {
 
     final val = data[fieldname];
 
-    // Auto-convert Int to Double
     if (T == double && val is int) {
       return val.toDouble() as T;
     }
-    // Auto-convert Double to Int
     if (T == int && val is double) {
       return val.toInt() as T;
     }
-    // Auto-convert Numbers to String (Fixes UI CastErrors)
     if (T == String && (val is int || val is double)) {
       return val.toString() as T;
     }
@@ -51,20 +49,21 @@ class FrappeFormController extends GetxController {
     try {
       data.clear();
       final docData = await _api.getDoc(doctype, docName);
-      data.value = docData;
+      data.assignAll(docData); // FIX: Use assignAll here too
     } catch (e) {
       debugPrint("❌ Error loading $doctype $docName: $e");
       String errorMsg = "Could not load document";
-      if (e.toString().contains("403")) errorMsg = "Access Denied. Please login again.";
+      if (e.toString().contains("403"))
+        errorMsg = "Access Denied. Please login again.";
       if (e.toString().contains("404")) errorMsg = "Document not found.";
 
       Get.snackbar(
-          "Error",
-          errorMsg,
-          backgroundColor: Get.theme.colorScheme.error.withValues(alpha: 0.1),
-          colorText: Get.theme.colorScheme.error,
-          duration: const Duration(seconds: 4),
-          snackPosition: SnackPosition.BOTTOM
+        "Error",
+        errorMsg,
+        backgroundColor: Get.theme.colorScheme.error.withOpacity(0.1),
+        colorText: Get.theme.colorScheme.error,
+        duration: const Duration(seconds: 4),
+        snackPosition: SnackPosition.BOTTOM,
       );
     }
   }
@@ -72,14 +71,18 @@ class FrappeFormController extends GetxController {
   Future<void> save() async {
     try {
       await _api.saveDoc(doctype, data);
-      Get.snackbar("Success", "Saved successfully", snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar(
+        "Success",
+        "Saved successfully",
+        snackPosition: SnackPosition.BOTTOM,
+      );
     } catch (e) {
       debugPrint("❌ Save Error: $e");
       Get.snackbar(
-          "Error",
-          "Save failed: ${e.toString().replaceAll('Exception:', '')}",
-          backgroundColor: Get.theme.colorScheme.error.withValues(alpha: 0.1),
-          colorText: Get.theme.colorScheme.error
+        "Error",
+        "Save failed: ${e.toString().replaceAll('Exception:', '')}",
+        backgroundColor: Get.theme.colorScheme.error.withOpacity(0.1),
+        colorText: Get.theme.colorScheme.error,
       );
     }
   }

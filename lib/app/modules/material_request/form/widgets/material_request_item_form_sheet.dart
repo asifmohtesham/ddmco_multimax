@@ -20,10 +20,17 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(controller.currentItemCode.isEmpty ? 'New Item' : controller.currentItemCode,
-              style: Get.textTheme.titleLarge),
+          Text(
+            controller.currentItemCode.isEmpty
+                ? 'New Item'
+                : controller.currentItemCode,
+            style: Get.textTheme.titleLarge,
+          ),
           if (controller.currentItemName.isNotEmpty)
-            Text(controller.currentItemName, style: Get.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+            Text(
+              controller.currentItemName,
+              style: Get.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+            ),
 
           const Divider(height: 24),
 
@@ -56,13 +63,21 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          Obx(() => SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: controller.isSheetValid.value ? controller.saveItem : null,
-              child: Text(controller.currentItemNameKey.value != null ? 'Update' : 'Add'),
+          Obx(
+            () => SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: controller.isSheetValid.value
+                    ? controller.saveItem
+                    : null,
+                child: Text(
+                  controller.currentItemNameKey.value != null
+                      ? 'Update'
+                      : 'Add',
+                ),
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );

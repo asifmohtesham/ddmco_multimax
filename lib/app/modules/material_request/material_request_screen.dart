@@ -1,143 +1,146 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/data/models/material_request_model.dart';
+import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
-import 'package:multimax/app/data/models/material_request_model.dart';
+import 'package:multimax/theme/frappe_theme.dart';
 
 class MaterialRequestScreen extends GetView<MaterialRequestController> {
   const MaterialRequestScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    // Scroll controller for pagination
+    final scrollController = ScrollController();
+    scrollController.addListener(() {
+      if (scrollController.position.pixels >= scrollController.position.maxScrollExtent * 0.9 &&
+          controller.hasMore.value &&
+          !controller.isFetchingMore.value) {
+        controller.fetchMaterialRequests(isLoadMore: true);
+      }
+    });
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
-      body: RefreshIndicator(
-        onRefresh: () => controller.fetchMaterialRequests(clear: true),
-        child: CustomScrollView(
-          slivers: [
-            SliverAppBar.large(
-              title: const Text('Material Requests'),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: TextField(
-                  onChanged: controller.onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search ID...',
-                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Obx(() {
-              if (controller.isLoading.value && controller.materialRequests.isEmpty) {
-                return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
-              }
-              if (controller.materialRequests.isEmpty) {
-                return const SliverFillRemaining(child: Center(child: Text('No Material Requests')));
-              }
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    if (index >= controller.materialRequests.length) return null;
-                    final req = controller.materialRequests[index];
+    return GenericListPage(
+      title: 'Material Requests',
+      isLoading: controller.isLoading,
+      data: controller.filteredList,
+      onRefresh: () async => controller.fetchMaterialRequests(clear: true),
+      scrollController: scrollController,
 
-                    return Obx(() {
-                      final isExpanded = controller.expandedRequestId.value == req.name;
+      // Search Config
+      onSearch: controller.onSearchChanged,
+      searchHint: 'Search ID...',
+      searchDoctype: 'Material Request',
 
-                      return GenericDocumentCard(
-                        title: req.materialRequestType,
-                        subtitle: req.name,
-                        status: req.status,
-                        stats: [
-                          GenericDocumentCard.buildIconStat(context, Icons.calendar_today, req.transactionDate),
-                          if (req.scheduleDate.isNotEmpty)
-                            GenericDocumentCard.buildIconStat(context, Icons.event, 'Due: ${req.scheduleDate}'),
-                        ],
-                        isExpanded: isExpanded,
-                        onTap: () => controller.toggleExpand(req.name),
-                        expandedContent: isExpanded ? _buildExpandedActions(context, req) : null,
-                      );
-                    });
-                  },
-                  childCount: controller.materialRequests.length,
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-      floatingActionButton: Obx(() => RoleGuard(
+      // Create Button
+      fab: Obx(() => RoleGuard(
         roles: controller.writeRoles.toList(),
         child: FloatingActionButton.extended(
-          onPressed: () {
-            Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': '', 'mode': 'new'});
-          },
-          icon: const Icon(Icons.add),
-          label: const Text('Create'),
+          backgroundColor: FrappeTheme.primary,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text('Create', style: TextStyle(color: Colors.white)),
+          onPressed: () => controller.openForm('', mode: 'new'),
         ),
       )),
+
+      itemBuilder: (context, index) {
+        // Pagination Loader
+        if (index == controller.filteredList.length) {
+          return controller.hasMore.value
+              ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              : const SizedBox.shrink();
+        }
+
+        final req = controller.filteredList[index];
+        return _buildRequestCard(context, req);
+      },
     );
   }
 
-  Widget _buildExpandedActions(BuildContext context, MaterialRequest req) {
+  Widget _buildRequestCard(BuildContext context, MaterialRequest req) {
+    return Obx(() {
+      final isExpanded = controller.expandedRequestId.value == req.name;
+
+      return GenericDocumentCard(
+        title: req.materialRequestType,
+        subtitle: req.name,
+        status: req.status,
+
+        // Custom Leading Icon
+        leading: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: FrappeTheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.assignment_outlined, color: FrappeTheme.primary, size: 22),
+        ),
+
+        stats: [
+          GenericDocumentCard.buildIconStat(context, Icons.calendar_today, req.transactionDate),
+          if (req.scheduleDate.isNotEmpty)
+            GenericDocumentCard.buildIconStat(context, Icons.event, 'Due: ${req.scheduleDate}'),
+        ],
+
+        isExpanded: isExpanded,
+        onTap: () => controller.toggleExpand(req.name),
+        expandedContent: isExpanded ? _buildActions(context, req) : null,
+      );
+    });
+  }
+
+  Widget _buildActions(BuildContext context, MaterialRequest req) {
+    final bool isDraft = req.docstatus == 0;
+
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // View Button (Available for Submitted documents or if user lacks write access)
-          if (req.docstatus != 0)
-            FilledButton.tonalIcon(
-              onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'view'}),
-              icon: const Icon(Icons.visibility),
+          // View Button (Always visible)
+          if (!isDraft)
+            ElevatedButton.icon(
+              onPressed: () => controller.openForm(req.name, mode: 'view'),
+              icon: const Icon(Icons.visibility, size: 16),
               label: const Text('View Details'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: FrappeTheme.surface,
+                foregroundColor: FrappeTheme.textBody,
+                elevation: 0,
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
             ),
 
           // Draft Actions (Edit/Delete)
-          if (req.docstatus == 0) ...[
-            // Delete Button
+          if (isDraft) ...[
             RoleGuard(
               roles: controller.writeRoles.toList(),
-              child: IconButton.filled(
+              child: IconButton(
                 onPressed: () => controller.deleteMaterialRequest(req.name),
                 icon: const Icon(Icons.delete_outline),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.red.shade50,
-                  foregroundColor: Colors.red,
-                ),
+                color: Colors.red,
                 tooltip: 'Delete',
               ),
             ),
-
             const SizedBox(width: 8),
-
-            // Edit Button
             RoleGuard(
               roles: controller.writeRoles.toList(),
-              fallback: FilledButton.tonalIcon(
-                onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'view'}),
-                icon: const Icon(Icons.visibility),
+              fallback: ElevatedButton.icon(
+                onPressed: () => controller.openForm(req.name, mode: 'view'),
+                icon: const Icon(Icons.visibility, size: 16),
                 label: const Text('View'),
               ),
-              child: FilledButton.tonalIcon(
-                onPressed: () => Get.toNamed(AppRoutes.MATERIAL_REQUEST_FORM, arguments: {'name': req.name, 'mode': 'edit'}),
-                icon: const Icon(Icons.edit),
+              child: ElevatedButton.icon(
+                onPressed: () => controller.openForm(req.name, mode: 'edit'),
+                icon: const Icon(Icons.edit, size: 16),
                 label: const Text('Edit'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: FrappeTheme.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                ),
               ),
             ),
           ]

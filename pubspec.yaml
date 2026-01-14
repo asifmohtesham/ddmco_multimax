@@ -53,6 +53,7 @@ dependencies:
   path: ^1.9.1
   package_info_plus: ^8.0.0
   sqflite_common_ffi:
+  printing: any
 
 dev_dependencies:
   flutter_test:

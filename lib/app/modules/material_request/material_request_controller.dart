@@ -5,35 +5,42 @@ import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class MaterialRequestController extends GetxController {
   final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  var isLoading = true.obs;
-  var isFetchingMore = false.obs;
-  var hasMore = true.obs;
-  var materialRequests = <MaterialRequest>[].obs;
-  final int _limit = 20;
-  int _currentPage = 0;
+  // Observables for GenericListPage
+  final RxList<MaterialRequest> materialRequests = <MaterialRequest>[].obs;
+  final RxList<MaterialRequest> filteredList = <MaterialRequest>[].obs;
+  final RxBool isLoading = true.obs;
+  final RxBool hasMore = true.obs;
+  final RxBool isFetchingMore = false.obs;
 
-  var searchQuery = ''.obs;
+  // Search
+  final RxString searchQuery = ''.obs;
 
-  // UI State
-  var expandedRequestId = ''.obs;
+  // Expansion & UI State
+  final RxString expandedRequestId = ''.obs;
 
   // Permissions
-  var writeRoles = <String>['System Manager'].obs;
+  final RxList<String> writeRoles = <String>['System Manager'].obs;
+
+  // Pagination
+  final int _limit = 20;
+  int _currentPage = 0;
 
   @override
   void onInit() {
     super.onInit();
-    fetchMaterialRequests();
+    fetchMaterialRequests(clear: true);
     fetchDocTypePermissions();
   }
 
   void onSearchChanged(String val) {
     searchQuery.value = val;
+    // Debounce search
     Future.delayed(const Duration(milliseconds: 500), () {
       if (searchQuery.value == val) {
         fetchMaterialRequests(clear: true);
@@ -52,14 +59,12 @@ class MaterialRequestController extends GetxController {
   Future<void> fetchDocTypePermissions() async {
     try {
       final response = await _apiProvider.getDocument('DocType', 'Material Request');
-
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'}; // Always allowed
+        final newRoles = <String>{'System Manager'};
 
         for (var p in perms) {
-          // Check for Write access (1) at permlevel 0 (Standard fields)
           if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
             newRoles.add(p['role']);
           }
@@ -71,39 +76,15 @@ class MaterialRequestController extends GetxController {
     }
   }
 
-  Future<void> deleteMaterialRequest(String name) async {
-    GlobalDialog.showConfirmation(
-        title: 'Delete Request?',
-        message: 'Are you sure you want to delete $name? This action cannot be undone.',
-        onConfirm: () async {
-          try {
-            final response = await _provider.deleteMaterialRequest(name);
-            if (response.statusCode == 200 || response.statusCode == 202) {
-              GlobalSnackbar.success(message: 'Material Request deleted successfully');
-              fetchMaterialRequests(clear: true);
-              if (expandedRequestId.value == name) {
-                expandedRequestId.value = '';
-              }
-            } else {
-              GlobalSnackbar.error(message: 'Failed to delete document');
-            }
-          } catch (e) {
-            GlobalSnackbar.error(message: 'Error: $e');
-          }
-        }
-    );
-  }
-
   Future<void> fetchMaterialRequests({bool isLoadMore = false, bool clear = false}) async {
-    if (isLoadMore) {
-      isFetchingMore.value = true;
-    } else {
+    if (clear) {
       isLoading.value = true;
-      if (clear) {
-        materialRequests.clear();
-        _currentPage = 0;
-        hasMore.value = true;
-      }
+      materialRequests.clear();
+      _currentPage = 0;
+      hasMore.value = true;
+      expandedRequestId.value = '';
+    } else if (isLoadMore) {
+      isFetchingMore.value = true;
     }
 
     try {
@@ -124,18 +105,54 @@ class MaterialRequestController extends GetxController {
 
         if (newEntries.length < _limit) hasMore.value = false;
 
-        if (isLoadMore) {
-          materialRequests.addAll(newEntries);
+        if (clear) {
+          materialRequests.assignAll(newEntries);
         } else {
-          materialRequests.value = newEntries;
+          materialRequests.addAll(newEntries);
         }
+
         _currentPage++;
+        _applyFilters();
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to fetch material requests');
     } finally {
-      if (isLoadMore) isFetchingMore.value = false;
-      else isLoading.value = false;
+      isLoading.value = false;
+      isFetchingMore.value = false;
     }
+  }
+
+  void _applyFilters() {
+    // API handles search, so filteredList is essentially the main list
+    filteredList.assignAll(materialRequests);
+  }
+
+  // --- Actions ---
+
+  void openForm(String name, {String mode = 'view'}) {
+    Get.toNamed(
+        AppRoutes.MATERIAL_REQUEST_FORM,
+        arguments: {'name': name, 'mode': mode}
+    )?.then((_) => fetchMaterialRequests(clear: true));
+  }
+
+  Future<void> deleteMaterialRequest(String name) async {
+    GlobalDialog.showConfirmation(
+        title: 'Delete Request?',
+        message: 'Are you sure you want to delete $name? This action cannot be undone.',
+        onConfirm: () async {
+          try {
+            final response = await _provider.deleteMaterialRequest(name);
+            if (response.statusCode == 200 || response.statusCode == 202) {
+              GlobalSnackbar.success(message: 'Deleted successfully');
+              fetchMaterialRequests(clear: true);
+            } else {
+              GlobalSnackbar.error(message: 'Failed to delete');
+            }
+          } catch (e) {
+            GlobalSnackbar.error(message: 'Error: $e');
+          }
+        }
+    );
   }
 }

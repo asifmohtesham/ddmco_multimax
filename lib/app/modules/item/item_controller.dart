@@ -3,402 +3,258 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/data/utils/search_helper.dart';
+import 'package:multimax/controllers/frappe_list_controller.dart';
+import 'package:multimax/models/frappe_filter.dart';
 
-/// Model to represent a single row in the unified filter list
-class FilterRow {
-  String field;       // The db field name or '_attribute' for attribute filters
-  String label;       // Label shown to user
-  String operator;    // e.g., 'like', '='
-  String value;       // User entered value
-  String fieldType;   // 'Data', 'Link', 'Attribute'
-  String? doctype;    // For Link fields, e.g., 'Item Group'
-  String attributeName; // Only used if fieldType == 'Attribute' (e.g., 'Color')
-
-  FilterRow({
-    required this.field,
-    required this.label,
-    this.operator = 'like',
-    this.value = '',
-    this.fieldType = 'Data',
-    this.doctype,
-    this.attributeName = '',
-  });
-
-  // Clone for local editing in the UI
-  FilterRow clone() {
-    return FilterRow(
-      field: field,
-      label: label,
-      operator: operator,
-      value: value,
-      fieldType: fieldType,
-      doctype: doctype,
-      attributeName: attributeName,
-    );
-  }
-}
-
-class ItemController extends GetxController {
+class ItemController extends FrappeListController {
   final ItemProvider _provider = Get.find<ItemProvider>();
 
-  var isLoading = true.obs;
-  var isFetchingMore = false.obs;
-  var hasMore = true.obs;
+  @override
+  String get doctype => 'Item';
 
-  var items = <Item>[].obs;
-  var displayedItems = <Item>[].obs;
+  // Inherits 'orderBy' from FrappeListController now.
 
-  final int _limit = 20;
-  int _currentPage = 0;
+  @override
+  int get pageSize => 20;
 
+  @override
+  List<FrappeFilterField> get filterableFields => [
+    const FrappeFilterField(fieldname: 'item_code', label: 'Item Code'),
+    const FrappeFilterField(fieldname: 'item_name', label: 'Item Name'),
+    const FrappeFilterField(
+      fieldname: 'item_group',
+      label: 'Item Group',
+      fieldtype: 'Link',
+      doctype: 'Item Group',
+    ),
+    const FrappeFilterField(fieldname: 'description', label: 'Description'),
+    const FrappeFilterField(
+      fieldname: 'variant_of',
+      label: 'Variant Of',
+      fieldtype: 'Link',
+      doctype: 'Item',
+    ),
+    const FrappeFilterField(fieldname: 'customer_name', label: 'Customer Name'),
+    const FrappeFilterField(fieldname: 'ref_code', label: 'Customer Ref Code'),
+    const FrappeFilterField(
+      fieldname: '_attribute',
+      label: 'Item Attribute',
+      fieldtype: 'Attribute',
+    ),
+  ];
+
+  // Typed getter for the UI
+  List<Item> get items => list.map((json) => Item.fromJson(json)).toList();
+
+  // --- STATE ---
   var expandedItemName = ''.obs;
   var isLoadingStock = false.obs;
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
-  // --- UNIFIED FILTER STATE ---
-  final activeFilters = <FilterRow>[].obs;
+  var isGridView = false.obs;
+  var showImagesOnly = true.obs;
 
-  // Configuration for Available Fields
-  final List<FilterRow> availableFields = [
-    FilterRow(field: 'item_code', label: 'Item Code', operator: 'like'),
-    FilterRow(field: 'item_name', label: 'Item Name', operator: 'like'),
-    FilterRow(field: 'item_group', label: 'Item Group', operator: '=', fieldType: 'Link', doctype: 'Item Group'),
-    FilterRow(field: 'description', label: 'Description', operator: 'like'),
-    FilterRow(field: 'variant_of', label: 'Variant Of', operator: '=', fieldType: 'Link', doctype: 'Item'),
-    FilterRow(field: 'customer_name', label: 'Customer Name', operator: 'like'),
-    FilterRow(field: 'ref_code', label: 'Customer Ref Code', operator: 'like'),
-    // Special Option to trigger Attribute UI
-    FilterRow(field: '_attribute', label: 'Item Attribute', operator: '=', fieldType: 'Attribute'),
-  ];
-
-  final List<String> availableOperators = ['like', '=', '!=', '>', '<', '>=', '<='];
-
-  var sortField = '`tabItem`.`modified`'.obs;
-  var sortOrder = 'desc'.obs;
-
-  var searchQuery = ''.obs;
-
-  // Reference Data
+  // Helper Lists
   var itemGroups = <String>[].obs;
   var templateItems = <String>[].obs;
   var itemAttributes = <String>[].obs;
   var currentAttributeValues = <String>[].obs;
-
   var isLoadingGroups = false.obs;
   var isLoadingTemplates = false.obs;
   var isLoadingAttributes = false.obs;
   var isLoadingAttributeValues = false.obs;
 
-  var showImagesOnly = true.obs;
-  var isGridView = false.obs;
-
-  // Helper for Badge Count
   int get filterCount => activeFilters.length + (showImagesOnly.value ? 1 : 0);
 
   @override
   void onInit() {
     super.onInit();
+    _parseArguments();
+    fetchItemGroups();
+    fetchTemplateItems();
+    fetchItemAttributes();
+  }
 
-    // --- ARGUMENT HANDLING LOGIC START ---
-    // Check if arguments were passed (e.g. from ScanService/HomeController)
+  void _parseArguments() {
     if (Get.arguments != null && Get.arguments is Map) {
       final args = Get.arguments as Map;
-
-      // Handle 'filters' argument: {'field_name': ['operator', 'value']}
       if (args.containsKey('filters') && args['filters'] is Map) {
         final filtersMap = args['filters'] as Map;
-        final List<FilterRow> parsedFilters = [];
+        final List<FrappeFilter> parsedFilters = [];
 
         filtersMap.forEach((key, valueList) {
           if (valueList is List && valueList.length >= 2) {
             final String op = valueList[0];
             String val = valueList[1].toString();
+            if (op == 'like') val = val.replaceAll('%', '');
 
-            // Clean wildcards for UI consistency (fetchItems re-adds them if needed)
-            if (op == 'like') {
-              val = val.replaceAll('%', '');
-            }
+            final config =
+                filterableFields.firstWhereOrNull((f) => f.fieldname == key) ??
+                FrappeFilterField(fieldname: key, label: key);
 
-            // Find matching config to ensure correct label and type
-            final config = availableFields.firstWhereOrNull((f) => f.field == key);
-
-            parsedFilters.add(FilterRow(
-              field: key,
-              label: config?.label ?? key, // Fallback to key if not found in availableFields
-              operator: op,
-              value: val,
-              fieldType: config?.fieldType ?? 'Data',
-              doctype: config?.doctype,
-            ));
+            parsedFilters.add(
+              FrappeFilter(
+                fieldname: key,
+                label: config.label,
+                config: config,
+                operator: op,
+                value: val,
+              ),
+            );
           }
         });
 
         if (parsedFilters.isNotEmpty) {
           activeFilters.assignAll(parsedFilters);
-          // Disable "Show Images Only" if a specific filter is applied to broaden results
           showImagesOnly.value = false;
         }
       }
     }
-    // --- ARGUMENT HANDLING LOGIC END ---
-
-    fetchItems();
-    fetchItemGroups();
-    fetchTemplateItems();
-    fetchItemAttributes();
-
-    ever(items, (_) => _applySearch());
-    ever(searchQuery, (_) => _applySearch());
   }
 
-  void toggleLayout() {
-    isGridView.value = !isGridView.value;
+  void toggleLayout() => isGridView.value = !isGridView.value;
+
+  void setImagesOnly(bool value) => showImagesOnly.value = value;
+
+  // Override to use specialized ItemProvider logic
+  @override
+  Future<void> refreshList() async {
+    isLoading.value = true;
+    hasMore.value = true;
+    list.clear();
+    await _fetchItemsInternal(isLoadMore: false);
+    isLoading.value = false;
   }
 
-  void setImagesOnly(bool value) {
-    showImagesOnly.value = value;
+  @override
+  Future<void> loadMore() async {
+    if (isFetchingMore.value || !hasMore.value) return;
+    isFetchingMore.value = true;
+    await _fetchItemsInternal(isLoadMore: true);
+    isFetchingMore.value = false;
   }
 
-  void onSearchChanged(String query) {
-    searchQuery.value = query;
-  }
-
-  void _applySearch() {
-    displayedItems.value = SearchHelper.search<Item>(
-      items,
-      searchQuery.value,
-          (item) => [
-        item.itemName,
-        item.itemCode,
-        item.itemGroup,
-        item.variantOf,
-        item.description,
-        ...item.customerItems.map((e) => e.customerName),
-        ...item.customerItems.map((e) => e.refCode),
-      ],
-    );
-  }
-
-  void applyFilters(List<FilterRow> filters) {
-    activeFilters.assignAll(filters);
-    fetchItems(clear: true);
-  }
-
-  void clearFilters() {
-    activeFilters.clear();
-    showImagesOnly.value = true;
-    searchQuery.value = '';
-    fetchItems(clear: true);
-  }
-
-  void setSort(String field, String order) {
-    if (!field.contains('`')) {
-      field = '`tabItem`.`$field`';
-    }
-    sortField.value = field;
-    sortOrder.value = order;
-    fetchItems(clear: true);
-  }
-
-  Future<void> fetchItems({bool isLoadMore = false, bool clear = false}) async {
-    if (isLoadMore) {
-      isFetchingMore.value = true;
-    } else {
-      isLoading.value = true;
-      if (clear) {
-        items.clear();
-        _currentPage = 0;
-        hasMore.value = true;
-      }
-    }
-
+  Future<void> _fetchItemsInternal({required bool isLoadMore}) async {
     try {
       final List<List<dynamic>> reportFilters = [];
-      final List<FilterRow> attributeFiltersToProcess = [];
+      final List<FrappeFilter> attributeFiltersToProcess = [];
 
-      // 1. Separate Filters (Standard vs Attribute)
       for (var filter in activeFilters) {
         if (filter.value.isEmpty) continue;
 
-        if (filter.fieldType == 'Attribute') {
-          if (filter.attributeName.isNotEmpty) {
+        if (filter.config.fieldtype == 'Attribute') {
+          if (filter.extras.containsKey('attributeName')) {
             attributeFiltersToProcess.add(filter);
           }
           continue;
         }
 
-        // --- UPDATE: Apply % wildcards for 'like' operator to ALL fields ---
         String val = filter.value;
-        if (filter.operator == 'like' && !val.contains('%')) {
-          val = '%$val%';
-        }
+        if (filter.operator == 'like' && !val.contains('%')) val = '%$val%';
 
-        // Apply filters to appropriate tables
-        if (filter.field == 'customer_name') {
-          reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, val]);
-        } else if (filter.field == 'ref_code') {
-          reportFilters.add(['Item Customer Detail', 'ref_code', filter.operator, val]);
+        if (filter.fieldname == 'customer_name' ||
+            filter.fieldname == 'ref_code') {
+          reportFilters.add([
+            'Item Customer Detail',
+            filter.fieldname,
+            filter.operator,
+            val,
+          ]);
         } else {
-          reportFilters.add(['Item', filter.field, filter.operator, val]);
+          reportFilters.add(['Item', filter.fieldname, filter.operator, val]);
         }
+      }
+
+      if (searchQuery.value.isNotEmpty) {
+        reportFilters.add([
+          'Item',
+          'item_code',
+          'like',
+          '%${searchQuery.value}%',
+        ]);
       }
 
       if (showImagesOnly.value) {
         reportFilters.add(['Item', 'image', '!=', '']);
       }
 
-      // 2. Process Attribute Filters (Intersection Logic)
       if (attributeFiltersToProcess.isNotEmpty) {
         Set<String>? commonItemCodes;
-        bool permissionErrorOccurred = false;
-
         for (var filter in attributeFiltersToProcess) {
+          final attrName = filter.extras['attributeName'] ?? '';
           try {
             final response = await _provider.getItemVariantsByAttribute(
-                filter.attributeName,
-                filter.value
+              attrName,
+              filter.value,
             );
-
             if (response.statusCode == 200 && response.data['data'] != null) {
               final List<String> fetchedCodes = (response.data['data'] as List)
                   .map((e) => e['parent'].toString())
                   .toList();
-
-              if (commonItemCodes == null) {
-                commonItemCodes = Set.from(fetchedCodes);
-              } else {
-                commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
-              }
+              commonItemCodes = commonItemCodes == null
+                  ? Set.from(fetchedCodes)
+                  : commonItemCodes.intersection(Set.from(fetchedCodes));
               if (commonItemCodes.isEmpty) break;
             }
           } catch (e) {
-            permissionErrorOccurred = true;
-            // Fallback: simple text search in description if exact match fails
-            reportFilters.add(['Item', 'description', 'like', '%${filter.value}%']);
+            reportFilters.add([
+              'Item',
+              'description',
+              'like',
+              '%${filter.value}%',
+            ]);
           }
         }
-
-        if (!permissionErrorOccurred) {
-          if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
+        if (commonItemCodes != null) {
+          if (commonItemCodes.isNotEmpty) {
             reportFilters.add(['Item', 'name', 'in', commonItemCodes.toList()]);
-          } else if (commonItemCodes != null && commonItemCodes.isEmpty) {
-            // No matches for attributes
-            items.clear();
-            isLoading.value = false;
+          } else {
             hasMore.value = false;
-            isFetchingMore.value = false;
             return;
           }
         }
       }
 
       final result = await _provider.getItems(
-        limit: _limit,
-        limitStart: _currentPage * _limit,
+        limit: pageSize,
+        limitStart: isLoadMore ? list.length : 0,
         filters: reportFilters,
-        orderBy: '${sortField.value} ${sortOrder.value}',
+        orderBy: orderBy, // FIX: Inherited Getter
       );
 
       final List<dynamic> data = result['data'] ?? [];
-      final newItems = data.map((json) => Item.fromJson(json)).toList();
+      final newMaps = data.map((e) => e as Map<String, dynamic>).toList();
 
-      if (newItems.length < _limit) {
-        hasMore.value = false;
-      }
+      if (newMaps.length < pageSize) hasMore.value = false;
 
       if (isLoadMore) {
-        items.addAll(newItems);
+        list.addAll(newMaps);
       } else {
-        items.value = newItems;
+        list.assignAll(newMaps);
       }
-      _currentPage++;
-
     } catch (e) {
       log('Error fetching items: $e');
-      String msg = e.toString().replaceAll('Exception:', '').trim();
-      if (msg.length > 150) msg = "${msg.substring(0, 150)}... (Check logs)";
-      GlobalSnackbar.error(message: msg);
-    } finally {
-      if (isLoadMore) {
-        isFetchingMore.value = false;
-      } else {
-        isLoading.value = false;
-      }
+      GlobalSnackbar.error(message: "Failed to load items");
     }
   }
 
-  // --- Reference Data Fetchers ---
-  Future<void> fetchItemGroups() async {
-    isLoadingGroups.value = true;
-    try {
-      final response = await _provider.getItemGroups();
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        itemGroups.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
-      }
-    } catch (e) {
-      print('Error fetching item groups: $e');
-    } finally {
-      isLoadingGroups.value = false;
-    }
-  }
+  // --- Helpers for Stock & Attributes ---
 
-  Future<void> fetchTemplateItems() async {
-    isLoadingTemplates.value = true;
-    try {
-      final response = await _provider.getTemplateItems();
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        templateItems.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
-      }
-    } catch (e) {
-      print('Error fetching template items: $e');
-    } finally {
-      isLoadingTemplates.value = false;
-    }
-  }
-
-  Future<void> fetchItemAttributes() async {
-    isLoadingAttributes.value = true;
-    try {
-      final response = await _provider.getItemAttributes();
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        itemAttributes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
-      }
-    } catch (e) {
-      print('Error fetching item attributes: $e');
-    } finally {
-      isLoadingAttributes.value = false;
-    }
-  }
-
-  Future<void> fetchAttributeValues(String attributeName) async {
-    isLoadingAttributeValues.value = true;
-    currentAttributeValues.clear();
-    try {
-      final response = await _provider.getItemAttributeDetails(attributeName);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        if (data['item_attribute_values'] != null) {
-          currentAttributeValues.value = (data['item_attribute_values'] as List).map((e) => e['attribute_value'] as String).toList();
-        }
-      }
-    } catch (e) {
-      print('Error fetching attribute values: $e');
-    } finally {
-      isLoadingAttributeValues.value = false;
-    }
-  }
-
-  List<WarehouseStock>? getStockFor(String itemCode) => _stockLevelsCache[itemCode];
+  List<WarehouseStock>? getStockFor(String itemCode) =>
+      _stockLevelsCache[itemCode];
 
   Future<void> fetchStockLevels(String itemCode) async {
     if (_stockLevelsCache.containsKey(itemCode)) return;
     isLoadingStock.value = true;
     try {
       final response = await _provider.getStockLevels(itemCode);
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+      if (response.statusCode == 200 &&
+          response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
+        _stockLevelsCache[itemCode] = data
+            .whereType<Map<String, dynamic>>()
+            .map((json) => WarehouseStock.fromJson(json))
+            .toList();
       }
     } catch (e) {
       print('Failed to fetch stock levels: $e');
@@ -413,6 +269,74 @@ class ItemController extends GetxController {
     } else {
       expandedItemName.value = name;
       fetchStockLevels(itemCode);
+    }
+  }
+
+  Future<void> fetchItemGroups() async {
+    isLoadingGroups.value = true;
+    try {
+      final response = await _provider.getItemGroups();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        itemGroups.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      /*...*/
+    } finally {
+      isLoadingGroups.value = false;
+    }
+  }
+
+  Future<void> fetchTemplateItems() async {
+    isLoadingTemplates.value = true;
+    try {
+      final response = await _provider.getTemplateItems();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        templateItems.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      /*...*/
+    } finally {
+      isLoadingTemplates.value = false;
+    }
+  }
+
+  Future<void> fetchItemAttributes() async {
+    isLoadingAttributes.value = true;
+    try {
+      final response = await _provider.getItemAttributes();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        itemAttributes.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      /*...*/
+    } finally {
+      isLoadingAttributes.value = false;
+    }
+  }
+
+  Future<void> fetchAttributeValues(String attributeName) async {
+    isLoadingAttributeValues.value = true;
+    currentAttributeValues.clear();
+    try {
+      final response = await _provider.getItemAttributeDetails(attributeName);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        if (data['item_attribute_values'] != null) {
+          currentAttributeValues.value = (data['item_attribute_values'] as List)
+              .map((e) => e['attribute_value'] as String)
+              .toList();
+        }
+      }
+    } catch (e) {
+      /*...*/
+    } finally {
+      isLoadingAttributeValues.value = false;
     }
   }
 }

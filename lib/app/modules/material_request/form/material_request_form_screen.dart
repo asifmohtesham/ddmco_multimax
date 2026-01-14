@@ -1,179 +1,181 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
-import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
-import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/widgets/frappe_field_factory.dart';
+import 'package:multimax/models/frappe_field_config.dart';
+import 'package:multimax/theme/frappe_theme.dart';
+import 'package:multimax/widgets/frappe_form_layout.dart'; // Import Standard Layout
 
 class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   const MaterialRequestFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    return Obx(() {
+      final isReadOnly = controller.docstatus > 0;
+      final isNew = controller.data.isEmpty && controller.name == 'New Request';
 
-    return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(controller.materialRequest.value?.name ?? 'New Request',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                if (controller.materialRequest.value?.status != null)
-                  StatusPill(status: controller.materialRequest.value!.status),
-              ],
-            ),
-            actions: [
-              if (controller.materialRequest.value?.docstatus == 0)
-                Obx(() => controller.isSaving.value
-                    ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.0),
-                  child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white,)
-                  ),
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.save),
-                  // Disable button if form is not dirty
-                  onPressed: controller.isDirty.value ? controller.saveMaterialRequest : null,
-                )
-                )
-            ],
-            bottom: const TabBar(
-              tabs: [
-                Tab(text: 'Details'),
-                Tab(text: 'Items'),
-              ],
-            ),
-          ),
-          body: controller.isLoading.value
-              ? const Center(child: CircularProgressIndicator())
-              : TabBarView(
+      return FrappeFormLayout(
+        title: controller.name,
+        // Show loader only if we are loading existing data and it's empty
+        isLoading: controller.data.isEmpty && !isNew,
+        // Hide Save button if document is submitted (Read Only)
+        onSave: isReadOnly ? null : controller.save,
+
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(FrappeTheme.spacing),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDetailsTab(context),
-              _buildItemsTab(context),
+              // --- 1. Header & Details ---
+              _buildSection("Details", [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        controller.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    StatusPill(status: controller.status),
+                  ],
+                ),
+                const Divider(height: 24),
+
+                FrappeFieldFactory(
+                  config: FrappeFieldConfig(
+                    label: "Type",
+                    fieldname: "material_request_type",
+                    fieldtype: "Select",
+                    options: [
+                      'Purchase',
+                      'Material Transfer',
+                      'Material Issue',
+                      'Manufacture',
+                      'Customer Provided',
+                    ],
+                    reqd: true,
+                    readOnly: isReadOnly,
+                  ),
+                  controller: controller,
+                ),
+                FrappeFieldFactory(
+                  config: FrappeFieldConfig(
+                    label: "Required By",
+                    fieldname: "schedule_date",
+                    fieldtype: "Date",
+                    reqd: true,
+                    readOnly: isReadOnly,
+                  ),
+                  controller: controller,
+                ),
+                FrappeFieldFactory(
+                  config: FrappeFieldConfig(
+                    label: "Target Warehouse",
+                    fieldname: "set_warehouse",
+                    fieldtype: "Link",
+                    optionsLink: "Warehouse",
+                    readOnly: isReadOnly,
+                  ),
+                  controller: controller,
+                ),
+              ]),
+              const SizedBox(height: 16),
+
+              // --- 2. ITEMS TABLE ---
+              _buildSection("Items", [
+                FrappeFieldFactory(
+                  config: FrappeFieldConfig(
+                    label: "Requested Items",
+                    fieldname: "items",
+                    fieldtype: "Table",
+                    readOnly: isReadOnly,
+                    childFields: [
+                      // List View Columns
+                      FrappeFieldConfig(
+                        label: "Item Code",
+                        fieldname: "item_code",
+                        fieldtype: "Link",
+                        optionsLink: "Item",
+                        reqd: true,
+                        inListView: true,
+                      ),
+                      FrappeFieldConfig(
+                        label: "Qty",
+                        fieldname: "qty",
+                        fieldtype: "Float",
+                        reqd: true,
+                        inListView: true,
+                      ),
+
+                      // Detail View Columns
+                      FrappeFieldConfig(
+                        label: "Required By",
+                        fieldname: "schedule_date",
+                        fieldtype: "Date",
+                      ),
+                      FrappeFieldConfig(
+                        label: "Warehouse",
+                        fieldname: "warehouse",
+                        fieldtype: "Link",
+                        optionsLink: "Warehouse",
+                      ),
+                      FrappeFieldConfig(
+                        label: "UOM",
+                        fieldname: "uom",
+                        fieldtype: "Link",
+                        optionsLink: "UOM",
+                      ),
+                      FrappeFieldConfig(
+                        label: "Description",
+                        fieldname: "description",
+                        fieldtype: "Small Text",
+                      ),
+                    ],
+                  ),
+                  controller: controller,
+                ),
+              ]),
+
+              const SizedBox(height: 80), // Bottom padding for sticky button
             ],
           ),
         ),
-      ),
-    ));
+      );
+    });
   }
 
-  Widget _buildDetailsTab(BuildContext context) {
-    final entry = controller.materialRequest.value;
-    final isEditable = entry?.docstatus == 0;
-
-    return SingleChildScrollView(
+  Widget _buildSection(String title, List<Widget> children) {
+    return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(FrappeTheme.radius),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Type Selector
-          DropdownButtonFormField<String>(
-            value: controller.selectedType.value,
-            decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
-            items: controller.requestTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-            onChanged: isEditable ? controller.onTypeChanged : null,
-          ),
-          const SizedBox(height: 16),
-
-          // Warehouse Field (Searchable Dropdown)
-          GestureDetector(
-            onTap: isEditable ? () => controller.showWarehousePicker(forItem: false) : null,
-            child: AbsorbPointer(
-              child: TextField(
-                controller: controller.setWarehouseController,
-                decoration: const InputDecoration(
-                  labelText: 'Target Warehouse',
-                  prefixIcon: Icon(Icons.warehouse_outlined),
-                  suffixIcon: Icon(Icons.arrow_drop_down),
-                  border: OutlineInputBorder(),
-                  hintText: 'Select Warehouse',
-                ),
-              ),
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: FrappeTheme.textLabel,
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Dates
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller.transactionDateController,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Date',
-                      prefixIcon: Icon(Icons.calendar_today),
-                      border: OutlineInputBorder()
-                  ),
-                  onTap: () => controller.setDate(controller.transactionDateController),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: TextField(
-                  controller: controller.scheduleDateController,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Required By',
-                      prefixIcon: Icon(Icons.event),
-                      border: OutlineInputBorder()
-                  ),
-                  onTap: () => controller.setDate(controller.scheduleDateController),
-                ),
-              ),
-            ],
-          ),
+          const Divider(height: 24),
+          ...children,
         ],
       ),
-    );
-  }
-
-  Widget _buildItemsTab(BuildContext context) {
-    final items = controller.materialRequest.value?.items ?? [];
-    final isEditable = controller.materialRequest.value?.docstatus == 0;
-
-    return Stack(
-      children: [
-        ListView.separated(
-          padding: const EdgeInsets.only(bottom: 100, top: 8),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 4),
-          itemBuilder: (ctx, i) => MaterialRequestItemCard(
-            item: items[i],
-            onTap: isEditable ? () => controller.openItemSheet(item: items[i]) : null,
-            onDelete: (isEditable && items.length > 1)
-                ? () => controller.deleteItem(items[i])
-                : null,
-          ),
-        ),
-        if (isEditable)
-          Positioned(
-            left: 0, right: 0, bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.only(bottom: 0),
-              color: Colors.white,
-              child: BarcodeInputWidget(
-                controller: controller.barcodeController,
-                onScan: controller.scanBarcode,
-                activeRoute: AppRoutes.MATERIAL_REQUEST_FORM,
-                hintText: 'Scan Item to Add...',
-                isLoading: controller.isScanning.value,
-              ),
-            ),
-          )
-      ],
     );
   }
 }
