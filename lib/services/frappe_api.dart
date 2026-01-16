@@ -98,6 +98,20 @@ class FrappeApiService {
     }
   }
 
+  // FIX: Added method to fetch DocType Metadata
+  Future<Map<String, dynamic>> getDocType(String doctype) async {
+    try {
+      final dio = await _client;
+      // Fetching the DocType definition itself
+      final response = await dio.get('/api/resource/DocType/$doctype');
+      _checkResponse(response);
+      return response.data['data'];
+    } catch (e) {
+      debugPrint("Failed to fetch metadata for $doctype: $e");
+      return {};
+    }
+  }
+
   Future<void> saveDoc(String doctype, Map<String, dynamic> data) async {
     try {
       final dio = await _client;

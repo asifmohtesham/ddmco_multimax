@@ -11,7 +11,10 @@ class FrappeFormLayout extends StatelessWidget {
   final VoidCallback? onSave;
   final String saveLabel;
   final List<Widget>? actions;
-  final PreferredSizeWidget? appBarBottom; // For TabBar support
+  final PreferredSizeWidget? appBarBottom;
+
+  // FIX: Added formKey support
+  final GlobalKey<FormState>? formKey;
 
   const FrappeFormLayout({
     super.key,
@@ -23,10 +26,17 @@ class FrappeFormLayout extends StatelessWidget {
     this.saveLabel = 'Save',
     this.actions,
     this.appBarBottom,
+    this.formKey,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Wrap body in Form if key is provided
+    Widget content = body;
+    if (formKey != null) {
+      content = Form(key: formKey, child: body);
+    }
+
     return Scaffold(
       backgroundColor: FrappeTheme.surface,
       appBar: MainAppBar(
@@ -42,9 +52,8 @@ class FrappeFormLayout extends StatelessWidget {
           ? const Center(
               child: CircularProgressIndicator(color: FrappeTheme.primary),
             )
-          : body,
+          : content,
 
-      // THE GLOBAL FIX:
       bottomNavigationBar: onSave != null ? _buildStickyFooter(context) : null,
     );
   }
@@ -55,7 +64,7 @@ class FrappeFormLayout extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
