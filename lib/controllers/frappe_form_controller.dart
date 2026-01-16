@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/frappe_api.dart';
 import '../widgets/frappe_error_dialog.dart';
+import '../models/frappe_field_config.dart';
+import '../models/frappe_form_layout_model.dart';
 
 class FrappeFormController extends GetxController {
   final FrappeApiService _api = FrappeApiService();
   final RxMap<String, dynamic> data = <String, dynamic>{}.obs;
   final String doctype;
 
-  // New: Metadata handling
+  // RAW Metadata
   final RxList<Map<String, dynamic>> _metaFields = <Map<String, dynamic>>[].obs;
+
+  // PARSED Layout for UI
+  final RxList<FrappeFormSection> layoutSections = <FrappeFormSection>[].obs;
+  final RxBool isMetaLoading = true.obs;
+
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
   FrappeFormController({required this.doctype});
@@ -26,18 +33,97 @@ class FrappeFormController extends GetxController {
 
   // Fetch DocType definition to know mandatory fields
   Future<void> _fetchMetaData() async {
+    isMetaLoading.value = true;
     try {
       final docTypeDef = await _api.getDocType(doctype);
       if (docTypeDef['fields'] != null) {
-        _metaFields.assignAll(
-          List<Map<String, dynamic>>.from(docTypeDef['fields']),
-        );
+        final rawFields = List<Map<String, dynamic>>.from(docTypeDef['fields']);
+        _metaFields.assignAll(rawFields);
+        _parseLayout(rawFields);
       }
     } catch (e) {
       debugPrint("Warning: Could not fetch metadata for $doctype validation.");
+    } finally {
+      isMetaLoading.value = false;
     }
   }
 
+  void _parseLayout(List<Map<String, dynamic>> rawFields) {
+    List<FrappeFormSection> sections = [];
+    List<FrappeFieldConfig> currentFields = [];
+    String currentSectionLabel = "Details";
+    bool currentSectionCollapsible = false;
+
+    for (var f in rawFields) {
+      final String fieldtype = f['fieldtype'] ?? 'Data';
+      final String label = f['label'] ?? '';
+      final String fieldname = f['fieldname'] ?? '';
+      final bool hidden = (f['hidden'] == 1);
+      final bool readOnly = (f['read_only'] == 1);
+
+      // SKIP: formatting fields that don't render content
+      if (hidden) continue;
+      if (['Column Break'].contains(fieldtype)) continue;
+
+      // SECTION BREAK: Close current section and start new one
+      if (fieldtype == 'Section Break') {
+        if (currentFields.isNotEmpty) {
+          sections.add(
+            FrappeFormSection(
+              label: currentSectionLabel,
+              isCollapsible: currentSectionCollapsible,
+              fields: List.from(currentFields),
+            ),
+          );
+        }
+        currentFields = [];
+        currentSectionLabel = label;
+        currentSectionCollapsible = (f['collapsible'] == 1);
+        continue;
+      }
+
+      // STANDARD FIELDS: Map to Config
+      List<String>? optionsList;
+      String? optionsLink;
+
+      // Handle Options
+      if (fieldtype == 'Select' && f['options'] != null) {
+        optionsList = f['options'].toString().split('\n');
+      } else if (['Link', 'Dynamic Link'].contains(fieldtype)) {
+        optionsLink = f['options']; // Target DocType
+      }
+
+      final config = FrappeFieldConfig(
+        label: label,
+        fieldname: fieldname,
+        fieldtype: fieldtype,
+        reqd: (f['reqd'] == 1),
+        readOnly: readOnly,
+        hidden: hidden,
+        options: optionsList,
+        optionsLink: optionsLink,
+        // Tables require fetching child meta, complex logic omitted for brevity
+        // We will just render them as basic tables if configured manually or skipping auto-render for now
+      );
+
+      currentFields.add(config);
+    }
+
+    // Add final section
+    if (currentFields.isNotEmpty) {
+      sections.add(
+        FrappeFormSection(
+          label: currentSectionLabel,
+          isCollapsible: currentSectionCollapsible,
+          fields: currentFields,
+        ),
+      );
+    }
+
+    layoutSections.assignAll(sections);
+  }
+
+  // ... (rest of initialise, setValue, getValue, load, save methods remain identical)
   void initialise(Map<String, dynamic>? initialData) {
     if (initialData != null) {
       data.assignAll(initialData);
