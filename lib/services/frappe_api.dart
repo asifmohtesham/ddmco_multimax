@@ -58,10 +58,8 @@ class FrappeApiService {
         baseUrl: _baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
-        // Validate status must be lenient to allow us to parse 417 errors manually
-        validateStatus: (status) {
-          return status != null && status < 500;
-        },
+        validateStatus: (status) => true,
+        // Let us handle all statuses manually
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -107,7 +105,6 @@ class FrappeApiService {
       _checkResponse(response);
       return response.data['data'];
     } catch (e) {
-      debugPrint("Failed to fetch metadata for $doctype: $e");
       return {};
     }
   }
@@ -149,20 +146,17 @@ class FrappeApiService {
       List results = [];
 
       if (data is Map) {
-        if (data['results'] != null) {
+        if (data['results'] != null)
           results = data['results'];
-        } else if (data['message'] != null) {
+        else if (data['message'] != null)
           results = data['message'];
-        }
       } else if (data is List) {
         results = data;
       }
 
       return results
           .map<String>((e) {
-            if (e is Map) {
-              return (e['value'] ?? e['name'] ?? '').toString();
-            }
+            if (e is Map) return (e['value'] ?? e['name'] ?? '').toString();
             return e.toString();
           })
           .where((s) => s.isNotEmpty)
@@ -225,6 +219,7 @@ class FrappeApiService {
         requestOptions: response.requestOptions,
         response: response,
         type: DioExceptionType.badResponse,
+        message: 'Request failed with status ${response.statusCode}',
       );
     }
   }
@@ -235,12 +230,12 @@ class FrappeApiService {
       final response = e.response!;
       final data = response.data;
 
-      // 1. Try extracting Frappe Server Messages (JSON String Array)
+      // 1. Frappe Server Messages (JSON Strings)
       if (data is Map && data.containsKey('_server_messages')) {
         try {
           final messages = jsonDecode(data['_server_messages']);
           if (messages is List && messages.isNotEmpty) {
-            final cleanMsg = messages
+            final htmlMessages = messages
                 .map((m) {
                   try {
                     final inner = jsonDecode(m);
@@ -249,37 +244,42 @@ class FrappeApiService {
                     return m.toString();
                   }
                 })
-                .join('\n');
+                .join('<br><br>'); // Join with HTML break
 
-            // Throw just the clean message
-            throw Exception(cleanMsg);
+            throw Exception(htmlMessages);
           }
         } catch (_) {}
       }
 
-      // 2. Try extracting Exception Traceback
+      // 2. Exception Traceback
       if (data is Map && data.containsKey('exception')) {
-        final exc = data['exception'].toString();
-        // Remove Python class path if possible (e.g. frappe.exceptions.ValidationError: Message)
+        String exc = data['exception'].toString();
+        // Return mostly clean message, but preserve format
         final parts = exc.split(':');
-        if (parts.length > 1) {
-          throw Exception(parts.sublist(1).join(':').trim());
-        }
+        if (parts.length > 1) exc = parts.sublist(1).join(':').trim();
         throw Exception(exc);
       }
 
-      // 3. Fallback to Status Codes
+      // 3. Raw HTML Response (often 417/500/404)
+      if (data is String && data.trim().startsWith('<')) {
+        // If it's a full HTML page, just throw it to be rendered by HtmlWidget
+        throw Exception(data);
+      }
+
+      // 4. Standard Status Codes
       final code = response.statusCode;
       if (code == 417)
         throw Exception(
-          "Validation Error: Please check required fields or stock availability.",
+          "<b>Validation Error</b><br>Please check mandatory fields or stock levels.",
         );
       if (code == 403)
-        throw Exception("Access Denied: You don't have permission.");
-      if (code == 404) throw Exception("Not Found: Resource doesn't exist.");
-      if (code == 401) throw Exception("Session Expired: Please login again.");
-      if (code == 409)
-        throw Exception("Duplicate Entry: Record already exists.");
+        throw Exception(
+          "<b>Access Denied</b><br>You do not have permission to access this resource.",
+        );
+      if (code == 404)
+        throw Exception("<b>Not Found</b><br>The document could not be found.");
+      if (code == 401)
+        throw Exception("<b>Session Expired</b><br>Please log in again.");
 
       throw Exception('API Error $code: ${response.statusMessage}');
     }

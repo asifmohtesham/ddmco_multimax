@@ -54,6 +54,7 @@ dependencies:
   package_info_plus: ^8.0.0
   sqflite_common_ffi:
   printing: any
+  flutter_widget_from_html: ^0.10.0
 
 dev_dependencies:
   flutter_test:

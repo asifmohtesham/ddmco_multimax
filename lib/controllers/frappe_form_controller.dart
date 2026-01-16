@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart'; // Changed from foundation to material for FormKey
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/frappe_api.dart';
+import '../widgets/frappe_error_dialog.dart'; // Import the new dialog
 
 class FrappeFormController extends GetxController {
   final FrappeApiService _api = FrappeApiService();
@@ -62,38 +63,31 @@ class FrappeFormController extends GetxController {
       data.assignAll(docData);
     } catch (e) {
       debugPrint("❌ Error loading $doctype $docName: $e");
-      Get.snackbar(
-        "Error",
-        e.toString().replaceAll('Exception:', ''),
-        backgroundColor: Get.theme.colorScheme.error.withOpacity(0.1),
-        colorText: Get.theme.colorScheme.error,
-        duration: const Duration(seconds: 4),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Use Dialog for load errors too if they are critical
+      FrappeErrorDialog.show(title: "Load Failed", error: e);
     }
   }
 
   Future<void> save() async {
-    // 1. UI Validation (if Form widget is used)
+    // 1. Client-Side Validation
     if (formKey.currentState != null && !formKey.currentState!.validate()) {
       Get.snackbar(
         "Validation Error",
         "Please check the form for errors.",
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.1),
+        backgroundColor: Colors.red.withValues(alpha: 0.1),
         colorText: Colors.red,
       );
       return;
     }
 
-    // 2. Metadata Validation (Universal Safety Net)
+    // 2. Metadata Validation
     if (_metaFields.isNotEmpty) {
       for (var field in _metaFields) {
         // Check if required (reqd == 1) and not read_only (read_only != 1)
         if ((field['reqd'] == 1) && (field['read_only'] != 1)) {
           final key = field['fieldname'];
           final label = field['label'] ?? key;
-
           final val = data[key];
 
           // Check for empty values
@@ -104,7 +98,7 @@ class FrappeFormController extends GetxController {
               "Missing Field",
               "$label is required.",
               snackPosition: SnackPosition.BOTTOM,
-              backgroundColor: Colors.orange.withOpacity(0.1),
+              backgroundColor: Colors.orange.withValues(alpha: 0.1),
               colorText: Colors.deepOrange,
             );
             return;
@@ -113,6 +107,7 @@ class FrappeFormController extends GetxController {
       }
     }
 
+    // 3. API Save
     try {
       await _api.saveDoc(doctype, data);
       Get.snackbar(
@@ -122,12 +117,8 @@ class FrappeFormController extends GetxController {
       );
     } catch (e) {
       debugPrint("❌ Save Error: $e");
-      Get.snackbar(
-        "Error",
-        "${e.toString().replaceAll('Exception:', '')}",
-        backgroundColor: Get.theme.colorScheme.error.withOpacity(0.1),
-        colorText: Get.theme.colorScheme.error,
-      );
+      // FIX: Use the new Error Dialog for readable HTML errors
+      FrappeErrorDialog.show(title: "Save Failed", error: e);
     }
   }
 
