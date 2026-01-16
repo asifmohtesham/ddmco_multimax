@@ -338,10 +338,10 @@ class HomeController extends GetxController {
           backgroundColor: Colors.transparent,
         );
       } else {
-        GlobalSnackbar.error(title: 'Not Found', message: result.message ?? 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
-      GlobalSnackbar.error(title: 'Scan Error', message: '$e');
+      GlobalSnackbar.error(message: '$e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();
@@ -389,7 +389,7 @@ class HomeController extends GetxController {
         }).toList();
 
         if (rackItems.isEmpty) {
-          GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
+          GlobalSnackbar.info(message: 'No items found in rack $rackCode');
         } else {
           // Open the updated RackContentsSheet
           Get.bottomSheet(

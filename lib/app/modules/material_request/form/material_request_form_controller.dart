@@ -26,7 +26,7 @@ class MaterialRequestFormController extends FrappeFormController {
     final now = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     // Initialize default values to trigger UI rendering
-    initialize({
+    initialise({
       'naming_series': 'MAT-REQ-.YYYY.-',
       'material_request_type': 'Material Transfer',
       'transaction_date': now,

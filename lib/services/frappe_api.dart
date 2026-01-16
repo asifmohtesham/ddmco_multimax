@@ -59,7 +59,7 @@ class FrappeApiService {
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
         validateStatus: (status) => true,
-        // Let us handle all statuses manually
+        // We handle status codes manually in _checkResponse
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -96,7 +96,6 @@ class FrappeApiService {
     }
   }
 
-  // FIX: Added method to fetch DocType Metadata
   Future<Map<String, dynamic>> getDocType(String doctype) async {
     try {
       final dio = await _client;
@@ -106,6 +105,37 @@ class FrappeApiService {
       return response.data['data'];
     } catch (e) {
       return {};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getList({
+    required String doctype,
+    List<String>? fields,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+    int limit = 20,
+    int limitStart = 0,
+  }) async {
+    try {
+      final dio = await _client;
+      final response = await dio.get(
+        '/api/resource/$doctype',
+        queryParameters: {
+          'fields': jsonEncode(fields ?? ["name", "status", "modified"]),
+          'filters': jsonEncode(filters ?? {}),
+          'order_by': orderBy,
+          'limit': limit,
+          'limit_start': limitStart,
+        },
+      );
+      _checkResponse(response);
+      if (response.data['data'] != null) {
+        return List<Map<String, dynamic>>.from(response.data['data']);
+      }
+      return [];
+    } catch (e) {
+      _handleError(e);
+      rethrow;
     }
   }
 
@@ -134,6 +164,21 @@ class FrappeApiService {
     }
   }
 
+  Future<dynamic> callMethod(
+    String method, {
+    Map<String, dynamic>? args,
+  }) async {
+    try {
+      final dio = await _client;
+      final response = await dio.post('/api/method/$method', data: args);
+      _checkResponse(response);
+      return response.data['message'];
+    } catch (e) {
+      _handleError(e);
+      rethrow;
+    }
+  }
+
   Future<List<String>> searchLink(String doctype, String txt) async {
     try {
       final dio = await _client;
@@ -141,18 +186,15 @@ class FrappeApiService {
         '/api/method/frappe.desk.search.search_link',
         data: {'doctype': doctype, 'txt': txt, 'page_length': 20},
       );
-
       final data = response.data;
       List results = [];
-
       if (data is Map) {
         if (data['results'] != null)
           results = data['results'];
         else if (data['message'] != null)
           results = data['message'];
-      } else if (data is List) {
+      } else if (data is List)
         results = data;
-      }
 
       return results
           .map<String>((e) {
@@ -163,39 +205,6 @@ class FrappeApiService {
           .toList();
     } catch (e) {
       return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getList({
-    required String doctype,
-    List<String>? fields,
-    Map<String, dynamic>? filters,
-    String orderBy = 'modified desc',
-    int limit = 20,
-    int limitStart = 0,
-  }) async {
-    try {
-      final dio = await _client;
-      final response = await dio.get(
-        '/api/resource/$doctype',
-        queryParameters: {
-          'fields': jsonEncode(fields ?? ["name", "status", "modified"]),
-          'filters': jsonEncode(filters ?? {}),
-          'order_by': orderBy,
-          'limit': limit,
-          'limit_start': limitStart,
-        },
-      );
-
-      _checkResponse(response);
-
-      if (response.data['data'] != null) {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      _handleError(e);
-      rethrow;
     }
   }
 
@@ -229,8 +238,11 @@ class FrappeApiService {
     if (e is DioException && e.response != null) {
       final response = e.response!;
       final data = response.data;
+      final int code = response.statusCode ?? 500;
 
-      // 1. Frappe Server Messages (JSON Strings)
+      debugPrint("RAW API ERROR ($code): $data");
+
+      // 1. Frappe _server_messages (JSON Array of Strings)
       if (data is Map && data.containsKey('_server_messages')) {
         try {
           final messages = jsonDecode(data['_server_messages']);
@@ -244,7 +256,7 @@ class FrappeApiService {
                     return m.toString();
                   }
                 })
-                .join('<br><br>'); // Join with HTML break
+                .join('<br><br>');
 
             throw Exception(htmlMessages);
           }
@@ -256,34 +268,36 @@ class FrappeApiService {
         String exc = data['exception'].toString();
         // Return mostly clean message, but preserve format
         final parts = exc.split(':');
+        // Clean "frappe.exceptions.ValidationError: Message" -> "Message"
         if (parts.length > 1) exc = parts.sublist(1).join(':').trim();
-        throw Exception(exc);
+        throw Exception("<b>Server Error</b><br>$exc");
       }
 
-      // 3. Raw HTML Response (often 417/500/404)
+      // 3. Raw HTML Response (Server 500/404/417 Pages)
       if (data is String && data.trim().startsWith('<')) {
-        // If it's a full HTML page, just throw it to be rendered by HtmlWidget
+        // Just throw the raw HTML, our ErrorDialog will render it
         throw Exception(data);
       }
 
-      // 4. Standard Status Codes
-      final code = response.statusCode;
-      if (code == 417)
-        throw Exception(
-          "<b>Validation Error</b><br>Please check mandatory fields or stock levels.",
-        );
-      if (code == 403)
-        throw Exception(
-          "<b>Access Denied</b><br>You do not have permission to access this resource.",
-        );
-      if (code == 404)
-        throw Exception("<b>Not Found</b><br>The document could not be found.");
-      if (code == 401)
+      // 4. Fallback for unparsed data (e.g. unexpected JSON structure)
+      if (data != null && data is Map) {
+        // Dump JSON contents if nothing else matched
+        throw Exception("<b>Error ($code)</b><br>${jsonEncode(data)}");
+      }
+
+      // 5. Generic HTTP Status
+      if (code == 403) {
+        throw Exception("<b>Access Denied</b><br>You do not have permission.");
+      }
+      if (code == 404) {
+        throw Exception("<b>Not Found</b><br>Resource does not exist.");
+      }
+      if (code == 401) {
         throw Exception("<b>Session Expired</b><br>Please log in again.");
+      }
 
       throw Exception('API Error $code: ${response.statusMessage}');
     }
-
     throw Exception(e.toString().replaceAll("Exception:", "").trim());
   }
 }

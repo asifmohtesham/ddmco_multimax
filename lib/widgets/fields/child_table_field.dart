@@ -129,7 +129,7 @@ class FrappeChildTableField extends StatelessWidget {
 
     // Create temporary controller
     final rowController = Get.put(FrappeFormController(doctype: "Child Row"), tag: rowControllerTag);
-    rowController.initialize(rowData);
+    rowController.initialise(rowData);
 
     showModalBottomSheet(
       context: context,

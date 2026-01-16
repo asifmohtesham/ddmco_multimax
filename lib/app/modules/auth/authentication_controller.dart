@@ -121,7 +121,6 @@ class AuthenticationController extends GetxController {
     fetchUserDetails().then((_) {
       Get.offAllNamed(AppRoutes.HOME);
       GlobalSnackbar.success(
-        title: 'Login Successful',
         message: 'Welcome back, ${currentUser.value?.name ?? user.name}!',
       );
     });
@@ -147,7 +146,7 @@ class AuthenticationController extends GetxController {
                 await _clearSessionAndLocalData();
                 Get.offAllNamed(AppRoutes.LOGIN);
               } catch (e) {
-                GlobalSnackbar.error(title: 'Logout Error', message: 'Could not log out.');
+                GlobalSnackbar.error(message: 'Could not log out.');
               } finally {
                 isLoading.value = false;
               }

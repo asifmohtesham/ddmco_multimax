@@ -12,6 +12,9 @@ class FrappeFormController extends GetxController {
   final RxList<Map<String, dynamic>> _metaFields = <Map<String, dynamic>>[].obs;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
+  // FIX: Expose API to subclasses
+  FrappeApiService get api => _api;
+
   FrappeFormController({required this.doctype});
 
   @override
@@ -35,7 +38,7 @@ class FrappeFormController extends GetxController {
     }
   }
 
-  void initialize(Map<String, dynamic>? initialData) {
+  void initialise(Map<String, dynamic>? initialData) {
     if (initialData != null) {
       data.assignAll(initialData);
     }

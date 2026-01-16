@@ -331,10 +331,10 @@ class ApiProvider {
       final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password});
       return response;
     } on DioException catch (e) {
-      GlobalSnackbar.error(title: 'Login Error', message: e.message ?? 'An unknown error occurred');
+      GlobalSnackbar.error(message: e.message ?? 'An unknown error occurred');
       rethrow;
     } catch (e) {
-      GlobalSnackbar.error(title: 'Login Error', message: 'An unexpected error occurred: $e');
+      GlobalSnackbar.error(message: 'An unexpected error occurred: $e');
       rethrow;
     }
   }

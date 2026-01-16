@@ -77,7 +77,7 @@ class LoginController extends GetxController {
 
       if (response.statusCode == 200) {
         await _confirmAndSave(url);
-        GlobalSnackbar.success(title: 'Connected', message: 'Successfully connected to $url');
+        GlobalSnackbar.success(message: 'Successfully connected to $url');
         // Disable guide if successful
         showServerGuide.value = false;
       } else {
@@ -95,7 +95,7 @@ class LoginController extends GetxController {
         onConfirm: () async {
           Get.back();
           await _confirmAndSave(url);
-          GlobalSnackbar.success(title: 'Saved', message: 'Server URL saved (Validation skipped)');
+          GlobalSnackbar.success(message: 'Server URL saved (Validation skipped)');
           showServerGuide.value = false;
         },
       );
@@ -177,12 +177,12 @@ class LoginController extends GetxController {
             _authController.processSuccessfulLogin(user);
           }
         } else if (response.statusCode == 401 || response.statusCode == 403) {
-          GlobalSnackbar.error(title: 'Login Failed', message: response.data?['message'] ?? 'Invalid credentials.');
+          GlobalSnackbar.error(message: response.data?['message'] ?? 'Invalid credentials.');
         } else {
-          GlobalSnackbar.error(title: 'Login Error', message: response.data?['message'] ?? 'An unknown error occurred.');
+          GlobalSnackbar.error(message: response.data?['message'] ?? 'An unknown error occurred.');
         }
       } catch (e) {
-        GlobalSnackbar.error(title: 'Login Error', message: 'An unexpected error occurred.');
+        GlobalSnackbar.error(message: 'An unexpected error occurred.');
       } finally {
         isLoading.value = false;
       }

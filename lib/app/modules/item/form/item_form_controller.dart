@@ -51,7 +51,7 @@ class ItemFormController extends FrappeFormController {
   void _initNewItem() {
     // Populate data with defaults so the UI renders
     print("Initializing New Item...");
-    initialize({
+    initialise({
       'docstatus': 0,
       'item_code': '',
       'item_name': '',

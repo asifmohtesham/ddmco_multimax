@@ -35,7 +35,7 @@ class HomeScreen extends GetView<HomeController> {
             icon: const Icon(Icons.notifications_outlined),
             tooltip: 'Notifications',
             onPressed: () {
-              GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
+              GlobalSnackbar.info(message: 'No new notifications');
             },
           ),
         ],

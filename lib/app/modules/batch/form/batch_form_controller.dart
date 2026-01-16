@@ -27,7 +27,7 @@ class BatchFormController extends FrappeFormController {
           load(name);
         } else if (args['itemCode'] != null) {
           // Pre-fill item if creating new
-          initialize({'item': args['itemCode']});
+          initialise({'item': args['itemCode']});
         }
       }
     }

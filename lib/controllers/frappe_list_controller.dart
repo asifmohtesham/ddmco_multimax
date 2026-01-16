@@ -10,8 +10,12 @@ abstract class FrappeListController extends GetxController {
 
   // --- Abstract Config ---
   String get doctype;
-  List<FrappeFilterField> get filterableFields; // Must override this
+
+  List<FrappeFilterField> get filterableFields;
+
   List<String> get defaultFields => ['name', 'modified', 'docstatus'];
+
+  int get pageSize => 20;
 
   // --- State ---
   final RxList<Map<String, dynamic>> list = <Map<String, dynamic>>[].obs;
@@ -29,7 +33,15 @@ abstract class FrappeListController extends GetxController {
   final RxList<FrappeFilter> activeFilters = <FrappeFilter>[].obs;
   final RxString searchQuery = ''.obs;
 
-  final List<String> availableOperators = ['like', '=', '!=', '>', '<', '>=', '<='];
+  final List<String> availableOperators = [
+    'like',
+    '=',
+    '!=',
+    '>',
+    '<',
+    '>=',
+    '<=',
+  ];
 
   int _start = 0;
   Worker? _debounceWorker;
@@ -37,7 +49,11 @@ abstract class FrappeListController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _debounceWorker = debounce(searchQuery, (q) => refreshList(), time: const Duration(milliseconds: 500));
+    _debounceWorker = debounce(
+      searchQuery,
+      (q) => refreshList(),
+      time: const Duration(milliseconds: 500),
+    );
     refreshList();
   }
 
@@ -96,15 +112,17 @@ abstract class FrappeListController extends GetxController {
     try {
       final filters = _buildApiFilters();
 
-      final results = await api.getList(
+      // Explicitly List<Map...>
+      final List<Map<String, dynamic>> results = await api.getList(
         doctype: doctype,
         fields: defaultFields,
         filters: filters,
-        orderBy: '${sortField.value} ${sortOrder.value}',
+        orderBy: orderBy,
         limitStart: _start,
+        limit: pageSize,
       );
 
-      if (results.length < 20) hasMore.value = false;
+      if (results.length < pageSize) hasMore.value = false;
 
       _start += results.length;
       list.addAll(results);
