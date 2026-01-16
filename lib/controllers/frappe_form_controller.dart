@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/frappe_api.dart';
-import '../widgets/frappe_error_dialog.dart'; // Import the new dialog
+import '../widgets/frappe_error_dialog.dart';
 
 class FrappeFormController extends GetxController {
   final FrappeApiService _api = FrappeApiService();
@@ -12,10 +12,10 @@ class FrappeFormController extends GetxController {
   final RxList<Map<String, dynamic>> _metaFields = <Map<String, dynamic>>[].obs;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  // FIX: Expose API to subclasses
-  FrappeApiService get api => _api;
-
   FrappeFormController({required this.doctype});
+
+  // Expose API to subclasses
+  FrappeApiService get api => _api;
 
   @override
   void onInit() {
@@ -24,7 +24,7 @@ class FrappeFormController extends GetxController {
     _fetchMetaData();
   }
 
-  // FIX: Fetch DocType definition to know mandatory fields
+  // Fetch DocType definition to know mandatory fields
   Future<void> _fetchMetaData() async {
     try {
       final docTypeDef = await _api.getDocType(doctype);
@@ -112,15 +112,20 @@ class FrappeFormController extends GetxController {
 
     // 3. API Save
     try {
-      await _api.saveDoc(doctype, data);
+      // Capture returned document and refresh local state
+      final savedDoc = await _api.saveDoc(doctype, data);
+      data.assignAll(savedDoc);
+
       Get.snackbar(
         "Success",
         "Saved successfully",
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green.withOpacity(0.1),
+        colorText: Colors.green,
       );
     } catch (e) {
       debugPrint("❌ Save Error: $e");
-      // FIX: Use the new Error Dialog for readable HTML errors
+      // Use the new Error Dialog for readable HTML errors
       FrappeErrorDialog.show(title: "Save Failed", error: e);
     }
   }

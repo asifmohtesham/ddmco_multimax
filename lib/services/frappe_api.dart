@@ -108,38 +108,11 @@ class FrappeApiService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getList({
-    required String doctype,
-    List<String>? fields,
-    Map<String, dynamic>? filters,
-    String orderBy = 'modified desc',
-    int limit = 20,
-    int limitStart = 0,
-  }) async {
-    try {
-      final dio = await _client;
-      final response = await dio.get(
-        '/api/resource/$doctype',
-        queryParameters: {
-          'fields': jsonEncode(fields ?? ["name", "status", "modified"]),
-          'filters': jsonEncode(filters ?? {}),
-          'order_by': orderBy,
-          'limit': limit,
-          'limit_start': limitStart,
-        },
-      );
-      _checkResponse(response);
-      if (response.data['data'] != null) {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      _handleError(e);
-      rethrow;
-    }
-  }
-
-  Future<void> saveDoc(String doctype, Map<String, dynamic> data) async {
+  // FIX: Return the saved document object from the server response
+  Future<Map<String, dynamic>> saveDoc(
+    String doctype,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final dio = await _client;
       final submitData = Map<String, dynamic>.from(data);
@@ -158,6 +131,9 @@ class FrappeApiService {
         response = await dio.post('/api/resource/$doctype', data: submitData);
       }
       _checkResponse(response);
+
+      // Return the updated document structure
+      return response.data['data'];
     } catch (e) {
       _handleError(e);
       rethrow;
@@ -210,8 +186,49 @@ class FrappeApiService {
     }
   }
 
-  // ... (getList, deleteDoc, _checkResponse, _handleError remain the same as previous step)
-  // Ensure _handleError parses 417 correctly as implemented previously
+  Future<List<Map<String, dynamic>>> getList({
+    required String doctype,
+    List<String>? fields,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+    int limit = 20,
+    int limitStart = 0,
+  }) async {
+    try {
+      final dio = await _client;
+      final response = await dio.get(
+        '/api/resource/$doctype',
+        queryParameters: {
+          'fields': jsonEncode(fields ?? ["name", "status", "modified"]),
+          'filters': jsonEncode(filters ?? {}),
+          'order_by': orderBy,
+          'limit': limit,
+          'limit_start': limitStart,
+        },
+      );
+      _checkResponse(response);
+      if (response.data['data'] != null) {
+        return List<Map<String, dynamic>>.from(response.data['data']);
+      }
+      return [];
+    } catch (e) {
+      _handleError(e);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteDoc(String doctype, String name) async {
+    try {
+      final dio = await _client;
+      final encodedName = Uri.encodeComponent(name);
+      final response = await dio.delete('/api/resource/$doctype/$encodedName');
+      _checkResponse(response);
+    } catch (e) {
+      _handleError(e);
+      rethrow;
+    }
+  }
+
   void _checkResponse(Response response) {
     if (response.statusCode != null && response.statusCode! >= 400) {
       // Create a dummy DioException to pass to _handleError logic
@@ -276,16 +293,12 @@ class FrappeApiService {
         throw Exception("<b>Error ($code)</b><br>${jsonEncode(data)}");
       }
 
-      // 5. Generic HTTP Status
-      if (code == 403) {
+      if (code == 403)
         throw Exception("<b>Access Denied</b><br>You do not have permission.");
-      }
-      if (code == 404) {
+      if (code == 404)
         throw Exception("<b>Not Found</b><br>Resource does not exist.");
-      }
-      if (code == 401) {
+      if (code == 401)
         throw Exception("<b>Session Expired</b><br>Please log in again.");
-      }
 
       throw Exception('API Error $code: ${response.statusMessage}');
     }
