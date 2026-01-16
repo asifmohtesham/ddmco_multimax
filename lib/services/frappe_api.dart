@@ -1,4 +1,4 @@
-import 'dart:convert'; // Import for jsonEncode
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -58,6 +58,10 @@ class FrappeApiService {
         baseUrl: _baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
+        // Validate status must be lenient to allow us to parse 417 errors manually
+        validateStatus: (status) {
+          return status != null && status < 500;
+        },
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -79,13 +83,14 @@ class FrappeApiService {
 
   String get baseUrl => _baseUrl;
 
-  // --- EXISTING METHODS (getDoc, saveDoc, searchLink) ---
+  // --- METHODS ---
 
   Future<Map<String, dynamic>> getDoc(String doctype, String name) async {
     try {
       final dio = await _client;
       final encodedName = Uri.encodeComponent(name);
       final response = await dio.get('/api/resource/$doctype/$encodedName');
+      _checkResponse(response);
       return response.data['data'];
     } catch (e) {
       _handleError(e);
@@ -96,12 +101,22 @@ class FrappeApiService {
   Future<void> saveDoc(String doctype, Map<String, dynamic> data) async {
     try {
       final dio = await _client;
-      if (data.containsKey('name') && data['name'] != null) {
+      final submitData = Map<String, dynamic>.from(data);
+      submitData.removeWhere((key, value) => key.startsWith('__'));
+
+      Response response;
+      if (data.containsKey('name') &&
+          data['name'] != null &&
+          !data.containsKey('__islocal')) {
         final encodedName = Uri.encodeComponent(data['name']);
-        await dio.put('/api/resource/$doctype/$encodedName', data: data);
+        response = await dio.put(
+          '/api/resource/$doctype/$encodedName',
+          data: submitData,
+        );
       } else {
-        await dio.post('/api/resource/$doctype', data: data);
+        response = await dio.post('/api/resource/$doctype', data: submitData);
       }
+      _checkResponse(response);
     } catch (e) {
       _handleError(e);
       rethrow;
@@ -115,16 +130,34 @@ class FrappeApiService {
         '/api/method/frappe.desk.search.search_link',
         data: {'doctype': doctype, 'txt': txt, 'page_length': 20},
       );
-      final List results = response.data['results'] ?? [];
-      return results.map<String>((e) => e['value'].toString()).toList();
+
+      final data = response.data;
+      List results = [];
+
+      if (data is Map) {
+        if (data['results'] != null) {
+          results = data['results'];
+        } else if (data['message'] != null) {
+          results = data['message'];
+        }
+      } else if (data is List) {
+        results = data;
+      }
+
+      return results
+          .map<String>((e) {
+            if (e is Map) {
+              return (e['value'] ?? e['name'] ?? '').toString();
+            }
+            return e.toString();
+          })
+          .where((s) => s.isNotEmpty)
+          .toList();
     } catch (e) {
       return [];
     }
   }
 
-  // --- NEW METHODS FOR LIST CONTROLLER ---
-
-  /// Fetch a list of documents with standard Frappe params
   Future<List<Map<String, dynamic>>> getList({
     required String doctype,
     List<String>? fields,
@@ -146,7 +179,9 @@ class FrappeApiService {
         },
       );
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
+      _checkResponse(response);
+
+      if (response.data['data'] != null) {
         return List<Map<String, dynamic>>.from(response.data['data']);
       }
       return [];
@@ -156,24 +191,85 @@ class FrappeApiService {
     }
   }
 
-  /// Delete a document
   Future<void> deleteDoc(String doctype, String name) async {
     try {
       final dio = await _client;
       final encodedName = Uri.encodeComponent(name);
-      await dio.delete('/api/resource/$doctype/$encodedName');
+      final response = await dio.delete('/api/resource/$doctype/$encodedName');
+      _checkResponse(response);
     } catch (e) {
       _handleError(e);
       rethrow;
     }
   }
 
-  void _handleError(dynamic e) {
-    if (e is DioException) {
-      if (e.response?.statusCode == 403) throw Exception("Access Denied (403)");
-      if (e.response?.statusCode == 404) throw Exception("Not Found (404)");
-      throw Exception('API Error ${e.response?.statusCode}: ${e.message}');
+  // Helper to throw exception if status code is bad (since we loosened validateStatus)
+  void _checkResponse(Response response) {
+    if (response.statusCode != null && response.statusCode! >= 400) {
+      // Create a dummy DioException to pass to _handleError logic
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+      );
     }
-    throw Exception('Unknown Error: $e');
+  }
+
+  // --- ENHANCED ERROR HANDLING ---
+  void _handleError(dynamic e) {
+    if (e is DioException && e.response != null) {
+      final response = e.response!;
+      final data = response.data;
+
+      // 1. Try extracting Frappe Server Messages (JSON String Array)
+      if (data is Map && data.containsKey('_server_messages')) {
+        try {
+          final messages = jsonDecode(data['_server_messages']);
+          if (messages is List && messages.isNotEmpty) {
+            final cleanMsg = messages
+                .map((m) {
+                  try {
+                    final inner = jsonDecode(m);
+                    return inner['message'] ?? m.toString();
+                  } catch (_) {
+                    return m.toString();
+                  }
+                })
+                .join('\n');
+
+            // Throw just the clean message
+            throw Exception(cleanMsg);
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try extracting Exception Traceback
+      if (data is Map && data.containsKey('exception')) {
+        final exc = data['exception'].toString();
+        // Remove Python class path if possible (e.g. frappe.exceptions.ValidationError: Message)
+        final parts = exc.split(':');
+        if (parts.length > 1) {
+          throw Exception(parts.sublist(1).join(':').trim());
+        }
+        throw Exception(exc);
+      }
+
+      // 3. Fallback to Status Codes
+      final code = response.statusCode;
+      if (code == 417)
+        throw Exception(
+          "Validation Error: Please check required fields or stock availability.",
+        );
+      if (code == 403)
+        throw Exception("Access Denied: You don't have permission.");
+      if (code == 404) throw Exception("Not Found: Resource doesn't exist.");
+      if (code == 401) throw Exception("Session Expired: Please login again.");
+      if (code == 409)
+        throw Exception("Duplicate Entry: Record already exists.");
+
+      throw Exception('API Error $code: ${response.statusMessage}');
+    }
+
+    throw Exception(e.toString().replaceAll("Exception:", "").trim());
   }
 }
