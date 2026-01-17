@@ -1,236 +1,245 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../models/frappe_field_config.dart';
 import '../../controllers/frappe_form_controller.dart';
 import '../../theme/frappe_theme.dart';
 
-// --- 1. TEXT FIELD (Data, Int, Float, Small Text) ---
-class FrappeTextField extends StatelessWidget {
+class FrappeBasicField extends StatelessWidget {
   final FrappeFieldConfig config;
   final FrappeFormController controller;
-  final int maxLines;
 
-  const FrappeTextField({
+  const FrappeBasicField({
     super.key,
     required this.config,
     required this.controller,
-    this.maxLines = 1
   });
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final val = controller.data[config.fieldname];
+    // Initialise controller logic
+    final fieldController = Get.put(
+      FrappeBasicFieldController(config: config, formController: controller),
+      tag: '${controller.doctype}_${config.fieldname}',
+    );
 
-      // Handle numeric conversion safely
-      String initialValue = '';
-      if (val != null) {
-        initialValue = val.toString();
-      }
+    final isReadOnly = config.readOnly;
 
-      return TextFormField(
-        // Key forces rebuild if fieldname changes (rare) or form resets
-        key: ValueKey('${config.fieldname}_$initialValue'),
-        initialValue: initialValue,
-        readOnly: config.readOnly,
-        keyboardType: _getKeyboardType(),
-        decoration: FrappeTheme.inputDecoration(config.label).copyWith(
-          filled: config.readOnly,
-          fillColor: config.readOnly ? FrappeTheme.surface : Colors.white,
-        ),
-        onChanged: (value) {
-          if (config.fieldtype == 'Int') {
-            controller.setValue(config.fieldname, int.tryParse(value));
-          } else if (config.fieldtype == 'Float' ||
-              config.fieldtype == 'Currency') {
-            controller.setValue(config.fieldname, double.tryParse(value));
-          } else {
-            controller.setValue(config.fieldname, value);
-          }
-        },
-        validator: (val) {
-          if (config.reqd && (val == null || val.isEmpty)) {
-            return '${config.label} is required';
-          }
-          return null;
-        },
-      );
-    });
-  }
+    // 1. CHECKBOX
+    if (config.fieldtype == 'Check') {
+      return Obx(() {
+        final val = controller.data[config.fieldname];
+        final bool isChecked = (val == 1 || val == true || val == '1');
 
-  TextInputType _getKeyboardType() {
-    if (config.fieldtype == 'Int' ||
-        config.fieldtype == 'Float' ||
-        config.fieldtype == 'Currency') {
-      return const TextInputType.numberWithOptions(decimal: true);
+        return CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            config.label,
+            style: const TextStyle(fontSize: 14, color: FrappeTheme.textBody),
+          ),
+          value: isChecked,
+          onChanged: isReadOnly
+              ? null
+              : (bool? value) {
+                  controller.setValue(
+                    config.fieldname,
+                    (value == true) ? 1 : 0,
+                  );
+                },
+          controlAffinity: ListTileControlAffinity.leading,
+          activeColor: FrappeTheme.primary,
+        );
+      });
     }
-    if (config.fieldtype == 'Small Text' || config.fieldtype == 'Text') {
-      return TextInputType.multiline;
-    }
-    return TextInputType.text;
-  }
-}
 
-// --- 2. CHECKBOX (Check) ---
-class FrappeCheckField extends StatelessWidget {
-  final FrappeFieldConfig config;
-  final FrappeFormController controller;
-
-  const FrappeCheckField({
-    super.key,
-    required this.config,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final val = controller.data[config.fieldname];
-      final bool isChecked = (val == 1 || val == true);
-
-      return FormField<bool>(
-        initialValue: isChecked,
-        builder: (state) {
-          return SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              config.label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: isChecked,
-            onChanged: config.readOnly
-                ? null
-                : (v) {
-                    controller.setValue(config.fieldname, v ? 1 : 0);
-                  },
-            activeColor: FrappeTheme.primary,
-          );
-        },
-      );
-    });
-  }
-}
-
-// --- 3. SELECT DROPDOWN (Select) ---
-class FrappeSelectField extends StatelessWidget {
-  final FrappeFieldConfig config;
-  final FrappeFormController controller;
-
-  const FrappeSelectField({
-    super.key,
-    required this.config,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final val = controller.data[config.fieldname]?.toString();
-      final options = config.options ?? [];
-
-      return DropdownButtonFormField<String>(
-        value: (val != null && options.contains(val)) ? val : null,
-        decoration: FrappeTheme.inputDecoration(config.label).copyWith(
-          filled: config.readOnly,
-          fillColor: config.readOnly ? FrappeTheme.surface : Colors.white,
-        ),
-        // FIX: Add isExpanded to prevent overflow
-        isExpanded: true,
-        items: options.map((opt) {
-          return DropdownMenuItem<String>(
-            value: opt,
-            child: Text(
-              opt,
-              overflow: TextOverflow.ellipsis,
-              // Ensure text truncates if still too long
-              maxLines: 1,
-            ),
-          );
-        }).toList(),
-        onChanged: config.readOnly
-            ? null
-            : (newValue) {
-                controller.setValue(config.fieldname, newValue);
-              },
-        validator: (val) {
-          if (config.reqd && (val == null || val.isEmpty)) {
-            return 'Please select ${config.label}';
-          }
-          return null;
-        },
-      );
-    });
-  }
-}
-
-// --- 4. DATE PICKER (Date) ---
-class FrappeDateField extends StatelessWidget {
-  final FrappeFieldConfig config;
-  final FrappeFormController controller;
-
-  const FrappeDateField({
-    super.key,
-    required this.config,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final val = controller.data[config.fieldname];
-      String display = '';
-      if (val != null) {
-        display = val.toString();
-      }
-
-      return InkWell(
-        onTap: config.readOnly
-            ? null
-            : () async {
-                DateTime initial = DateTime.now();
-                if (val != null && val.toString().isNotEmpty) {
-                  try {
-                    initial = DateTime.parse(val.toString());
-                  } catch (_) {}
-                }
-
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: initial,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                  builder: (context, child) {
-                    return Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: const ColorScheme.light(
-                          primary: FrappeTheme.primary,
-                        ),
-                      ),
-                      child: child!,
+    // 2. SELECT (DROPDOWN)
+    if (config.fieldtype == 'Select') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Obx(() {
+            final val = controller.data[config.fieldname]?.toString();
+            return DropdownButtonFormField<String>(
+              value: (config.options?.contains(val) ?? false) ? val : null,
+              decoration: FrappeTheme.inputDecoration(config.label).copyWith(
+                fillColor: isReadOnly ? FrappeTheme.surface : Colors.white,
+              ),
+              items:
+                  config.options?.map((opt) {
+                    return DropdownMenuItem(
+                      value: opt,
+                      child: Text(opt, style: const TextStyle(fontSize: 14)),
                     );
-                  },
-                );
-
-                if (picked != null) {
-                  final formatted = DateFormat('yyyy-MM-dd').format(picked);
-                  controller.setValue(config.fieldname, formatted);
+                  }).toList() ??
+                  [],
+              onChanged: isReadOnly
+                  ? null
+                  : (newVal) {
+                      if (newVal != null)
+                        controller.setValue(config.fieldname, newVal);
+                    },
+              validator: (val) {
+                if (config.reqd &&
+                    !isReadOnly &&
+                    (val == null || val.isEmpty)) {
+                  return '${config.label} is required';
                 }
+                return null;
               },
-        child: InputDecorator(
-          decoration: FrappeTheme.inputDecoration(config.label).copyWith(
-            suffixIcon: const Icon(Icons.calendar_today, size: 20),
-            filled: config.readOnly,
-            fillColor: config.readOnly ? FrappeTheme.surface : Colors.white,
-          ),
-          child: Text(
-            display.isEmpty ? 'YYYY-MM-DD' : display,
-            style: TextStyle(
-              color: display.isEmpty ? Colors.grey : FrappeTheme.textBody,
-            ),
-          ),
-        ),
+            );
+          }),
+        ],
       );
+    }
+
+    // 3. TEXT / NUMBER / DATE INPUTS
+    TextInputType keyboardType = TextInputType.text;
+    List<TextInputFormatter> formatters = [];
+
+    if (['Int'].contains(config.fieldtype)) {
+      keyboardType = const TextInputType.numberWithOptions(signed: true);
+      formatters.add(FilteringTextInputFormatter.digitsOnly);
+    } else if (['Float', 'Currency', 'Percent'].contains(config.fieldtype)) {
+      keyboardType = const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      );
+      formatters.add(FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')));
+    }
+
+    // Handle Tap for Date/Time
+    VoidCallback? onTap;
+    if (!isReadOnly) {
+      if (config.fieldtype == 'Date')
+        onTap = () => fieldController.pickDate(context);
+      if (config.fieldtype == 'Time')
+        onTap = () => fieldController.pickTime(context);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: fieldController.textEditingController,
+          readOnly:
+              isReadOnly ||
+              ['Date', 'Time', 'Datetime'].contains(config.fieldtype),
+          onTap: onTap,
+          keyboardType: keyboardType,
+          inputFormatters: formatters,
+          maxLines:
+              ['Small Text', 'Text', 'Long Text'].contains(config.fieldtype)
+              ? 3
+              : 1,
+          style: const TextStyle(fontSize: 14, color: FrappeTheme.textBody),
+          decoration: FrappeTheme.inputDecoration(config.label).copyWith(
+            fillColor: isReadOnly ? FrappeTheme.surface : Colors.white,
+            suffixIcon: _buildSuffixIcon(config),
+          ),
+          onChanged: fieldController.onUserChanged,
+          validator: (val) {
+            if (config.reqd && !isReadOnly && (val == null || val.isEmpty)) {
+              return '${config.label} is required';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget? _buildSuffixIcon(FrappeFieldConfig field) {
+    if (field.fieldtype == 'Date')
+      return const Icon(Icons.calendar_today, size: 20);
+    if (field.fieldtype == 'Time')
+      return const Icon(Icons.access_time, size: 20);
+    return null;
+  }
+}
+
+class FrappeBasicFieldController extends GetxController {
+  final FrappeFieldConfig config;
+  final FrappeFormController formController;
+
+  late TextEditingController textEditingController;
+  Worker? _worker;
+
+  FrappeBasicFieldController({
+    required this.config,
+    required this.formController,
+  });
+
+  @override
+  void onInit() {
+    super.onInit();
+    final initialVal = _getSafeValue(formController.data[config.fieldname]);
+    textEditingController = TextEditingController(text: initialVal);
+
+    // Sync external changes
+    _worker = ever(formController.data, (_) {
+      final newVal = _getSafeValue(formController.data[config.fieldname]);
+      if (textEditingController.text != newVal) {
+        textEditingController.text = newVal;
+      }
     });
+  }
+
+  void onUserChanged(String val) {
+    if (['Int'].contains(config.fieldtype)) {
+      formController.setValue(config.fieldname, int.tryParse(val) ?? 0);
+    } else if (['Float', 'Currency', 'Percent'].contains(config.fieldtype)) {
+      formController.setValue(config.fieldname, double.tryParse(val) ?? 0.0);
+    } else {
+      formController.setValue(config.fieldname, val);
+    }
+  }
+
+  Future<void> pickDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      final val = DateFormat('yyyy-MM-dd').format(picked);
+      formController.setValue(config.fieldname, val);
+      textEditingController.text = val;
+    }
+  }
+
+  Future<void> pickTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      // Format as HH:mm:ss
+      final now = DateTime.now();
+      final dt = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        picked.hour,
+        picked.minute,
+      );
+      final val = DateFormat('HH:mm:ss').format(dt);
+      formController.setValue(config.fieldname, val);
+      textEditingController.text = val;
+    }
+  }
+
+  String _getSafeValue(dynamic value) {
+    if (value == null) return '';
+    if (value is bool) return '';
+    return value.toString();
+  }
+
+  @override
+  void onClose() {
+    _worker?.dispose();
+    textEditingController.dispose();
+    super.onClose();
   }
 }

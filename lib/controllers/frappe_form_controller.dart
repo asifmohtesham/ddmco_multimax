@@ -10,18 +10,16 @@ class FrappeFormController extends GetxController {
   final RxMap<String, dynamic> data = <String, dynamic>{}.obs;
   final String doctype;
 
-  // RAW Metadata
   final RxList<Map<String, dynamic>> _metaFields = <Map<String, dynamic>>[].obs;
 
-  // PARSED Layout
-  final RxList<FrappeFormSection> layoutSections = <FrappeFormSection>[].obs;
+  // PARSED Layout: List of Tabs
+  final RxList<FrappeFormTab> layoutTabs = <FrappeFormTab>[].obs;
   final RxBool isMetaLoading = true.obs;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
   FrappeFormController({required this.doctype});
 
-  // Expose API to subclasses
   FrappeApiService get api => _api;
 
   @override
@@ -31,7 +29,6 @@ class FrappeFormController extends GetxController {
     _fetchMetaData();
   }
 
-  // Fetch DocType definition to know mandatory fields
   Future<void> _fetchMetaData() async {
     isMetaLoading.value = true;
     try {
@@ -48,40 +45,45 @@ class FrappeFormController extends GetxController {
     }
   }
 
-  // FIX: Updated Parser to handle Sections AND Columns
   void _parseLayout(List<Map<String, dynamic>> rawFields) {
-    List<FrappeFormSection> sections = [];
+    List<FrappeFormTab> tabs = [];
 
-    // Temp holders
-    String currentSectionLabel = "Details";
-    List<FrappeFormColumn> currentSectionColumns = [];
+    // Default holders
+    String currentTabLabel = "Details";
+    List<FrappeFormSection> currentTabSections = [];
 
-    String currentColumnLabel = "";
-    List<FrappeFieldConfig> currentColumnFields = [];
+    String currentSectionLabel = "";
+    bool currentSectionCollapsible = false;
+    List<FrappeFieldConfig> currentSectionFields = [];
 
-    void flushColumn() {
-      if (currentColumnFields.isNotEmpty) {
-        currentSectionColumns.add(
-          FrappeFormColumn(
-            label: currentColumnLabel,
-            fields: List.from(currentColumnFields),
+    // Helper to close current section and add to list
+    void flushSection() {
+      if (currentSectionFields.isNotEmpty) {
+        currentTabSections.add(
+          FrappeFormSection(
+            label: currentSectionLabel,
+            isCollapsible: currentSectionCollapsible,
+            fields: List.from(currentSectionFields),
+            isExpanded: true, // Default expanded
           ),
         );
-        currentColumnFields = [];
-        currentColumnLabel = "";
+        currentSectionFields = [];
+        currentSectionLabel = "";
+        currentSectionCollapsible = false;
       }
     }
 
-    void flushSection() {
-      flushColumn(); // Ensure last column is added
-      if (currentSectionColumns.isNotEmpty) {
-        sections.add(
-          FrappeFormSection(
-            label: currentSectionLabel,
-            columns: List.from(currentSectionColumns),
+    // Helper to close current tab and add to list
+    void flushTab() {
+      flushSection(); // Ensure last section is saved
+      if (currentTabSections.isNotEmpty) {
+        tabs.add(
+          FrappeFormTab(
+            label: currentTabLabel,
+            sections: List.from(currentTabSections),
           ),
         );
-        currentSectionColumns = [];
+        currentTabSections = [];
       }
     }
 
@@ -92,22 +94,27 @@ class FrappeFormController extends GetxController {
 
       if (hidden) continue;
 
-      // 1. SECTION BREAK
+      // 1. TAB BREAK
+      if (fieldtype == 'Tab Break') {
+        flushTab();
+        currentTabLabel = label;
+        continue;
+      }
+
+      // 2. SECTION BREAK
       if (fieldtype == 'Section Break') {
         flushSection();
         currentSectionLabel = label;
+        currentSectionCollapsible = (f['collapsible'] == 1);
         continue;
       }
 
-      // 2. COLUMN BREAK (New Logic)
+      // 3. COLUMN BREAK (Ignored structurally on mobile, just continues list)
       if (fieldtype == 'Column Break') {
-        flushColumn();
-        currentColumnLabel =
-            label; // Set label for next group (ExpansionTile title)
         continue;
       }
 
-      // 3. REGULAR FIELDS
+      // 4. REGULAR FIELDS
       List<String>? optionsList;
       String? optionsLink;
 
@@ -129,20 +136,23 @@ class FrappeFormController extends GetxController {
         optionsLink: optionsLink,
       );
 
-      currentColumnFields.add(config);
+      currentSectionFields.add(config);
     }
 
-    // Add final section
-    flushSection();
+    // Flush remainders
+    flushTab();
 
-    layoutSections.assignAll(sections);
+    // Fallback: If no tabs were created (no Tab Break in doctype), create one default tab
+    if (tabs.isEmpty && _metaFields.isNotEmpty) {
+      // Should have been caught by flushTab logic, but just in case
+    }
+
+    layoutTabs.assignAll(tabs);
   }
 
-  // ... (rest of initialise, setValue, getValue, load, save methods remain identical)
+  // ... (Standard methods load, save, etc. remain unchanged) ...
   void initialise(Map<String, dynamic>? initialData) {
-    if (initialData != null) {
-      data.assignAll(initialData);
-    }
+    if (initialData != null) data.assignAll(initialData);
   }
 
   void setValue(String fieldname, dynamic value) {
@@ -179,7 +189,7 @@ class FrappeFormController extends GetxController {
         "Validation Error",
         "Please check the form for errors.",
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withValues(alpha: 0.1),
+        backgroundColor: Colors.red.withOpacity(0.1),
         colorText: Colors.red,
       );
       return;
@@ -202,7 +212,7 @@ class FrappeFormController extends GetxController {
               "Missing Field",
               "$label is required.",
               snackPosition: SnackPosition.BOTTOM,
-              backgroundColor: Colors.orange.withValues(alpha: 0.1),
+              backgroundColor: Colors.orange.withOpacity(0.1),
               colorText: Colors.deepOrange,
             );
             return;
@@ -220,7 +230,7 @@ class FrappeFormController extends GetxController {
         "Success",
         "Saved successfully",
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green.withValues(alpha: 0.1),
+        backgroundColor: Colors.green.withOpacity(0.1),
         colorText: Colors.green,
       );
     } catch (e) {

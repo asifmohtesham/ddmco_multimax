@@ -1,25 +1,23 @@
+import 'package:get/get.dart';
 import 'package:multimax/models/frappe_field_config.dart';
+
+class FrappeFormTab {
+  final String label;
+  final List<FrappeFormSection> sections;
+
+  FrappeFormTab({required this.label, required this.sections});
+}
 
 class FrappeFormSection {
   final String label;
-  final bool isCollapsible; // Kept for reference, though Tabs handle visibility
-  final List<FrappeFormColumn> columns;
+  final bool isCollapsible;
+  final RxBool isExpanded;
+  final List<FrappeFieldConfig> fields;
 
   FrappeFormSection({
     required this.label,
     this.isCollapsible = false,
-    required this.columns,
-  });
-}
-
-class FrappeFormColumn {
-  final String label;
-  final List<FrappeFieldConfig> fields;
-  final bool isExpanded; // Default expansion state
-
-  FrappeFormColumn({
-    required this.label,
     required this.fields,
-    this.isExpanded = true,
-  });
+    bool isExpanded = true,
+  }) : isExpanded = isExpanded.obs;
 }
