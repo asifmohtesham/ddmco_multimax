@@ -31,17 +31,17 @@ class GenericFrappeForm extends StatelessWidget {
       // CASE 1: Single Section (Standard Vertical Form)
       if (sections.length == 1) {
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(FrappeTheme.spacing),
+          padding: EdgeInsets.zero, // Padding handled inside tab/column
           child: Column(
             children: [
-              ..._buildFields(sections[0], controller),
-              const SizedBox(height: 80), // Footer padding
+              _buildSectionContent(sections[0], controller),
+              const SizedBox(height: 80),
             ],
           ),
         );
       }
 
-      // CASE 2: Multiple Sections (Tabbed Layout)
+      // CASE 2: Multiple Sections (Tabs)
       return DefaultTabController(
         length: sections.length,
         child: Column(
@@ -91,13 +91,54 @@ class GenericFrappeForm extends StatelessWidget {
     });
   }
 
-  // Helper to build list of field widgets
-  static List<Widget> _buildFields(
+  // New Helper to build content for a section (List of Columns)
+  static Widget _buildSectionContent(
     FrappeFormSection section,
     FrappeFormController controller,
   ) {
-    return section.fields.map((fieldConfig) {
-      // Filter out layout fields that shouldn't render directly
+    return Column(
+      children: section.columns.map((column) {
+        // If column has no label, just render fields
+        if (column.label.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(FrappeTheme.spacing),
+            child: Column(children: _buildFields(column.fields, controller)),
+          );
+        }
+
+        // FIX: If column has label, render as Expansion Tile (Column Break)
+        return Theme(
+          data: Theme.of(
+            Get.context!,
+          ).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            title: Text(
+              column.label,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: FrappeTheme.textBody,
+              ),
+            ),
+            initiallyExpanded: true,
+            backgroundColor: Colors.white,
+            collapsedBackgroundColor: Colors.white,
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 0,
+            ),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: _buildFields(column.fields, controller),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  static List<Widget> _buildFields(
+    List<dynamic> fields,
+    FrappeFormController controller,
+  ) {
+    return fields.map<Widget>((fieldConfig) {
       if ([
         'Column Break',
         'Section Break',
@@ -128,17 +169,19 @@ class _FrappeFormTab extends StatefulWidget {
 class _FrappeFormTabState extends State<_FrappeFormTab>
     with AutomaticKeepAliveClientMixin {
   @override
-  bool get wantKeepAlive => true; // Preserves scroll position & input state
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required by Mixin
+    super.build(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          ...GenericFrappeForm._buildFields(widget.section, widget.controller),
-          const SizedBox(height: 80), // Bottom padding for sticky Save button
+          GenericFrappeForm._buildSectionContent(
+            widget.section,
+            widget.controller,
+          ),
+          const SizedBox(height: 80),
         ],
       ),
     );

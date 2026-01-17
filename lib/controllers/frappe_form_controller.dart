@@ -13,7 +13,7 @@ class FrappeFormController extends GetxController {
   // RAW Metadata
   final RxList<Map<String, dynamic>> _metaFields = <Map<String, dynamic>>[].obs;
 
-  // PARSED Layout for UI
+  // PARSED Layout
   final RxList<FrappeFormSection> layoutSections = <FrappeFormSection>[].obs;
   final RxBool isMetaLoading = true.obs;
 
@@ -48,41 +48,66 @@ class FrappeFormController extends GetxController {
     }
   }
 
+  // FIX: Updated Parser to handle Sections AND Columns
   void _parseLayout(List<Map<String, dynamic>> rawFields) {
     List<FrappeFormSection> sections = [];
-    List<FrappeFieldConfig> currentFields = [];
+
+    // Temp holders
     String currentSectionLabel = "Details";
-    bool currentSectionCollapsible = false;
+    List<FrappeFormColumn> currentSectionColumns = [];
+
+    String currentColumnLabel = "";
+    List<FrappeFieldConfig> currentColumnFields = [];
+
+    void flushColumn() {
+      if (currentColumnFields.isNotEmpty) {
+        currentSectionColumns.add(
+          FrappeFormColumn(
+            label: currentColumnLabel,
+            fields: List.from(currentColumnFields),
+          ),
+        );
+        currentColumnFields = [];
+        currentColumnLabel = "";
+      }
+    }
+
+    void flushSection() {
+      flushColumn(); // Ensure last column is added
+      if (currentSectionColumns.isNotEmpty) {
+        sections.add(
+          FrappeFormSection(
+            label: currentSectionLabel,
+            columns: List.from(currentSectionColumns),
+          ),
+        );
+        currentSectionColumns = [];
+      }
+    }
 
     for (var f in rawFields) {
       final String fieldtype = f['fieldtype'] ?? 'Data';
       final String label = f['label'] ?? '';
-      final String fieldname = f['fieldname'] ?? '';
       final bool hidden = (f['hidden'] == 1);
-      final bool readOnly = (f['read_only'] == 1);
 
-      // SKIP: formatting fields that don't render content
       if (hidden) continue;
-      if (['Column Break'].contains(fieldtype)) continue;
 
-      // SECTION BREAK: Close current section and start new one
+      // 1. SECTION BREAK
       if (fieldtype == 'Section Break') {
-        if (currentFields.isNotEmpty) {
-          sections.add(
-            FrappeFormSection(
-              label: currentSectionLabel,
-              isCollapsible: currentSectionCollapsible,
-              fields: List.from(currentFields),
-            ),
-          );
-        }
-        currentFields = [];
+        flushSection();
         currentSectionLabel = label;
-        currentSectionCollapsible = (f['collapsible'] == 1);
         continue;
       }
 
-      // STANDARD FIELDS: Map to Config
+      // 2. COLUMN BREAK (New Logic)
+      if (fieldtype == 'Column Break') {
+        flushColumn();
+        currentColumnLabel =
+            label; // Set label for next group (ExpansionTile title)
+        continue;
+      }
+
+      // 3. REGULAR FIELDS
       List<String>? optionsList;
       String? optionsLink;
 
@@ -90,35 +115,25 @@ class FrappeFormController extends GetxController {
       if (fieldtype == 'Select' && f['options'] != null) {
         optionsList = f['options'].toString().split('\n');
       } else if (['Link', 'Dynamic Link'].contains(fieldtype)) {
-        optionsLink = f['options']; // Target DocType
+        optionsLink = f['options'];
       }
 
       final config = FrappeFieldConfig(
         label: label,
-        fieldname: fieldname,
+        fieldname: f['fieldname'] ?? '',
         fieldtype: fieldtype,
         reqd: (f['reqd'] == 1),
-        readOnly: readOnly,
+        readOnly: (f['read_only'] == 1),
         hidden: hidden,
         options: optionsList,
         optionsLink: optionsLink,
-        // Tables require fetching child meta, complex logic omitted for brevity
-        // We will just render them as basic tables if configured manually or skipping auto-render for now
       );
 
-      currentFields.add(config);
+      currentColumnFields.add(config);
     }
 
     // Add final section
-    if (currentFields.isNotEmpty) {
-      sections.add(
-        FrappeFormSection(
-          label: currentSectionLabel,
-          isCollapsible: currentSectionCollapsible,
-          fields: currentFields,
-        ),
-      );
-    }
+    flushSection();
 
     layoutSections.assignAll(sections);
   }
@@ -201,7 +216,6 @@ class FrappeFormController extends GetxController {
       // Capture returned document and refresh local state
       final savedDoc = await _api.saveDoc(doctype, data);
       data.assignAll(savedDoc);
-
       Get.snackbar(
         "Success",
         "Saved successfully",
