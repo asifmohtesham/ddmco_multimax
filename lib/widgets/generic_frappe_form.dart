@@ -5,6 +5,7 @@ import 'package:multimax/widgets/frappe_field_factory.dart';
 import 'package:multimax/models/frappe_form_layout_model.dart';
 import 'package:multimax/models/frappe_field_config.dart';
 import 'package:multimax/theme/frappe_theme.dart';
+import 'package:multimax/utils/frappe_expression_parser.dart'; // Import Parser
 
 class GenericFrappeForm extends StatelessWidget {
   final FrappeFormController controller;
@@ -120,7 +121,29 @@ class _FrappeFormTabContent extends StatelessWidget {
   }
 
   Widget _buildSection(BuildContext context, FrappeFormSection section) {
-    // Standard Section (No Label = Invisible container)
+    // Check if we need reactive visibility
+    final bool hasDependency =
+        section.dependsOn != null && section.dependsOn!.isNotEmpty;
+
+    if (hasDependency) {
+      return Obx(() {
+        final isVisible = FrappeExpressionParser.evaluate(
+          section.dependsOn,
+          controller.data,
+        );
+        if (!isVisible) return const SizedBox.shrink();
+
+        return _buildSectionContent(context, section);
+      });
+    } else {
+      return _buildSectionContent(context, section);
+    }
+  }
+
+  Widget _buildSectionContent(
+    BuildContext context,
+    FrappeFormSection section,
+  ) {
     if (section.label.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -128,42 +151,40 @@ class _FrappeFormTabContent extends StatelessWidget {
       );
     }
 
-    // Collapsible Section (ExpansionTile)
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Material(
-        color: Colors.white,
-        child: Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: Obx(
-            () => ExpansionTile(
-              key: PageStorageKey<String>("sec_${section.label}"),
-              title: Text(
-                section.label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: FrappeTheme.textBody,
-                  fontSize: 15,
+    // Reactive Expansion State
+    return Obx(() => Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Material(
+            color: Colors.white,
+            child: Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: PageStorageKey<String>("sec_${section.label}"),
+                title: Text(
+                  section.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: FrappeTheme.textBody,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-              // Bind Expansion State to Model
-              initiallyExpanded: section.isExpanded.value,
-              onExpansionChanged: (val) => section.isExpanded.value = val,
+                // Bind Expansion State to Model
+                initiallyExpanded: section.isExpanded.value,
+                onExpansionChanged: (val) => section.isExpanded.value = val,
 
-              backgroundColor: Colors.white,
-              collapsedBackgroundColor: Colors.white,
-              tilePadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 4,
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                backgroundColor: Colors.white,
+                collapsedBackgroundColor: Colors.white,
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
 
-              children: _buildFields(section.fields),
+                children: _buildFields(section.fields),
+              ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
   List<Widget> _buildFields(List<FrappeFieldConfig> fields) {
@@ -178,20 +199,51 @@ class _FrappeFormTabContent extends StatelessWidget {
         return const SizedBox.shrink();
       }
 
-      // 2. Hide Empty ReadOnly Fields (Clutter reduction)
-      if (fieldConfig.readOnly) {
-        final val = controller.data[fieldConfig.fieldname];
-        bool isEmpty = val == null;
-        if (val is String) isEmpty = val.trim().isEmpty;
-        if (val is List) isEmpty = val.isEmpty;
-        if (val is num) isEmpty = false;
-        if (isEmpty) return const SizedBox.shrink();
+      // Check if this field actually needs reactive wrapping
+      final bool hasDependency =
+          fieldConfig.dependsOn != null && fieldConfig.dependsOn!.isNotEmpty;
+      final bool isReadOnly = fieldConfig.readOnly;
+
+      if (!hasDependency && !isReadOnly) {
+        // STATIC: No Obx needed if always visible and not read-only logic
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: FrappeFieldFactory(
+            config: fieldConfig,
+            controller: controller,
+          ),
+        );
       }
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12.0),
-        child: FrappeFieldFactory(config: fieldConfig, controller: controller),
-      );
+      // DYNAMIC: Wrap in Obx for Visibility or ReadOnly-Empty logic
+      return Obx(() {
+        // 1. Dependency Check
+        if (hasDependency) {
+          final isVisible = FrappeExpressionParser.evaluate(
+            fieldConfig.dependsOn,
+            controller.data,
+          );
+          if (!isVisible) return const SizedBox.shrink();
+        }
+
+        // 2. Hide Empty ReadOnly Fields
+        if (isReadOnly) {
+          final val = controller.data[fieldConfig.fieldname];
+          bool isEmpty = val == null;
+          if (val is String) isEmpty = val.trim().isEmpty;
+          if (val is List) isEmpty = val.isEmpty;
+          if (val is num) isEmpty = false;
+          if (isEmpty) return const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: FrappeFieldFactory(
+            config: fieldConfig,
+            controller: controller,
+          ),
+        );
+      });
     }).toList();
   }
 }

@@ -54,6 +54,7 @@ class FrappeFormController extends GetxController {
 
     String currentSectionLabel = "";
     bool currentSectionCollapsible = false;
+    String? currentSectionDependsOn; // Store section visibility rule
     List<FrappeFieldConfig> currentSectionFields = [];
 
     // Helper to close current section and add to list
@@ -63,19 +64,22 @@ class FrappeFormController extends GetxController {
           FrappeFormSection(
             label: currentSectionLabel,
             isCollapsible: currentSectionCollapsible,
+            dependsOn: currentSectionDependsOn,
+            // Pass rule to section model
             fields: List.from(currentSectionFields),
-            isExpanded: true, // Default expanded
+            isExpanded: true,
           ),
         );
         currentSectionFields = [];
         currentSectionLabel = "";
+        currentSectionDependsOn = null;
         currentSectionCollapsible = false;
       }
     }
 
     // Helper to close current tab and add to list
     void flushTab() {
-      flushSection(); // Ensure last section is saved
+      flushSection();
       if (currentTabSections.isNotEmpty) {
         tabs.add(
           FrappeFormTab(
@@ -91,6 +95,7 @@ class FrappeFormController extends GetxController {
       final String fieldtype = f['fieldtype'] ?? 'Data';
       final String label = f['label'] ?? '';
       final bool hidden = (f['hidden'] == 1);
+      final String? dependsOn = f['depends_on']; // Extract Rule
 
       if (hidden) continue;
 
@@ -106,6 +111,7 @@ class FrappeFormController extends GetxController {
         flushSection();
         currentSectionLabel = label;
         currentSectionCollapsible = (f['collapsible'] == 1);
+        currentSectionDependsOn = dependsOn; // Store rule for the whole section
         continue;
       }
 
@@ -134,6 +140,7 @@ class FrappeFormController extends GetxController {
         hidden: hidden,
         options: optionsList,
         optionsLink: optionsLink,
+        dependsOn: dependsOn, // Field-level rule
       );
 
       currentSectionFields.add(config);
@@ -141,16 +148,10 @@ class FrappeFormController extends GetxController {
 
     // Flush remainders
     flushTab();
-
-    // Fallback: If no tabs were created (no Tab Break in doctype), create one default tab
-    if (tabs.isEmpty && _metaFields.isNotEmpty) {
-      // Should have been caught by flushTab logic, but just in case
-    }
-
     layoutTabs.assignAll(tabs);
   }
 
-  // ... (Standard methods load, save, etc. remain unchanged) ...
+  // ... (Standard Getters/Setters/Load/Save remain unchanged)
   void initialise(Map<String, dynamic>? initialData) {
     if (initialData != null) data.assignAll(initialData);
   }
@@ -159,7 +160,6 @@ class FrappeFormController extends GetxController {
     data[fieldname] = value;
   }
 
-  /// Retrieve a value safely with intelligent type casting
   T? getValue<T>(String fieldname) {
     if (data[fieldname] == null) return null;
     final val = data[fieldname];
@@ -189,7 +189,7 @@ class FrappeFormController extends GetxController {
         "Validation Error",
         "Please check the form for errors.",
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.1),
+        backgroundColor: Colors.red.withValues(alpha: 0.1),
         colorText: Colors.red,
       );
       return;
@@ -212,7 +212,7 @@ class FrappeFormController extends GetxController {
               "Missing Field",
               "$label is required.",
               snackPosition: SnackPosition.BOTTOM,
-              backgroundColor: Colors.orange.withOpacity(0.1),
+              backgroundColor: Colors.orange.withValues(alpha: 0.1),
               colorText: Colors.deepOrange,
             );
             return;
@@ -230,7 +230,7 @@ class FrappeFormController extends GetxController {
         "Success",
         "Saved successfully",
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green.withOpacity(0.1),
+        backgroundColor: Colors.green.withValues(alpha: 0.1),
         colorText: Colors.green,
       );
     } catch (e) {
