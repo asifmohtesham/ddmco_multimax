@@ -127,6 +127,10 @@ class _FrappeFormTabContent extends StatelessWidget {
 
     if (hasDependency) {
       return Obx(() {
+        // Ensure we listen to data changes even if evaluate returns early
+        // This prevents "Improper Use of GetX" if the parser doesn't access specific keys
+        controller.data.keys; 
+
         final isVisible = FrappeExpressionParser.evaluate(
           section.dependsOn,
           controller.data,
@@ -217,6 +221,11 @@ class _FrappeFormTabContent extends StatelessWidget {
 
       // DYNAMIC: Wrap in Obx for Visibility or ReadOnly-Empty logic
       return Obx(() {
+        // Ensure we listen to data changes
+        if (hasDependency || isReadOnly) {
+          controller.data.keys;
+        }
+
         // 1. Dependency Check
         if (hasDependency) {
           final isVisible = FrappeExpressionParser.evaluate(
