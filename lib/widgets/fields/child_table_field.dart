@@ -129,68 +129,87 @@ class FrappeChildTableField extends StatelessWidget {
     FrappeChildTableController tableController,
   ) {
     return Obx(() {
-      String title = "Row #${index + 1}";
-      String subtitle = "";
-      String trailing = "";
+      List<Widget> fieldWidgets = [];
 
-      // 1. DETERMINE TITLE
-      // Priority 1: 'search_fields' from metadata
-      if (tableController.searchFields.isNotEmpty) {
-        List<String> parts = [];
-        for (var field in tableController.searchFields) {
-          final val = row[field]?.toString();
-          if (val != null && val.isNotEmpty) parts.add(val);
-        }
-        if (parts.isNotEmpty) title = parts.join(", ");
+      // 1. Identify fields to display (Priority: in_list_view > search_fields > fallback)
+      List<FrappeFieldConfig> visibleFields = tableController.childFields
+          .where((f) => f.inListView)
+          .toList();
+
+      // Fallback: If no metadata loaded yet or no in_list_view fields, use search_fields
+      if (visibleFields.isEmpty && tableController.searchFields.isNotEmpty) {
+        visibleFields = tableController.searchFields
+            .map(
+              (fname) => FrappeFieldConfig(
+                label: fname,
+                fieldname: fname,
+                fieldtype: 'Data',
+              ),
+            )
+            .toList();
       }
-      // Priority 2: 'title_field' from metadata
-      else if (tableController.titleField.value.isNotEmpty) {
-        final val = row[tableController.titleField.value]?.toString();
-        if (val != null && val.isNotEmpty) title = val;
-      }
-      // Priority 3: First Link/Data field found in loaded definitions
-      else if (tableController.childFields.isNotEmpty) {
-        for (var f in tableController.childFields) {
-          if (f.fieldtype == 'Link' || f.fieldtype == 'Data') {
-            final val = row[f.fieldname]?.toString();
-            if (val != null && val.isNotEmpty) {
-              title = val;
-              break;
+
+      // 2. Build Vertical List of Fields
+      if (visibleFields.isNotEmpty) {
+        for (int i = 0; i < visibleFields.length; i++) {
+          final f = visibleFields[i];
+          final val = row[f.fieldname]?.toString();
+
+          if (val != null && val.isNotEmpty) {
+            // First item: Bold Title style
+            if (i == 0) {
+              fieldWidgets.add(
+                Text(
+                  val,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: FrappeTheme.textBody,
+                  ),
+                ),
+              );
+            }
+            // Subsequent items: Label: Value style
+            else {
+              fieldWidgets.add(
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${f.label}: ",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: FrappeTheme.textLabel,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          val,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: FrappeTheme.textBody,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }
           }
         }
       }
 
-      // 2. DETERMINE SUBTITLE & TRAILING
-      // We need the field definitions to know what to show
-      if (tableController.childFields.isNotEmpty) {
-        for (var f in tableController.childFields) {
-          final val = row[f.fieldname]?.toString() ?? '';
-          if (val.isEmpty) continue;
-
-          // Don't repeat the title in the subtitle
-          if (title.contains(val)) continue;
-
-          // Trailing: Amount or Qty
-          if (trailing.isEmpty &&
-              (f.fieldtype == 'Currency' ||
-                  f.fieldtype == 'Float' ||
-                  f.fieldtype == 'Int')) {
-            // Simple heuristic: if label contains Amount, Total, Qty
-            if (f.label.contains("Amount") ||
-                f.label.contains("Total") ||
-                f.label.contains("Qty")) {
-              trailing = val;
-              continue;
-            }
-          }
-
-          // Subtitle: Fields marked as in_list_view
-          if (f.inListView && subtitle.length < 60) {
-            if (subtitle.isNotEmpty) subtitle += " • ";
-            subtitle += "${f.label}: $val";
-          }
-        }
+      // Fallback if no data fields found at all
+      if (fieldWidgets.isEmpty) {
+        fieldWidgets.add(
+          Text(
+            "Row #${index + 1}",
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+        );
       }
 
       return InkWell(
@@ -198,58 +217,25 @@ class FrappeChildTableField extends StatelessWidget {
             ? null
             : () => _openRowEditor(context, row, index),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: FrappeTheme.textBody,
-                      ),
-                    ),
-                    if (subtitle.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2.0),
-                        child: Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: FrappeTheme.textLabel,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
+                  children: fieldWidgets,
                 ),
               ),
-              if (trailing.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: FrappeTheme.surface,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    trailing,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+              if (!config.readOnly)
+                const Padding(
+                  padding: EdgeInsets.only(left: 12.0, top: 2.0),
+                  child: Icon(
+                    Icons.edit,
+                    size: 16,
+                    color: FrappeTheme.textLabel,
                   ),
                 ),
-              if (!config.readOnly)
-                const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
             ],
           ),
         ),
@@ -262,8 +248,7 @@ class FrappeChildTableField extends StatelessWidget {
     Map<String, dynamic>? currentRow,
     int index,
   ) {
-    final String? childDocType =
-        config.optionsLink; // Table field options = Child DocType Name
+    final String? childDocType = config.optionsLink;
 
     if (childDocType == null || childDocType.isEmpty) {
       Get.snackbar("Error", "Child DocType not configured for ${config.label}");
@@ -276,12 +261,9 @@ class FrappeChildTableField extends StatelessWidget {
         initialData: currentRow,
         onSave: (updatedRow) {
           final List rows = List.from(controller.data[config.fieldname] ?? []);
-
           if (index == -1) {
-            // Add New
             rows.add(updatedRow);
           } else {
-            // Edit Existing
             rows[index] = updatedRow;
           }
           controller.setValue(config.fieldname, rows);
