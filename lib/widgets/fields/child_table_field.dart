@@ -98,25 +98,24 @@ class FrappeChildTableField extends StatelessWidget {
 
           // --- Rows List ---
           if (rows.isNotEmpty)
-            ListView.separated(
-              key: ValueKey('${config.fieldname}_${rows.length}'),
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: rows.length,
-              separatorBuilder: (c, i) =>
-                  const Divider(height: 16, thickness: 0.5),
-              itemBuilder: (context, index) {
+            Column(
+              children: List.generate(rows.length, (index) {
                 final row = rows[index];
                 if (row is! Map) return const SizedBox.shrink();
 
-                return _buildRowCard(
-                  context,
-                  Map<String, dynamic>.from(row),
-                  index,
-                  tableController,
+                return Column(
+                  children: [
+                    _buildRowCard(
+                      context,
+                      Map<String, dynamic>.from(row),
+                      index,
+                      tableController,
+                    ),
+                    if (index < rows.length - 1)
+                      const Divider(height: 16, thickness: 0.5),
+                  ],
                 );
-              },
+              }),
             ),
         ],
       );
