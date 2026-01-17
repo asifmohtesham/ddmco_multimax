@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import '../../models/frappe_field_config.dart';
 import '../../controllers/frappe_form_controller.dart';
 import '../../theme/frappe_theme.dart';
-import '../frappe_field_factory.dart';
+import 'child_table_input_sheet.dart'; // Import the new sheet
 
 class FrappeChildTableField extends StatelessWidget {
   final FrappeFieldConfig config;
@@ -25,7 +25,7 @@ class FrappeChildTableField extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- Header ---
+          // --- Header with Add Button ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -37,8 +37,32 @@ class FrappeChildTableField extends StatelessWidget {
                   color: FrappeTheme.textLabel,
                 ),
               ),
-              // Optional: Add Row Button (can be implemented later)
-              // if (!config.readOnly) Icon(Icons.add, color: FrappeTheme.primary),
+              if (!config.readOnly)
+                InkWell(
+                  onTap: () => _openRowEditor(context, null, -1),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Row(
+                      children: const [
+                        Icon(
+                          Icons.add_circle_outline,
+                          color: FrappeTheme.primary,
+                          size: 16,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          "Add",
+                          style: TextStyle(
+                            color: FrappeTheme.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -51,34 +75,36 @@ class FrappeChildTableField extends StatelessWidget {
               decoration: BoxDecoration(
                 color: FrappeTheme.surface,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: FrappeTheme.border),
               ),
-              child: const Text(
-                "No items",
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+              child: const Center(
+                child: Text(
+                  "No items added yet",
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
               ),
             ),
 
           // --- Rows List ---
           if (rows.isNotEmpty)
-            // Replaced ListView with Column to prevent Scrollable PageStorage collisions
-            // Since physics is NeverScrollable, a Column is more efficient and safer.
-            Column(
-              children: List.generate(rows.length, (index) {
+            ListView.separated(
+              key: ValueKey('${config.fieldname}_${rows.length}'),
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: rows.length,
+              separatorBuilder: (c, i) =>
+                  const Divider(height: 16, thickness: 0.5),
+              itemBuilder: (context, index) {
                 final row = rows[index];
                 if (row is! Map) return const SizedBox.shrink();
 
-                return Column(
-                  children: [
-                    _buildRowCard(
-                      context,
-                      Map<String, dynamic>.from(row),
-                      index,
-                    ),
-                    if (index < rows.length - 1)
-                      const Divider(height: 16, thickness: 0.5),
-                  ],
+                return _buildRowCard(
+                  context,
+                  Map<String, dynamic>.from(row),
+                  index,
                 );
-              }),
+              },
             ),
         ],
       );
@@ -95,7 +121,7 @@ class FrappeChildTableField extends StatelessWidget {
     String subtitle = "";
     String trailing = "";
 
-    // Iterate child fields to find suitable display columns
+    // Intelligent Title/Subtitle generation based on field types
     if (config.childFields != null) {
       for (var f in config.childFields!) {
         final val = row[f.fieldname]?.toString() ?? '';
@@ -105,26 +131,22 @@ class FrappeChildTableField extends StatelessWidget {
         if (title.startsWith("Row #") &&
             (f.fieldtype == 'Link' || f.fieldtype == 'Data')) {
           title = val;
-        }
-        // Use others as subtitle
-        else if (subtitle.length < 30 && f.inListView) {
+        } else if (subtitle.length < 40 && f.inListView) {
           if (subtitle.isNotEmpty) subtitle += " • ";
           subtitle += "${f.label}: $val";
-        }
-        // Use Currency/Float as trailing
-        else if (trailing.isEmpty &&
-            (f.fieldtype == 'Currency' || f.fieldtype == 'Float')) {
+        } else if (trailing.isEmpty &&
+            (f.fieldtype == 'Currency' ||
+                f.fieldtype == 'Float' ||
+                f.fieldtype == 'Int')) {
           trailing = val;
         }
       }
     }
 
     return InkWell(
-      onTap: () {
-        // Handle Row Edit (Future implementation)
-      },
+      onTap: config.readOnly ? null : () => _openRowEditor(context, row, index),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: Row(
           children: [
             Expanded(
@@ -136,27 +158,86 @@ class FrappeChildTableField extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
+                      color: FrappeTheme.textBody,
                     ),
                   ),
                   if (subtitle.isNotEmpty)
                     Text(
                       subtitle,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: FrappeTheme.textLabel,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                 ],
               ),
             ),
             if (trailing.isNotEmpty)
-              Text(
-                trailing,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: FrappeTheme.surface,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  trailing,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ),
+            if (!config.readOnly)
+              const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ],
         ),
       ),
+    );
+  }
+
+  void _openRowEditor(
+    BuildContext context,
+    Map<String, dynamic>? currentRow,
+    int index,
+  ) {
+    final String? childDocType =
+        config.optionsLink; // Table field options = Child DocType Name
+
+    if (childDocType == null || childDocType.isEmpty) {
+      Get.snackbar("Error", "Child DocType not configured for ${config.label}");
+      return;
+    }
+
+    Get.bottomSheet(
+      ChildTableInputSheet(
+        childDoctype: childDocType,
+        initialData: currentRow,
+        onSave: (updatedRow) {
+          final List rows = List.from(controller.data[config.fieldname] ?? []);
+
+          if (index == -1) {
+            // Add New
+            rows.add(updatedRow);
+          } else {
+            // Edit Existing
+            rows[index] = updatedRow;
+          }
+          controller.setValue(config.fieldname, rows);
+        },
+        onDelete: (index != -1)
+            ? () {
+                final List rows = List.from(
+                  controller.data[config.fieldname] ?? [],
+                );
+                rows.removeAt(index);
+                controller.setValue(config.fieldname, rows);
+              }
+            : null,
+      ),
+      isScrollControlled: true,
+      ignoreSafeArea: false,
     );
   }
 }
