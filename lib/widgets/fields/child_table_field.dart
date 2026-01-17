@@ -60,25 +60,25 @@ class FrappeChildTableField extends StatelessWidget {
 
           // --- Rows List ---
           if (rows.isNotEmpty)
-            ListView.separated(
-              // FIX: Removed PageStorageKey to prevent collision with ExpansionTile
-              key: ValueKey('${config.fieldname}_${rows.length}'),
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: rows.length,
-              separatorBuilder: (c, i) =>
-                  const Divider(height: 16, thickness: 0.5),
-              itemBuilder: (context, index) {
+            // Replaced ListView with Column to prevent Scrollable PageStorage collisions
+            // Since physics is NeverScrollable, a Column is more efficient and safer.
+            Column(
+              children: List.generate(rows.length, (index) {
                 final row = rows[index];
                 if (row is! Map) return const SizedBox.shrink();
 
-                return _buildRowCard(
-                  context,
-                  Map<String, dynamic>.from(row),
-                  index,
+                return Column(
+                  children: [
+                    _buildRowCard(
+                      context,
+                      Map<String, dynamic>.from(row),
+                      index,
+                    ),
+                    if (index < rows.length - 1)
+                      const Divider(height: 16, thickness: 0.5),
+                  ],
                 );
-              },
+              }),
             ),
         ],
       );
