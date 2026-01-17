@@ -124,10 +124,10 @@ class FrappeFormController extends GetxController {
       List<String>? optionsList;
       String? optionsLink;
 
-      // Handle Options
+      // FIX: Ensure 'Table' fields extract their Child DocType from 'options'
       if (fieldtype == 'Select' && f['options'] != null) {
         optionsList = f['options'].toString().split('\n');
-      } else if (['Link', 'Dynamic Link'].contains(fieldtype)) {
+      } else if (['Link', 'Dynamic Link', 'Table'].contains(fieldtype)) {
         optionsLink = f['options'];
       }
 
@@ -140,6 +140,7 @@ class FrappeFormController extends GetxController {
         hidden: hidden,
         options: optionsList,
         optionsLink: optionsLink,
+        // Now populated for Tables correctly
         dependsOn: dependsOn, // Field-level rule
       );
 
@@ -148,6 +149,12 @@ class FrappeFormController extends GetxController {
 
     // Flush remainders
     flushTab();
+
+    // Fallback if no tabs defined
+    if (tabs.isEmpty && currentTabSections.isNotEmpty) {
+      tabs.add(FrappeFormTab(label: "Details", sections: currentTabSections));
+    }
+
     layoutTabs.assignAll(tabs);
   }
 
