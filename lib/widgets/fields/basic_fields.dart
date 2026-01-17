@@ -121,6 +121,8 @@ class FrappeBasicField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
+          key: ValueKey(config.fieldname), // Ensure unique identity
+          restorationId: null, // Disable restoration to prevent GlobalKey collisions
           controller: fieldController.textEditingController,
           readOnly:
               isReadOnly ||
