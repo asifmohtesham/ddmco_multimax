@@ -7,6 +7,7 @@ import 'package:multimax/app/data/routes/app_routes.dart'; // Import AppRoutes
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform; // Required for platform checks
 
@@ -27,6 +28,8 @@ Future<void> main() async {
   await Get.putAsync<DatabaseService>(() => DatabaseService().init());
   // Initialise API Provider (which now depends on DatabaseService)
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+  // 2. Initialise GlobalSearchService (Must be after ApiProvider)
+  Get.put(GlobalSearchService(), permanent: true);
 
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
