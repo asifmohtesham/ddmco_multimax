@@ -1,8 +1,62 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+
+// --- Controller for managing search state ---
+class LinkFieldController extends GetxController {
+  final GlobalSearchService _service = Get.find<GlobalSearchService>();
+
+  var searchQuery = ''.obs;
+  var results = <GlobalSearchItem>[].obs;
+  var isLoading = false.obs;
+
+  // Worker to handle debounce automatically
+  Worker? _debounceWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // Debounce the search execution by 300ms
+    _debounceWorker = debounce(
+      searchQuery,
+      (query) => _performSearch(query as String),
+      time: const Duration(milliseconds: 300),
+    );
+  }
+
+  void initSearch(String doctype) {
+    // Clear previous state and load initial list (empty query)
+    searchQuery.value = '';
+    _performSearch('', overrideDoctype: doctype);
+  }
+
+  // We need to store doctype locally for the worker to access it,
+  // or pass it dynamically. Simpler to store it when initialized.
+  String? _currentDoctype;
+
+  Future<void> _performSearch(String query, {String? overrideDoctype}) async {
+    if (overrideDoctype != null) _currentDoctype = overrideDoctype;
+    if (_currentDoctype == null) return;
+
+    isLoading.value = true;
+    try {
+      final items = await _service.search(_currentDoctype!, query);
+      results.assignAll(items);
+    } catch (e) {
+      print("LinkField Search Error: $e");
+      results.clear();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  @override
+  void onClose() {
+    _debounceWorker?.dispose();
+    super.onClose();
+  }
+}
 
 class SearchableLinkField extends StatelessWidget {
   final String label;
@@ -24,7 +78,9 @@ class SearchableLinkField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Controller for the display field
+    // Use a unique tag for the controller to support multiple link fields on one screen
+    final String controllerTag = "LinkField_$label";
+
     final textController = TextEditingController(text: value);
     // Ensure controller stays synced if parent updates value
     if (value != textController.text) {
@@ -42,7 +98,7 @@ class SearchableLinkField extends StatelessWidget {
         onTap: readOnly
             ? null
             : () {
-                _showSearchBottomSheet(context);
+              _showSearchBottomSheet(context, controllerTag);
               },
         decoration: InputDecoration(
           labelText: label,
@@ -56,188 +112,136 @@ class SearchableLinkField extends StatelessWidget {
     );
   }
 
-  void _showSearchBottomSheet(BuildContext context) {
+  void _showSearchBottomSheet(BuildContext context, String tag) {
+    // Initialize (or find) the controller with a unique tag
+    final controller = Get.put(LinkFieldController(), tag: tag);
+
+    // Reset and Load Initial Data
+    controller.initSearch(doctype);
+
     Get.bottomSheet(
-      _SearchBottomSheetContent(
-        doctype: doctype,
-        onSelected: (val) {
-          onChanged(val);
-          Get.back(); // Close sheet
-        },
-      ),
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-    );
-  }
-}
-
-// --- Private Widget for Bottom Sheet Content ---
-// Uses internal state to manage the search query and list updates independently
-class _SearchBottomSheetContent extends StatefulWidget {
-  final String doctype;
-  final Function(String) onSelected;
-
-  const _SearchBottomSheetContent({
-    required this.doctype,
-    required this.onSelected,
-  });
-
-  @override
-  State<_SearchBottomSheetContent> createState() =>
-      _SearchBottomSheetContentState();
-}
-
-class _SearchBottomSheetContentState extends State<_SearchBottomSheetContent> {
-  final GlobalSearchService _service = Get.find<GlobalSearchService>();
-  final TextEditingController _searchController = TextEditingController();
-  List<GlobalSearchItem> _results = [];
-  bool _isLoading = false;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    // Load initial data (optional, or wait for type)
-    _search('');
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _search(query);
-    });
-  }
-
-  Future<void> _search(String query) async {
-    setState(() => _isLoading = true);
-    try {
-      final results = await _service.search(widget.doctype, query);
-      if (mounted) {
-        setState(() {
-          _results = results;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Calculate height: 85% of screen height max
-    final height = MediaQuery.of(context).size.height * 0.85;
-
-    return Container(
-      height: height,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Select ${widget.doctype}",
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+      Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            // Drag Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Get.back(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Search Bar
-          TextField(
-            controller: _searchController,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: "Search...",
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
             ),
-            onChanged: _onSearchChanged,
-          ),
-          const SizedBox(height: 12),
 
-          // List Results
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _results.isEmpty
-                ? Center(
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Select $doctype",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Get.back(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Search Bar
+            TextField(
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: "Search...",
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              // Update controller's reactive variable
+              onChanged: (val) => controller.searchQuery.value = val,
+            ),
+            const SizedBox(height: 12),
+
+            // Reactive List Results
+            Expanded(
+              child: Obx(() {
+                if (controller.isLoading.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (controller.results.isEmpty) {
+                  return Center(
                     child: Text(
                       "No results found",
                       style: TextStyle(color: Colors.grey[600]),
                     ),
-                  )
-                : ListView.separated(
-                    itemCount: _results.length,
-                    separatorBuilder: (c, i) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final item = _results[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          item.title,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle:
-                            item.subtitle != null && item.subtitle != item.title
-                            ? Text(
-                                item.subtitle!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : null,
-                        onTap: () => widget.onSelected(item.id),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                  );
+                }
+
+                return ListView.separated(
+                  itemCount: controller.results.length,
+                  separatorBuilder: (c, i) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final item = controller.results[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        item.title,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle:
+                          item.subtitle != null && item.subtitle != item.title
+                          ? Text(
+                              item.subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          : null,
+                      onTap: () {
+                        onChanged(item.id);
+                        Get.back(); // Close Sheet
+                        // Ideally delete controller to free memory,
+                        // though GetX smart management usually handles this if bound to routes.
+                        // For bottom sheets, explicit delete is safer if the tag is unique per field.
+                        Get.delete<LinkFieldController>(tag: tag);
+                      },
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                    );
+                  },
+                );
+              }),
+            ),
+          ],
+        ),
       ),
-    );
+      isScrollControlled: true,
+    ).whenComplete(() {
+      // Ensure controller is cleaned up when sheet is closed via drag/back
+      Get.delete<LinkFieldController>(tag: tag);
+    });
   }
 }
