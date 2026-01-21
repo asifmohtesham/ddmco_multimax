@@ -176,6 +176,17 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
           // --- Enabled Add/Delete Actions ---
           onAddRow: (data) => controller.addRow(data),
           onDeleteRow: (i) => controller.removeRow(i),
+
+          // --- Filter Logic ---
+          onGetFilters: (fieldname, row) {
+            // Apply Batch No Filter based on Item Code
+            if (fieldname == 'batch_no') {
+              if (row['item_code'] != null && row['item_code'].isNotEmpty) {
+                return {'item': row['item_code']};
+              }
+            }
+            return {};
+          },
         ),
       );
     }

@@ -13,6 +13,8 @@ class LinkFieldController extends GetxController {
 
   // Worker to handle debounce automatically
   Worker? _debounceWorker;
+  String? _currentDoctype;
+  Map<String, dynamic>? _currentFilters;
 
   @override
   void onInit() {
@@ -25,23 +27,25 @@ class LinkFieldController extends GetxController {
     );
   }
 
-  void initSearch(String doctype) {
-    // Clear previous state and load initial list (empty query)
+  // Initialize with filters
+  void initSearch(String doctype, {Map<String, dynamic>? filters}) {
+    _currentDoctype = doctype;
+    _currentFilters = filters;
     searchQuery.value = '';
-    _performSearch('', overrideDoctype: doctype);
+    _performSearch('');
   }
 
-  // We need to store doctype locally for the worker to access it,
-  // or pass it dynamically. Simpler to store it when initialized.
-  String? _currentDoctype;
-
-  Future<void> _performSearch(String query, {String? overrideDoctype}) async {
-    if (overrideDoctype != null) _currentDoctype = overrideDoctype;
+  Future<void> _performSearch(String query) async {
     if (_currentDoctype == null) return;
 
     isLoading.value = true;
     try {
-      final items = await _service.search(_currentDoctype!, query);
+      // Use searchLink to support filters
+      final items = await _service.searchLink(
+        _currentDoctype!,
+        query,
+        filters: _currentFilters,
+      );
       results.assignAll(items);
     } catch (e) {
       print("LinkField Search Error: $e");
@@ -78,8 +82,8 @@ class SearchableLinkField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use a unique tag for the controller to support multiple link fields on one screen
-    final String controllerTag = "LinkField_$label";
+    // Unique tag including hash of filters to differentiate same-field instances if needed
+    final String controllerTag = "LinkField_${label}_${filters.hashCode}";
 
     final textController = TextEditingController(text: value);
     // Ensure controller stays synced if parent updates value
@@ -113,11 +117,10 @@ class SearchableLinkField extends StatelessWidget {
   }
 
   void _showSearchBottomSheet(BuildContext context, String tag) {
-    // Initialize (or find) the controller with a unique tag
+    // Initialise (or find) the controller with a unique tag
     final controller = Get.put(LinkFieldController(), tag: tag);
-
-    // Reset and Load Initial Data
-    controller.initSearch(doctype);
+    // Pass filters during initialization
+    controller.initSearch(doctype, filters: filters);
 
     Get.bottomSheet(
       Container(
@@ -167,13 +170,8 @@ class SearchableLinkField extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: "Search...",
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 filled: true,
                 fillColor: Colors.grey[50],
               ),
@@ -185,19 +183,8 @@ class SearchableLinkField extends StatelessWidget {
             // Reactive List Results
             Expanded(
               child: Obx(() {
-                if (controller.isLoading.value) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (controller.results.isEmpty) {
-                  return Center(
-                    child: Text(
-                      "No results found",
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  );
-                }
-
+                if (controller.isLoading.value) return const Center(child: CircularProgressIndicator());
+                if (controller.results.isEmpty) return const Center(child: Text("No results found"));
                 return ListView.separated(
                   itemCount: controller.results.length,
                   separatorBuilder: (c, i) => const Divider(height: 1),
@@ -205,31 +192,13 @@ class SearchableLinkField extends StatelessWidget {
                     final item = controller.results[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        item.title,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle:
-                          item.subtitle != null && item.subtitle != item.title
-                          ? Text(
-                              item.subtitle!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            )
-                          : null,
+                      title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: item.subtitle != null ? Text(item.subtitle!, maxLines: 1) : null,
                       onTap: () {
                         onChanged(item.id);
-                        Get.back(); // Close Sheet
-                        // Ideally delete controller to free memory,
-                        // though GetX smart management usually handles this if bound to routes.
-                        // For bottom sheets, explicit delete is safer if the tag is unique per field.
-                        Get.delete<LinkFieldController>(tag: tag);
+                        Get.back();
                       },
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
+                      trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
                     );
                   },
                 );
@@ -239,9 +208,6 @@ class SearchableLinkField extends StatelessWidget {
         ),
       ),
       isScrollControlled: true,
-    ).whenComplete(() {
-      // Ensure controller is cleaned up when sheet is closed via drag/back
-      Get.delete<LinkFieldController>(tag: tag);
-    });
+    ).whenComplete(() => Get.delete<LinkFieldController>(tag: tag));
   }
 }

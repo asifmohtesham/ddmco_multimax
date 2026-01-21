@@ -8,6 +8,7 @@ class FrappeFieldWidget extends StatelessWidget {
   final dynamic value;
   final Function(dynamic) onChanged;
   final Map<String, dynamic> doc;
+  final Map<String, dynamic>? filters;
 
   const FrappeFieldWidget({
     super.key,
@@ -15,6 +16,7 @@ class FrappeFieldWidget extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.doc,
+    this.filters
   });
 
   @override
@@ -108,7 +110,7 @@ class FrappeFieldWidget extends StatelessWidget {
           value: value,
           onChanged: onChanged,
           readOnly: isReadOnly,
-          filters: null, // Add custom filter logic here if needed
+          filters: filters, // Add custom filter logic here if needed
         );
 
       case 'Dynamic Link':

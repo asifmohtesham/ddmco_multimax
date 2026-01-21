@@ -40,6 +40,8 @@ class FrappeTableField extends StatelessWidget {
   final Function(Map<String, dynamic> data)? onAddRow;
   final Function(int index)? onDeleteRow;
 
+  final Map<String, dynamic> Function(String fieldname, Map<String, dynamic> doc)? onGetFilters;
+
   // Sentinel value for "All Fields" to ensure robust selection
   static const String _allFieldsSentinel = '__ALL__';
 
@@ -52,6 +54,7 @@ class FrappeTableField extends StatelessWidget {
     required this.onRowUpdate,
     this.onAddRow,
     this.onDeleteRow,
+    this.onGetFilters
   });
 
   void _openRowEditor(
@@ -91,6 +94,7 @@ class FrappeTableField extends StatelessWidget {
                   onDeleteRow!(index);
                 }
               },
+        onGetFilters: onGetFilters,
       ),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

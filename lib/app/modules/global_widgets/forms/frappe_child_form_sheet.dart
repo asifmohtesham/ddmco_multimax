@@ -10,6 +10,7 @@ class FrappeChildFormSheet extends StatefulWidget {
   final Function(Map<String, dynamic>) onSave;
   final VoidCallback? onDelete;
   final bool isNew;
+  final Map<String, dynamic> Function(String fieldname, Map<String, dynamic> doc)? onGetFilters;
 
   const FrappeChildFormSheet({
     super.key,
@@ -19,6 +20,7 @@ class FrappeChildFormSheet extends StatefulWidget {
     required this.onSave,
     this.onDelete,
     this.isNew = false,
+    this.onGetFilters,
   });
 
   @override
@@ -107,6 +109,10 @@ class _FrappeChildFormSheetState extends State<FrappeChildFormSheet> {
                         value: _formData[field['fieldname']],
                         onChanged: (val) =>
                             _handleFieldChange(field['fieldname'], val),
+                        // Resolve filters dynamically for this field
+                        filters: widget.onGetFilters != null
+                            ? widget.onGetFilters!(field['fieldname'], _formData)
+                            : null,
                       );
                     }).toList(),
                   ),
