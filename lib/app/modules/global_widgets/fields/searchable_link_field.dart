@@ -185,20 +185,38 @@ class SearchableLinkField extends StatelessWidget {
               child: Obx(() {
                 if (controller.isLoading.value) return const Center(child: CircularProgressIndicator());
                 if (controller.results.isEmpty) return const Center(child: Text("No results found"));
+
                 return ListView.separated(
                   itemCount: controller.results.length,
                   separatorBuilder: (c, i) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final item = controller.results[index];
+                    // Check if this item matches the current value
+                    final isSelected = value == item.id;
+
                     return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: item.subtitle != null ? Text(item.subtitle!, maxLines: 1) : null,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      // Highlight background if selected
+                      tileColor: isSelected ? Colors.blue.withValues(alpha: 0.1) : null,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      title: Text(
+                          item.title,
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            color: isSelected ? Colors.blue : Colors.black87,
+                          )
+                      ),
+                      subtitle: item.subtitle != null
+                          ? Text(item.subtitle!, maxLines: 1)
+                          : null,
                       onTap: () {
                         onChanged(item.id);
                         Get.back();
                       },
-                      trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                      // Show checkmark if selected, otherwise chevron
+                      trailing: isSelected
+                          ? const Icon(Icons.check, size: 20, color: Colors.blue)
+                          : const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
                     );
                   },
                 );

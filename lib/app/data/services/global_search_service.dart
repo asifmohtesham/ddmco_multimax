@@ -20,14 +20,21 @@ class GlobalSearchService extends GetxService {
         Map<String, dynamic>? filters,
       }) async {
     try {
+      // 1. Construct params conditionally to avoid sending 'filters' as null/empty string
+      final Map<String, dynamic> params = {
+        'doctype': doctype,
+        'txt': query,
+        'page_length': 20,
+      };
+
+      // Only add filters if they exist
+      if (filters != null && filters.isNotEmpty) {
+        params['filters'] = jsonEncode(filters);
+      }
+
       final response = await _apiProvider.callMethod(
         'frappe.desk.search.search_link',
-        params: {
-          'doctype': doctype,
-          'txt': query,
-          'filters': filters != null ? jsonEncode(filters) : null,
-          'page_length': 20,
-        },
+        params: params,
       );
 
       if (response.statusCode == 200) {
@@ -47,8 +54,7 @@ class GlobalSearchService extends GetxService {
             id: value,
             title: value,
             subtitle: description,
-            rawData: map, // Passed the raw map to satisfy 'required this.rawData'
-            // 'route' removed as it is not in the model definition
+            rawData: map,
           );
         }).toList();
       }
