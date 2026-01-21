@@ -156,6 +156,14 @@ class AppNavDrawer extends StatelessWidget {
                               onTap: () { Get.back(); Get.toNamed(AppRoutes.MATERIAL_REQUEST); }
                           )),
                           DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry', icon: Icons.compare_arrows_rounded, isSelected: currentRoute == AppRoutes.STOCK_ENTRY, onTap: homeController.goToStockEntry)),
+                          DocTypeGuard(doctype: 'Stock Entry', loading: skeleton, child: _DrawerItem(title: 'Stock Entry v2', icon: Icons.science_outlined, isSelected: currentRoute == AppRoutes.STOCK_ENTRY_FORM_V2, onTap: () {
+                            Get.back(); // Close the drawer
+                            // Navigate to V2 Form in 'New' mode
+                            Get.toNamed(
+                              AppRoutes.STOCK_ENTRY_FORM_V2,
+                              arguments: {'name': 'new'},
+                            );
+                          })),
                           DocTypeGuard(doctype: 'Delivery Note', loading: skeleton, child: _DrawerItem(title: 'Delivery Note', icon: Icons.local_shipping_rounded, isSelected: currentRoute == AppRoutes.DELIVERY_NOTE, onTap: homeController.goToDeliveryNote)),
                           DocTypeGuard(doctype: 'Packing Slip', loading: skeleton, child: _DrawerItem(title: 'Packing Slip', icon: Icons.assignment_return_rounded, isSelected: currentRoute == AppRoutes.PACKING_SLIP, onTap: homeController.goToPackingSlip)),
                         ],

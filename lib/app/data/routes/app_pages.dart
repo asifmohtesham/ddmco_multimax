@@ -4,6 +4,8 @@ import 'package:multimax/app/modules/job_card/job_card_binding.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_binding_v2.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_screen_v2.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
 import 'package:multimax/app/modules/work_order/work_order_screen.dart';
 import 'package:get/get.dart';
@@ -109,6 +111,12 @@ class AppPages {
       name: AppRoutes.STOCK_ENTRY_FORM,
       page: () => const StockEntryFormScreen(),
       binding: StockEntryFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.STOCK_ENTRY_FORM_V2,
+      page: () => const StockEntryFormScreenV2(),
+      binding: StockEntryFormBindingV2(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

@@ -5,6 +5,12 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class StockEntryProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  /// Fetches the DocType metadata (fields, layout, labels)
+  /// Uses V2 Meta endpoint for accurate definition
+  Future<Response> getMeta() async {
+    return _apiProvider.getDocTypeMeta('Stock Entry');
+  }
+
   Future<Response> getStockEntries({
     int limit = 20,
     int limitStart = 0,
@@ -12,12 +18,22 @@ class StockEntryProvider {
     String orderBy = 'modified desc', // Default
   }) async {
     return _apiProvider.getDocumentList(
-        'Stock Entry',
-        limit: limit,
-        limitStart: limitStart,
-        filters: filters,
-        orderBy: orderBy, // Pass dynamic sort
-        fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']
+      'Stock Entry',
+      limit: limit,
+      limitStart: limitStart,
+      filters: filters,
+      orderBy: orderBy,
+      // Pass dynamic sort
+      fields: [
+        'name',
+        'purpose',
+        'total_amount',
+        'custom_total_qty',
+        'modified',
+        'docstatus',
+        'creation',
+        'stock_entry_type',
+      ],
     );
   }
 
@@ -30,6 +46,7 @@ class StockEntryProvider {
       orderBy: 'name asc',
     );
   }
+
   // --------------------
 
   Future<Response> getStockEntry(String name) async {
@@ -40,7 +57,10 @@ class StockEntryProvider {
     return _apiProvider.createDocument('Stock Entry', data);
   }
 
-  Future<Response> updateStockEntry(String name, Map<String, dynamic> data) async {
+  Future<Response> updateStockEntry(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
     return _apiProvider.updateDocument('Stock Entry', name, data);
   }
 }

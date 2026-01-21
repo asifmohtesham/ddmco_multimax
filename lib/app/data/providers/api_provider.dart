@@ -146,6 +146,16 @@ class ApiProvider {
     );
   }
 
+  Future<Response> getDocType(String doctype) async {
+    return getDocument('DocType', doctype);
+  }
+
+  /// Fetches accurate metadata using the V2 endpoint (includes customisations)
+  Future<Response> getDocTypeMeta(String doctype) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get('/api/v2/doctype/$doctype/meta');
+  }
+
   Future<Response> getDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/resource/$doctype/$name');
