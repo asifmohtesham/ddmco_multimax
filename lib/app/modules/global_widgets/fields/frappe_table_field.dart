@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/forms/frappe_child_form_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/forms/configure_columns_sheet.dart';
 
 /// Lightweight controller to handle table search state independently
 class FrappeTableController extends GetxController {
@@ -10,11 +11,43 @@ class FrappeTableController extends GetxController {
   var selectedFilterField = Rxn<String>();
   var selectedFilterLabel = Rxn<String>();
 
+  // Tracks which columns are currently visible in the list view
+  var visibleFieldNames = <String>[].obs;
+  bool isColumnsInitialised = false;
+
   final TextEditingController searchInputController = TextEditingController();
 
   void setFilterField(String? fieldname, String? label) {
     selectedFilterField.value = fieldname;
     selectedFilterLabel.value = label;
+  }
+
+  void setVisibleFields(List<String> fields) {
+    visibleFieldNames.assignAll(fields);
+  }
+
+  void initialiseColumns(List<Map<String, dynamic>> meta) {
+    if (isColumnsInitialised) return;
+
+    // Default: Use 'in_list_view' property from metadata
+    final defaults = meta
+        .where((c) => c['in_list_view'] == 1)
+        .map((c) => c['fieldname'] as String)
+        .toList();
+
+    // Fallback: If no list view columns defined, show first 2 visible data fields
+    if (defaults.isEmpty) {
+      final fallback = meta
+          .where((c) => c['hidden'] != 1)
+          .take(2)
+          .map((c) => c['fieldname'] as String)
+          .toList();
+      visibleFieldNames.assignAll(fallback);
+    } else {
+      visibleFieldNames.assignAll(defaults);
+    }
+
+    isColumnsInitialised = true;
   }
 
   void clearSearch() {
@@ -101,6 +134,25 @@ class FrappeTableField extends StatelessWidget {
     );
   }
 
+  void _openColumnConfig(
+    BuildContext context,
+    FrappeTableController controller,
+  ) {
+    if (childFieldMeta == null) return;
+
+    Get.bottomSheet(
+      ConfigureColumnsSheet(
+        allFields: childFieldMeta!,
+        currentVisibleFields: controller.visibleFieldNames,
+        onSave: (newFields) {
+          controller.setVisibleFields(newFields);
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Instantiate a controller unique to this fieldname
@@ -109,9 +161,13 @@ class FrappeTableField extends StatelessWidget {
       tag: fieldMeta['fieldname'] ?? label,
     );
 
+    if (childFieldMeta != null && !controller.isColumnsInitialised) {
+      controller.initialiseColumns(childFieldMeta!);
+    }
+
     // Get visible columns for the filter menu
     final List<Map<String, dynamic>> filterableColumns =
-        childFieldMeta?.where((c) => c['in_list_view'] == 1).toList() ?? [];
+        childFieldMeta?.where((c) => c['hidden'] != 1).toList() ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,6 +193,21 @@ class FrappeTableField extends StatelessWidget {
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
                   const SizedBox(width: 8),
+
+                  // Configure Columns Button
+                  IconButton(
+                    icon: const Icon(
+                      Icons.settings,
+                      size: 20,
+                      color: Colors.grey,
+                    ),
+                    tooltip: 'Configure Columns',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                    onPressed: () => _openColumnConfig(context, controller),
+                  ),
+                  const SizedBox(width: 4),
+
                   if (onAddRow != null)
                     TextButton.icon(
                       onPressed: () => _openRowEditor(context),
@@ -295,7 +366,7 @@ class FrappeTableField extends StatelessWidget {
 
                 // Case B: All Fields Search (Only checks visible list columns)
                 return childFieldMeta?.any((col) {
-                      if (col['in_list_view'] != 1) return false;
+                      if (col['hidden'] == 1) return false;
                       final key = col['fieldname'];
                       final val = item[key]?.toString().toLowerCase() ?? '';
                       return val.contains(query);
@@ -328,7 +399,7 @@ class FrappeTableField extends StatelessWidget {
                 final item = filteredItems[index];
                 final originalIndex = items.indexOf(item);
 
-                return _buildDynamicRow(context, originalIndex, item);
+                return _buildDynamicRow(context, originalIndex, item, controller);
               },
             );
           }),
@@ -341,6 +412,7 @@ class FrappeTableField extends StatelessWidget {
     BuildContext context,
     int index,
     Map<String, dynamic> row,
+    FrappeTableController controller,
   ) {
     if (childFieldMeta == null || childFieldMeta!.isEmpty) {
       return ListTile(
@@ -358,7 +430,8 @@ class FrappeTableField extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: childFieldMeta!
               .where((col) {
-                return col['in_list_view'] == 1;
+                // Render only columns present in the controller's visible list
+                return controller.visibleFieldNames.contains(col['fieldname']);
               })
               .map((col) {
                 final String label = col['label'] ?? '';
