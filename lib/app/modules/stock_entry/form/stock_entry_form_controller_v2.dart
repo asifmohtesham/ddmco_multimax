@@ -9,9 +9,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 class StockEntryFormControllerV2 extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
 
-  // --- Configuration: Hierarchical Field Whitelist ---
-  // STRICT RULE: Only fieldnames listed here will be rendered.
-  // If you want a specific Tab or Section Break, add its 'fieldname' here.
+  // --- Configuration: Form Visibility (Edit Sheet) ---
   static const Map<String, List<String>> _visibleFields = {
     'Stock Entry': [
       // Data Fields
@@ -20,6 +18,7 @@ class StockEntryFormControllerV2 extends GetxController {
       'purpose',
       'from_warehouse',
       'to_warehouse',
+      'scan_barcode',
       'items_section',
       'items',
       'other_info_tab',
@@ -188,9 +187,15 @@ class StockEntryFormControllerV2 extends GetxController {
     }
   }
 
-  void addRow() {
+  // --- Updated: Accepts data from the Form Sheet ---
+  void addRow(Map<String, dynamic> rowData) {
     List<dynamic> items = List.from(doc['items'] ?? []);
-    items.add({'qty': 0, 'uom': 'Nos'});
+
+    // Add default values if missing from the form data
+    if (rowData['uom'] == null) rowData['uom'] = 'Nos';
+    if (rowData['qty'] == null) rowData['qty'] = 0;
+
+    items.add(rowData);
     updateField('items', items);
   }
 

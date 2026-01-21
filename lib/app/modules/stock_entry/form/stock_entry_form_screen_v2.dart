@@ -32,7 +32,7 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());
           }
-          return _buildDynamicForm();
+          return SafeArea(child: _buildDynamicForm());
         }),
       ),
     );
@@ -130,8 +130,9 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
 
   Widget _buildSectionCard(String? title, List<dynamic> fields) {
     if (fields.isEmpty) return const SizedBox.shrink();
-    if (title == null)
+    if (title == null) {
       return Column(children: fields.map(_buildField).toList());
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -172,6 +173,9 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
           childFieldMeta: childMeta,
           // Pass the whitelist here
           onRowUpdate: (i, data) => controller.updateRow(i, data),
+          // --- Enabled Add/Delete Actions ---
+          onAddRow: (data) => controller.addRow(data),
+          onDeleteRow: (i) => controller.removeRow(i),
         ),
       );
     }
