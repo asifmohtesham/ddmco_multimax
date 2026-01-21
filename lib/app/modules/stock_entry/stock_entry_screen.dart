@@ -332,7 +332,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                   roles: controller.writeRoles.toList(),
                   fallback: const SizedBox.shrink(),
                   child: FilledButton.tonalIcon(
-                    onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                    onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM_V2,
                         arguments: {'name': detailed.name, 'mode': 'edit'}),
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Edit'),
@@ -340,7 +340,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 ),
               ] else ...[
                 FilledButton.tonalIcon(
-                  onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                  onPressed: () => Get.toNamed(AppRoutes.STOCK_ENTRY_FORM_V2,
                       arguments: {'name': detailed.name, 'mode': 'view'}),
                   icon: const Icon(Icons.visibility_outlined, size: 18),
                   label: const Text('View Details'),

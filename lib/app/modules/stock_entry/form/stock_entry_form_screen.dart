@@ -40,8 +40,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               isSaving: controller.isSaving.value,
               onSave: onSave,
               // Optional: Enable Search if you want to search other Stock Entries from here
-              // searchDoctype: 'Stock Entry',
-              // searchRoute: AppRoutes.STOCK_ENTRY_LIST,
+              searchDoctype: 'Stock Entry',
+              searchRoute: AppRoutes.STOCK_ENTRY,
               bottom: const TabBar(
                 tabs: [
                   Tab(text: 'Logistics & Details'),
