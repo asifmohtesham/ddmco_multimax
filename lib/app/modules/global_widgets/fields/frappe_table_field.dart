@@ -4,7 +4,6 @@ import 'package:multimax/app/modules/global_widgets/forms/frappe_child_form_shee
 
 /// Lightweight controller to handle table search state independently
 class FrappeTableController extends GetxController {
-  var isSearchVisible = false.obs;
   var searchText = ''.obs;
 
   // Track selected filter field (null = All fields)
@@ -12,13 +11,6 @@ class FrappeTableController extends GetxController {
   var selectedFilterLabel = Rxn<String>();
 
   final TextEditingController searchInputController = TextEditingController();
-
-  void toggleSearch() {
-    isSearchVisible.value = !isSearchVisible.value;
-    if (!isSearchVisible.value) {
-      clearSearch();
-    }
-  }
 
   void setFilterField(String? fieldname, String? label) {
     selectedFilterField.value = fieldname;
@@ -121,72 +113,51 @@ class FrappeTableField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // --- Header ---
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 8),
-                Obx(
-                  () => IconButton(
-                    icon: Icon(
-                      controller.isSearchVisible.value
-                          ? Icons.search_off
-                          : Icons.search,
-                      size: 20,
-                      color: controller.isSearchVisible.value
-                          ? Colors.blue
-                          : Colors.grey,
+              ),
+              Row(
+                children: [
+                  if (items.isNotEmpty)
+                    Text(
+                      '${items.length} Items',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
-                    onPressed: controller.toggleSearch,
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(4),
-                    tooltip: 'Search Items',
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                if (items.isNotEmpty)
-                  Text(
-                    '${items.length} Items',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                  ),
-                const SizedBox(width: 8),
-                if (onAddRow != null)
-                  TextButton.icon(
-                    onPressed: () => _openRowEditor(context),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text("Add"),
-                    style: TextButton.styleFrom(
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                  const SizedBox(width: 8),
+                  if (onAddRow != null)
+                    TextButton.icon(
+                      onPressed: () => _openRowEditor(context),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text("Add"),
+                      style: TextButton.styleFrom(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
                       ),
-                      minimumSize: Size.zero,
                     ),
-                  ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
 
-        // --- Search Bar (Inline) ---
-        Obx(() {
-          if (!controller.isSearchVisible.value) return const SizedBox.shrink();
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: TextField(
+        // --- Search Bar (Always Visible) ---
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Obx(
+            () => TextField(
               controller: controller.searchInputController,
               decoration: InputDecoration(
                 hintText: "Search...",
@@ -292,10 +263,8 @@ class FrappeTableField extends StatelessWidget {
               ),
               onChanged: (val) => controller.searchText.value = val,
             ),
-          );
-        }),
-
-        const SizedBox(height: 4),
+          ),
+        ),
 
         // --- Table Content ---
         Container(
