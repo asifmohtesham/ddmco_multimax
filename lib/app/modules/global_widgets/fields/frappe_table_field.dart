@@ -349,6 +349,12 @@ class FrappeTableField extends StatelessWidget {
             color: Colors.grey[50],
           ),
           child: Obx(() {
+            // CRITICAL: Explicitly access visibleFieldNames here so Obx listens to it.
+            // Without this, Obx doesn't know it depends on visibleFieldNames because
+            // it's only accessed inside the lazy itemBuilder.
+            // ignore: unused_local_variable
+            final visibleColumnsTrigger = controller.visibleFieldNames.length;
+
             // 1. Filter Logic
             final query = controller.searchText.value.toLowerCase();
             final filterField = controller.selectedFilterField.value;
@@ -402,7 +408,10 @@ class FrappeTableField extends StatelessWidget {
                 return _buildDynamicRow(context, originalIndex, item, controller);
               },
             );
-          }),
+          },
+          // CRITICAL: Force Obx to rebuild when 'items' list identity changes.
+          key: ValueKey(items),
+          ),
         ),
       ],
     );
