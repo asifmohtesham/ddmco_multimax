@@ -10,6 +10,9 @@ class FrappeChildFormController extends GetxController {
   // Renamed to avoid conflict with GetxController.onDelete lifecycle method
   final VoidCallback? onDeleteItemCallback;
 
+  // New: Callback for live field updates (passes the fieldname, value, and the reactive doc)
+  final Function(String key, dynamic value, RxMap<String, dynamic> doc)? onValueChange;
+
   // Observable document state to trigger UI updates (e.g., visibility, filters)
   final RxMap<String, dynamic> doc = <String, dynamic>{}.obs;
 
@@ -19,18 +22,22 @@ class FrappeChildFormController extends GetxController {
     required this.initialData,
     required this.onSave,
     this.onDeleteItemCallback,
+    this.onValueChange,
   });
 
   @override
   void onInit() {
     super.onInit();
-    // Initialize doc with a copy of the data
+    // Initialise doc with a copy of the data
     doc.assignAll(initialData);
   }
 
   void handleFieldChange(String fieldname, dynamic value) {
     doc[fieldname] = value;
-    // doc is an RxMap, so UI listening to it (via Obx) will rebuild automatically
+    // Trigger the callback to allow parent to modify other fields based on this change
+    if (onValueChange != null) {
+      onValueChange!(fieldname, value, doc);
+    }
   }
 
   void submit() {
@@ -65,6 +72,9 @@ class FrappeChildFormSheet extends StatelessWidget {
   final bool isNew;
   final Map<String, dynamic> Function(String fieldname, Map<String, dynamic> doc)? onGetFilters;
 
+  // New: Callback exposed to the parent
+  final Function(String key, dynamic value, RxMap<String, dynamic> doc)? onValueChange;
+
   const FrappeChildFormSheet({
     super.key,
     required this.title,
@@ -74,6 +84,7 @@ class FrappeChildFormSheet extends StatelessWidget {
     this.onDelete,
     this.isNew = false,
     this.onGetFilters,
+    this.onValueChange,
   });
 
   @override
@@ -81,13 +92,14 @@ class FrappeChildFormSheet extends StatelessWidget {
     // Create a unique tag to allow multiple forms using hashcode
     final String controllerTag = "child_form_${identityHashCode(this)}";
 
-    // Initialize the controller
+    // Initialise the controller
     final controller = Get.put(
       FrappeChildFormController(
         initialData: initialData,
         onSave: onSave,
         // Map the widget's onDelete to the controller's renamed callback
         onDeleteItemCallback: onDelete,
+        onValueChange: onValueChange,
       ),
       tag: controllerTag,
     );
@@ -124,7 +136,10 @@ class FrappeChildFormSheet extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),

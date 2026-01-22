@@ -7,16 +7,21 @@ class FrappeFieldWidget extends StatelessWidget {
   final Map<String, dynamic> fieldMeta;
   final dynamic value;
   final Function(dynamic) onChanged;
+  final Function(dynamic)? onSubmitted;
   final Map<String, dynamic> doc;
   final Map<String, dynamic>? filters;
+
+  final TextEditingController? textController;
 
   const FrappeFieldWidget({
     super.key,
     required this.fieldMeta,
     required this.value,
     required this.onChanged,
+    this.onSubmitted,
     required this.doc,
-    this.filters
+    this.filters,
+    this.textController,
   });
 
   @override
@@ -198,18 +203,30 @@ class FrappeFieldWidget extends StatelessWidget {
       case 'Barcode':
         return _buildTextField(
           label: label,
+          // If controller is provided, use it. Otherwise use initialValue.
+          // Using initialValue with a controller throws an error, so we branch logic.
+          controller: textController,
           value: value,
           onChanged: onChanged,
+          // Trigger onSubmitted when "Enter" is pressed (Scanner default)
+          onFieldSubmitted: onSubmitted != null
+              ? (val) => onSubmitted!(val)
+              : null,
           readOnly: isReadOnly,
-          suffixIcon: IconButton(
+          // Accessibility: allow "Go" action on keyboard
+          textInputAction: type == 'Barcode' ? TextInputAction.go : TextInputAction.done,
+          suffixIcon: type == 'Barcode'
+              ? IconButton(
             icon: const Icon(Icons.qr_code_scanner),
-            onPressed: isReadOnly
-                ? null
-                : () {
-                    // Trigger Barcode Scanner
-                    // Get.to(() => ScanScreen())?.then((val) => onChanged(val));
-                  },
-          ),
+            onPressed: () {
+              if (onSubmitted != null) {
+                // Prioritise controller text, fallback to value prop
+                final val = textController?.text ?? value.toString();
+                onSubmitted!(val);
+              }
+            },
+          )
+              : null,
         );
 
       case 'Geolocation':
@@ -292,6 +309,9 @@ class FrappeFieldWidget extends StatelessWidget {
           label: "$label ($type)",
           value: value,
           onChanged: onChanged,
+          onFieldSubmitted: onSubmitted != null
+              ? (val) => onSubmitted!(val)
+              : null,
           readOnly: isReadOnly,
         );
     }
@@ -302,7 +322,10 @@ class FrappeFieldWidget extends StatelessWidget {
   Widget _buildTextField({
     required String label,
     required dynamic value,
+    TextEditingController? controller,
+    TextInputAction? textInputAction,
     required Function(dynamic) onChanged,
+    Function(dynamic)? onFieldSubmitted,
     required bool readOnly,
     TextInputType keyboardType = TextInputType.text,
     bool obscureText = false,
@@ -335,6 +358,7 @@ class FrappeFieldWidget extends StatelessWidget {
           ),
         ),
         onChanged: onChanged,
+        onFieldSubmitted: onFieldSubmitted,
       ),
     );
   }

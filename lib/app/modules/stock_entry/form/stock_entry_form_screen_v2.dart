@@ -155,8 +155,26 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
   Widget _buildField(dynamic fieldMeta) {
     if (fieldMeta['hidden'] == 1) return const SizedBox.shrink();
 
-    // 1. Special Handling for Child Table
-    // We pass the filtered child columns to the table widget
+    // 1. Special Handling for Scan Barcode
+    if (fieldMeta['fieldname'] == 'scan_barcode') {
+      // Force 'Barcode' type to ensure the Scanner Icon (Submit button) is rendered
+      // and the keyboard action is set to 'Go'.
+      final modifiedMeta = Map<String, dynamic>.from(fieldMeta);
+      modifiedMeta['fieldtype'] = 'Barcode';
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: FrappeFieldWidget(
+          fieldMeta: modifiedMeta,
+          doc: controller.doc,
+          value: controller.doc['scan_barcode'],
+          textController: controller.scanBarcodeController,
+          onChanged: (val) => controller.updateField('scan_barcode', val),
+          onSubmitted: (val) => controller.processBarcodeScan(val.toString()),
+        ),
+      );
+    }
+
     if (fieldMeta['fieldtype'] == 'Table') {
       // The options field usually contains the Child DocType name (e.g., "Stock Entry Detail")
       final childDocType = fieldMeta['options'];
@@ -187,11 +205,23 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
             }
             return {};
           },
+
+          onRowFieldChange: (key, value, row) {
+            if (key == 'batch_no') {
+              if (value != null && value.toString().isNotEmpty) {
+                row['use_serial_batch_fields'] = 1;
+              }
+            } else if (key == 'serial_and_batch_bundle') {
+              if (value != null && value.toString().isNotEmpty) {
+                row['use_serial_batch_fields'] = 0;
+              }
+            }
+          },
         ),
       );
     }
 
-    // 2. Standard Field Handling
+    // 3. Standard Field Handling
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: FrappeFieldWidget(

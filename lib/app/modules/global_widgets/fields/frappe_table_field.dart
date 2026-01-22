@@ -75,6 +75,9 @@ class FrappeTableField extends StatelessWidget {
 
   final Map<String, dynamic> Function(String fieldname, Map<String, dynamic> doc)? onGetFilters;
 
+  // New: Callback for row field changes
+  final Function(String key, dynamic value, RxMap<String, dynamic> row)? onRowFieldChange;
+
   // Sentinel value for "All Fields" to ensure robust selection
   static const String _allFieldsSentinel = '__ALL__';
 
@@ -87,7 +90,8 @@ class FrappeTableField extends StatelessWidget {
     required this.onRowUpdate,
     this.onAddRow,
     this.onDeleteRow,
-    this.onGetFilters
+    this.onGetFilters,
+    this.onRowFieldChange
   });
 
   void _openRowEditor(
@@ -128,6 +132,7 @@ class FrappeTableField extends StatelessWidget {
                 }
               },
         onGetFilters: onGetFilters,
+        onValueChange: onRowFieldChange,
       ),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -353,7 +358,12 @@ class FrappeTableField extends StatelessWidget {
             // Without this, Obx doesn't know it depends on visibleFieldNames because
             // it's only accessed inside the lazy itemBuilder.
             // ignore: unused_local_variable
-            final visibleColumnsTrigger = controller.visibleFieldNames.length;
+            // Explicitly subscribe to visibleFieldNames
+            // ignore: unused_local_variable
+            final visibleColumnsTrigger = Get.find<FrappeTableController>(tag: fieldMeta['fieldname'] ?? label).visibleFieldNames.length;
+
+            // Re-fetch controller to ensure we have the instance
+            final controller = Get.find<FrappeTableController>(tag: fieldMeta['fieldname'] ?? label);
 
             // 1. Filter Logic
             final query = controller.searchText.value.toLowerCase();
