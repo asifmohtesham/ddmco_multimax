@@ -269,18 +269,37 @@ class StockEntryFormControllerV2 extends GetxController {
       items[existingIndex] = row;
       GlobalSnackbar.success(message: 'Updated quantity for $itemCode');
     } else {
-      // ADD New Row
-      Map<String, dynamic> newRow = {
-        'item_code': itemCode,
-        'item_name': itemData['item_name'],
-        'description': itemData['description'],
-        'uom': scannedUom ?? itemData['stock_uom'],
-        'stock_uom': itemData['stock_uom'],
-        'qty': 1.0,
-        'conversion_factor': 1.0,
-        's_warehouse': doc['from_warehouse'],
-        't_warehouse': doc['to_warehouse'],
-      };
+      // ADD New Row (Dynamic Mapping)
+      Map<String, dynamic> newRow = {};
+
+      // 1. Dynamic Mapping:
+      // iterate through child table meta (whitelisted fields) and copy matching fields from Item data
+      for (var field in itemMetaFields) {
+        final String fieldName = field['fieldname'];
+        // If the Item document has this field, copy it
+        if (itemData.containsKey(fieldName)) {
+          newRow[fieldName] = itemData[fieldName];
+        } else if (itemData.containsKey(fieldName.replaceAll('custom_', ''))) {
+          newRow[fieldName] = itemData[fieldName.replaceAll('custom_', '')];
+        }
+      }
+
+      // 2. Set Mandatory Overrides & Defaults
+      newRow['barcode'] = itemData['barcodes'].where((barcode) => barcode['barcode'].length == 8).first['barcode'];
+      newRow['item_code'] = itemCode;
+      newRow['custom_invoice_serial_number'] = 0;
+      newRow['qty'] = 1.0;
+      newRow['s_warehouse'] = doc['from_warehouse'];
+      newRow['t_warehouse'] = doc['to_warehouse'];
+      newRow['conversion_factor'] = 1.0;
+
+      // 3. Priority for UOM: Scanned > Item Stock UOM
+      newRow['uom'] = scannedUom ?? itemData['stock_uom'];
+      newRow['stock_uom'] = itemData['stock_uom'];
+
+      // 4. Ensure flags are present (even if not in whitelisted form fields)
+      newRow['has_batch_no'] = itemData['has_batch_no'];
+      newRow['has_serial_no'] = itemData['has_serial_no'];
 
       items.insert(0, newRow);
       GlobalSnackbar.success(message: 'Added $itemCode');
