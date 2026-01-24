@@ -4,6 +4,7 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/fields/frappe_field_widget.dart';
 import 'package:multimax/app/modules/global_widgets/fields/frappe_table_field.dart';
+import 'package:multimax/app/data/utils/frappe_logic_evaluator.dart';
 
 class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
   const StockEntryFormScreenV2({super.key});
@@ -121,7 +122,20 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
       } else if (field['fieldtype'] == 'Column Break') {
         continue;
       } else {
-        currentFields.add(field);
+        // --- LOGIC: Filter visible fields here before grouping them ---
+        bool isVisible = true;
+        if (field['depends_on'] != null) {
+          isVisible = FrappeLogicEvaluator.evaluate(
+              field['depends_on'].toString(),
+              controller.doc
+          );
+        }
+
+        if (field['hidden'] == 1) isVisible = false;
+
+        if (isVisible) {
+          currentFields.add(field);
+        }
       }
     }
     flush();
@@ -138,7 +152,7 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Colors.transparent),
+        side: BorderSide(color: Colors.grey.shade300),
         borderRadius: BorderRadius.circular(8),
       ),
       child: ExpansionTile(
@@ -153,19 +167,31 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
   }
 
   Widget _buildField(dynamic fieldMeta) {
-    if (fieldMeta['hidden'] == 1) return const SizedBox.shrink();
+    // Hidden fields already filtered out in sections, but check 'depends_on' again
+    // just in case direct access happens, or for reactive re-evaluation safety inside sections.
+    // However, since sections are rebuilt on doc change (Obx at root), simple render is okay.
 
-    // 1. Special Handling for Scan Barcode
-    if (fieldMeta['fieldname'] == 'scan_barcode') {
-      // Force 'Barcode' type to ensure the Scanner Icon (Submit button) is rendered
-      // and the keyboard action is set to 'Go'.
-      final modifiedMeta = Map<String, dynamic>.from(fieldMeta);
-      modifiedMeta['fieldtype'] = 'Barcode';
+    // 1. Logic: Check Mandatory Depends On
+    bool isMandatory = fieldMeta['reqd'] == 1;
+    if (fieldMeta['mandatory_depends_on'] != null) {
+      bool cond = FrappeLogicEvaluator.evaluate(
+          fieldMeta['mandatory_depends_on'].toString(),
+          controller.doc
+      );
+      if (cond) isMandatory = true;
+    }
 
+    // Clone meta to modify reqd status
+    final effectiveMeta = Map<String, dynamic>.from(fieldMeta);
+    effectiveMeta['reqd'] = isMandatory ? 1 : 0;
+
+    // --- Special Handling: Scan Barcode ---
+    if (effectiveMeta['fieldname'] == 'scan_barcode') {
+      effectiveMeta['fieldtype'] = 'Barcode'; // Force type
       return Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
         child: FrappeFieldWidget(
-          fieldMeta: modifiedMeta,
+          fieldMeta: effectiveMeta,
           doc: controller.doc,
           value: controller.doc['scan_barcode'],
           textController: controller.scanBarcodeController,
@@ -175,9 +201,10 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
       );
     }
 
-    if (fieldMeta['fieldtype'] == 'Table') {
+    // --- Table Fields ---
+    if (effectiveMeta['fieldtype'] == 'Table') {
       // The options field usually contains the Child DocType name (e.g., "Stock Entry Detail")
-      final childDocType = fieldMeta['options'];
+      final childDocType = effectiveMeta['options'];
       // Retrieve the whitelist-filtered meta for this Child DocType
       List<Map<String, dynamic>>? childMeta =
           controller.childMetaMap[childDocType];
@@ -185,9 +212,9 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: FrappeTableField(
-          label: fieldMeta['label'] ?? '',
+          label: effectiveMeta['label'] ?? '',
           items: controller.getItems(),
-          fieldMeta: fieldMeta,
+          fieldMeta: effectiveMeta,
           childFieldMeta: childMeta,
           // Pass the whitelist here
           onRowUpdate: (i, data) => controller.updateRow(i, data),
@@ -221,14 +248,14 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
       );
     }
 
-    // 3. Standard Field Handling
+    // --- Standard Fields ---
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: FrappeFieldWidget(
-        fieldMeta: fieldMeta,
+        fieldMeta: effectiveMeta,
         doc: controller.doc,
-        value: controller.doc[fieldMeta['fieldname']],
-        onChanged: (val) => controller.updateField(fieldMeta['fieldname'], val),
+        value: controller.doc[effectiveMeta['fieldname']],
+        onChanged: (val) => controller.updateField(effectiveMeta['fieldname'], val),
       ),
     );
   }

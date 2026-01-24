@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/utils/frappe_logic_evaluator.dart';
 import 'package:multimax/app/modules/global_widgets/fields/frappe_field_widget.dart';
 
 /// Controller to manage the Child Form state
@@ -162,6 +163,32 @@ class FrappeChildFormSheet extends StatelessWidget {
                     // Wrap in Obx to rebuild fields when 'doc' changes
                     return Column(
                       children: visibleFields.map((field) {
+                        // 1. Evaluate 'depends_on' for Visibility
+                        bool isVisible = true;
+                        if (field['depends_on'] != null) {
+                          isVisible = FrappeLogicEvaluator.evaluate(
+                              field['depends_on'].toString(),
+                              controller.doc
+                          );
+                        }
+
+                        if (!isVisible) return const SizedBox.shrink();
+
+                        // 2. Evaluate 'mandatory_depends_on' for Required status
+                        bool isMandatory = field['reqd'] == 1;
+                        if (field['mandatory_depends_on'] != null) {
+                          bool cond = FrappeLogicEvaluator.evaluate(
+                              field['mandatory_depends_on'].toString(),
+                              controller.doc
+                          );
+                          if (cond) isMandatory = true;
+                        }
+
+                        // Clone field meta to avoid mutating the original definition permanently
+                        // and apply the dynamic mandatory status
+                        final effectiveMeta = Map<String, dynamic>.from(field);
+                        effectiveMeta['reqd'] = isMandatory ? 1 : 0;
+
                         return FrappeFieldWidget(
                           fieldMeta: field,
                           doc: controller.doc,
