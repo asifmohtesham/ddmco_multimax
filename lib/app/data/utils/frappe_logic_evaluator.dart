@@ -1,5 +1,5 @@
 class FrappeLogicEvaluator {
-  static bool evaluate(String? expression, Map<String, dynamic> doc) {
+  static bool evaluate(String? expression, Map<String, dynamic> doc, {Map<String, dynamic>? parentDoc}) {
     if (expression == null || expression.trim().isEmpty) return true;
 
     String expr = expression.trim();
@@ -13,37 +13,35 @@ class FrappeLogicEvaluator {
     String js = expr.substring(5).trim(); // Remove "eval:"
 
     try {
-      // Handle Negation: "eval:!doc.my_field"
-      if (js.startsWith("!doc.")) {
-        String field = js.substring(5).trim();
-        return !_isTruthy(doc[field]);
-      }
-
-      // Handle Equality: "eval:doc.field == 'value'"
+      // Handle Equality
       if (js.contains("==")) {
         List<String> parts = js.split("==");
-        dynamic leftVal = _extractValue(parts[0].trim(), doc);
-        dynamic rightVal = _parsePrimitive(parts[1].trim());
+        dynamic leftVal = _extractValue(parts[0].trim(), doc, parentDoc);
+        dynamic rightVal = _extractValue(parts[1].trim(), doc, parentDoc);
         return leftVal.toString() == rightVal.toString();
       }
 
       // Handle Inequality: "eval:doc.field != 'value'"
       if (js.contains("!=")) {
         List<String> parts = js.split("!=");
-        dynamic leftVal = _extractValue(parts[0].trim(), doc);
-        dynamic rightVal = _parsePrimitive(parts[1].trim());
+        dynamic leftVal = _extractValue(parts[0].trim(), doc, parentDoc);
+        dynamic rightVal = _extractValue(parts[1].trim(), doc, parentDoc);
         return leftVal.toString() != rightVal.toString();
       }
 
-      // Handle basic Boolean check: "eval:doc.my_field"
-      if (js.startsWith("doc.") && !js.contains(" ") && !js.contains("=")) {
-        return _isTruthy(doc[js.substring(4).trim()]);
+      // Handle Negation
+      if (js.startsWith("!")) {
+        String term = js.substring(1).trim();
+        dynamic val = _extractValue(term, doc, parentDoc);
+        return !_isTruthy(val);
       }
 
-      // Fallback for complex JS we can't parse easily: return true (show field)
-      return true;
+      // Handle Truthy Check
+      dynamic val = _extractValue(js, doc, parentDoc);
+      return _isTruthy(val);
+
     } catch (e) {
-      print("Error evaluating depends_on: $expr -> $e");
+      // Fail open (show field) on error
       return true;
     }
   }
@@ -58,9 +56,12 @@ class FrappeLogicEvaluator {
     return true;
   }
 
-  static dynamic _extractValue(String term, Map<String, dynamic> doc) {
+  static dynamic _extractValue(String term, Map<String, dynamic> doc, Map<String, dynamic>? parentDoc) {
     if (term.startsWith("doc.")) {
       return doc[term.substring(4)];
+    }
+    if (term.startsWith("parent.")) {
+      return parentDoc?[term.substring(7)];
     }
     return _parsePrimitive(term);
   }

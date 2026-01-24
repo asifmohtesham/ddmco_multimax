@@ -216,6 +216,9 @@ class StockEntryFormScreenV2 extends GetView<StockEntryFormControllerV2> {
           items: controller.getItems(),
           fieldMeta: effectiveMeta,
           childFieldMeta: childMeta,
+
+          // Pass the parent document for 'eval:parent.field' logic
+          parentDoc: controller.doc,
           // Pass the whitelist here
           onRowUpdate: (i, data) => controller.updateRow(i, data),
           // --- Enabled Add/Delete Actions ---

@@ -332,6 +332,7 @@ class StockEntryFormControllerV2 extends GetxController {
         fieldsMeta: modifiedMeta,
         initialData: rowData,
         isNew: existingIndex == -1,
+        parentDoc: doc,
         onSave: (updatedData) {
           // D. Actual Addition/Update Logic upon Save
           List<dynamic> currentItems = List.from(doc['items'] ?? []);

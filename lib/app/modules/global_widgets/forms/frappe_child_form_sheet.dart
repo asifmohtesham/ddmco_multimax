@@ -14,6 +14,9 @@ class FrappeChildFormController extends GetxController {
   // New: Callback for live field updates (passes the fieldname, value, and the reactive doc)
   final Function(String key, dynamic value, RxMap<String, dynamic> doc)? onValueChange;
 
+  // New: Context for parent fields
+  final Map<String, dynamic>? parentDoc;
+
   // Observable document state to trigger UI updates (e.g., visibility, filters)
   final RxMap<String, dynamic> doc = <String, dynamic>{}.obs;
 
@@ -24,6 +27,7 @@ class FrappeChildFormController extends GetxController {
     required this.onSave,
     this.onDeleteItemCallback,
     this.onValueChange,
+    this.parentDoc,
   });
 
   @override
@@ -76,6 +80,9 @@ class FrappeChildFormSheet extends StatelessWidget {
   // New: Callback exposed to the parent
   final Function(String key, dynamic value, RxMap<String, dynamic> doc)? onValueChange;
 
+  // New: Context for parent fields
+  final Map<String, dynamic>? parentDoc;
+
   const FrappeChildFormSheet({
     super.key,
     required this.title,
@@ -86,6 +93,7 @@ class FrappeChildFormSheet extends StatelessWidget {
     this.isNew = false,
     this.onGetFilters,
     this.onValueChange,
+    this.parentDoc,
   });
 
   @override
@@ -167,8 +175,9 @@ class FrappeChildFormSheet extends StatelessWidget {
                         bool isVisible = true;
                         if (field['depends_on'] != null) {
                           isVisible = FrappeLogicEvaluator.evaluate(
-                              field['depends_on'].toString(),
-                              controller.doc
+                            field['depends_on'].toString(),
+                            controller.doc,
+                            parentDoc: parentDoc, // Pass parent context
                           );
                         }
 
@@ -178,8 +187,9 @@ class FrappeChildFormSheet extends StatelessWidget {
                         bool isMandatory = field['reqd'] == 1;
                         if (field['mandatory_depends_on'] != null) {
                           bool cond = FrappeLogicEvaluator.evaluate(
-                              field['mandatory_depends_on'].toString(),
-                              controller.doc
+                            field['mandatory_depends_on'].toString(),
+                            controller.doc,
+                            parentDoc: parentDoc, // Pass parent context
                           );
                           if (cond) isMandatory = true;
                         }

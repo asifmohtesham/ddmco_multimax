@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/forms/frappe_child_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/forms/configure_columns_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/forms/frappe_child_form_sheet.dart';
 
 /// Lightweight controller to handle table search state independently
 class FrappeTableController extends GetxController {
@@ -81,6 +82,8 @@ class FrappeTableField extends StatelessWidget {
   // Sentinel value for "All Fields" to ensure robust selection
   static const String _allFieldsSentinel = '__ALL__';
 
+  final Map<String, dynamic>? parentDoc;
+
   const FrappeTableField({
     super.key,
     required this.label,
@@ -91,7 +94,8 @@ class FrappeTableField extends StatelessWidget {
     this.onAddRow,
     this.onDeleteRow,
     this.onGetFilters,
-    this.onRowFieldChange
+    this.onRowFieldChange,
+    this.parentDoc, // Accept parent doc
   });
 
   void _openRowEditor(
