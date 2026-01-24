@@ -110,6 +110,9 @@ class FrappeChildFormSheet extends StatelessWidget {
       return type != 'Column Break' && type != 'Section Break';
     }).toList();
 
+    // Calculate keyboard height to manually push content up
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+
     return SafeArea(
       child: Container(
         decoration: const BoxDecoration(
@@ -120,8 +123,8 @@ class FrappeChildFormSheet extends StatelessWidget {
           top: 16,
           left: 16,
           right: 16,
-          // Handle keyboard overlap dynamic height
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          // Note: Bottom padding removed here to prevent container constriction
+          bottom: 16,
         ),
         // Constrain height if needed, or let it grow within safe limits
         constraints: BoxConstraints(
@@ -152,6 +155,7 @@ class FrappeChildFormSheet extends StatelessWidget {
             // --- Form Fields ---
             Flexible(
               child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(), // Better for nested scrolls
                 child: Form(
                   key: controller.formKey,
                   child: Obx(() {
@@ -208,6 +212,10 @@ class FrappeChildFormSheet extends StatelessWidget {
                 ),
               ],
             ),
+            // --- Keyboard Spacer ---
+            // This forces the Column to respect the keyboard height without
+            // shrinking the parent Container's layout bounds incorrectly.
+            // SizedBox(height: bottomPadding + 16),
           ],
         ),
       ),

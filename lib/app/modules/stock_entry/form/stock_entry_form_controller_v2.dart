@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/forms/frappe_child_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
@@ -230,10 +231,17 @@ class StockEntryFormControllerV2 extends GetxController {
         return;
       }
 
-      // 3. Process Found Item
-      await _addOrUpdateItemRow(itemCode, scannedUom: uom);
+      // 3. Instead of adding immediately, open the sheet
+      await _openRowSheetForScan(
+          itemCode,
+          scannedUom: uom,
+          scannedBarcode: cleanBarcode // Pass the original barcode
+      );
 
-      // 4. Cleanup
+      // 4. Process Found Item
+      // await _addOrUpdateItemRow(itemCode, scannedUom: uom);
+
+      // 5. Cleanup
       doc['scan_barcode'] = '';
       scanBarcodeController.clear();
 
@@ -244,7 +252,9 @@ class StockEntryFormControllerV2 extends GetxController {
     }
   }
 
-  Future<void> _addOrUpdateItemRow(String itemCode, {String? scannedUom}) async {
+  Future<void> _openRowSheetForScan(String itemCode,
+      {String? scannedUom, required String scannedBarcode}) async {
+
     // A. Fetch Item Details
     final itemDetailsRes = await _apiProvider.getDocument('Item', itemCode);
     if (itemDetailsRes.statusCode != 200) {
@@ -254,58 +264,99 @@ class StockEntryFormControllerV2 extends GetxController {
 
     // B. Check if item exists in current list
     List<dynamic> items = List.from(doc['items'] ?? []);
-
-    // Simple matching logic from V1
-    final existingIndex = items.indexWhere((row) =>
+    int existingIndex = items.indexWhere((row) =>
     row['item_code'] == itemCode &&
         (scannedUom == null || row['uom'] == scannedUom)
     );
 
-    if (existingIndex != -1) {
-      // INCREMENT Quantity
-      var row = Map<String, dynamic>.from(items[existingIndex]);
-      double currentQty = double.tryParse(row['qty'].toString()) ?? 0;
-      row['qty'] = currentQty + 1;
-      items[existingIndex] = row;
-      GlobalSnackbar.success(message: 'Updated quantity for $itemCode');
-    } else {
-      // ADD New Row (Dynamic Mapping)
-      Map<String, dynamic> newRow = {};
+    Map<String, dynamic> rowData;
 
-      // 1. Dynamic Mapping:
-      // iterate through child table meta (whitelisted fields) and copy matching fields from Item data
+    if (existingIndex != -1) {
+      // PREPARE EXISTING ROW (Increment Qty)
+      rowData = Map<String, dynamic>.from(items[existingIndex]);
+      double currentQty = double.tryParse(rowData['qty'].toString()) ?? 0;
+      rowData['qty'] = currentQty + 1;
+
+      // Update barcode field if empty
+      if (rowData['barcode'] == null || rowData['barcode'] == '') {
+        rowData['barcode'] = scannedBarcode;
+      }
+    } else {
+      // PREPARE NEW ROW
+      rowData = {};
+
+      // Dynamic Mapping from Item Meta
       for (var field in itemMetaFields) {
         final String fieldName = field['fieldname'];
-        // If the Item document has this field, copy it
         if (itemData.containsKey(fieldName)) {
-          newRow[fieldName] = itemData[fieldName];
+          rowData[fieldName] = itemData[fieldName];
         } else if (itemData.containsKey(fieldName.replaceAll('custom_', ''))) {
-          newRow[fieldName] = itemData[fieldName.replaceAll('custom_', '')];
+          rowData[fieldName] = itemData[fieldName.replaceAll('custom_', '')];
         }
       }
 
-      // 2. Set Mandatory Overrides & Defaults
-      newRow['barcode'] = itemData['barcodes'].where((barcode) => barcode['barcode'].length == 8).first['barcode'];
-      newRow['item_code'] = itemCode;
-      newRow['custom_invoice_serial_number'] = 0;
-      newRow['qty'] = 1.0;
-      newRow['s_warehouse'] = doc['from_warehouse'];
-      newRow['t_warehouse'] = doc['to_warehouse'];
-      newRow['conversion_factor'] = 1.0;
+      // Defaults
+      rowData['barcode'] = scannedBarcode; // Set the barcode
+      rowData['custom_invoice_serial_number'] = 0;
+      rowData['item_code'] = itemCode;
+      rowData['qty'] = 1.0;
+      rowData['s_warehouse'] = doc['from_warehouse'];
+      rowData['t_warehouse'] = doc['to_warehouse'];
+      rowData['conversion_factor'] = 1.0;
+      rowData['uom'] = scannedUom ?? itemData['stock_uom'];
+      rowData['stock_uom'] = itemData['stock_uom'];
 
-      // 3. Priority for UOM: Scanned > Item Stock UOM
-      newRow['uom'] = scannedUom ?? itemData['stock_uom'];
-      newRow['stock_uom'] = itemData['stock_uom'];
-
-      // 4. Ensure flags are present (even if not in whitelisted form fields)
-      newRow['has_batch_no'] = itemData['has_batch_no'];
-      newRow['has_serial_no'] = itemData['has_serial_no'];
-
-      items.insert(0, newRow);
-      GlobalSnackbar.success(message: 'Added $itemCode');
+      rowData['has_batch_no'] = itemData['has_batch_no'];
+      rowData['has_serial_no'] = itemData['has_serial_no'];
     }
 
-    updateField('items', items);
+    // C. Open Bottom Sheet via GetX
+    // Create a copy of meta to enforce ReadOnly on 'barcode'
+    final List<Map<String, dynamic>> modifiedMeta = itemMetaFields.map((f) {
+      final field = Map<String, dynamic>.from(f);
+      // `barcodes` is a child table in Item
+      // `barcode` is a field in other DocTypes
+      if (field['fieldname'] == 'barcode') {
+        field['read_only'] = 1; // Enforce ReadOnly
+      }
+
+      if (itemData.containsKey(field['fieldname']) || itemData.containsKey(field['fieldname'].replaceAll('custom_', ''))) {
+        field['read_only'] = 1; // Enforce ReadOnly
+      }
+      return field;
+    }).toList();
+
+    await Get.bottomSheet(
+      FrappeChildFormSheet(
+        title: existingIndex == -1 ? "Add Item" : "Edit Item",
+        fieldsMeta: modifiedMeta,
+        initialData: rowData,
+        isNew: existingIndex == -1,
+        onSave: (updatedData) {
+          // D. Actual Addition/Update Logic upon Save
+          List<dynamic> currentItems = List.from(doc['items'] ?? []);
+          if (existingIndex != -1) {
+            currentItems[existingIndex] = updatedData;
+            GlobalSnackbar.success(message: 'Item Updated');
+          } else {
+            currentItems.insert(0, updatedData);
+            GlobalSnackbar.success(message: 'Item Added');
+          }
+          updateField('items', currentItems);
+        },
+        // Re-use logic for filters if needed
+        onGetFilters: (fieldname, row) {
+          if (fieldname == 'batch_no') {
+            if (row['item_code'] != null && row['item_code'].isNotEmpty) {
+              return {'item': row['item_code']};
+            }
+          }
+          return {};
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
   }
 
   Map<String, dynamic> _getNewDocDefaults() {

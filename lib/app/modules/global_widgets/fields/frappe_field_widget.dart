@@ -34,6 +34,10 @@ class FrappeFieldWidget extends StatelessWidget {
     // Determine Read-Only Status (Backend Meta + Client Logic)
     final bool isReadOnly =
         fieldMeta['read_only'] == 1 || fieldMeta['read_only'] == true;
+    final bool isReq = fieldMeta['reqd'] == 1;
+
+    // Standardised Grey Colour for ReadOnly fields
+    final Color? readOnlyColour = isReadOnly ? Colors.grey[200] : null;
 
     // 1. GLOBAL VISIBILITY LOGIC
     // Handle 'depends_on' or 'hidden' flags if necessary.
@@ -137,6 +141,7 @@ class FrappeFieldWidget extends StatelessWidget {
           options: fieldMeta['options'],
           onChanged: onChanged,
           readOnly: isReadOnly,
+          readOnlyColour: readOnlyColour
         );
 
       // --- BOOLEAN ---
@@ -170,6 +175,7 @@ class FrappeFieldWidget extends StatelessWidget {
           value: value,
           onChanged: onChanged,
           readOnly: true,
+          readOnlyColour: readOnlyColour,
           // TODO: Implement FrappeTimePicker
           suffixIcon: const Icon(Icons.access_time),
           onTap: () async {
@@ -213,19 +219,22 @@ class FrappeFieldWidget extends StatelessWidget {
               ? (val) => onSubmitted!(val)
               : null,
           readOnly: isReadOnly,
+          readOnlyColour: readOnlyColour,
           // Accessibility: allow "Go" action on keyboard
-          textInputAction: type == 'Barcode' ? TextInputAction.go : TextInputAction.done,
+          textInputAction: type == 'Barcode'
+              ? TextInputAction.go
+              : TextInputAction.done,
           suffixIcon: type == 'Barcode'
               ? IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () {
-              if (onSubmitted != null) {
-                // Prioritise controller text, fallback to value prop
-                final val = textController?.text ?? value.toString();
-                onSubmitted!(val);
-              }
-            },
-          )
+                  icon: const Icon(Icons.qr_code_scanner),
+                  onPressed: () {
+                    if (onSubmitted != null) {
+                      // Prioritise controller text, fallback to value prop
+                      final val = textController?.text ?? value.toString();
+                      onSubmitted!(val);
+                    }
+                  },
+                )
               : null,
         );
 
@@ -335,6 +344,7 @@ class FrappeFieldWidget extends StatelessWidget {
     String? helperText,
     bool alignLabelWithHint = false,
     VoidCallback? onTap,
+    readOnlyColour, // Grey out
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -356,6 +366,7 @@ class FrappeFieldWidget extends StatelessWidget {
             horizontal: 12,
             vertical: 16,
           ),
+          fillColor: readOnlyColour, // Grey out
         ),
         onChanged: onChanged,
         onFieldSubmitted: onFieldSubmitted,
@@ -369,6 +380,7 @@ class FrappeFieldWidget extends StatelessWidget {
     required dynamic options,
     required Function(dynamic) onChanged,
     required bool readOnly,
+    readOnlyColour,
   }) {
     // Parse Options: Can be String (newline separated) or List
     List<String> items = [];
@@ -383,6 +395,7 @@ class FrappeFieldWidget extends StatelessWidget {
       child: DropdownButtonFormField<String>(
         value: (value != null && items.contains(value)) ? value : null,
         decoration: InputDecoration(
+          fillColor: readOnlyColour,
           labelText: label,
           border: const OutlineInputBorder(),
           contentPadding: const EdgeInsets.symmetric(
