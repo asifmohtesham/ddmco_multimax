@@ -49,6 +49,8 @@ class StockEntryFormController extends GetxController {
   var isSaving = false.obs;
   var isDirty = false.obs;
   var isAddingItem = false.obs;
+  // NEW: Flag to block interactions if document is out of sync
+  var isStale = false.obs;
 
   var stockEntry = Rx<StockEntry?>(null);
 
@@ -845,6 +847,13 @@ class StockEntryFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
+
+    // 1. BLOCK RAPID SCANNING IF STALE
+    if (isStale.value) {
+      _showStaleDocDialog();
+      return;
+    }
+
     if (barcode.isEmpty) return;
 
     // Prevent double processing if scan is already in progress
@@ -884,6 +893,43 @@ class StockEntryFormController extends GetxController {
       isScanning.value = false;
       barcodeController.clear();
     }
+  }
+
+  void _showStaleDocDialog() {
+    Get.dialog(
+      WillPopScope(
+        onWillPop: () async => false, // Prevent dismissing without action
+        child: AlertDialog(
+          title: const Text('Version Conflict'),
+          content: const Text(
+              'This document has been modified by another user. \n\n'
+                  'You cannot save new changes until you reload the latest version. '
+                  'Your recent unsaved scan may be lost.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Get.back(); // Close dialog
+                _reloadDocument();
+              },
+              child: const Text('Reload Document'),
+            ),
+          ],
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  Future<void> _reloadDocument() async {
+    await fetchStockEntry(); // This pulls the latest data
+    isStale.value = false;   // Reset the flag
+
+    // Optional: If you had a pending item in the buffer (recentlyAddedItemName),
+    // you might want to clear it or try to re-apply it here,
+    // though safer to just clear.
+    isScanning.value = false;
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   void _handleSheetScan(String barcode) async {
@@ -1233,6 +1279,13 @@ class StockEntryFormController extends GetxController {
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
+
+    // 1. BLOCK SAVE IF STALE
+    if (isStale.value) {
+      _showStaleDocDialog();
+      return;
+    }
+
     if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
       final firstItem = stockEntry.value!.items.first;
       if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
@@ -1256,6 +1309,8 @@ class StockEntryFormController extends GetxController {
       'from_warehouse': selectedFromWarehouse.value,
       'to_warehouse': selectedToWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
+      // 2. CRITICAL: Pass 'modified' timestamp for Optimistic Locking
+      'modified': stockEntry.value?.modified,
     };
     final itemsJson = stockEntry.value?.items.map((i) {
       final json = i.toJson();
@@ -1303,6 +1358,20 @@ class StockEntryFormController extends GetxController {
       } else {
         final response = await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
+          // 3. UPDATE LOCAL TIMESTAMP ON SUCCESS
+          // Frappe returns the updated document. We must update our local 'modified'
+          // timestamp to match the server, otherwise the NEXT save will fail.
+          final updatedDoc = response.data['data'];
+          if (updatedDoc != null) {
+            stockEntry.update((val) {
+              val?.items.assignAll((updatedDoc['items'] as List).map((i) => StockEntryItem.fromJson(i)).toList());
+              // Update the modified timestamp to the new valid one
+              // You might need to add a setter or copyWith to your Model,
+              // or just re-instantiate:
+              stockEntry.value = StockEntry.fromJson(updatedDoc);
+            });
+          }
+
           GlobalSnackbar.success(message: 'Stock Entry updated');
           await fetchStockEntry();
         } else {
@@ -1311,7 +1380,30 @@ class StockEntryFormController extends GetxController {
       }
     } on DioException catch (e) {
       String errorMessage = 'Save failed';
+      bool isTimestampMismatch = false;
+
       if (e.response != null && e.response!.data != null) {
+        final data = e.response!.data;
+        if (data is Map) {
+          final exception = data['exception']?.toString() ?? '';
+
+          // 4. DETECT TIMESTAMP MISMATCH
+          if (exception.contains('TimestampMismatchError') || e.response?.statusCode == 409) {
+            isTimestampMismatch = true;
+            errorMessage = 'Document was modified by another user.';
+          } else if (data['_server_messages'] != null) {
+            errorMessage = 'Validation Error: Check form details';
+          }
+        }
+
+        // 5. HANDLE STALE STATE
+        if (isTimestampMismatch) {
+          isStale.value = true;
+          _showStaleDocDialog();
+        } else {
+          GlobalSnackbar.error(message: errorMessage);
+        }
+
         if (e.response!.data is Map && e.response!.data['exception'] != null) {
           errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
         } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
