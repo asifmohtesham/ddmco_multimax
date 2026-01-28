@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/modules/common/serial_batch_bundle/widgets/serial_batch_bundle_widget.dart';
 
 class StockEntryItemFormSheet extends StatelessWidget {
   final StockEntryItemFormController controller;
@@ -57,7 +58,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
           _buildValidationErrors(),
           _buildInventoryDimensionFields(context),
           const SizedBox(height: 16),
-          _buildBatchManagerSection(context),
+          _buildInlineBatchManager(context),
         ],
       );
     });
@@ -156,6 +157,31 @@ class StockEntryItemFormSheet extends StatelessWidget {
     );
   }
 
+  Widget _buildInlineBatchManager(BuildContext context) {
+    // Only show if we have initialized the child controller
+    if (controller.bundleControllerTag.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Using ExpansionTile for "Collapsible" inline UI
+        ExpansionTile(
+          initiallyExpanded: true, // Auto-open for fast scanning
+          tilePadding: EdgeInsets.zero,
+          title: const Text(
+            "Serial / Batch Bundle",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+          children: [
+            // Inject the Reusable Widget with the specific TAG
+            SerialBatchBundleWidget(controller: controller.serialAndBatchBundleController!),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ],
+    );
+  }
+
   // --- Section: Batch Bundle Manager ---
   Widget _buildBatchManagerSection(BuildContext context) {
     return Column(
@@ -166,6 +192,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
+
+        ExpansionTile(title: Text('Manage Batches')),
 
         // Button to Open Manager
         TextButton(

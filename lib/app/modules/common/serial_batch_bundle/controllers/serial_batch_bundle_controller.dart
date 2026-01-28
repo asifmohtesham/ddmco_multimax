@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
-
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/serial_batch_bundle_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
+// REUSABLE ARGUMENTS CLASS
 class SerialBatchBundleArguments {
   final String itemCode;
   final String warehouse;
   final String? existingBundleId;
   final String typeOfTransaction; // 'Inward' or 'Outward'
   final String voucherType;
-  final double? requiredQty; // Optional target qty
+  final double? requiredQty;
 
   SerialBatchBundleArguments({
     required this.itemCode,
@@ -28,9 +28,14 @@ class SerialBatchBundleArguments {
 class SerialBatchBundleController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  late SerialBatchBundleArguments args;
+  // Use Rxn to allow lazy initialization for embedded mode
+  final Rxn<SerialBatchBundleArguments> _args = Rxn<SerialBatchBundleArguments>();
 
-  // State
+  // Getters for safe access
+  SerialBatchBundleArguments get args => _args.value!;
+  bool get isInitialised => _args.value != null;
+
+  // --- State ---
   var isLoading = false.obs;
   var isSubmitting = false.obs;
   var currentEntries = <SerialAndBatchEntry>[].obs;
@@ -49,13 +54,18 @@ class SerialBatchBundleController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Support existing Route-based logic
     if (Get.arguments is SerialBatchBundleArguments) {
-      args = Get.arguments;
+      _args.value = Get.arguments;
       _loadInitialData();
-    } else {
-      GlobalSnackbar.error(title: 'Error', message: 'Invalid arguments for Bundle Controller');
-      Get.back();
     }
+  }
+
+  /// **NEW: Manual Setup Method**
+  /// Called by parent controllers when embedding this logic inline.
+  void manualSetup(SerialBatchBundleArguments arguments) {
+    _args.value = arguments;
+    _loadInitialData();
   }
 
   @override
@@ -65,8 +75,15 @@ class SerialBatchBundleController extends GetxController {
   }
 
   Future<void> _loadInitialData() async {
-    if (args.existingBundleId != null && args.existingBundleId!.isNotEmpty) {
+    if (!isInitialised) return;
+
+    // If we have an existing ID, fetch it.
+    if (args.existingBundleId != null && args.existingBundleId!.isNotEmpty && !args.existingBundleId!.startsWith('local_')) {
       await _fetchBundleDetails(args.existingBundleId!);
+    } else {
+      // Use case: New bundle or local unsaved bundle.
+      // If the parent provided existing entries (e.g. from local memory), we could load them here.
+      // For now, we start empty or assume fetch from ID.
     }
   }
 
@@ -76,13 +93,16 @@ class SerialBatchBundleController extends GetxController {
       final response = await _apiProvider.getDocument('Serial and Batch Bundle', bundleId);
       if (response.statusCode == 200 && response.data['data'] != null) {
         _originalBundle = SerialAndBatchBundle.fromJson(response.data['data']);
+
+        // Deep copy entries to allow modification
         currentEntries.assignAll(_originalBundle!.entries.map((e) =>
             SerialAndBatchEntry.fromJson(e.toJson())).toList()
         );
         _recalcTotal();
       }
     } catch (e) {
-      GlobalSnackbar.error(title: 'Error', message: 'Could not load bundle: $e');
+      // Fail silently in UI but log, user will see empty list
+      print('Could not load bundle: $e');
     } finally {
       isLoading.value = false;
     }
@@ -91,9 +111,10 @@ class SerialBatchBundleController extends GetxController {
   // --- Batch Logic ---
 
   Future<List<Map<String, dynamic>>> searchBatches(String query) async {
-    if (args.itemCode.isEmpty) return [];
+    if (!isInitialised || args.itemCode.isEmpty) return [];
+
     try {
-      // Logic from StockEntryItemFormController
+      // Date Logic: Look back 2 years for valid batches
       final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365 * 2)));
       final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -112,9 +133,10 @@ class SerialBatchBundleController extends GetxController {
           final batch = (e['batch_no'] ?? '').toString().toLowerCase();
           final balance = (e['balance_qty'] ?? 0.0);
           final search = query.toLowerCase();
+          // Filter logic
           return balance > 0 && batch.contains(search);
         }).map((e) => {
-          'batch': e['batch'],
+          'batch': e['batch'], // API specific mapping
           'qty': e['balance_qty']
         }).toList();
       }
@@ -130,8 +152,6 @@ class SerialBatchBundleController extends GetxController {
     isValidatingBatch.value = true;
 
     try {
-      // 1. If Inward, we might not need to check balance (unless strict),
-      //    but for Outward we generally do.
       if (args.typeOfTransaction == 'Outward') {
         final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365 * 2)));
         final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -144,23 +164,28 @@ class SerialBatchBundleController extends GetxController {
             toDate: toDate
         );
 
+        // Validation Logic
         if (response.statusCode == 200 && response.data['message']?['result'] != null) {
           final List<dynamic> result = response.data['message']['result'];
+
+          // Strict check: Does this batch exist with balance > 0?
           final match = result.firstWhereOrNull((e) =>
-          e is Map && e['batch'] == batch && (e['balance_qty'] ?? 0) > 0
+          e is Map && (e['batch_no'] == batch || e['batch'] == batch) && (e['balance_qty'] ?? 0) > 0
           );
 
           if (match != null) {
             _addEntry(batch, 1.0);
             batchInputController.clear();
           } else {
-            batchError.value = 'Batch not available in ${args.warehouse}';
+            batchError.value = 'Batch $batch not available in ${args.warehouse}';
           }
         } else {
-          batchError.value = 'Invalid Batch';
+          // Fallback for API structure differences
+          batchError.value = 'Invalid Batch or API Error';
         }
       } else {
-        // Inward - Simply add (or validate existence of batch definition if needed)
+        // Inward (Receipt): We don't validate balance, just existence if needed.
+        // Ideally, check if Batch ID exists in system, but for Inward we allow creating logic usually.
         _addEntry(batch, 1.0);
         batchInputController.clear();
       }
@@ -183,7 +208,7 @@ class SerialBatchBundleController extends GetxController {
   }
 
   void updateEntryQty(int index, double newQty) {
-    if (newQty == 0) {
+    if (newQty <= 0) {
       removeEntry(index);
       return;
     }
@@ -201,7 +226,20 @@ class SerialBatchBundleController extends GetxController {
     totalQty.value = currentEntries.fold(0.0, (sum, b) => sum + b.qty.abs());
   }
 
-  // --- Submission ---
+  /// **NEW: Get Bundle Snapshot**
+  /// Returns the bundle object. Used by parent to save.
+  SerialAndBatchBundle getBundleSnapshot() {
+    return SerialAndBatchBundle(
+      name: args.existingBundleId, // Might be null or 'local_'
+      itemCode: args.itemCode,
+      warehouse: args.warehouse,
+      typeOfTransaction: args.typeOfTransaction,
+      voucherType: args.voucherType,
+      totalQty: totalQty.value,
+      entries: currentEntries.toList(),
+      docstatus: 0,
+    );
+  }
 
   Future<void> submit() async {
     if (isSubmitting.value) return;
@@ -209,7 +247,6 @@ class SerialBatchBundleController extends GetxController {
     // Optional: Validate required quantity
     if (args.requiredQty != null && totalQty.value != args.requiredQty) {
       // Warning? Or strictly block?
-      // For flexibility, we might just warn or let backend validation handle it.
     }
 
     isSubmitting.value = true;
@@ -240,7 +277,7 @@ class SerialBatchBundleController extends GetxController {
         }
       }
 
-      // Return the Result to the Parent Controller
+      // Return the Result to the Parent Controller or Route
       Get.back(result: {
         'bundleId': bundleId,
         'totalQty': totalQty.value,

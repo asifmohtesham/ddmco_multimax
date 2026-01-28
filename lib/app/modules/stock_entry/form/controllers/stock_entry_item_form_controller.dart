@@ -3,13 +3,15 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:multimax/app/data/models/serial_batch_bundle_model.dart';
 
 // Models
 import 'package:multimax/app/data/models/stock_entry_model.dart' hide SerialAndBatchBundle, SerialAndBatchEntry;
 import 'package:multimax/app/data/models/scan_result_model.dart';
-// Import Common Bundle Models & Controller
-import 'package:multimax/app/data/models/serial_batch_bundle_model.dart';
 import 'package:multimax/app/modules/common/serial_batch_bundle/controllers/serial_batch_bundle_controller.dart';
+// Import Common Bundle Models & Controller
+// import 'package:multimax/app/data/models/serial_batch_bundle_model.dart';
+// import 'package:multimax/app/modules/common/serial_batch_bundle/controllers/serial_batch_bundle_controller.dart';
 import 'package:multimax/app/modules/common/serial_batch_bundle/views/serial_batch_bundle_sheet.dart';
 
 // Services & Providers
@@ -82,8 +84,25 @@ class StockEntryItemFormController extends GetxController {
   // To detect if bundle was modified via the common sheet
   var isBundleDirty = false.obs;
 
+  // --- Bundle Integration State ---
+  // Create a unique tag for this specific item session to avoid collisions
+  late final String bundleControllerTag;
+  SerialBatchBundleController? _bundleController;
+  SerialBatchBundleController? get serialAndBatchBundleController => _bundleController;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // Unique tag based on timestamp ensures fresh controller every time sheet opens
+    bundleControllerTag = 'bundle_${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   @override
   void onClose() {
+    // CLEANUP: Important to delete the child controller when this sheet closes
+    if (Get.isRegistered<SerialBatchBundleController>(tag: bundleControllerTag)) {
+      Get.delete<SerialBatchBundleController>(tag: bundleControllerTag);
+    }
     qtyController.dispose();
     sourceRackController.dispose();
     targetRackController.dispose();
@@ -104,6 +123,10 @@ class StockEntryItemFormController extends GetxController {
     } else if (initialItemCode != null) {
       _loadNewItem(initialItemCode, initialBatch, scannedItemData);
     }
+
+    // Initialise the Child Controller
+    _setupBundleController();
+    _setupListeners();
 
     _setupListeners();
     _captureSnapshot();
@@ -394,7 +417,40 @@ class StockEntryItemFormController extends GetxController {
     }
   }
 
-  // --- SUBMIT ---
+  void _setupBundleController() {
+    // 1. Determine Context (Inward/Outward)
+    final warehouse = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value ?? '';
+    final typeOfTransaction = (warehouse.isNotEmpty) ? 'Outward' : 'Inward';
+
+    // 2. Put the controller with the Unique Tag
+    _bundleController = Get.put(
+        SerialBatchBundleController(),
+        tag: bundleControllerTag
+    );
+
+    // 3. Configure it Manually
+    _bundleController!.manualSetup(SerialBatchBundleArguments(
+      itemCode: itemCode.value,
+      warehouse: warehouse,
+      existingBundleId: currentBundleId.value, // Pass existing ID if editing
+      typeOfTransaction: typeOfTransaction,
+      voucherType: 'Stock Entry',
+    ));
+
+    // 4. Listen to Child Changes (Reverse binding)
+    // If the bundle Qty changes (scans), update the Parent Qty
+    ever(_bundleController!.totalQty, (double val) {
+      // Only update if value is different to avoid loop
+      double current = double.tryParse(qtyController.text) ?? 0;
+      if (val != current && val > 0) {
+        qtyController.text = val.toString();
+        // Trigger validation
+        validateSheet();
+        _checkDirty();
+      }
+    });
+  }
+
   Future<void> submit({bool closeSheet = true}) async {
     if (isSubmitting.value) return;
     if (!isSheetValid.value) return;
@@ -407,11 +463,23 @@ class StockEntryItemFormController extends GetxController {
     isSubmitting.value = true;
 
     try {
+      // 1. EXTRACT BUNDLE DATA
+      // Instead of relying on a saved ID, we get the snapshot from the child controller
+      SerialAndBatchBundle? bundleSnapshot;
+      if (_bundleController != null && _bundleController!.currentEntries.isNotEmpty) {
+        bundleSnapshot = _bundleController!.getBundleSnapshot();
+
+        // Update the current bundle ID reference to be passed to parent
+        // If it's new, it might be null or we generate a temp ID in parent
+        currentBundleId.value = bundleSnapshot.name;
+      }
+
       final newItem = StockEntryItem(
         name: currentItemNameKey.value ?? (_parent.itemKeys.keys.contains(itemCode.value) ? null : 'local_${DateTime.now().millisecondsSinceEpoch}'),
         itemCode: itemCode.value,
         itemName: itemName.value,
         qty: double.tryParse(qtyController.text) ?? 0,
+        serialAndBatchBundle: currentBundleId.value, // This is the key link
         basicRate: 0.0,
         rack: sourceRackController.text,
         toRack: targetRackController.text,
@@ -419,7 +487,6 @@ class StockEntryItemFormController extends GetxController {
         tWarehouse: itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value,
         customVariantOf: customVariantOf,
         customInvoiceSerialNumber: selectedSerial.value,
-        serialAndBatchBundle: currentBundleId.value, // This is the key link
         owner: itemOwner.value,
         creation: itemCreation.value,
         modified: itemModified.value,
@@ -428,8 +495,9 @@ class StockEntryItemFormController extends GetxController {
 
       StockEntryItem finalItem = _enrichWithContext(newItem);
 
-      // Upsert to Parent
-      _parent.upsertItem(finalItem);
+      // 2. UPSERT TO PARENT WITH BUNDLE OBJECT
+      // We pass the bundleSnapshot so the Parent Controller can put it in 'unsavedBundles'
+      _parent.upsertItem(finalItem, bundle: bundleSnapshot);
 
       // We don't need to manually save the bundle here because the Common Module
       // already saved it to the server when "Confirm" was clicked in the sheet.

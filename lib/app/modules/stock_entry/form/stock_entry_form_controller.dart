@@ -5,7 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
 
 // Models
-import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/data/models/stock_entry_model.dart' hide SerialAndBatchBundle, SerialAndBatchEntry;
+import 'package:multimax/app/data/models/serial_batch_bundle_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 
 // Providers
