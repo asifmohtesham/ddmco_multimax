@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -80,13 +79,28 @@ class StockEntryFormController extends GetxController {
 
   Worker? _scanWorker;
 
-  // --- Computed Props ---
+  // --- COMPUTED UI PROPERTIES (Refactored for View) ---
+  bool get isEditable => stockEntry.value?.docstatus == 0;
+  bool get hasEntry => stockEntry.value != null;
+
+  bool get isMaterialIssue => selectedStockEntryType.value == 'Material Issue';
+  bool get isMaterialReceipt => selectedStockEntryType.value == 'Material Receipt';
+  bool get isMaterialTransfer =>
+      ['Material Transfer', 'Material Transfer for Manufacture'].contains(selectedStockEntryType.value);
+
+  bool get canEditSource => isEditable && (isMaterialIssue || isMaterialTransfer);
+  bool get canEditTarget => isEditable && (isMaterialReceipt || isMaterialTransfer);
+
+  String get sourcePlaceholder => isMaterialReceipt ? 'N/A' : 'Select Source';
+  String get targetPlaceholder => isMaterialIssue ? 'N/A' : 'Select Target';
+
   Map<String, List<StockEntryItem>> get groupedItems {
     if (stockEntry.value == null) return {};
     // Group items by their serial number (invoice index) for POS view
     return groupBy(stockEntry.value!.items, (item) => item.customInvoiceSerialNumber ?? 'Other');
   }
 
+  // --- Lifecycle ---
   @override
   void onInit() {
     super.onInit();
@@ -103,7 +117,7 @@ class StockEntryFormController extends GetxController {
     super.onClose();
   }
 
-  // --- Initialization ---
+  // --- Initialisation ---
   void _initWorkers() {
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) _handleGlobalScan(code);
@@ -167,7 +181,7 @@ class StockEntryFormController extends GetxController {
     isDirty.value = true;
   }
 
-  // --- Core Methods ---
+  // --- Logic Methods ---
 
   void _determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {

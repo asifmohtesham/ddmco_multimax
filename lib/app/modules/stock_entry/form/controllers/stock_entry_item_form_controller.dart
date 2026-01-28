@@ -56,6 +56,9 @@ class StockEntryItemFormController extends GetxController {
   var maxQty = 0.0.obs;
   var rackError = RxnString();
   var isSheetValid = false.obs;
+  
+  // Stock Details for Dialog (Reactive)
+  var stockBalanceDetails = <Map<String, dynamic>>[].obs;
 
   // Guard to prevent double submission
   var isSubmitting = false.obs;
@@ -275,6 +278,10 @@ class StockEntryItemFormController extends GetxController {
 
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
+        
+        // Store for UI Dialog
+        stockBalanceDetails.assignAll(result.whereType<Map<String, dynamic>>());
+
         double total = 0.0;
         final rack = sourceRackController.text;
 
@@ -294,6 +301,7 @@ class StockEntryItemFormController extends GetxController {
       }
     } catch (e) {
       print('Stock fetch error: $e');
+      stockBalanceDetails.clear();
     }
   }
 

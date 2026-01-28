@@ -1,3 +1,6 @@
+import 'dart:developer';
+
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
@@ -77,7 +80,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
           rackController: controller.sourceRackController,
           isValid: controller.isSourceRackValid.value,
           onValidate: (v) => controller.validateRack(v, isSource: true),
-          iconColor: Colors.orange,
+          iconColour: Colors.orange,
         ),
         const SizedBox(height: 12),
 
@@ -88,7 +91,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
           rackController: controller.targetRackController,
           isValid: controller.isTargetRackValid.value,
           onValidate: (v) => controller.validateRack(v, isSource: false),
-          iconColor: Colors.green,
+          iconColour: Colors.green,
         ),
       ],
     );
@@ -100,47 +103,52 @@ class StockEntryItemFormSheet extends StatelessWidget {
     required TextEditingController rackController,
     required bool isValid,
     required Function(String) onValidate,
-    required Color iconColor,
+    required Color iconColour,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-                'Warehouse',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)
-            ),
-            if (warehouse != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  warehouse,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
         TextFormField(
           controller: rackController,
-          style: const TextStyle(fontSize: 14),
+          style: const TextStyle(fontFamily: 'ShureTechMono', fontSize: 14),
           decoration: InputDecoration(
             label: Text(label),
             hintText: 'Scan $label Rack',
             isDense: true,
             filled: true,
-            fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.grey.shade50,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
-            prefixIcon: Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade400),
-            suffixIcon: Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
+            fillColor: isValid
+                ? iconColour.withValues(alpha: 0.05)
+                : Colors.grey.shade50,
+            // contentPadding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: iconColour),
+            ),
+            prefixStyle: TextStyle(
+              color: iconColour,
+              decorationColor: iconColour,
+            ),
+            prefix: Container(
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    warehouse!,
+                    style: TextStyle(
+                      fontFamily: 'ShureTechMono',
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           onFieldSubmitted: onValidate,
         ),
@@ -153,17 +161,19 @@ class StockEntryItemFormSheet extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text("Serial / Batch Bundle", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        const Text(
+          "Serial / Batch Bundle",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
         const SizedBox(height: 8),
 
         // Button to Open Manager
-        OutlinedButton.icon(
+        TextButton(
           onPressed: controller.openBatchManager,
-          icon: const Icon(Icons.qr_code_scanner),
-          label: Text(controller.currentBundleId.value == null ? "Select Batches" : "Edit Batches"),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            side: BorderSide(color: Colors.blue.shade300),
+          child: Text(
+            controller.currentBundleId.value == null
+                ? "Select Batches"
+                : "Edit Batches",
           ),
         ),
 
@@ -183,9 +193,22 @@ class StockEntryItemFormSheet extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("${controller.currentBundleEntries.length} entries", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      Text(
+                        "${controller.currentBundleEntries.length} entries",
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
                       if (controller.currentBundleId.value != null)
-                        Text(controller.currentBundleId.value!, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        Text(
+                          controller.currentBundleId.value!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -193,27 +216,44 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: controller.currentBundleEntries.length > 5 ? 5 : controller.currentBundleEntries.length,
-                  separatorBuilder: (_,__) => const Divider(height: 1),
+                  itemCount: controller.currentBundleEntries.length > 5
+                      ? 5
+                      : controller.currentBundleEntries.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (ctx, idx) {
                     final entry = controller.currentBundleEntries[idx];
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity.compact,
-                      title: Text(entry.batchNo ?? entry.serialNo ?? '-', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      trailing: Text(entry.qty.toString(), style: const TextStyle(fontSize: 12)),
+                      title: Text(
+                        entry.batchNo ?? entry.serialNo ?? '-',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Text(
+                        entry.qty.toString(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     );
                   },
                 ),
                 if (controller.currentBundleEntries.length > 5)
                   Padding(
                     padding: const EdgeInsets.all(4.0),
-                    child: Text("+ ${controller.currentBundleEntries.length - 5} more", style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
-                  )
+                    child: Text(
+                      "+ ${controller.currentBundleEntries.length - 5} more",
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
               ],
             ),
-          )
-        ]
+          ),
+        ],
       ],
     );
   }
@@ -229,7 +269,12 @@ class StockEntryItemFormSheet extends StatelessWidget {
             children: [
               Icon(Icons.warning, size: 16, color: Colors.red.shade700),
               const SizedBox(width: 8),
-              Expanded(child: Text(controller.rackError.value!, style: TextStyle(color: Colors.red.shade800, fontSize: 12))),
+              Expanded(
+                child: Text(
+                  controller.rackError.value!,
+                  style: TextStyle(color: Colors.red.shade800, fontSize: 12),
+                ),
+              ),
             ],
           ),
         );

@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -14,318 +13,340 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      // Determine if the document is editable and can be saved
-      final entry = controller.stockEntry.value;
-      final bool isEditable = entry?.docstatus == 0;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await controller.confirmDiscard();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: _buildAppBar(),
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!controller.hasEntry) {
+              return const Center(child: Text('Stock entry not found.'));
+            }
 
-      // Determine if we should show the save button:
-      // It should be visible if the document is editable.
-      // The button's disabled/enabled state is handled by MainAppBar via 'isDirty'.
-      final VoidCallback? onSave = isEditable ? controller.saveStockEntry : null;
+            return TabBarView(
+              children: [
+                _buildDetailsView(context),
+                _buildItemsView(context),
+              ],
+            );
+          }),
+        ),
+      ),
+    );
+  }
 
-      return PopScope(
-        canPop: !controller.isDirty.value,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          await controller.confirmDiscard();
-        },
-        child: DefaultTabController(
-          length: 2,
-          child: Scaffold(
-            appBar: MainAppBar(
-              title: entry?.name ?? 'Loading...',
-              status: entry?.status,
-              isDirty: controller.isDirty.value,
-              isSaving: controller.isSaving.value,
-              onSave: onSave,
-              // Optional: Enable Search if you want to search other Stock Entries from here
-              // searchDoctype: 'Stock Entry',
-              // searchRoute: AppRoutes.STOCK_ENTRY_LIST,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Logistics & Details'),
-                  Tab(text: 'Items (Scan)'),
-                ],
-              ),
+  // ---------------------------------------------------------------------------
+  // APP BAR
+  // ---------------------------------------------------------------------------
+  PreferredSizeWidget _buildAppBar() {
+    return MainAppBar(
+      // Reactive properties accessed directly via Obx inside MainAppBar (if MainAppBar was refactored)
+      // Since MainAppBar is global, we pass reactive values.
+      title: controller.stockEntry.value?.name ?? 'Loading...',
+      status: controller.stockEntry.value?.status,
+      isDirty: controller.isDirty.value,
+      isSaving: controller.isSaving.value,
+      onSave: controller.isEditable ? controller.saveStockEntry : null,
+      bottom: const TabBar(
+        tabs: [
+          Tab(text: 'Logistics & Details'),
+          Tab(text: 'Items (Scan)'),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // TAB 1: DETAILS & LOGISTICS
+  // ---------------------------------------------------------------------------
+  Widget _buildDetailsView(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Form(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildMovementCard(context),
+            const SizedBox(height: 24),
+            const Text("Reference & Schedule", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _buildPostingDateField()),
+                const SizedBox(width: 12),
+                Expanded(child: _buildPostingTimeField()),
+              ],
             ),
-            body: Builder(builder: (context) {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            _buildReferenceField(),
+            const SizedBox(height: 24),
+            _buildTotalsSummary(),
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
 
-              if (entry == null) {
-                return const Center(child: Text('Stock entry not found.'));
-              }
+  Widget _buildMovementCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+            colors: [Colors.deepOrange.shade50, Colors.lightGreen.shade50],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        children: [
+          _buildEntryTypeSelector(context),
+          const Divider(height: 24),
+          Row(
+            children: [
+              Expanded(child: _buildSourceWarehousePicker(context)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(Icons.arrow_forward_rounded, color: Colors.blue.shade300),
+              ),
+              Expanded(child: _buildTargetWarehousePicker(context)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
 
-              return TabBarView(
-                children: [
-                  _buildDetailsView(context, entry),
-                  _buildItemsView(context, entry),
-                ],
-              );
-            }),
+  Widget _buildEntryTypeSelector(BuildContext context) {
+    return InkWell(
+      onTap: controller.isEditable ? () => _showStockEntryTypePicker(context) : null,
+      child: Row(
+        children: [
+          Icon(Icons.category, size: 20, color: Colors.blue.shade700),
+          const SizedBox(width: 8),
+          Obx(() => Text(
+              controller.selectedStockEntryType.value,
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 16)
+          )),
+          const Spacer(),
+          if (controller.isEditable) const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceWarehousePicker(BuildContext context) {
+    return GestureDetector(
+      onTap: controller.canEditSource ? () => _showWarehousePicker(context, true) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('FROM', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Obx(() => Text(
+            controller.selectedFromWarehouse.value ?? controller.sourcePlaceholder,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: controller.canEditSource ? Colors.black87 : Colors.grey
+            ),
+            maxLines: 2, overflow: TextOverflow.ellipsis,
+          ))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTargetWarehousePicker(BuildContext context) {
+    return GestureDetector(
+      onTap: controller.canEditTarget ? () => _showWarehousePicker(context, false) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text('TO', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Obx(() => Text(
+            controller.selectedToWarehouse.value ?? controller.targetPlaceholder,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: controller.canEditTarget ? Colors.black87 : Colors.grey
+            ),
+            maxLines: 2, overflow: TextOverflow.ellipsis,
+          ))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPostingDateField() {
+    return _buildCompactDisplayField(
+      label: 'Date',
+      value: controller.stockEntry.value?.postingDate,
+      icon: Icons.calendar_today,
+    );
+  }
+
+  Widget _buildPostingTimeField() {
+    return _buildCompactDisplayField(
+      label: 'Time',
+      value: controller.stockEntry.value?.postingTime,
+      icon: Icons.access_time,
+    );
+  }
+
+  Widget _buildReferenceField() {
+    return Obx(() {
+      if (!controller.isMaterialIssue) return const SizedBox.shrink();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 12.0),
+        child: TextFormField(
+          controller: controller.customReferenceNoController,
+          readOnly: !controller.isEditable,
+          decoration: InputDecoration(
+            labelText: 'Reference No',
+            hintText: 'Enter reference number',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            prefixIcon: const Icon(Icons.confirmation_number_outlined),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           ),
         ),
       );
     });
   }
 
-  Widget _buildDetailsView(BuildContext context, StockEntry entry) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Form(
-        child: Obx(() {
-          final type = controller.selectedStockEntryType.value;
-          final isMaterialIssue = type == 'Material Issue';
-          final isMaterialReceipt = type == 'Material Receipt';
-          final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-          final isEditable = entry.docstatus == 0;
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (type != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 24),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Colors.deepOrange.shade50, Colors.lightGreen.shade50],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.shade100),
-                  ),
-                  child: Column(
-                    children: [
-                      InkWell(
-                        onTap: isEditable ? () => _showStockEntryTypePicker(context) : null,
-                        child: Row(
-                          children: [
-                            Icon(Icons.category, size: 20, color: Colors.blue.shade700),
-                            const SizedBox(width: 8),
-                            Text(type, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 16)),
-                            const Spacer(),
-                            if(isEditable) const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: (isEditable && (isMaterialIssue || isMaterialTransfer)) ? () => _showWarehousePicker(context, true) : null,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('FROM', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    controller.selectedFromWarehouse.value ?? (isMaterialReceipt ? 'N/A' : 'Select Source'),
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: (isMaterialIssue || isMaterialTransfer) ? Colors.black87 : Colors.grey
-                                    ),
-                                    maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  )
-                                ],
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Icon(Icons.arrow_forward_rounded, color: Colors.blue.shade300),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: (isEditable && (isMaterialReceipt || isMaterialTransfer)) ? () => _showWarehousePicker(context, false) : null,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('TO', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    controller.selectedToWarehouse.value ?? (isMaterialIssue ? 'N/A' : 'Select Target'),
-                                    textAlign: TextAlign.end,
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: (isMaterialReceipt || isMaterialTransfer) ? Colors.black87 : Colors.grey
-                                    ),
-                                    maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  )
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-
-              const Text("Reference & Schedule", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildCompactField(label: 'Date', value: entry.postingDate, icon: Icons.calendar_today),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildCompactField(label: 'Time', value: entry.postingTime, icon: Icons.access_time),
-                  ),
-                ],
-              ),
-              if (isMaterialIssue) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: controller.customReferenceNoController,
-                  readOnly: !isEditable,
-                  decoration: InputDecoration(
-                    labelText: 'Reference No',
-                    hintText: 'Enter reference number',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    prefixIcon: const Icon(Icons.confirmation_number_outlined),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                child: Column(
-                  children: [
-                    _buildSummaryRow('Total Quantity', '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
-                    const Divider(),
-                    _buildSummaryRow('Total Amount', '\$${entry.totalAmount.toStringAsFixed(2)}', isBold: true),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 80),
-            ],
-          );
-        }),
+  Widget _buildTotalsSummary() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          _buildSummaryRow('Total Quantity', '${controller.stockEntry.value?.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
+          const Divider(),
+          _buildSummaryRow('Total Amount', '${controller.stockEntry.value?.totalAmount.toStringAsFixed(2)}', isBold: true),
+        ],
       ),
     );
   }
 
-  Widget _buildItemsView(BuildContext context, StockEntry entry) {
+  // ---------------------------------------------------------------------------
+  // TAB 2: ITEMS VIEW
+  // ---------------------------------------------------------------------------
+  Widget _buildItemsView(BuildContext context) {
     return Stack(
       children: [
         Column(
           children: [
             Expanded(
-              // REMOVED Obx() here. 'entry' is a plain object passed from parent Obx.
-              // 'controller.entrySource' is not an Rx variable in the provided controller logic (it's a plain Enum property set at init).
               child: Builder(builder: (context) {
-                // 1. Handle Empty State
-                if (entry.items.isEmpty && controller.entrySource != StockEntrySource.posUpload) {
+                // Determine layout strategy
+                if (controller.stockEntry.value?.items.isEmpty == true &&
+                    controller.entrySource != StockEntrySource.posUpload) {
                   return _buildEmptyState();
                 }
 
                 // 2. Dispatch Layout based on Entry Source
                 switch (controller.entrySource) {
                   case StockEntrySource.posUpload:
-                  // Wrap POS View in Obx because it listens to controller.posUpload Rx
-                    return Obx(() => _buildPosUploadItemsView(entry));
+                    return _buildPosUploadItemsList();
                   case StockEntrySource.materialRequest:
-                    return _buildMaterialRequestItemsView(entry);
+                    return _buildMaterialRequestItemsList();
                   case StockEntrySource.manual:
                   default:
-                    return _buildStandardItemsView(entry);
+                    return _buildStandardItemsList();
                 }
               }),
             ),
           ],
         ),
-
         Positioned(
           left: 0, right: 0, bottom: 0,
-          child: _buildBottomScanField(context),
+          child: _buildBottomScanField(),
         ),
       ],
     );
   }
 
-  Widget _buildStandardItemsView(StockEntry entry) {
+  Widget _buildStandardItemsList() {
+    final items = controller.stockEntry.value?.items ?? [];
     return ListView.separated(
       controller: controller.scrollController,
       padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
-      itemCount: entry.items.length,
+      itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 0),
       itemBuilder: (context, index) {
-        final item = entry.items[index];
+        final item = items[index];
         _ensureItemKey(item);
-
         return StockEntryItemCard(
           item: item,
-          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+          onTap: controller.isEditable ? () => controller.editItem(item) : null,
+          onDelete: controller.isEditable ? () => controller.deleteItem(item.name!) : null,
         );
       },
     );
   }
 
-  Widget _buildMaterialRequestItemsView(StockEntry entry) {
+  Widget _buildMaterialRequestItemsList() {
+    final items = controller.stockEntry.value?.items ?? [];
     return ListView.separated(
       controller: controller.scrollController,
       padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
-      itemCount: entry.items.length,
+      itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 0),
       itemBuilder: (context, index) {
-        final item = entry.items[index];
+        final item = items[index];
         _ensureItemKey(item);
 
+        // Calculate Max Qty for MR
         double? maxQty;
         final refItem = controller.mrReferenceItems.firstWhereOrNull(
                 (r) => r['item_code'] == item.itemCode
         );
-        if (refItem != null) {
-          maxQty = (refItem['qty'] as num).toDouble();
-        }
+        if (refItem != null) maxQty = (refItem['qty'] as num).toDouble();
 
         return StockEntryItemCard(
           item: item,
           maxQty: maxQty,
-          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+          onTap: controller.isEditable ? () => controller.editItem(item) : null,
+          onDelete: controller.isEditable ? () => controller.deleteItem(item.name!) : null,
         );
       },
     );
   }
 
-  Widget _buildPosUploadItemsView(StockEntry entry) {
-    if (controller.posUpload.value == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+  Widget _buildPosUploadItemsList() {
+    return Obx(() {
+      if (controller.posUpload.value == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-    final posUpload = controller.posUpload.value!;
-    final groupedItems = controller.groupedItems;
+      final posUpload = controller.posUpload.value!;
+      final groupedItems = controller.groupedItems;
 
-    return ListView.builder(
-      controller: controller.scrollController,
-      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
-      itemCount: posUpload.items.length,
-      itemBuilder: (context, index) {
-        final posItem = posUpload.items[index];
-        final serialNumber = posItem.idx.toString();
-        final expansionKey = '$serialNumber';
+      return ListView.builder(
+        controller: controller.scrollController,
+        padding: const EdgeInsets.only(top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
+        itemCount: posUpload.items.length,
+        itemBuilder: (context, index) {
+          final posItem = posUpload.items[index];
+          final serialNumber = posItem.idx.toString();
+          final expansionKey = '$serialNumber';
+          final itemsInGroup = groupedItems[serialNumber] ?? [];
+          final currentScannedQty = itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
 
-        final itemsInGroup = groupedItems[serialNumber] ?? [];
-        final currentScannedQty = itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
-
-        return Obx(() {
-          final isExpanded = controller.expandedInvoice.value == expansionKey;
-
-          return ItemGroupCard(
-            isExpanded: isExpanded,
+          return Obx(() => ItemGroupCard(
+            isExpanded: controller.expandedInvoice.value == expansionKey,
             serialNo: posItem.idx,
             itemName: posItem.itemName,
             rate: posItem.rate,
@@ -338,14 +359,33 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   key: item.name != null ? controller.itemKeys[item.name] : null,
                   child: StockEntryItemCard(
                     item: item,
-                    onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-                    onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+                    onTap: controller.isEditable ? () => controller.editItem(item) : null,
+                    onDelete: controller.isEditable ? () => controller.deleteItem(item.name!) : null,
                   )
               );
             }).toList(),
-          );
-        });
-      },
+          ));
+        },
+      );
+    });
+  }
+
+  Widget _buildBottomScanField() {
+    if (!controller.isEditable) return const SizedBox.shrink();
+
+    return Container(
+      decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
+      ),
+      padding: const EdgeInsets.only(bottom: 0),
+      child: Obx(() => BarcodeInputWidget(
+        onScan: (code) => controller.scanBarcode(code),
+        isLoading: controller.isScanning.value,
+        controller: controller.barcodeController,
+        activeRoute: AppRoutes.STOCK_ENTRY_FORM,
+        hintText: 'Scan Item / Batch ...',
+      )),
     );
   }
 
@@ -364,26 +404,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildBottomScanField(BuildContext context) {
-    if (controller.stockEntry.value?.docstatus != 0) return Container();
-
-    return Container(
-      decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
-      ),
-      padding: const EdgeInsets.only(bottom: 0),
-      child: Obx(() => BarcodeInputWidget(
-        onScan: (code) => controller.scanBarcode(code),
-        isLoading: controller.isScanning.value,
-        controller: controller.barcodeController,
-        activeRoute: AppRoutes.STOCK_ENTRY_FORM,
-        hintText: 'Scan Item / Batch ...',
-      )),
-    );
-  }
-
-  Widget _buildCompactField({required String label, required String? value, required IconData icon}) {
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
+  Widget _buildCompactDisplayField({required String label, required String? value, required IconData icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
@@ -543,7 +567,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  void _ensureItemKey(StockEntryItem item) {
+  void _ensureItemKey(dynamic item) {
     if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
       controller.itemKeys[item.name!] = GlobalKey();
     }
