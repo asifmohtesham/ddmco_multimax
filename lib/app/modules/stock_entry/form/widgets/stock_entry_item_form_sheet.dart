@@ -113,7 +113,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
             // List of Added Batches
             Obx(() => Container(
-              constraints: const BoxConstraints(maxHeight: 150),
+              constraints: const BoxConstraints(maxHeight: 200), // Increased height slightly
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(8),
@@ -127,14 +127,42 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 itemBuilder: (ctx, index) {
                   final entry = controller.sabbEntries[index];
                   return ListTile(
+                    contentPadding: const EdgeInsets.only(left: 12, right: 4),
                     dense: true,
-                    title: Text(entry.batchNo, style: const TextStyle(fontFamily: 'ShureTechMono')),
+                    title: Text(
+                        entry.batchNo,
+                        style: const TextStyle(
+                            fontFamily: 'ShureTechMono',
+                            fontWeight: FontWeight.w500
+                        )
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text("Qty: ${entry.qty}"),
+                        // Editable Qty Field
+                        SizedBox(
+                          width: 80,
+                          child: TextFormField(
+                            // Ensure positive display
+                            initialValue: entry.qty.abs().toString(),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            textAlign: TextAlign.center,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              border: OutlineInputBorder(),
+                              labelText: 'Qty',
+                              floatingLabelBehavior: FloatingLabelBehavior.always,
+                            ),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            onFieldSubmitted: (val) {
+                              final q = double.tryParse(val) ?? 0;
+                              controller.updateSabbEntry(index, q);
+                            },
+                          ),
+                        ),
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                           onPressed: () => controller.removeSabbEntry(index),
                         )
                       ],

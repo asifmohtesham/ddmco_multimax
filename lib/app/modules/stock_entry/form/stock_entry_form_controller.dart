@@ -990,6 +990,22 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // validation will trigger via 'ever(sabbEntries)'
   }
 
+  // NEW: Update specific SABB entry qty
+  void updateSabbEntry(int index, double newQty) {
+    if (index < 0 || index >= sabbEntries.length) return;
+
+    // Ensure we only store positive values
+    final double validQty = newQty.abs();
+
+    final old = sabbEntries[index];
+    sabbEntries[index] = SerialAndBatchEntry(
+        batchNo: old.batchNo,
+        qty: validQty,
+        serialNo: old.serialNo
+    );
+    // 'ever(sabbEntries)' will automatically recalculate the bundle total
+  }
+
   void removeSabbEntry(int index) {
     sabbEntries.removeAt(index);
   }
