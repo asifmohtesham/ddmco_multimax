@@ -125,6 +125,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var sabbEntries = <SerialAndBatchEntry>[].obs; // Local list for inline editing
   var bundleTotalQty = 0.0.obs;
 
+  // NEW: Track the specific Bundle ID being edited to allow Updates instead of Creates
+  var currentBundleId = RxnString();
+
   String _initialQty = '';
   String _initialBatch = '';
   String _initialSourceRack = '';
@@ -801,6 +804,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // Default to SABB (0) for new items
     useSerialBatchFields.value = 0;
 
+    // Reset the Bundle ID for new items
+    currentBundleId.value = null;
+
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
       if (ref != null) {
@@ -921,6 +927,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     isItemSheetOpen.value = true;
     rackError.value = null;
     batchError.value = null;
+    // Capture the existing Bundle ID from the item
+    currentBundleId.value = item.serialAndBatchBundle;
 
     useSerialBatchFields.value = item.useSerialBatchFields;
 
@@ -1010,7 +1018,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     sabbEntries.removeAt(index);
   }
 
-  // NEW: Create SABB on Server
+  // Modified: Save (Create or Update) SABB on Server
   Future<String?> _createSerialBatchBundle() async {
     if (sabbEntries.isEmpty) return null;
 
@@ -1019,35 +1027,41 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
 
     // Determine Voucher No
-    // If the Stock Entry is new (unsaved), we cannot pass a voucher_no yet.
-    // ERPNext handles 'floating' bundles or bundles linked only by type/company initially.
     String? vNo;
     if (mode != 'new' && name.isNotEmpty && name != 'New Stock Entry') {
       vNo = name;
     }
 
+    // Prepare Data
+    // Note: We use the existing Model logic, ensuring 'name' is empty for the payload generation
     final bundle = SerialAndBatchBundle(
-      name: '', // New
+      name: currentBundleId.value ?? '',
       itemCode: currentItemCode,
       warehouse: isOutward ? (bsItemSourceWarehouse.value ?? selectedFromWarehouse.value!) : (bsItemTargetWarehouse.value ?? selectedToWarehouse.value!),
       typeOfTransaction: isOutward ? 'Outward' : 'Inward',
       totalQty: bundleTotalQty.value,
       entries: sabbEntries.toList(),
-
-      // --- FIX: Add Mandatory Context Fields ---
       voucherType: 'Stock Entry',
       voucherNo: vNo,
       company: _storageService.getCompany(),
     );
 
     try {
-      final response = await _apiProvider.createDocument('Serial and Batch Bundle', bundle.toJson());
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        return response.data['data']['name'];
+      if (currentBundleId.value != null && currentBundleId.value!.isNotEmpty) {
+        // --- UPDATE EXISTING BUNDLE ---
+        // Uses PUT to update entries and quantities without creating a new doc
+        await _apiProvider.updateDocument('Serial and Batch Bundle', currentBundleId.value!, bundle.toJson());
+        return currentBundleId.value;
+      } else {
+        // --- CREATE NEW BUNDLE ---
+        final response = await _apiProvider.createDocument('Serial and Batch Bundle', bundle.toJson());
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          return response.data['data']['name'];
+        }
       }
       return null;
     } catch (e) {
-      print('SABB Creation Failed: $e');
+      print('SABB Save/Update Failed: $e');
       throw e;
     }
   }
@@ -1394,7 +1408,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     GlobalDialog.showConfirmation(
       title: 'Remove Item?',
       message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
-      onConfirm: () {
+      onConfirm: () async {
+        // --- FIX START: Delete associated SABB ---
+        if (item.serialAndBatchBundle != null && item.serialAndBatchBundle!.isNotEmpty) {
+          try {
+            await _apiProvider.deleteDocument('Serial and Batch Bundle', item.serialAndBatchBundle!);
+            print('Deleted orphaned bundle: ${item.serialAndBatchBundle}');
+          } catch (e) {
+            print('Warning: Failed to delete associated bundle: $e');
+            // We continue with item removal even if bundle deletion fails
+            // (e.g., if it was already deleted or permission issue)
+          }
+        }
+        // --- FIX END ---
+
         final currentItems = stockEntry.value?.items.toList() ?? [];
         currentItems.removeWhere((i) => i.name == uniqueName);
         stockEntry.update((val) {
