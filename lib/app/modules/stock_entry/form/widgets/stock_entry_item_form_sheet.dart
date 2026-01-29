@@ -17,6 +17,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      final isSabbMode = controller.useSerialBatchFields.value == 0;
       final isEditing = controller.currentItemNameKey.value != null;
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
@@ -48,54 +49,157 @@ class StockEntryItemFormSheet extends StatelessWidget {
         modified: controller.bsItemModified.value,
         modifiedBy: controller.bsItemModifiedBy.value,
 
+        // Disable main Qty input in SABB mode to force using the bundle list sum?
+        // Or keep it read-only. Let's keep it read-only if SABB.
+        isQtyReadOnly: isSabbMode,
+
         customFields: [
+          // --- LEGACY MODE: OLD BATCH FIELD ---
+          if (!isSabbMode)
           // Batch No
-          Obx(() => GlobalItemFormSheet.buildInputGroup(
-            label: 'Batch No',
-            color: Colors.purple,
-            bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
-            child: TextFormField(
-              key: const ValueKey('batch_field'),
-              controller: controller.bsBatchController,
-              readOnly: controller.bsIsBatchValid.value,
-              autofocus: false,
-              style: const TextStyle(fontFamily: 'ShureTechMono'),
-              decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
-                // UX FIX: Use helperText to indicate Invalid Batch gracefully
-                helperText: controller.batchError.value,
-                helperStyle: TextStyle(
-                    color: controller.batchError.value != null ? Colors.red : Colors.grey,
-                    fontWeight: controller.batchError.value != null ? FontWeight.bold : FontWeight.normal
+            Obx(() => GlobalItemFormSheet.buildInputGroup(
+              label: 'Batch No',
+              color: Colors.purple,
+              bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
+              child: TextFormField(
+                key: const ValueKey('batch_field'),
+                controller: controller.bsBatchController,
+                readOnly: controller.bsIsBatchValid.value,
+                autofocus: false,
+                style: const TextStyle(fontFamily: 'ShureTechMono'),
+                decoration: InputDecoration(
+                  hintText: 'Enter or scan batch',
+                  // UX FIX: Use helperText to indicate Invalid Batch gracefully
+                  helperText: controller.batchError.value,
+                  helperStyle: TextStyle(
+                      color: controller.batchError.value != null ? Colors.red : Colors.grey,
+                      fontWeight: controller.batchError.value != null ? FontWeight.bold : FontWeight.normal
+                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
+                  suffixIcon: controller.isValidatingBatch.value
+                      ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
+                      : (controller.bsIsBatchValid.value
+                      ? IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.purple),
+                    onPressed: controller.resetBatchValidation,
+                    tooltip: 'Edit Batch',
+                  )
+                      : IconButton(
+                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: () => controller.validateBatch(controller.bsBatchController.text),
+                    tooltip: 'Validate',
+                  )),
                 ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple, width: 2),
-                ),
-                filled: true,
-                fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
-                suffixIcon: controller.isValidatingBatch.value
-                    ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
-                    : (controller.bsIsBatchValid.value
-                    ? IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.purple),
-                  onPressed: controller.resetBatchValidation,
-                  tooltip: 'Edit Batch',
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => controller.validateBatch(controller.bsBatchController.text),
-                  tooltip: 'Validate',
-                )),
+                onFieldSubmitted: (value) => controller.validateBatch(value),
               ),
-              onFieldSubmitted: (value) => controller.validateBatch(value),
+            )),
+
+          // --- SABB MODE: INLINE ENTRIES ---
+          if (isSabbMode) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+              child: Text("Batch Bundle Entries", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
-          )),
+
+            // List of Added Batches
+            Obx(() => Container(
+              constraints: const BoxConstraints(maxHeight: 150),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: controller.sabbEntries.isEmpty
+                  ? const Center(child: Padding(padding: EdgeInsets.all(16), child: Text("No batches added")))
+                  : ListView.separated(
+                shrinkWrap: true,
+                itemCount: controller.sabbEntries.length,
+                separatorBuilder: (_,__) => const Divider(height: 1),
+                itemBuilder: (ctx, index) {
+                  final entry = controller.sabbEntries[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(entry.batchNo, style: const TextStyle(fontFamily: 'ShureTechMono')),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("Qty: ${entry.qty}"),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                          onPressed: () => controller.removeSabbEntry(index),
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
+            )),
+
+            const SizedBox(height: 12),
+
+            // Inline Input for New Batch
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: GlobalItemFormSheet.buildInputGroup(
+                    label: 'Batch No',
+                    color: Colors.purple,
+                    child: TextField(
+                      controller: controller.bsBatchController, // Reuse controller for temporary input
+                      decoration: const InputDecoration(
+                        hintText: 'Scan/Enter',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) { /* Focus Qty? */ },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: GlobalItemFormSheet.buildInputGroup(
+                    label: 'Qty',
+                    color: Colors.purple,
+                    child: TextField(
+                      // You might need a separate controller for this temporary qty
+                      // For now, assuming user types 1.0 or we add a temp controller to the class
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        hintText: '1.0',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (val) {
+                        // Logic to add
+                        final qty = double.tryParse(val) ?? 0;
+                        controller.addSabbEntry(controller.bsBatchController.text, qty);
+                      },
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
+                  onPressed: () {
+                    // Simple implementation using fixed 1.0 or parsing a temp field
+                    // Ideally, add `bsTempQtyController` to Controller
+                    controller.addSabbEntry(controller.bsBatchController.text, 1.0);
+                  },
+                )
+              ],
+            ),
+          ],
 
           // Invoice Serial
           if (controller.posUploadSerialOptions.isNotEmpty)

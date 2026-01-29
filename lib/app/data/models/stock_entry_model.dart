@@ -133,6 +133,9 @@ class StockEntryItem {
   final String? creation;
   final String? modified;
   final String? modifiedBy;
+  // --- NEW FIELDS ---
+  final String? serialAndBatchBundle;
+  final int useSerialBatchFields; // 0 = SABB (New), 1 = Legacy
 
   StockEntryItem({
     this.name,
@@ -154,6 +157,8 @@ class StockEntryItem {
     this.creation,
     this.modified,
     this.modifiedBy,
+    this.serialAndBatchBundle,
+    this.useSerialBatchFields = 0, // Default to 0 for new items
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
@@ -177,6 +182,9 @@ class StockEntryItem {
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
       modifiedBy: json['modified_by']?.toString(),
+      serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
+      // If null, we assume 0 (SABB) unless explicitly set to 1
+      useSerialBatchFields: StockEntry._parseInt(json['use_serial_batch_fields']),
     );
   }
 
@@ -193,7 +201,10 @@ class StockEntryItem {
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
-      'use_serial_batch_fields': 1,
+      // --- CHANGED LOGIC ---
+      // Pass the instance variable instead of hardcoded '1'
+      'use_serial_batch_fields': useSerialBatchFields,
+      'serial_and_batch_bundle': serialAndBatchBundle,
     };
     if (name != null) {
       data['name'] = name;

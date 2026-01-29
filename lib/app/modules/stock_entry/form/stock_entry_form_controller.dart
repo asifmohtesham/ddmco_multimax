@@ -21,6 +21,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/models/serial_and_batch_bundle_model.dart';
 
 // 1. Define the Enum used by the screen
 enum StockEntrySource {
@@ -119,6 +120,11 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var derivedSourceWarehouse = RxnString();
   var derivedTargetWarehouse = RxnString();
 
+  // --- SABB State ---
+  var useSerialBatchFields = 0.obs; // 0 = SABB, 1 = Legacy
+  var sabbEntries = <SerialAndBatchEntry>[].obs; // Local list for inline editing
+  var bundleTotalQty = 0.0.obs;
+
   String _initialQty = '';
   String _initialBatch = '';
   String _initialSourceRack = '';
@@ -144,6 +150,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     } else {
       fetchStockEntry();
     }
+
+    // Auto-calculate total bundle qty when entries change
+    ever(sabbEntries, (_) {
+      double total = 0;
+      for (var e in sabbEntries) total += e.qty;
+      bundleTotalQty.value = total;
+      // If in SABB mode, the main Qty field should match the bundle total
+      if (useSerialBatchFields.value == 0 && isItemSheetOpen.value) {
+        bsQtyController.text = total.toStringAsFixed(2);
+      }
+      validateSheet();
+    });
   }
 
   void _initDependencies() {
@@ -473,14 +491,52 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       creation: item.creation,
       modified: item.modified,
       modifiedBy: item.modifiedBy,
+      // --- FIX: Pass the SABB fields here ---
+      serialAndBatchBundle: item.serialAndBatchBundle,
+      useSerialBatchFields: item.useSerialBatchFields,
     );
   }
 
   Future<void> addItem() async {
-    final double qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) return;
+    String? bundleId;
 
-    final batch = bsBatchController.text;
+    // 1. Handle SABB Creation if in SABB mode
+    if (useSerialBatchFields.value == 0) {
+      if (sabbEntries.isEmpty) {
+        GlobalSnackbar.error(message: "No Batch Entries added");
+        return;
+      }
+      try {
+        isAddingItem.value = true;
+        bundleId = await _createSerialBatchBundle();
+        if (bundleId == null) throw Exception("Failed to create Bundle");
+      } catch (e) {
+        isAddingItem.value = false;
+        GlobalSnackbar.error(message: 'Error creating Bundle: $e');
+        return;
+      }
+    }
+
+    // --- FIX START: Sync Qty with Bundle Total in SABB Mode ---
+    double qty;
+    if (useSerialBatchFields.value == 0) {
+      // In SABB mode, the Item Qty MUST equal the Bundle Total Qty
+      qty = bundleTotalQty.value;
+    } else {
+      // In Legacy mode, use the text field value
+      qty = double.tryParse(bsQtyController.text) ?? 0;
+    }
+    // --- FIX END ---
+
+    if (qty <= 0) {
+      isAddingItem.value = false;
+      return;
+    }
+
+    // Prepare fields
+    // If SABB mode (0), batchNo must be empty string. If Legacy (1), use controller text.
+    final String batchNo = useSerialBatchFields.value == 0 ? '' : bsBatchController.text;
+
     final sourceRack = bsSourceRackController.text;
     final targetRack = bsTargetRackController.text;
 
@@ -489,26 +545,15 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     final tWh = bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    log(name: 'Unique ID: ', uniqueId.toString());
     final currentItems = stockEntry.value?.items.toList() ?? [];
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
+    log(name: 'Existing Index: ', existingIndex.toString());
 
-    var newItem = StockEntryItem(
-      name: uniqueId,
-      itemCode: currentItemCode,
-      qty: qty,
-      basicRate: 0.0,
-      itemGroup: null,
-      customVariantOf: currentVariantOf,
-      batchNo: batch,
-      itemName: currentItemName,
-      rack: sourceRack,
-      toRack: targetRack,
-      sWarehouse: sWh,
-      tWarehouse: tWh,
-      customInvoiceSerialNumber: selectedSerial.value,
-    );
+    StockEntryItem newItem;
 
     if (existingIndex != -1) {
+      // --- UPDATE EXISTING ITEM ---
       final existing = currentItems[existingIndex];
       newItem = StockEntryItem(
         name: existing.name,
@@ -517,7 +562,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         basicRate: existing.basicRate,
         itemGroup: existing.itemGroup,
         customVariantOf: existing.customVariantOf,
-        batchNo: batch,
+        batchNo: batchNo, // Updated
         itemName: existing.itemName,
         rack: sourceRack,
         toRack: targetRack,
@@ -530,18 +575,48 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         creation: existing.creation,
         modified: existing.modified,
         modifiedBy: existing.modifiedBy,
+
+        // --- FIX: Update SABB Fields ---
+        useSerialBatchFields: useSerialBatchFields.value,
+        // If a new bundle was created, use it. Otherwise keep existing (unless switching modes).
+        serialAndBatchBundle: bundleId ?? existing.serialAndBatchBundle,
+      );
+    } else {
+      log(name: 'Creating new item...', bundleId.toString());
+      // --- CREATE NEW ITEM ---
+      newItem = StockEntryItem(
+        name: uniqueId,
+        itemCode: currentItemCode,
+        qty: qty,
+        basicRate: 0.0,
+        itemGroup: null,
+        customVariantOf: currentVariantOf,
+        batchNo: batchNo,
+        itemName: currentItemName,
+        rack: sourceRack,
+        toRack: targetRack,
+        sWarehouse: sWh,
+        tWarehouse: tWh,
+        customInvoiceSerialNumber: selectedSerial.value,
+
+        // --- FIX: Set SABB Fields ---
+        useSerialBatchFields: useSerialBatchFields.value,
+        serialAndBatchBundle: bundleId,
       );
     }
 
+    // Enrich with context data (Material Request / POS links)
     newItem = _enrichItemWithSourceData(newItem);
 
     if (existingIndex != -1) {
       currentItems[existingIndex] = newItem;
     } else {
+      log(name: 'Adding new item...', newItem.toJson().toString());
       currentItems.add(newItem);
     }
 
     stockEntry.update((val) {
+      log(name: 'Updating stock entry...', currentItems.toList().toString());
       val?.items.assignAll(currentItems);
     });
 
@@ -558,6 +633,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         print("Background save error: $e");
       });
     }
+
+    isAddingItem.value = false;
   }
 
   void validateSheet() {
@@ -583,10 +660,16 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   bool _isValidBatch() {
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
-    // MR Requirement: Batch cannot be empty if context is Material Request
-    if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
-    return true;
+    // If Legacy Mode: Use old validation
+    if (useSerialBatchFields.value == 1) {
+      if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
+      if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
+      return true;
+    }
+    // If SABB Mode: Check entries list
+    else {
+      return sabbEntries.isNotEmpty;
+    }
   }
 
   /// Validates the context-specific rules for Material Requests or POS Uploads.
@@ -712,6 +795,12 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsItemSourceWarehouse.value = null;
     bsItemTargetWarehouse.value = null;
 
+    sabbEntries.clear();
+    bundleTotalQty.value = 0.0;
+
+    // Default to SABB (0) for new items
+    useSerialBatchFields.value = 0;
+
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
       if (ref != null) {
@@ -765,9 +854,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     ).whenComplete(() {
       isItemSheetOpen.value = false;
     });
+
+    if (scannedBatch != null) {
+      if (useSerialBatchFields.value == 0) {
+        // SABB Mode: Add to list immediately
+        addSabbEntry(scannedBatch, 1.0);
+      } else {
+        // Legacy Mode: Set text field
+        bsBatchController.text = scannedBatch;
+        validateBatch(scannedBatch);
+      }
+    }
   }
 
-  void editItem(StockEntryItem item) {
+  void editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
 
     itemFormKey = GlobalKey<FormState>();
@@ -822,6 +922,15 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     rackError.value = null;
     batchError.value = null;
 
+    useSerialBatchFields.value = item.useSerialBatchFields;
+
+    if (item.useSerialBatchFields == 0 && item.serialAndBatchBundle != null) {
+      await _fetchBundleDetails(item.serialAndBatchBundle!);
+    } else {
+      // Legacy or no bundle
+      bsBatchController.text = item.batchNo ?? '';
+    }
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -842,6 +951,89 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       rackError.value = null;
       batchError.value = null;
     });
+  }
+
+  Future<void> _fetchBundleDetails(String bundleId) async {
+    isLoading.value = true;
+    try {
+      final response = await _apiProvider.getDocument('Serial and Batch Bundle', bundleId);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final bundle = SerialAndBatchBundle.fromJson(response.data['data']);
+        sabbEntries.assignAll(bundle.entries);
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Failed to fetch bundle details');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // NEW: Add entry to local SABB list
+  void addSabbEntry(String batch, double qty) {
+    if (batch.isEmpty || qty <= 0) return;
+
+    // Check if batch already exists in list, update qty if so
+    final index = sabbEntries.indexWhere((e) => e.batchNo == batch);
+    if (index != -1) {
+      final existing = sabbEntries[index];
+      sabbEntries[index] = SerialAndBatchEntry(
+          batchNo: existing.batchNo,
+          qty: existing.qty + qty,
+          serialNo: existing.serialNo
+      );
+    } else {
+      sabbEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
+    }
+
+    // Clear the input fields in the UI after adding
+    bsBatchController.clear();
+    // validation will trigger via 'ever(sabbEntries)'
+  }
+
+  void removeSabbEntry(int index) {
+    sabbEntries.removeAt(index);
+  }
+
+  // NEW: Create SABB on Server
+  Future<String?> _createSerialBatchBundle() async {
+    if (sabbEntries.isEmpty) return null;
+
+    // Determine type (Inward/Outward)
+    final type = selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+
+    // Determine Voucher No
+    // If the Stock Entry is new (unsaved), we cannot pass a voucher_no yet.
+    // ERPNext handles 'floating' bundles or bundles linked only by type/company initially.
+    String? vNo;
+    if (mode != 'new' && name.isNotEmpty && name != 'New Stock Entry') {
+      vNo = name;
+    }
+
+    final bundle = SerialAndBatchBundle(
+      name: '', // New
+      itemCode: currentItemCode,
+      warehouse: isOutward ? (bsItemSourceWarehouse.value ?? selectedFromWarehouse.value!) : (bsItemTargetWarehouse.value ?? selectedToWarehouse.value!),
+      typeOfTransaction: isOutward ? 'Outward' : 'Inward',
+      totalQty: bundleTotalQty.value,
+      entries: sabbEntries.toList(),
+
+      // --- FIX: Add Mandatory Context Fields ---
+      voucherType: 'Stock Entry',
+      voucherNo: vNo,
+      company: _storageService.getCompany(),
+    );
+
+    try {
+      final response = await _apiProvider.createDocument('Serial and Batch Bundle', bundle.toJson());
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return response.data['data']['name'];
+      }
+      return null;
+    } catch (e) {
+      print('SABB Creation Failed: $e');
+      throw e;
+    }
   }
 
   Future<void> scanBarcode(String barcode) async {
