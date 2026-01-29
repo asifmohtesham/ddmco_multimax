@@ -52,6 +52,7 @@ class DeliveryNote {
 
   Map<String, dynamic> toJson() {
     return {
+      'modified': modified,
       'customer': customer,
       'posting_date': postingDate,
       'currency': currency,

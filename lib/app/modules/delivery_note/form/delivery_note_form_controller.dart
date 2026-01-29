@@ -414,7 +414,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       final Map<String, dynamic> data = deliveryNote.value!.toJson();
       data['set_warehouse'] = setWarehouse.value;
-      data['modified'] = deliveryNote.value?.modified;
+
+      // Safety: Ensure modified is sent (now handled by toJson as well, but redundant check is fine)
+      if (!isNew && deliveryNote.value?.modified != null) {
+        data['modified'] = deliveryNote.value?.modified;
+      }
 
       if (isNew) {
         data['customer'] = deliveryNote.value!.customer;
