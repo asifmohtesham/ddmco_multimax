@@ -14,8 +14,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class BatchFormController extends GetxController {
+class BatchFormController extends GetxController with OptimisticLockingMixin {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
   // Initialise with defaults, populated in onInit
@@ -160,6 +161,13 @@ class BatchFormController extends GetxController {
     _originalJson = '';
 
     isLoading.value = false;
+  }
+
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchBatch();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   Future<void> fetchBatch() async {
@@ -329,6 +337,9 @@ class BatchFormController extends GetxController {
   Future<void> saveBatch() async {
     if (!isDirty.value && isEditMode) return;
 
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     if (itemController.text.isEmpty) {
       GlobalSnackbar.warning(message: 'Item Code is required');
       return;
@@ -344,6 +355,11 @@ class BatchFormController extends GetxController {
 
     isSaving.value = true;
     final data = _getCurrentFormData();
+
+    // 3. ADD MODIFIED TIMESTAMP
+    if (isEditMode) {
+      data['modified'] = batch.value?.modified;
+    }
 
     try {
       if (isEditMode) {
@@ -376,6 +392,9 @@ class BatchFormController extends GetxController {
         }
       }
     } catch (e) {
+      // 4. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
+
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;

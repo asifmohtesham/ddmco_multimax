@@ -16,8 +16,9 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class PurchaseReceiptFormController extends GetxController {
+class PurchaseReceiptFormController extends GetxController with OptimisticLockingMixin {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider _poProvider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -330,6 +331,10 @@ class PurchaseReceiptFormController extends GetxController {
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
+
+    // 3. Use Guard
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
 
     final Map<String, dynamic> data = {
@@ -337,6 +342,8 @@ class PurchaseReceiptFormController extends GetxController {
       'posting_date': purchaseReceipt.value?.postingDate,
       'posting_time': purchaseReceipt.value?.postingTime,
       'set_warehouse': setWarehouse.value,
+      // 4. CRITICAL: Add modified timestamp to payload to ENABLE checks on server
+      'modified': purchaseReceipt.value?.modified,
     };
 
     final itemsJson = purchaseReceipt.value?.items.map((i) {
@@ -373,6 +380,10 @@ class PurchaseReceiptFormController extends GetxController {
         }
       }
     } on DioException catch (e) {
+      // 5. Use Mixin Handler
+      if (handleVersionConflict(e)) {
+        return;
+      }
       String errorMessage = 'Save failed';
       if (e.response != null && e.response!.data != null) {
         if (e.response!.data is Map && e.response!.data['exception'] != null) {
@@ -394,6 +405,10 @@ class PurchaseReceiptFormController extends GetxController {
       GlobalSnackbar.warning(message: 'Document is submitted.');
       return;
     }
+
+    // 2. Use Guard
+    if (checkStaleAndBlock()) return;
+
     if (barcode.isEmpty) return;
 
     String? contextItem;
@@ -477,6 +492,15 @@ class PurchaseReceiptFormController extends GetxController {
       isScanning.value = false;
       barcodeController.clear();
     }
+  }
+
+  // 1. Implement abstract method
+  @override
+  Future<void> reloadDocument() async {
+    await fetchPurchaseReceipt();
+    isStale.value = false;
+    isScanning.value = false;
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   void _openQtySheet({String? scannedBatch}) {

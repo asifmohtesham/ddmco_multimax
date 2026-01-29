@@ -5,8 +5,9 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart'; // Import API Provider
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class PosUploadFormController extends GetxController {
+class PosUploadFormController extends GetxController with OptimisticLockingMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -132,8 +133,26 @@ class PosUploadFormController extends GetxController {
     }
   }
 
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchPosUpload();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
   Future<void> updatePosUpload(Map<String, dynamic> data) async {
+    if (isSaving.value) return;
+
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
+
+    // 3. ADD MODIFIED TIMESTAMP
+    if (posUpload.value?.modified != null) {
+      data['modified'] = posUpload.value!.modified;
+    }
+
     try {
       final response = await _provider.updatePosUpload(name, data);
       if (response.statusCode == 200) {
@@ -143,6 +162,8 @@ class PosUploadFormController extends GetxController {
         GlobalSnackbar.error(message: 'Failed to update POS Upload');
       }
     } catch (e) {
+      // 4. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
       GlobalSnackbar.error(message: 'Update failed: $e');
     } finally {
       isSaving.value = false;

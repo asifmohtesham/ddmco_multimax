@@ -1,5 +1,6 @@
 class MaterialRequest {
   final String name;
+  final String modified;
   final String transactionDate;
   final String scheduleDate;
   final String status;
@@ -11,6 +12,7 @@ class MaterialRequest {
 
   MaterialRequest({
     required this.name,
+    required this.modified,
     required this.transactionDate,
     required this.scheduleDate,
     required this.status,
@@ -27,6 +29,7 @@ class MaterialRequest {
 
     return MaterialRequest(
       name: json['name']?.toString() ?? 'No Name',
+      modified: json['modified']?.toString() ?? '',
       transactionDate: json['transaction_date']?.toString() ?? '',
       scheduleDate: json['schedule_date']?.toString() ?? '',
       status: _getStatusFromDocstatus(_parseInt(json['docstatus']), json['status']?.toString()),

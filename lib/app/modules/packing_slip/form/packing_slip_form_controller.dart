@@ -15,8 +15,9 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class PackingSlipFormController extends GetxController {
+class PackingSlipFormController extends GetxController with OptimisticLockingMixin {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
@@ -400,8 +401,18 @@ class PackingSlipFormController extends GetxController {
     return item?.qty;
   }
 
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchPackingSlip();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (isItemSheetOpen.value) return; // Prevent multiple sheets if scanner sends multiple codes
+
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
 
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
@@ -664,6 +675,10 @@ class PackingSlipFormController extends GetxController {
   Future<void> savePackingSlip() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
+
+    // 3. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
     try {
       final docName = packingSlip.value?.name ?? '';
@@ -673,6 +688,8 @@ class PackingSlipFormController extends GetxController {
         'from_case_no': packingSlip.value!.fromCaseNo,
         'to_case_no': packingSlip.value!.toCaseNo,
         'custom_po_no': packingSlip.value!.customPoNo,
+        // 4. ADD MODIFIED TIMESTAMP
+        'modified': packingSlip.value?.modified,
         'items': packingSlip.value!.items.map((e) {
           final json = {'item_code': e.itemCode, 'qty': e.qty, 'dn_detail': e.dnDetail, 'custom_invoice_serial_number': e.customInvoiceSerialNumber};
           if (e.name.isNotEmpty) json['name'] = e.name;
@@ -686,6 +703,10 @@ class PackingSlipFormController extends GetxController {
         _updateOriginalState(saved);
         if (isNew) { name = saved.name; mode = 'edit'; GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}'); } else { GlobalSnackbar.success(message: 'Packing Slip Saved'); }
       } else { GlobalSnackbar.error(message: 'Failed to save Packing Slip'); }
-    } catch (e) { GlobalSnackbar.error(message: 'Save failed: $e'); } finally { isSaving.value = false; }
+    } catch (e) {
+      // 5. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
+      GlobalSnackbar.error(message: 'Save failed: $e');
+    } finally { isSaving.value = false; }
   }
 }

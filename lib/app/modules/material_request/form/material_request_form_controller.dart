@@ -9,8 +9,9 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class MaterialRequestFormController extends GetxController {
+class MaterialRequestFormController extends GetxController with OptimisticLockingMixin {
   final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
@@ -72,6 +73,13 @@ class MaterialRequestFormController extends GetxController {
     }
   }
 
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchMaterialRequest();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
   @override
   void onClose() {
     scheduleDateController.dispose();
@@ -110,6 +118,7 @@ class MaterialRequestFormController extends GetxController {
 
     materialRequest.value = MaterialRequest(
       name: 'New Material Request',
+      modified: dateStr,
       transactionDate: dateStr,
       scheduleDate: dateStr,
       status: 'Draft',
@@ -364,6 +373,10 @@ class MaterialRequestFormController extends GetxController {
 
   Future<void> scanBarcode(String code) async {
     if (code.isEmpty) return;
+
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(code);
@@ -385,6 +398,10 @@ class MaterialRequestFormController extends GetxController {
 
   Future<void> saveMaterialRequest() async {
     if (isSaving.value) return;
+
+    // 3. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
 
     final data = {
@@ -392,6 +409,8 @@ class MaterialRequestFormController extends GetxController {
       'transaction_date': transactionDateController.text,
       'schedule_date': scheduleDateController.text,
       'set_warehouse': setWarehouseController.text,
+      // 4. ADD MODIFIED TIMESTAMP
+      'modified': materialRequest.value?.modified,
       'items': materialRequest.value?.items.map((i) {
         final Map<String, dynamic> map = {
           'item_code': i.itemCode,
@@ -430,6 +449,9 @@ class MaterialRequestFormController extends GetxController {
         }
       }
     } on DioException catch (e) {
+      // 5. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
+
       String errorMessage = 'Save failed';
       if (e.response != null && e.response!.data != null) {
         if (e.response!.data is Map && e.response!.data['exception'] != null) {

@@ -20,6 +20,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
 // 1. Define the Enum used by the screen
 enum StockEntrySource {
@@ -28,7 +29,7 @@ enum StockEntrySource {
   posUpload
 }
 
-class StockEntryFormController extends GetxController {
+class StockEntryFormController extends GetxController with OptimisticLockingMixin {
   // --- Dependencies ---
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -49,8 +50,6 @@ class StockEntryFormController extends GetxController {
   var isSaving = false.obs;
   var isDirty = false.obs;
   var isAddingItem = false.obs;
-  // NEW: Flag to block interactions if document is out of sync
-  var isStale = false.obs;
 
   var stockEntry = Rx<StockEntry?>(null);
 
@@ -848,11 +847,8 @@ class StockEntryFormController extends GetxController {
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
 
-    // 1. BLOCK RAPID SCANNING IF STALE
-    if (isStale.value) {
-      _showStaleDocDialog();
-      return;
-    }
+    // 2. USE MIXIN GUARD
+    if (checkStaleAndBlock()) return;
 
     if (barcode.isEmpty) return;
 
@@ -895,35 +891,11 @@ class StockEntryFormController extends GetxController {
     }
   }
 
-  void _showStaleDocDialog() {
-    Get.dialog(
-      WillPopScope(
-        onWillPop: () async => false, // Prevent dismissing without action
-        child: AlertDialog(
-          title: const Text('Version Conflict'),
-          content: const Text(
-              'This document has been modified by another user. \n\n'
-                  'You cannot save new changes until you reload the latest version. '
-                  'Your recent unsaved scan may be lost.'
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Get.back(); // Close dialog
-                _reloadDocument();
-              },
-              child: const Text('Reload Document'),
-            ),
-          ],
-        ),
-      ),
-      barrierDismissible: false,
-    );
-  }
-
-  Future<void> _reloadDocument() async {
+  // 3. IMPLEMENT THE MIXIN METHOD (CORRECTLY OVERRIDDEN)
+  @override
+  Future<void> reloadDocument() async {
     await fetchStockEntry(); // This pulls the latest data
-    isStale.value = false;   // Reset the flag
+    isStale.value = false;   // Reset the flag from the mixin
 
     // Optional: If you had a pending item in the buffer (recentlyAddedItemName),
     // you might want to clear it or try to re-apply it here,
@@ -1280,11 +1252,8 @@ class StockEntryFormController extends GetxController {
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
 
-    // 1. BLOCK SAVE IF STALE
-    if (isStale.value) {
-      _showStaleDocDialog();
-      return;
-    }
+    // 3. USE MIXIN GUARD
+    if (checkStaleAndBlock()) return;
 
     if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
       final firstItem = stockEntry.value!.items.first;
@@ -1380,37 +1349,20 @@ class StockEntryFormController extends GetxController {
       }
     } on DioException catch (e) {
       String errorMessage = 'Save failed';
-      bool isTimestampMismatch = false;
-
-      if (e.response != null && e.response!.data != null) {
-        final data = e.response!.data;
-        if (data is Map) {
-          final exception = data['exception']?.toString() ?? '';
-
-          // 4. DETECT TIMESTAMP MISMATCH
-          if (exception.contains('TimestampMismatchError') || e.response?.statusCode == 409) {
-            isTimestampMismatch = true;
-            errorMessage = 'Document was modified by another user.';
-          } else if (data['_server_messages'] != null) {
+      // 5. USE MIXIN HANDLER instead of manual parsing for TimestampMismatch
+      if (handleVersionConflict(e)) {
+        // If it was a conflict, the mixin showed the dialog and set isStale=true.
+        // We just exit.
+      } else {
+        if (e.response != null && e.response!.data != null) {
+          if (e.response!.data is Map && e.response!.data['exception'] != null) {
+            errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+          } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
             errorMessage = 'Validation Error: Check form details';
           }
         }
-
-        // 5. HANDLE STALE STATE
-        if (isTimestampMismatch) {
-          isStale.value = true;
-          _showStaleDocDialog();
-        } else {
-          GlobalSnackbar.error(message: errorMessage);
-        }
-
-        if (e.response!.data is Map && e.response!.data['exception'] != null) {
-          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-          errorMessage = 'Validation Error: Check form details';
-        }
+        GlobalSnackbar.error(message: errorMessage);
       }
-      GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {

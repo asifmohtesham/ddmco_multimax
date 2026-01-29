@@ -13,8 +13,9 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class PurchaseOrderFormController extends GetxController {
+class PurchaseOrderFormController extends GetxController with OptimisticLockingMixin {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
@@ -309,11 +310,22 @@ class PurchaseOrderFormController extends GetxController {
     );
   }
 
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchPO();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
       GlobalSnackbar.warning(message: 'Document is submitted and cannot be edited.');
       return;
     }
+
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     if (barcode.isEmpty) return;
     if (isItemSheetOpen.value) return;
 
@@ -526,11 +538,17 @@ class PurchaseOrderFormController extends GetxController {
   Future<void> savePurchaseOrder() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
+
+    // 3. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
 
     final data = {
       'supplier': supplierController.text,
       'transaction_date': dateController.text,
+      // 4. ADD MODIFIED TIMESTAMP
+      'modified': purchaseOrder.value?.modified,
       'items': purchaseOrder.value?.items.map((e) => e.toJson()).toList(),
     };
 
@@ -548,6 +566,8 @@ class PurchaseOrderFormController extends GetxController {
         GlobalSnackbar.error(message: 'Failed to save');
       }
     } catch (e) {
+      // 5. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;

@@ -93,4 +93,30 @@ class GlobalDialog {
       onConfirm: onDiscard,
     );
   }
+
+  // --- NEW: Global Version Conflict Dialog ---
+  static void showVersionConflict({required VoidCallback onReload}) {
+    Get.dialog(
+      WillPopScope(
+        onWillPop: () async => false, // Prevent dismissing without action
+        child: AlertDialog(
+          title: const Text('Version Conflict'),
+          content: const Text(
+            'This document has been modified by another user since you opened it.\n\n'
+                'To prevent data loss, you must reload the latest version before saving any changes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Get.back();
+                onReload();
+              },
+              child: const Text('Reload Document'),
+            ),
+          ],
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
 }

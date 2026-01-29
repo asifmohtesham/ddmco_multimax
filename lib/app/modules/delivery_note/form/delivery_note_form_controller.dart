@@ -17,8 +17,9 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class DeliveryNoteFormController extends GetxController {
+class DeliveryNoteFormController extends GetxController with OptimisticLockingMixin {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -131,6 +132,13 @@ class DeliveryNoteFormController extends GetxController {
     } else {
       fetchDeliveryNote();
     }
+  }
+
+  // 1. IMPLEMENT MIXIN
+  @override
+  Future<void> reloadDocument() async {
+    await fetchDeliveryNote();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   @override
@@ -393,15 +401,20 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
+
+    // 2. USE GUARD
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
     customerError.value = null; // Clear previous error
 
     try {
       final String docName = deliveryNote.value?.name ?? '';
       final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
-      final Map<String, dynamic> data = deliveryNote.value!.toJson();
 
+      final Map<String, dynamic> data = deliveryNote.value!.toJson();
       data['set_warehouse'] = setWarehouse.value;
+      data['modified'] = deliveryNote.value?.modified;
 
       if (isNew) {
         data['customer'] = deliveryNote.value!.customer;
@@ -428,7 +441,10 @@ class DeliveryNoteFormController extends GetxController {
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
       }
     } on DioException catch (e) {
-      // Check response data for specific Frappe/ERPNext error messages
+      // 4. HANDLE CONFLICT
+      if (handleVersionConflict(e)) return;
+
+      // Check response data for specific error messages
       final errorMsg = e.response?.data.toString() ?? e.message ?? '';
       if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
         customerError.value = 'Customer not found in the system';
@@ -921,6 +937,9 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
+
+    // 5. USE GUARD
+    if (checkStaleAndBlock()) return;
 
     // [UX] Rigid Validation: Prevent scanning if header is invalid
     // This blocks the user from adding items if the document is currently in an unsavable state.
