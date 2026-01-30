@@ -18,8 +18,10 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/models/serial_and_batch_bundle_model.dart';
+import 'package:multimax/app/data/mixins/serial_batch_bundle_mixin.dart';
 
-class DeliveryNoteFormController extends GetxController with OptimisticLockingMixin {
+class DeliveryNoteFormController extends GetxController with OptimisticLockingMixin, SerialBatchBundleMixin {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -58,7 +60,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   final Map<String, GlobalKey> itemKeys = {};
 
   // Bottom Sheet State
-  final bsBatchController = TextEditingController();
   final bsRackController = TextEditingController();
   final bsQtyController = TextEditingController(text: '6');
   final bsRackFocusNode = FocusNode();
@@ -107,6 +108,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var bsItemCompanyTotalStock = RxnDouble();
   var bsItemWarehouse = RxnString();
 
+  List<SerialAndBatchEntry> _initialSabbEntries = [];
+
   String currentItemCode = '';
   String currentItemName = '';
   String currentScannedEan = '';
@@ -124,6 +127,26 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     bsRackController.addListener(validateSheet);
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _checkForChanges());
+
+    ever(sabbEntries, (_) {
+      double total = 0;
+      for (var e in sabbEntries) total += e.qty.abs();
+      bundleTotalQty.value = total;
+
+      // Sync UI if in SABB mode
+      if (useSerialBatchFields.value == 0 && isItemSheetOpen.value) {
+        // Only update text if significantly different to avoid cursor jumps
+        final currentTextVal = double.tryParse(bsQtyController.text) ?? 0.0;
+        if ((currentTextVal - total).abs() > 0.001) {
+          bsQtyController.text = total.toStringAsFixed(2);
+        }
+      }
+      validateSheet();
+      // Mark dirty if content changed (unless initializing)
+      if (isItemSheetOpen.value && !_areSabbEntriesEqual(sabbEntries, _initialSabbEntries)) {
+        isFormDirty.value = true;
+      }
+    });
 
     _setupAutoSubmit();
 
@@ -145,7 +168,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   void onClose() {
     _autoSubmitTimer?.cancel();
     barcodeController.dispose();
-    bsBatchController.dispose();
     bsRackController.dispose();
     bsQtyController.dispose();
     bsRackFocusNode.dispose();
@@ -299,15 +321,52 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> submitSheet() async {
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    String? bundleId;
+    double qty = double.tryParse(bsQtyController.text) ?? 0;
+
+    // 1. Handle SABB Creation
+    if (useSerialBatchFields.value == 0) {
+      if (sabbEntries.isEmpty) {
+        GlobalSnackbar.error(message: "No Batch Entries added");
+        return;
+      }
+      try {
+        isAddingItem.value = true;
+        // Resolve Warehouse: Item Level -> Header Level
+        final wh = bsItemWarehouse.value ?? setWarehouse.value;
+
+        if (wh == null || wh.isEmpty) {
+          GlobalSnackbar.error(message: "Warehouse not defined for SABB creation");
+          isAddingItem.value = false;
+          return;
+        }
+
+        bundleId = await saveOrUpdateSerialBatchBundle(
+            itemCode: currentItemCode,
+            warehouse: wh,
+            isOutward: true, // Delivery Note is always Outward
+            voucherType: 'Delivery Note',
+            voucherNo: (mode != 'new') ? name : null
+        );
+
+        // Sync Qty
+        qty = bundleTotalQty.value;
+      } catch (e) {
+        isAddingItem.value = false;
+        GlobalSnackbar.error(message: 'Error creating Bundle: $e');
+        return;
+      }
+    }
+
+    // Use bundleId if SABB, else text if Legacy
+    final batchNo = useSerialBatchFields.value == 0 ? '' : bsBatchController.text;
     final rack = bsRackController.text;
-    final batch = bsBatchController.text;
     final invoiceSerial = bsInvoiceSerialNo.value;
 
     if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
-      _updateItemLocally(editingItemName.value!, qty, rack, batch, invoiceSerial);
+      _updateItemLocally(editingItemName.value!, qty, rack, batchNo, invoiceSerial);
     } else {
-      _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
+      _addItemLocally(currentItemCode, currentItemName, qty, rack, batchNo, invoiceSerial);
     }
 
     Get.back();
@@ -319,6 +378,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     if(editingItemName.value == null) {
       GlobalSnackbar.success(message: 'Item added/updated.');
     }
+    isAddingItem.value = false;
   }
 
   void _updateItemLocally(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
@@ -330,7 +390,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           qty: qty,
           rack: rack,
           batchNo: batchNo,
-          customInvoiceSerialNumber: invoiceSerial
+          customInvoiceSerialNumber: invoiceSerial,
+          // Update SABB fields (Assuming model supports them)
+          useSerialBatchFields: useSerialBatchFields.value,
+          serialAndBatchBundle: currentBundleId.value ?? existingItem.serialAndBatchBundle
       );
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
@@ -343,11 +406,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
 
+    // Simple duplicate check (can be enhanced to check Bundle ID)
     final existingIndex = currentItems.indexWhere((item) =>
-    item.itemCode == itemCode &&
-        (item.batchNo ?? '') == (batchNo ?? '') &&
-        (item.rack ?? '') == rack &&
-        (item.customInvoiceSerialNumber ?? '0') == serial
+      item.itemCode == itemCode &&
+      (item.batchNo ?? '') == (batchNo ?? '') && // Legacy Check
+      (item.rack ?? '') == rack &&
+      (item.customInvoiceSerialNumber ?? '0') == serial &&
+      (item.serialAndBatchBundle == currentBundleId.value) // SABB Check
     );
 
     if (existingIndex != -1) {
@@ -372,6 +437,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         customInvoiceSerialNumber: serial,
         itemName: itemName,
         creation: DateTime.now().toString(),
+        useSerialBatchFields: useSerialBatchFields.value,
+        serialAndBatchBundle: currentBundleId.value,
       );
       currentItems.add(newItem);
       deliveryNote.update((val) {
@@ -390,6 +457,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   void _deleteItemLocally(DeliveryNoteItem item) {
+    if (item.serialAndBatchBundle != null && item.serialAndBatchBundle!.isNotEmpty) {
+      deleteSerialBatchBundle(item.serialAndBatchBundle!);
+    }
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     currentItems.remove(item);
     deliveryNote.update((val) {
@@ -547,6 +617,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         .toList();
   }
 
+  bool _areSabbEntriesEqual(List<SerialAndBatchEntry> list1, List<SerialAndBatchEntry> list2) {
+    if (list1.length != list2.length) return false;
+    final l1 = List.of(list1)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
+    final l2 = List.of(list2)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
+    for(int i=0; i<l1.length; i++) {
+      if (l1[i].batchNo != l2[i].batchNo) return false;
+      if ((l1[i].qty.abs() - l2[i].qty.abs()).abs() > 0.001) return false;
+    }
+    return true;
+  }
+
   void validateSheet() {
     bool valid = true;
     rackError.value = null;
@@ -555,6 +636,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
     if (qty <= 0) valid = false;
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
+
+    if (useSerialBatchFields.value == 0) {
+      // In SABB Mode, we need entries
+      if (sabbEntries.isEmpty) valid = false;
+    } else {
+      // Legacy Mode Validation
+      if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
+    }
 
     // Strict Validation Check
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
@@ -580,18 +669,24 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
 
     bool dirty = false;
-    if (bsBatchController.text != _initialBatch) dirty = true;
+    if (useSerialBatchFields.value == 0) {
+      if (!_areSabbEntriesEqual(sabbEntries, _initialSabbEntries)) dirty = true;
+    } else {
+      if (bsBatchController.text != _initialBatch) dirty = true;
+    }
     if (bsRackController.text != _initialRack) dirty = true;
+    // For SABB, qty is derived, so we rely on sabbEntries check usually,
+    // but checking text doesn't hurt.
     if (bsQtyController.text != _initialQty) dirty = true;
     if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
-    isFormDirty.value = dirty;
 
+    isFormDirty.value = dirty;
     if (editingItemName.value != null && !dirty) valid = false;
 
     isSheetValid.value = valid;
   }
 
-  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
+  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) async {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -609,6 +704,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     rackStockTooltip.value = null;
     rackStockMap.clear();
     rackError.value = null;
+    _initialSabbEntries = [];
 
     if (editingItem != null) {
       bsItemOwner.value = editingItem.owner;
@@ -632,7 +728,40 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       bsMaxQty.value = maxQty;
       bsBatchError.value = null;
+
+      // Initialise Mixin
+      await initSabbState(
+      useFields: editingItem.useSerialBatchFields ?? 0, // Default to SABB if null
+      bundleId: editingItem.serialAndBatchBundle,
+      legacyBatch: editingItem.batchNo
+      );
+
+      // Snapshot entries for dirty checking
+      _initialSabbEntries = sabbEntries.map((e) => SerialAndBatchEntry(
+          batchNo: e.batchNo, qty: e.qty, serialNo: e.serialNo
+      )).toList();
+
+      // Sync Qty if SABB
+      if (editingItem.useSerialBatchFields == 0) {
+        bsQtyController.text = bundleTotalQty.value.toStringAsFixed(2);
+      }
     } else {
+      // Default to SABB (0) for new items
+      await initSabbState(
+          useFields: 0,
+          bundleId: null,
+          legacyBatch: batchNo
+      );
+
+      // If a batch was scanned to open this sheet, add it to SABB list
+      if (batchNo != null && batchNo.isNotEmpty) {
+        if (useSerialBatchFields.value == 0) {
+          addSabbEntry(batchNo, 1.0);
+        } else {
+          bsBatchController.text = batchNo;
+        }
+      }
+
       editingItemName.value = null;
       bsBatchController.text = batchNo ?? '';
       bsRackController.clear();

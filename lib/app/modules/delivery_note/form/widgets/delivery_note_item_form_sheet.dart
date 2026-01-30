@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/serial_batch_bundle_widget.dart';
 
 class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   final ScrollController? scrollController;
@@ -12,6 +13,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   Widget build(BuildContext context) {
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
+      final isSabbMode = controller.useSerialBatchFields.value == 0; // Check Mode
 
       return GlobalItemFormSheet(
         owner: controller.bsItemOwner.value,
@@ -25,6 +27,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         itemCode: controller.currentItemCode,
         itemName: controller.currentItemName,
 
+        isQtyReadOnly: isSabbMode, // Disable manual qty in SABB mode
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
@@ -78,72 +81,76 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
+          if (isSabbMode)
+            SerialBatchBundleWidget(mixin: controller),
+
           // Batch No
-          Obx(() => GlobalItemFormSheet.buildInputGroup(
-            label: 'Batch No',
-            color: Colors.purple,
-            bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
-            child: TextFormField(
-              key: const ValueKey('batch_field'),
-              controller: controller.bsBatchController,
-              readOnly: controller.bsIsBatchValid.value,
-              autofocus: false,
-              style: TextStyle(fontFamily: 'ShureTechMono',),
-              decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.purple.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.purple, width: 2),
-                ),
-                filled: true,
-                fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
-                suffixIcon: controller.isValidatingBatch.value
-                    ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
-                    : (controller.bsIsBatchValid.value
-                    ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Helpful Tooltip
-                    if (controller.batchInfoTooltip.value != null)
-                      Tooltip(
-                        message: controller.batchInfoTooltip.value!,
-                        triggerMode: TooltipTriggerMode.tap,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Icon(Icons.info_outline, color: Colors.blue),
+          if (!isSabbMode)
+            Obx(() => GlobalItemFormSheet.buildInputGroup(
+              label: 'Batch No',
+              color: Colors.purple,
+              bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
+              child: TextFormField(
+                key: const ValueKey('batch_field'),
+                controller: controller.bsBatchController,
+                readOnly: controller.bsIsBatchValid.value,
+                autofocus: false,
+                style: TextStyle(fontFamily: 'ShureTechMono',),
+                decoration: InputDecoration(
+                  hintText: 'Enter or scan batch',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.purple.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.purple, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
+                  suffixIcon: controller.isValidatingBatch.value
+                      ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
+                      : (controller.bsIsBatchValid.value
+                      ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Helpful Tooltip
+                      if (controller.batchInfoTooltip.value != null)
+                        Tooltip(
+                          message: controller.batchInfoTooltip.value!,
+                          triggerMode: TooltipTriggerMode.tap,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
+                            child: Icon(Icons.info_outline, color: Colors.blue),
+                          ),
                         ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.purple),
+                        onPressed: controller.resetBatchValidation,
+                        tooltip: 'Edit Batch',
                       ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.purple),
-                      onPressed: controller.resetBatchValidation,
-                      tooltip: 'Edit Batch',
-                    ),
-                  ],
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
-                  tooltip: 'Validate',
-                )),
+                    ],
+                  )
+                      : IconButton(
+                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
+                    tooltip: 'Validate',
+                  )),
+                ),
+                onChanged: (_) => controller.validateSheet(),
+                onFieldSubmitted: (val) {
+                  if (!controller.bsIsBatchValid.value) {
+                    controller.validateAndFetchBatch(val);
+                  }
+                },
               ),
-              onChanged: (_) => controller.validateSheet(),
-              onFieldSubmitted: (val) {
-                if (!controller.bsIsBatchValid.value) {
-                  controller.validateAndFetchBatch(val);
-                }
-              },
-            ),
-          )),
+            )),
 
           // Rack
           GlobalItemFormSheet.buildInputGroup(

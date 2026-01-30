@@ -136,6 +136,8 @@ class DeliveryNoteItem {
   final String? image;
   final double? packedQty;
   final double? companyTotalStock;
+  final String? serialAndBatchBundle;
+  final int useSerialBatchFields;
 
   DeliveryNoteItem({
     this.name,
@@ -158,6 +160,8 @@ class DeliveryNoteItem {
     this.image,
     this.packedQty,
     this.companyTotalStock,
+    this.serialAndBatchBundle,
+    this.useSerialBatchFields = 0,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -182,6 +186,9 @@ class DeliveryNoteItem {
       image: json['image'],
       packedQty: DeliveryNote._parseDouble(json['packed_qty']),
       companyTotalStock: DeliveryNote._parseDouble(json['company_total_stock']),
+      serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
+      // If null, we assume 0 (SABB) unless explicitly set to 1
+      useSerialBatchFields: DeliveryNote._parseInt(json['use_serial_batch_fields']),
     );
   }
 
@@ -194,6 +201,8 @@ class DeliveryNoteItem {
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'rack': rack,
       'batch_no': batchNo,
+      'use_serial_batch_fields': useSerialBatchFields,
+      'serial_and_batch_bundle': serialAndBatchBundle,
     };
     // Include 'name' only if it exists and is NOT a local temp ID
     if (name != null && !name!.startsWith('local_')) {
@@ -223,6 +232,8 @@ class DeliveryNoteItem {
     String? image,
     double? packedQty,
     double? companyTotalStock,
+    String? serialAndBatchBundle,
+    int? useSerialBatchFields,
   }) {
     return DeliveryNoteItem(
       name: name ?? this.name,
@@ -245,6 +256,8 @@ class DeliveryNoteItem {
       image: image ?? this.image,
       packedQty: packedQty ?? this.packedQty,
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
+      serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
+      useSerialBatchFields: useSerialBatchFields ?? this.useSerialBatchFields,
     );
   }
 }
