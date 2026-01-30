@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/serial_batch_bundle_widget.dart';
 
 class StockEntryItemFormSheet extends StatelessWidget {
   final StockEntryFormController controller;
@@ -104,130 +105,9 @@ class StockEntryItemFormSheet extends StatelessWidget {
               ),
             )),
 
-          // --- SABB MODE: INLINE ENTRIES ---
-          if (isSabbMode) ...[
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-              child: Text("Batch Bundle Entries", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
-
-            // List of Added Batches
-            Obx(() => Container(
-              constraints: const BoxConstraints(maxHeight: 200), // Increased height slightly
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: controller.sabbEntries.isEmpty
-                  ? const Center(child: Padding(padding: EdgeInsets.all(16), child: Text("No batches added")))
-                  : ListView.separated(
-                shrinkWrap: true,
-                itemCount: controller.sabbEntries.length,
-                separatorBuilder: (_,__) => const Divider(height: 1),
-                itemBuilder: (ctx, index) {
-                  final entry = controller.sabbEntries[index];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.only(left: 12, right: 4),
-                    dense: true,
-                    title: Text(
-                        entry.batchNo,
-                        style: const TextStyle(
-                            fontFamily: 'ShureTechMono',
-                            fontWeight: FontWeight.w500
-                        )
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Editable Qty Field
-                        SizedBox(
-                          width: 80,
-                          child: TextFormField(
-                            // Ensure positive display
-                            initialValue: entry.qty.abs().toString(),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              border: OutlineInputBorder(),
-                              labelText: 'Qty',
-                              floatingLabelBehavior: FloatingLabelBehavior.always,
-                            ),
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                            onFieldSubmitted: (val) {
-                              final q = double.tryParse(val) ?? 0;
-                              controller.updateSabbEntry(index, q);
-                            },
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                          onPressed: () => controller.removeSabbEntry(index),
-                        )
-                      ],
-                    ),
-                  );
-                },
-              ),
-            )),
-
-            const SizedBox(height: 12),
-
-            // Inline Input for New Batch
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: GlobalItemFormSheet.buildInputGroup(
-                    label: 'Batch No',
-                    color: Colors.purple,
-                    child: TextField(
-                      controller: controller.bsBatchController, // Reuse controller for temporary input
-                      decoration: const InputDecoration(
-                        hintText: 'Scan/Enter',
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (_) { /* Focus Qty? */ },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 1,
-                  child: GlobalItemFormSheet.buildInputGroup(
-                    label: 'Qty',
-                    color: Colors.purple,
-                    child: TextField(
-                      // You might need a separate controller for this temporary qty
-                      // For now, assuming user types 1.0 or we add a temp controller to the class
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        hintText: '1.0',
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (val) {
-                        // Logic to add
-                        final qty = double.tryParse(val) ?? 0;
-                        controller.addSabbEntry(controller.bsBatchController.text, qty);
-                      },
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
-                  onPressed: () {
-                    // Simple implementation using fixed 1.0 or parsing a temp field
-                    // Ideally, add `bsTempQtyController` to Controller
-                    controller.addSabbEntry(controller.bsBatchController.text, 1.0);
-                  },
-                )
-              ],
-            ),
-          ],
+          // --- SABB MODE: Use Reusable Widget ---
+          if (isSabbMode)
+            SerialBatchBundleWidget(mixin: controller),
 
           // Invoice Serial
           if (controller.posUploadSerialOptions.isNotEmpty)
