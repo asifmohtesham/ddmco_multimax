@@ -15,7 +15,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-          child: Text("Batch Bundle Entries", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          child: Text("Serial and Batch Bundle", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         ),
 
         // List of Added Batches
