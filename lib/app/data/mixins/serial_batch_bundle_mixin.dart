@@ -24,7 +24,7 @@ mixin SerialBatchBundleMixin on GetxController {
     // Auto-calculate total
     ever(sabbEntries, (_) {
       double total = 0;
-      for (var e in sabbEntries) total += e.qty;
+      for (var e in sabbEntries) total += e.qty.abs();
       bundleTotalQty.value = total;
     });
   }
@@ -37,12 +37,13 @@ mixin SerialBatchBundleMixin on GetxController {
 
   // --- Lifecycle Methods ---
 
-  /// Call this when opening the Item Sheet to reset state
-  void initSabbState({
+  /// Call this when opening the Item Sheet to reset state.
+  /// Returns a Future so the controller can await the fetch before checking Dirty state.
+  Future<void> initSabbState({
     required int useFields,
     required String? bundleId,
     required String? legacyBatch,
-  }) {
+  }) async {
     useSerialBatchFields.value = useFields;
     currentBundleId.value = bundleId;
     sabbEntries.clear();
@@ -50,7 +51,7 @@ mixin SerialBatchBundleMixin on GetxController {
     bsBatchController.clear();
 
     if (useFields == 0 && bundleId != null && bundleId.isNotEmpty) {
-      _fetchBundleDetails(bundleId);
+      await _fetchBundleDetails(bundleId);
     } else if (useFields == 1) {
       bsBatchController.text = legacyBatch ?? '';
     }
@@ -97,7 +98,17 @@ mixin SerialBatchBundleMixin on GetxController {
       final response = await _sabbApiProvider.getDocument('Serial and Batch Bundle', bundleId);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final bundle = SerialAndBatchBundle.fromJson(response.data['data']);
-        sabbEntries.assignAll(bundle.entries);
+
+        // REPLICATION LOGIC:
+        // Backend stores Outward quantities as negative.
+        // We convert all to absolute (positive) for the UI to prevent user confusion.
+        final cleanEntries = bundle.entries.map((e) => SerialAndBatchEntry(
+            batchNo: e.batchNo,
+            qty: e.qty.abs(),
+            serialNo: e.serialNo
+        )).toList();
+
+        sabbEntries.assignAll(cleanEntries);
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to fetch bundle details');
@@ -115,13 +126,25 @@ mixin SerialBatchBundleMixin on GetxController {
   }) async {
     if (sabbEntries.isEmpty) return null;
 
+    // REPLICATION LOGIC:
+    // If transaction is Outward, ERPNext expects negative quantities in storage.
+    // If Inward, it expects positive.
+    final apiEntries = sabbEntries.map((e) => SerialAndBatchEntry(
+        batchNo: e.batchNo,
+        qty: isOutward ? -e.qty.abs() : e.qty.abs(),
+        serialNo: e.serialNo
+    )).toList();
+
+    // Ensure the Bundle Total matches the sign of the entries
+    final apiTotal = isOutward ? -bundleTotalQty.value.abs() : bundleTotalQty.value.abs();
+
     final bundle = SerialAndBatchBundle(
       name: currentBundleId.value ?? '',
       itemCode: itemCode,
       warehouse: warehouse,
       typeOfTransaction: isOutward ? 'Outward' : 'Inward',
-      totalQty: bundleTotalQty.value,
-      entries: sabbEntries.toList(),
+      totalQty: apiTotal,
+      entries: apiEntries,
       voucherType: voucherType,
       voucherNo: voucherNo,
       company: _sabbStorageService.getCompany(),
@@ -136,7 +159,9 @@ mixin SerialBatchBundleMixin on GetxController {
         // Create new
         final response = await _sabbApiProvider.createDocument('Serial and Batch Bundle', bundle.toJson());
         if (response.statusCode == 200 && response.data['data'] != null) {
-          return response.data['data']['name'];
+          final newId = response.data['data']['name'];
+          currentBundleId.value = newId;
+          return newId;
         }
       }
       return null;

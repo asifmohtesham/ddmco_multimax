@@ -93,6 +93,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   var isItemSheetOpen = false.obs;
   var isSheetValid = false.obs;
+  // FLAG to block dirty check during init
+  bool _isInitialisingSheet = false;
 
   var bsIsBatchReadOnly = false.obs;
   var bsIsBatchValid = false.obs;
@@ -124,6 +126,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   String _initialBatch = '';
   String _initialSourceRack = '';
   String _initialTargetRack = '';
+  // Snapshot of initial bundle entries for change detection
+  List<SerialAndBatchEntry> _initialSabbEntries = [];
 
   String currentScannedEan = '';
   var recentlyAddedItemName = ''.obs;
@@ -149,13 +153,29 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // Auto-calculate total bundle qty when entries change
     ever(sabbEntries, (_) {
       double total = 0;
-      for (var e in sabbEntries) total += e.qty;
+      for (var e in sabbEntries) total += e.qty.abs();
       bundleTotalQty.value = total;
-      // If in SABB mode, the main Qty field should match the bundle total
+
+      // Update UI Text if in SABB mode
       if (useSerialBatchFields.value == 0 && isItemSheetOpen.value) {
-        bsQtyController.text = total.toStringAsFixed(2);
+        // Prevent unnecessary updates if value is effectively same
+        final currentTextVal = double.tryParse(bsQtyController.text) ?? 0.0;
+        if ((currentTextVal - total).abs() > 0.001) {
+          bsQtyController.text = total.toStringAsFixed(2);
+        }
       }
+
+      // Re-validate validity
       validateSheet();
+
+      // Only mark dirty if NOT initializing AND actual content changed
+      if (!_isInitialisingSheet) {
+        if (_hasChanges()) {
+          _markDirty();
+        }
+        // Restart timer regardless of dirty flag if valid (to catch updates)
+        _restartAutoSubmitTimer();
+      }
     });
   }
 
@@ -199,22 +219,66 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   void _setupAutoSubmit() {
     ever(isSheetValid, (bool valid) {
-      _autoSubmitTimer?.cancel();
-      if (valid && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
-        if (_storageService.getAutoSubmitEnabled()) {
-          final int delay = _storageService.getAutoSubmitDelay();
-          _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
-            if (isSheetValid.value && isItemSheetOpen.value) {
-              isAddingItem.value = true;
-              await Future.delayed(const Duration(milliseconds: 500));
-              await addItem();
-              isAddingItem.value = false;
-              if (Get.isBottomSheetOpen == true) Get.back();
-            }
-          });
-        }
-      }
+      _restartAutoSubmitTimer();
     });
+  }
+
+  void _restartAutoSubmitTimer() {
+    _autoSubmitTimer?.cancel();
+    // Only auto-submit if sheet is valid AND open AND doc is draft
+    // AND we actually have changes (to avoid looping on open)
+    if (isSheetValid.value && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
+      if (_hasChanges() && _storageService.getAutoSubmitEnabled()) {
+        final int delay = _storageService.getAutoSubmitDelay();
+        _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
+          if (isSheetValid.value && isItemSheetOpen.value) {
+            isAddingItem.value = true;
+            await Future.delayed(const Duration(milliseconds: 500));
+            await addItem();
+            isAddingItem.value = false;
+            if (Get.isBottomSheetOpen == true) Get.back();
+          }
+        });
+      }
+    }
+  }
+
+  // Helper to compare current SABB entries with initial snapshot
+  bool _areSabbEntriesEqual(List<SerialAndBatchEntry> list1, List<SerialAndBatchEntry> list2) {
+    if (list1.length != list2.length) return false;
+
+    // Create sorted copies to ignore order changes if any
+    final l1 = List.of(list1)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
+    final l2 = List.of(list2)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
+
+    for(int i=0; i<l1.length; i++) {
+      if (l1[i].batchNo != l2[i].batchNo) return false;
+      // Compare absolute values to handle Inward/Outward sign differences logic safely
+      if ((l1[i].qty.abs() - l2[i].qty.abs()).abs() > 0.001) return false;
+    }
+    return true;
+  }
+
+  // Modified _hasChanges to use Deep Comparison for SABB
+  bool _hasChanges() {
+    // New items are always considered "changed"
+    if (currentItemNameKey.value == null) return true;
+
+    // SABB Mode Deep Check
+    if (useSerialBatchFields.value == 0) {
+      if (!_areSabbEntriesEqual(sabbEntries, _initialSabbEntries)) return true;
+    } else {
+      // Legacy Mode Check
+      if (bsBatchController.text != _initialBatch) return true;
+      // Only check Qty text in Legacy mode.
+      // In SABB mode, Qty text is derived from entries, so we trust _areSabbEntriesEqual
+      if (bsQtyController.text != _initialQty) return true;
+    }
+
+    if (bsSourceRackController.text != _initialSourceRack) return true;
+    if (bsTargetRackController.text != _initialTargetRack) return true;
+
+    return false;
   }
 
   @override
@@ -391,13 +455,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   /// Checks if the entered quantity exceeds the remaining quantity in the Material Request.
   bool _checkMrConstraints() {
-    // If we have no reference items loaded, we cannot validate, so we assume true (or handle as error depending on strictness).
-    if (mrReferenceItems.isEmpty) {
-      print('Warning: mrReferenceItems is empty, skipping constraint check.');
-      return true;
-    }
-
-    // Step 1: Find the item in the Reference List (loaded from the MR document)
+    if (mrReferenceItems.isEmpty) return true;
     final ref = mrReferenceItems.firstWhereOrNull((r) =>
     r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
 
@@ -407,18 +465,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       bsValidationMaxQty.value = allowed; // Update UI hint
 
       final current = double.tryParse(bsQtyController.text) ?? 0;
-
-      print('MR Constraint Check: Item $currentItemCode | Current: $current | Allowed: $allowed');
-
-      // Failure: User is trying to return/transfer more than the MR allowed.
       if (current > allowed) {
-        print('[Context Failure] MR Qty Exceeded');
         return false;
       }
-    } else {
-      // Failure Check (Optional): If strict, you might want to return false here if the item isn't in the MR at all.
-      // Currently, it allows items not in the MR (returns true).
-      print('Info: Item $currentItemCode not found in MR reference list.');
     }
 
     return true;
@@ -439,7 +488,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         // If we have Serial Options available (fetched from API) but none is selected, FAIL.
         // This forces the user to select which Invoice/Serial this item belongs to.
         if (posUploadSerialOptions.isNotEmpty) {
-          print('[Context Failure] POS Upload: Serial Options available (${posUploadSerialOptions.length}) but none selected.');
           return false;
         }
       }
@@ -550,10 +598,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     final tWh = bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value;
 
     final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    log(name: 'Unique ID: ', uniqueId.toString());
     final currentItems = stockEntry.value?.items.toList() ?? [];
     final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
-    log(name: 'Existing Index: ', existingIndex.toString());
 
     StockEntryItem newItem;
 
@@ -587,8 +633,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         serialAndBatchBundle: bundleId ?? existing.serialAndBatchBundle,
       );
     } else {
-      log(name: 'Creating new item...', bundleId.toString());
-      // --- CREATE NEW ITEM ---
       newItem = StockEntryItem(
         name: uniqueId,
         itemCode: currentItemCode,
@@ -616,12 +660,10 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     if (existingIndex != -1) {
       currentItems[existingIndex] = newItem;
     } else {
-      log(name: 'Adding new item...', newItem.toJson().toString());
       currentItems.add(newItem);
     }
 
     stockEntry.update((val) {
-      log(name: 'Updating stock entry...', currentItems.toList().toString());
       val?.items.assignAll(currentItems);
     });
 
@@ -643,13 +685,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   void validateSheet() {
-    // Aggregates validation results from isolated helpers
-    // rackError is managed internally by _isValidRacks to preserve async stock errors
-    log(name: 'Sheet', 'Validating sheet...');
-    log(name: 'Sheet Qty', _isValidQty().toString());
-    log(name: 'Sheet Batch', _isValidBatch().toString());
-    log(name: 'Sheet Context', _isValidContext().toString());
-    log(name: 'Sheet Racks', _isValidRacks().toString());
     isSheetValid.value = _isValidQty() &&
         _isValidBatch() &&
         _isValidContext() &&
@@ -686,44 +721,12 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // SCENARIO 1: Material Request
     // Rules: Must have a valid Serial (Invoice/Ref), Item Code, and Qty within limits.
     if (entrySource == StockEntrySource.materialRequest) {
-
-      // Step 1: Check Serial Number
-      // Why it fails: The UI dropdown for 'Invoice Serial No' is empty or unselected.
-      // Note: For MRs, we often default this to '0'. If it's null/empty, we block it.
-      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
-        print('[Context Failure] Material Request: selectedSerial is empty/null');
-        return false;
-      }
-
-      // Step 2: Check Item Code
-      // Why it fails: The scan result didn't populate currentItemCode correctly.
-      if (currentItemCode.isEmpty) {
-        print('[Context Failure] Material Request: currentItemCode is empty');
-        return false;
-      }
-
-      // Step 3: Check Limits vs Material Request Reference
-      // See _checkMrConstraints below for details.
-      bool mrValid = _checkMrConstraints();
-      if (!mrValid) {
-        print('[Context Failure] Material Request: _checkMrConstraints returned false');
-      }
-      return mrValid;
+      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) return false;
+      if (currentItemCode.isEmpty) return false;
+      return _checkMrConstraints();
+    } else if (entrySource == StockEntrySource.posUpload) {
+      return _checkPosConstraints();
     }
-
-    // SCENARIO 2: POS Upload (Point of Sale)
-    // Rules: Must link to a specific invoice serial if available.
-    else if (entrySource == StockEntrySource.posUpload) {
-      bool posValid = _checkPosConstraints();
-      if (!posValid) {
-        print('[Context Failure] POS Upload: _checkPosConstraints returned false');
-      }
-      return posValid;
-    }
-
-    // SCENARIO 3: Manual Entry
-    // No special context rules apply.
-    print('--- Context Valid (Manual) ---');
     return true;
   }
 
@@ -773,19 +776,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     return true;
   }
 
-  bool _hasChanges() {
-    // New items are always considered "changed" / valid for submission
-    if (currentItemNameKey.value == null) return true;
-
-    if (bsQtyController.text != _initialQty) return true;
-    if (bsBatchController.text != _initialBatch) return true;
-    if (bsSourceRackController.text != _initialSourceRack) return true;
-    if (bsTargetRackController.text != _initialTargetRack) return true;
-
-    return false;
-  }
-
-  void _openQtySheet({String? scannedBatch}) {
+  void _openQtySheet({String? scannedBatch}) async {
     itemFormKey = GlobalKey<FormState>();
     bsQtyController.clear();
     bsBatchController.clear();
@@ -800,25 +791,15 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsItemSourceWarehouse.value = null;
     bsItemTargetWarehouse.value = null;
 
-    sabbEntries.clear();
-    bundleTotalQty.value = 0.0;
+    // Set flag before calling mixin
+    _isInitialisingSheet = true;
+    _initialSabbEntries = []; // Empty for new item
 
-    // Default to SABB (0) for new items
-    useSerialBatchFields.value = 0;
-
-    // Reset the Bundle ID for new items
-    currentBundleId.value = null;
-
-    // Initialise Mixin State
-    initSabbState(
-      useFields: 0, // Default to SABB for new
-      bundleId: null,
-      legacyBatch: scannedBatch
+    await initSabbState(
+        useFields: 0,
+        bundleId: null,
+        legacyBatch: scannedBatch
     );
-
-    if (scannedBatch != null && useSerialBatchFields.value == 0) {
-      addSabbEntry(scannedBatch, 1.0);
-    }
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
@@ -856,6 +837,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     }
 
     isItemSheetOpen.value = true;
+
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -889,6 +871,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   void editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
 
+    // Set flag to BLOCK dirty marking during load
+    _isInitialisingSheet = true;
+
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = item.itemCode;
     currentVariantOf = item.customVariantOf ?? '';
@@ -906,13 +891,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    initSabbState(
-      useFields: item.useSerialBatchFields,
-      bundleId: item.serialAndBatchBundle,
-      legacyBatch: item.batchNo
+    // Await mixin to fetch data
+    await initSabbState(
+        useFields: item.useSerialBatchFields,
+        bundleId: item.serialAndBatchBundle,
+        legacyBatch: item.batchNo
     );
 
-    // Populate Item Warehouses
+    // Sync Qty Text to Bundle Total exactly to prevent string mismatch
+    if (item.useSerialBatchFields == 0) {
+      bsQtyController.text = bundleTotalQty.value.toStringAsFixed(2);
+    }
+
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
@@ -921,12 +911,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       selectedSerial.value = '0';
     }
 
-    _initialQty = qtyStr;
+    // Capture Snapshots
+    _initialQty = bsQtyController.text;
     _initialBatch = item.batchNo ?? '';
     _initialSourceRack = item.rack ?? '';
     _initialTargetRack = item.toRack ?? '';
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
+
+    // Deep copy current entries for comparison
+    _initialSabbEntries = sabbEntries.map((e) => SerialAndBatchEntry(
+        batchNo: e.batchNo,
+        qty: e.qty,
+        serialNo: e.serialNo
+    )).toList();
 
     bsValidationMaxQty.value = 0.0;
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
@@ -967,6 +965,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       rackError.value = null;
       batchError.value = null;
     });
+
+    // Unblock dirty check after data is fully loaded
+    _isInitialisingSheet = false;
   }
 
   Future<void> scanBarcode(String barcode) async {
