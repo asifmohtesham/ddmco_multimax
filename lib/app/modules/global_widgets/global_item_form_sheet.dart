@@ -367,31 +367,12 @@ class GlobalItemFormSheet extends StatelessWidget {
             ),
           ),
           if (onScan != null)
-            Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  )
-                ],
-              ),
-              padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  bottomPadding + 12
-              ),
-              child: BarcodeInputWidget(
-                onScan: onScan!,
-                controller: scanController,
-                isLoading: isScanning,
-                hintText: 'Scan Rack / Batch / Item',
-                isEmbedded: true,
-              ),
+            BarcodeInputWidget(
+              onScan: onScan!,
+              controller: scanController,
+              isLoading: isScanning,
+              hintText: 'Scan Rack / Batch / Item',
+              // isEmbedded: true,
             ),
         ],
       ),
