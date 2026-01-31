@@ -79,19 +79,16 @@ mixin SerialBatchBundleMixin on GetxController {
   // --- Actions ---
 
   /// Validates batch existence and fetches stock balance before adding
-  Future<void> validateAndAddBatch(String batchNo, [double qty = 1.0]) async {
+  Future<void> validateAndAddBatch(String batchNo, [double? qty = 1.0]) async {
     if (batchNo.isEmpty) return;
 
-    // 1. Guard against missing Context (Fixes "null" item error)
     if (sabbContextItemCode.value == null || sabbContextItemCode.value!.isEmpty) {
       GlobalSnackbar.error(message: 'Initialisation Error: Item Code is missing.');
-      print('Error: sabbContextItemCode is null. Ensure initSabbState is called with a valid itemCode.');
       return;
     }
 
     try {
-      // 2. Validate Batch Existence (Check if Batch exists for this Item)
-      // We search specifically for this batch to ensure it's valid for the item
+      // 1. Validate Batch Existence
       final batchesResponse = await _sabbBatchProvider.getBatches(
         filters: {
           'name': batchNo,
@@ -107,7 +104,16 @@ mixin SerialBatchBundleMixin on GetxController {
         return;
       }
 
-      // 3. Fetch Balance using the correct API (Fixes "Field not permitted: batch_no" error)
+      final batchData = batchesData.first;
+
+      // Determine Quantity
+      double finalQty = qty ?? 1.0;
+      if (qty == null) {
+        final pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+        if (pkgQty > 0) finalQty = pkgQty;
+      }
+
+      // 2. Fetch Balance
       if (sabbContextWarehouse.value != null && sabbContextWarehouse.value!.isNotEmpty) {
         try {
           // We use the same API call used in the Delivery Note controller
@@ -118,12 +124,17 @@ mixin SerialBatchBundleMixin on GetxController {
           );
 
           if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-            final result = balanceResponse.data['message']['result'];
+            // Robust parsing: Handle if message is List or Map
+            var msg = balanceResponse.data['message'];
+            List result = [];
 
-            // The result is typically a List of Maps (e.g. one per Rack or aggregated)
-            if (result is List && result.isNotEmpty) {
-              // Sum up balance if multiple rows (e.g. different racks), or take the first
-              // Usually 'balance_qty' or 'bal_qty' keys are used
+            if (msg is Map && msg.containsKey('result')) {
+              result = msg['result'] as List? ?? [];
+            } else if (msg is List) {
+              result = msg;
+            }
+
+            if (result.isNotEmpty) {
               double totalBal = 0.0;
               for(var row in result) {
                 totalBal += (row['balance_qty'] ?? row['bal_qty'] ?? 0.0) as double;
@@ -142,8 +153,8 @@ mixin SerialBatchBundleMixin on GetxController {
         }
       }
 
-      // 4. Add Entry to List
-      addSabbEntry(batchNo, qty);
+      // 3. Add Entry using calculated finalQty (Fixes Null check operator error)
+      addSabbEntry(batchNo, finalQty);
 
     } catch (e) {
       print(e);
@@ -151,8 +162,8 @@ mixin SerialBatchBundleMixin on GetxController {
     }
   }
 
-  void addSabbEntry(String batch, double qty) {
-    if (batch.isEmpty || qty <= 0) return;
+  void addSabbEntry(String batch, double? qty) {
+    if (batch.isEmpty || qty! <= 0) return;
 
     final index = sabbEntries.indexWhere((e) => e.batchNo == batch);
     if (index != -1) {
@@ -189,33 +200,36 @@ mixin SerialBatchBundleMixin on GetxController {
     if (sabbContextItemCode.value == null || sabbContextItemCode.value!.isEmpty) return [];
 
     try {
-      // 1. Fetch live stock report for the item
       final response = await _sabbApiProvider.getItemBatchesWithStock(
           sabbContextItemCode.value!,
           warehouse: sabbContextWarehouse.value
       );
 
       if (response.statusCode == 200 && response.data['message'] != null) {
-        final result = response.data['message']['result'] as List;
+        // Robust Parsing
+        var msg = response.data['message'];
+        List result = [];
+        if (msg is Map && msg.containsKey('result')) {
+          result = msg['result'] as List? ?? [];
+        } else if (msg is List) {
+          result = msg;
+        }
 
-        // 2. Filter in memory: Balance > 0 AND matches Query
         return result
           .whereType<Map<String, dynamic>>()
           .where((row) {
-            final String batch = row['batch'] ?? '';
+            final String batch = row['batch'] ?? row['batch_no'] ?? '';
             final double balance = (row['balance_qty'] ?? row['bal_qty'] ?? 0.0) as double;
-
-            // Strict positive balance check + Name match
             return balance > 0 && batch.toLowerCase().contains(query.toLowerCase());
           })
           .map((row) {
-            // 3. Map to BatchModel manually (Report keys differ from Doctype keys)
+            final String batchName = row['batch'] ?? row['batch_no'] ?? '';
             return Batch(
               creation: '',
               modified: '',
-              item: '${'${row['item']}'}',
-              name: row['batch'],
-              manufacturingDate: '${row['manufacturing_date'] ?? 'NA'}\nBalance: ${NumberFormat('#,##0').format(row['balance_qty'])}',
+              item: '${row['item']}',
+              name: batchName,
+              manufacturingDate: '${row['manufacturing_date'] ?? 'NA'}\nBalance: ${NumberFormat('#,##0').format(row['balance_qty'] ?? 0)}',
             );
           }).toList();
       }

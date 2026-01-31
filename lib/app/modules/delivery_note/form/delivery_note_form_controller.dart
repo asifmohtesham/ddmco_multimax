@@ -685,7 +685,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isSheetValid.value = valid;
   }
 
-  Future<void> initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) async {
+  Future<void> initBottomSheet(
+    String itemCode,
+    String itemName,
+    String? batchNo,
+    double maxQty,
+    {DeliveryNoteItem? editingItem, String? autoAddBatch}
+  ) async {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -732,7 +738,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsBatchError.value = null;
 
       // Initialise Mixin
-      log(name: 'initBottomSheet: ${editingItem.itemCode}', editingItem.toJson().toString());
       await initSabbState(
         itemCode: editingItem.itemCode,
         warehouse: wh ?? '',
@@ -750,6 +755,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       if (editingItem.useSerialBatchFields == 0) {
         bsQtyController.text = bundleTotalQty.value.toStringAsFixed(2);
       }
+
+      // NEW: Auto-Add Scanned Batch to Existing Item
+      if (autoAddBatch != null && autoAddBatch.isNotEmpty) {
+        // Pass null for qty to let mixin use custom_packaging_qty
+        await validateAndAddBatch(autoAddBatch, null);
+      }
     } else {
       // Default to SABB (0) for new items
       await initSabbState(
@@ -763,7 +774,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       // If a batch was scanned to open this sheet, add it to SABB list
       if (batchNo != null && batchNo.isNotEmpty) {
         if (useSerialBatchFields.value == 0) {
-          addSabbEntry(batchNo, 1.0);
+          addSabbEntry(batchNo, null);
         } else {
           bsBatchController.text = batchNo;
         }
@@ -999,10 +1010,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
-  Future<void> editItem(DeliveryNoteItem item) async {
-    // REMOVED: isAddingItem.value = true;
+  Future<void> editItem(DeliveryNoteItem item, {String? autoAddBatch}) async {
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
+    // Logic to fetch fetchedQty for existing batch (keep existing code)
     try {
       if (item.batchNo != null) {
         // Logic for edit mode: Use item.rack if available, else fallback to setWarehouse
@@ -1017,9 +1028,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
 
         final balanceResponse = await _apiProvider.getBatchWiseBalance(
-            item.itemCode,
-            item.batchNo!,
-            warehouse: targetWh
+          item.itemCode,
+          item.batchNo!,
+          warehouse: targetWh
         );
 
         if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -1034,7 +1045,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       fetchedQty = 999;
     }
 
-    await initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
+    await initBottomSheet(
+      item.itemCode,
+      item.itemName ?? '',
+      item.batchNo,
+      fetchedQty,
+      editingItem: item,
+      autoAddBatch: autoAddBatch
+    );
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -1115,42 +1133,61 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
 
         final itemData = result.itemData!;
-        double maxQty = 0.0;
+        final scannedBatch = result.batchNo;
 
-        if (result.batchNo != null) {
-          try {
-            final balanceResponse = await _apiProvider.getBatchWiseBalance(
-                itemData.itemCode,
-                result.batchNo!,
-                warehouse: setWarehouse.value
-            );
-
-            if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
-              final list = balanceResponse.data['message']['result'] as List;
-              if(list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
-            }
-          } catch (_) { maxQty = 6.0; }
-        }
-
-        isScanning.value = false;
-        barcodeController.clear();
-
-        await initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
-
-        await Get.bottomSheet(
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.4,
-            maxChildSize: 0.95,
-            builder: (context, scrollController) {
-              return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-            },
-          ),
-          isScrollControlled: true,
+        // CHECK IF ITEM EXISTS
+        final existingItem = deliveryNote.value?.items.firstWhereOrNull(
+          (item) => item.itemCode == itemData.itemCode
         );
 
-        isItemSheetOpen.value = false;
+        if (existingItem != null) {
+          // EDIT EXISTING ITEM + APPEND BATCH
+          isScanning.value = false;
+          barcodeController.clear();
+          GlobalSnackbar.success(message: 'Item found. Appending batch...');
 
+          await editItem(existingItem, autoAddBatch: scannedBatch);
+
+        } else {
+          double maxQty = 0.0;
+
+          if (scannedBatch != null) {
+            try {
+              final balanceResponse = await _apiProvider.getBatchWiseBalance(
+                  itemData.itemCode,
+                  scannedBatch!,
+                  warehouse: setWarehouse.value
+              );
+
+              if (balanceResponse.statusCode == 200 &&
+                  balanceResponse.data['message']?['result'] != null) {
+                final list = balanceResponse.data['message']['result'] as List;
+                if (list.isNotEmpty)
+                  maxQty = (list[0]['balance_qty'] as num).toDouble();
+              }
+            } catch (_) {
+              maxQty = 6.0;
+            }
+          }
+
+          isScanning.value = false;
+          barcodeController.clear();
+
+          await initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
+
+          await Get.bottomSheet(
+            DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              minChildSize: 0.4,
+              maxChildSize: 0.95,
+              builder: (context, scrollController) {
+                return DeliveryNoteItemBottomSheet(scrollController: scrollController);
+              },
+            ),
+            isScrollControlled: true,
+          );
+          isItemSheetOpen.value = false;
+        }
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
       } else {
