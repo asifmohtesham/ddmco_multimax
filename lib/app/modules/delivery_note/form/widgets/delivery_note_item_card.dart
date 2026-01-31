@@ -67,10 +67,20 @@ class DeliveryNoteItemCard extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => controller.editItem(item),
-                  ),
+                  if (controller.loadingEditItemId.value == item.name)
+                    const Padding(
+                      padding: EdgeInsets.all(12.0),
+                      child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5)
+                      ),
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () => controller.editItem(item),
+                    ),
                   AnimatedExpandIcon(isExpanded: isExpanded),
                 ],
               ),

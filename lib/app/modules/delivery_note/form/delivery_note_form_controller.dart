@@ -113,6 +113,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   String currentItemName = '';
   String currentScannedEan = '';
 
+  var loadingEditItemId = RxnString();
+
   Timer? _autoSubmitTimer;
 
   @override
@@ -1054,6 +1056,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       autoAddBatch: autoAddBatch
     );
 
+    // Clear loading state once sheet is ready to show
+    loadingEditItemId.value = null;
     Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
