@@ -114,6 +114,8 @@ class SerialBatchBundleWidget extends StatelessWidget {
                               suffixIcon: Icon(Icons.qr_code_scanner, size: 20),
                             ),
                             onSubmitted: (val) {
+                              // Use quantity from controller
+                              final qty = double.tryParse(mixin.bsQtyController.text) ?? 1.0;
                               // On manual enter/scan without clicking option
                               mixin.validateAndAddBatch(val);
                             },
@@ -155,6 +157,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 label: 'Qty',
                 color: Colors.purple,
                 child: TextField(
+                  controller: mixin.bsQtyController, // Bind to Mixin Controller
                   // Temporary text field for creating
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
@@ -169,12 +172,25 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(
+
+            // Add Button with Loading State
+            Obx(() => mixin.isAddingBatch.value
+                ? const Padding(
+              padding: EdgeInsets.all(12.0),
+              child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)
+              ),
+            )
+                : IconButton(
               icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
               onPressed: () {
-                mixin.validateAndAddBatch(mixin.bsBatchController.text, 1.0);
+                final qty = double.tryParse(mixin.bsQtyController.text) ?? 1.0;
+                mixin.validateAndAddBatch(mixin.bsBatchController.text, qty);
               },
             )
+            ),
           ],
         ),
       ],

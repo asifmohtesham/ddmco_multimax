@@ -23,6 +23,9 @@ mixin SerialBatchBundleMixin on GetxController {
   var bundleTotalQty = 0.0.obs;
   var currentBundleId = RxnString();
 
+  // Loading State for Add Button
+  var isAddingBatch = false.obs;
+
   // Context for Validation (Renamed to avoid conflict with Controller variables)
   var sabbContextItemCode = RxnString();
   var sabbContextWarehouse = RxnString();
@@ -32,6 +35,7 @@ mixin SerialBatchBundleMixin on GetxController {
 
   // Shared Text Controller for the "Add Batch" input
   final bsBatchController = TextEditingController();
+  final bsQtyController = TextEditingController(text: '1.0');
 
   @override
   void onInit() {
@@ -47,6 +51,7 @@ mixin SerialBatchBundleMixin on GetxController {
   @override
   void onClose() {
     bsBatchController.dispose();
+    bsQtyController.dispose();
     super.onClose();
   }
 
@@ -69,6 +74,11 @@ mixin SerialBatchBundleMixin on GetxController {
     bundleTotalQty.value = 0.0;
     bsBatchController.clear();
 
+    // Reset Inputs
+    bsBatchController.clear();
+    bsQtyController.text = '1.0';
+    isAddingBatch.value = false;
+
     if (useFields == 0 && bundleId != null && bundleId.isNotEmpty) {
       await _fetchBundleDetails(bundleId);
     } else if (useFields == 1) {
@@ -81,6 +91,8 @@ mixin SerialBatchBundleMixin on GetxController {
   /// Validates batch existence and fetches stock balance before adding
   Future<void> validateAndAddBatch(String batchNo, [double? qty = 1.0]) async {
     if (batchNo.isEmpty) return;
+
+    isAddingBatch.value = true; // Start Loading
 
     if (sabbContextItemCode.value == null || sabbContextItemCode.value!.isEmpty) {
       GlobalSnackbar.error(message: 'Initialisation Error: Item Code is missing.');
@@ -156,9 +168,14 @@ mixin SerialBatchBundleMixin on GetxController {
       // 3. Add Entry using calculated finalQty (Fixes Null check operator error)
       addSabbEntry(batchNo, finalQty);
 
+      // Reset Qty to 1.0 after successful add
+      bsQtyController.text = '1.0';
+
     } catch (e) {
       print(e);
       GlobalSnackbar.error(message: 'Error validating batch: $e');
+    } finally {
+      isAddingBatch.value = false; // Stop Loading
     }
   }
 

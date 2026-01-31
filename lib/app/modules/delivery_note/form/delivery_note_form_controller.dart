@@ -107,6 +107,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var bsItemCompanyTotalStock = RxnDouble();
   var bsItemWarehouse = RxnString();
 
+  var isAddingBatchToBundle = false.obs;
   List<SerialAndBatchEntry> _initialSabbEntries = [];
 
   String currentItemCode = '';
@@ -1013,6 +1014,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> editItem(DeliveryNoteItem item, {String? autoAddBatch}) async {
+    // Set loading state
+    loadingEditItemId.value = item.name;
+
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
     // Logic to fetch fetchedQty for existing batch (keep existing code)
