@@ -185,23 +185,37 @@ mixin SerialBatchBundleMixin on GetxController {
   // --- Autocomplete Logic ---
 
   Future<List<Batch>> searchBatches(String query) async {
-    if (sabbContextItemCode.value == null) return [];
+    if (sabbContextItemCode.value == null || sabbContextItemCode.value!.isEmpty) return [];
 
     try {
-      final response = await _sabbBatchProvider.getBatches(
-        filters: {
-          'name': ['like', '%$query%'],
-          'item': sabbContextItemCode.value,
-          'disabled': 0,
-          // Optional: Filter by expiry if needed
-        },
-        limit: 10,
+      // 1. Fetch live stock report for the item
+      final response = await _sabbApiProvider.getItemBatchesWithStock(
+          sabbContextItemCode.value!,
+          warehouse: sabbContextWarehouse.value
       );
 
-      if (response.statusCode == 200) {
-        return (response.data['data'] as List)
-            .map((e) => Batch.fromJson(e))
-            .toList();
+      if (response.statusCode == 200 && response.data['message'] != null) {
+        final result = response.data['message']['result'] as List;
+
+        // 2. Filter in memory: Balance > 0 AND matches Query
+        return result
+          .whereType<Map<String, dynamic>>()
+          .where((row) {
+            final String batch = row['batch'] ?? '';
+            final double balance = (row['balance_qty'] ?? row['bal_qty'] ?? 0.0) as double;
+
+            // Strict positive balance check + Name match
+            return balance > 0 && batch.toLowerCase().contains(query.toLowerCase());
+          })
+          .map((row) {
+            // 3. Map to BatchModel manually (Report keys differ from Doctype keys)
+            return Batch(
+              creation: '',
+              modified: '',
+              item: row['item'],
+              name: row['batch'],
+            );
+          }).toList();
       }
     } catch (e) {
       print("Batch search error: $e");
