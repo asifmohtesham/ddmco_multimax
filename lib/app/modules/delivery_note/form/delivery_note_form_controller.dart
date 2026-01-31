@@ -31,7 +31,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
 
-  // CHANGED: Removed 'final' so we can update mode to 'edit' after saving a new doc
   String mode = Get.arguments['mode'];
 
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
@@ -686,7 +685,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isSheetValid.value = valid;
   }
 
-  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) async {
+  Future<void> initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) async {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -705,6 +704,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     rackStockMap.clear();
     rackError.value = null;
     _initialSabbEntries = [];
+
+    // Resolve Warehouse (Item Level -> Header Level)
+    final wh = bsItemWarehouse.value ?? setWarehouse.value;
 
     if (editingItem != null) {
       bsItemOwner.value = editingItem.owner;
@@ -730,10 +732,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsBatchError.value = null;
 
       // Initialise Mixin
+      log(name: 'initBottomSheet: ${editingItem.itemCode}', editingItem.toJson().toString());
       await initSabbState(
-      useFields: editingItem.useSerialBatchFields ?? 0, // Default to SABB if null
-      bundleId: editingItem.serialAndBatchBundle,
-      legacyBatch: editingItem.batchNo
+        itemCode: editingItem.itemCode,
+        warehouse: wh ?? '',
+        useFields: editingItem.useSerialBatchFields ?? 0, // Default to SABB if null
+        bundleId: editingItem.serialAndBatchBundle,
+        legacyBatch: editingItem.batchNo,
       );
 
       // Snapshot entries for dirty checking
@@ -748,9 +753,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     } else {
       // Default to SABB (0) for new items
       await initSabbState(
-          useFields: 0,
-          bundleId: null,
-          legacyBatch: batchNo
+        useFields: 0,
+        bundleId: null,
+        legacyBatch: batchNo,
+        itemCode: editingItem?.itemCode,
+        warehouse: wh ?? '',
       );
 
       // If a batch was scanned to open this sheet, add it to SABB list
@@ -1027,7 +1034,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       fetchedQty = 999;
     }
 
-    initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
+    await initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -1126,10 +1133,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
 
         isScanning.value = false;
-        // REMOVED: isAddingItem.value = true;
         barcodeController.clear();
 
-        initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
+        await initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
 
         await Get.bottomSheet(
           DraggableScrollableSheet(
@@ -1144,7 +1150,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         );
 
         isItemSheetOpen.value = false;
-        // REMOVED: isAddingItem.value = false;
 
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');

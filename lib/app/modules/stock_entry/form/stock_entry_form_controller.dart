@@ -795,10 +795,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     _isInitialisingSheet = true;
     _initialSabbEntries = []; // Empty for new item
 
+    // Resolve Warehouse based on Transaction Type
+    final type = selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+    final wh = isOutward
+      ? (bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value)
+      : (bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value);
+
+    // --- UPDATED MIXIN CALL ---
     await initSabbState(
-        useFields: 0,
-        bundleId: null,
-        legacyBatch: scannedBatch
+      useFields: 0,
+      bundleId: null,
+      legacyBatch: scannedBatch,
+      itemCode: currentItemCode,  // Added
+      warehouse: wh ?? ''         // Added
     );
 
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
@@ -891,11 +901,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    // Await mixin to fetch data
+    // Resolve Warehouse
+    final type = selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+    final wh = isOutward ? item.sWarehouse : item.tWarehouse;
+
+    // --- UPDATED MIXIN CALL ---
     await initSabbState(
-        useFields: item.useSerialBatchFields,
-        bundleId: item.serialAndBatchBundle,
-        legacyBatch: item.batchNo
+      useFields: item.useSerialBatchFields,
+      bundleId: item.serialAndBatchBundle,
+      legacyBatch: item.batchNo,
+      itemCode: item.itemCode, // Added
+      warehouse: wh ?? ''      // Added
     );
 
     // Sync Qty Text to Bundle Total exactly to prevent string mismatch
