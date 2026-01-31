@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/models/serial_and_batch_bundle_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -212,8 +213,9 @@ mixin SerialBatchBundleMixin on GetxController {
             return Batch(
               creation: '',
               modified: '',
-              item: row['item'],
+              item: '${'${row['item']}'}',
               name: row['batch'],
+              manufacturingDate: '${row['manufacturing_date'] ?? 'NA'}\nBalance: ${NumberFormat('#,##0').format(row['balance_qty'])}',
             );
           }).toList();
       }

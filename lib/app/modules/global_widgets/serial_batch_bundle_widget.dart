@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/mixins/serial_batch_bundle_mixin.dart';
@@ -132,7 +134,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                                     final Batch option = options.elementAt(index);
                                     return ListTile(
                                       title: Text(option.name ?? ''),
-                                      subtitle: Text("Date: ${option.manufacturingDate ?? 'N/A'}"),
+                                      subtitle: Text("MFG: ${option.manufacturingDate ?? ''}"),
                                       onTap: () => onSelected(option),
                                     );
                                   },
