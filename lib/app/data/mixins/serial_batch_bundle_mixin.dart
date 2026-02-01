@@ -198,8 +198,13 @@ mixin SerialBatchBundleMixin on GetxController {
 
   void updateSabbEntry(int index, double newQty) {
     if (index < 0 || index >= sabbEntries.length) return;
+
     final validQty = newQty.abs();
     final old = sabbEntries[index];
+
+    // Check if the quantity has actually changed (using a small epsilon for double comparison)
+    if ((old.qty - validQty).abs() < 0.001) return;
+
     sabbEntries[index] = SerialAndBatchEntry(
         batchNo: old.batchNo,
         qty: validQty,
