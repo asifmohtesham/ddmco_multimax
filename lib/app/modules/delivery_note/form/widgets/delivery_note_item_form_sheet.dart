@@ -207,6 +207,16 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       controller.rackError.value!,
                       style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
+                  )
+                else if (controller.bsIsRackValid.value)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0, left: 4.0),
+                    child: Text(
+                      controller.bsBatchController.text.isNotEmpty
+                          ? 'Batch ${controller.bsBatchController.text} in Rack: ${controller.bsMaxQty.value}'
+                          : 'Available in Rack: ${controller.bsMaxQty.value}',
+                      style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
                   ),
               ],
             ),

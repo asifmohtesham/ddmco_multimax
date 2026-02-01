@@ -1137,73 +1137,70 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   Future<void> _updateAvailableStock() async {
     final type = selectedStockEntryType.value;
-    final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final isSourceOp = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
 
-    // If not a source operation, we don't need to validate stock balance against a warehouse
+    // If not a source operation, we don't limit max qty
     if (!isSourceOp) {
       bsMaxQty.value = 999999.0;
       return;
     }
 
-    // 1. Determine the effective warehouse
-    // Default to the 'From Warehouse' selected in the Details tab
-    // Prioritise Item Level Warehouse -> Derived -> Header
-    String? effectiveWarehouse = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    // Only run this if we aren't already validating a specific batch
+    // (If batch is present, validateBatch handles the bsMaxQty more strictly via Batch-Wise History)
+    if (bsBatchController.text.isNotEmpty) return;
 
-    // If a specific warehouse is derived from the scanned rack, use it
-    if (derivedSourceWarehouse.value != null && derivedSourceWarehouse.value!.isNotEmpty) {
-      effectiveWarehouse = derivedSourceWarehouse.value;
-    }
+    final effectiveWarehouse = bsItemSourceWarehouse.value ??
+        derivedSourceWarehouse.value ??
+        selectedFromWarehouse.value;
 
-    // 2. Validate Warehouse Existence
-    // If no warehouse is determined (neither globally selected nor derived), we cannot fetch stock.
-    // This prevents the "Failed to fetch Stock Balance report" error.
     if (effectiveWarehouse == null || effectiveWarehouse.isEmpty) {
       bsMaxQty.value = 0.0;
-      // Optional: You might want to set a warning string here if needed,
-      // but for now we just silently prevent the crash and 0 out the qty.
       rackError.value = 'No Warehouse Selected';
       return;
     }
 
-    String batch = bsBatchController.text.trim();
     String rack = bsSourceRackController.text.trim();
 
     try {
+      // Fetch Stock Balance
+      // Note: Passing 'rack' filter ensures the API only returns stock for that rack
       final response = await _apiProvider.getStockBalance(
           itemCode: currentItemCode,
           warehouse: effectiveWarehouse,
-          batchNo: batch.isNotEmpty ? batch : null
+          rack: rack.isNotEmpty ? rack : null
       );
 
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
         double totalBalance = 0.0;
+
         for (var row in result) {
           if (row is! Map) continue;
-          // Filter by rack if specified in the Stock Balance row results
+          // Filter safety check (API should handle it, but good to be safe)
           if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
           totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
         }
+
         bsMaxQty.value = totalBalance;
 
-        // Validation: If rack was specified but result is 0/neg
+        // Strict Rack Validation
         if (rack.isNotEmpty && totalBalance <= 0) {
-          rackError.value = 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)';
-          GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)');
+          rackError.value = 'Insufficient stock in Rack: $rack';
           isSourceRackValid.value = false;
+        } else if (rack.isNotEmpty) {
+          // Clear rack error if stock exists
+          rackError.value = null;
         }
       }
     } catch (e) {
       print('Failed to fetch stock balance: $e');
-      GlobalSnackbar.error(message: e.toString().contains('Session Defaults')
-          ? 'Please set Session Defaults in Dashboard'
-          : 'Failed to fetch stock for $effectiveWarehouse');
+      bsMaxQty.value = 0.0;
     }
+    validateSheet();
   }
 
   Future<void> validateBatch(String batch) async {
-    batchError.value = null; // Reset Error
+    batchError.value = null;
     if (batch.isEmpty) return;
 
     if (batch.contains('-')) {
@@ -1218,19 +1215,57 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
     isValidatingBatch.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Batch', filters: {
+      // Step A: Check Batch Existence & Packaging Qty
+      final batchDocResponse = await _apiProvider.getDocumentList('Batch', filters: {
         'item': currentItemCode,
         'name': batch
       }, fields: ['name', 'custom_packaging_qty']);
-      if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
-        final batchData = response.data['data'][0];
+
+      if (batchDocResponse.statusCode == 200 &&
+          batchDocResponse.data['data'] != null &&
+          (batchDocResponse.data['data'] as List).isNotEmpty) {
+
+        final batchData = batchDocResponse.data['data'][0];
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
+
+        // Auto-set packaging qty if available
         final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-        if (pkgQty > 0) {
+        if (pkgQty > 0 && bsQtyController.text.isEmpty) {
           bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
         }
-        await _updateAvailableStock();
+
+        // Step B: Strict Stock Check using Batch-Wise Balance History
+        // Determine warehouse: Item Level -> Derived -> Header
+        final effectiveWarehouse = bsItemSourceWarehouse.value ??
+            derivedSourceWarehouse.value ??
+            selectedFromWarehouse.value;
+
+        if (effectiveWarehouse != null) {
+          final balanceResponse = await _apiProvider.getBatchWiseBalance(
+              currentItemCode,
+              batch,
+              warehouse: effectiveWarehouse
+          );
+
+          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
+            final result = balanceResponse.data['message']['result'];
+            if (result is List && result.isNotEmpty) {
+              // Update Max Qty to match strictly what is in the batch
+              final batchQty = (result[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
+              bsMaxQty.value = batchQty;
+
+              if (batchQty <= 0) {
+                batchError.value = "Batch is empty in $effectiveWarehouse";
+                bsIsBatchValid.value = false;
+              }
+            } else {
+              bsMaxQty.value = 0.0;
+              batchError.value = "No stock found for batch in $effectiveWarehouse";
+              bsIsBatchValid.value = false;
+            }
+          }
+        }
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');

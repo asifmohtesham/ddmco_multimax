@@ -633,11 +633,30 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   void validateSheet() {
     bool valid = true;
     rackError.value = null;
+    bsBatchError.value = null; // Ensure we clear old errors before checking
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
 
-    if (qty <= 0) valid = false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
+    // 1. Strict Batch Qty Check (bsMaxQty is set via getBatchWiseBalance in validateAndFetchBatch)
+    if (bsMaxQty.value >= 0 && qty > bsMaxQty.value) {
+      valid = false;
+      bsBatchError.value = 'Max available: ${bsMaxQty.value}';
+    }
+
+    // 2. Strict Rack Qty Check
+    final selectedRack = bsRackController.text;
+    if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
+      final availableInRack = rackStockMap[selectedRack] ?? 0.0;
+
+      if (qty > availableInRack) {
+        valid = false;
+        rackError.value = 'Only $availableInRack available in $selectedRack';
+      }
+    } else if (selectedRack.isNotEmpty && rackStockMap.isEmpty) {
+      // Edge case: Rack typed but no stock map loaded yet (or no stock exists)
+      // You might want to force a re-fetch or fail here
+      valid = false;
+    }
 
     if (useSerialBatchFields.value == 0) {
       // In SABB Mode, we need entries
@@ -652,16 +671,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
     // Strict Rack Validation: If text is entered, it must be validated
     if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
-
-    // RACK-WISE STOCK AVAILABILITY LOGIC
-    final selectedRack = bsRackController.text;
-    if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
-      final availableInRack = rackStockMap[selectedRack] ?? 0.0;
-      if (qty > availableInRack) {
-        valid = false;
-        rackError.value = 'Only $availableInRack available in $selectedRack';
-      }
-    }
 
     // Invoice Serial No Check
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
@@ -981,11 +990,16 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           bsItemWarehouse.value = response.data['data']['warehouse'];
         }
 
-        // Re-run validation (and stock fetch) with the new confirmed warehouse
-        validateSheet();
-
         // Refresh rack stocks using the specific warehouse
-        _fetchAllRackStocks();
+        await _fetchAllRackStocks();
+
+        // 2. NEW: Update Max Qty to match the specific scanned Rack's balance
+        if (rackStockMap.containsKey(rack)) {
+          bsMaxQty.value = rackStockMap[rack]!;
+        } else {
+          // If Rack is valid but has no stock for this batch, limit is 0
+          bsMaxQty.value = 0.0;
+        }
       } else {
         bsIsRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');
@@ -1074,7 +1088,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       isScrollControlled: true,
     ).then((_) {
       isItemSheetOpen.value = false;
-      // REMOVED: isAddingItem.value = false;
       editingItemName.value = null;
     });
   }
