@@ -38,13 +38,13 @@ class SerialBatchBundleWidget extends StatelessWidget {
               final entry = mixin.sabbEntries[index];
               final batchNo = entry.batchNo;
 
+              final balance = mixin.batchBalances[batchNo] ?? 0.0;
+              final isOverStock = entry.qty.abs() > balance;
+
               // Ensure controller exists (safety check for strict mode)
               if (!mixin.batchQtyControllers.containsKey(batchNo)) {
                 mixin.initialiseBatchControl(batchNo, entry.qty);
               }
-
-              final balance = mixin.batchBalances[batchNo] ?? 0.0;
-              final isOverStock = entry.qty.abs() > balance;
 
               return ListTile(
                 contentPadding: const EdgeInsets.only(left: 12, right: 4),
@@ -187,8 +187,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                     border: OutlineInputBorder(),
                   ),
                   onSubmitted: (val) {
-                    final qty = double.tryParse(val) ?? 0;
-                    mixin.validateAndAddBatch(mixin.bsBatchController.text, qty);
+                    mixin.addBatchFromInput();
                   },
                 ),
               ),
@@ -207,8 +206,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 : IconButton(
               icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
               onPressed: () {
-                final qty = double.tryParse(mixin.bsQtyController.text) ?? 1.0;
-                mixin.validateAndAddBatch(mixin.bsBatchController.text, qty);
+                mixin.addBatchFromInput();
               },
             )
             ),

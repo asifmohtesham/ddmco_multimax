@@ -41,6 +41,9 @@ mixin SerialBatchBundleMixin on GetxController {
   final bsBatchController = TextEditingController();
   final bsQtyController = TextEditingController(text: '1.0');
 
+  // [NEW] Dedicated controller for the input field to prevent showing the Total Sum
+  final TextEditingController sabbInputQtyController = TextEditingController();
+
   @override
   void onInit() {
     super.onInit();
@@ -55,6 +58,7 @@ mixin SerialBatchBundleMixin on GetxController {
   @override
   void onClose() {
     bsBatchController.dispose();
+    sabbInputQtyController.dispose();
     bsQtyController.dispose();
     for (var c in batchQtyControllers.values) c.dispose();
     super.onClose();
@@ -126,6 +130,8 @@ mixin SerialBatchBundleMixin on GetxController {
       }
 
       final batchData = batchesData.first;
+      final pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+      sabbInputQtyController.text = pkgQty > 0 ? pkgQty.toString() : '1.0';
 
       // Determine Quantity
       double finalQty = qty ?? 1.0;
@@ -186,6 +192,23 @@ mixin SerialBatchBundleMixin on GetxController {
     } finally {
       isAddingBatch.value = false; // Stop Loading
     }
+  }
+
+  // [NEW] 2. Add to Bundle & Clear Inputs
+  void addBatchFromInput() {
+    final batch = bsBatchController.text;
+    final qty = double.tryParse(sabbInputQtyController.text) ?? 0.0;
+
+    if (batch.isEmpty || qty <= 0) {
+      GlobalSnackbar.error(message: "Invalid Batch or Qty");
+      return;
+    }
+
+    addSabbEntry(batch, qty);
+
+    // [REQUIREMENT 3] Clear Qty field after adding
+    sabbInputQtyController.clear();
+    bsBatchController.clear();
   }
 
   // Helper to setup controller for a batch row
