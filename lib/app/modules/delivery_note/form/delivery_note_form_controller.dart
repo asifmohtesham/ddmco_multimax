@@ -63,6 +63,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   final bsQtyController = TextEditingController(text: '6');
   final bsRackFocusNode = FocusNode();
 
+  // [FIX] Track last values to prevent validation on focus/selection change
+  String _lastRackVal = '';
+  String _lastQtyVal = '6';
+
   var isItemSheetOpen = false.obs;
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
@@ -124,9 +128,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     fetchWarehouses();
 
     // Add Listeners for Validation
-    bsQtyController.addListener(validateSheet);
+    bsQtyController.addListener(() {
+      if (bsQtyController.text != _lastQtyVal) {
+        _lastQtyVal = bsQtyController.text;
+        validateSheet();
+      }
+    });
+
     bsBatchController.addListener(validateSheet);
-    bsRackController.addListener(validateSheet);
+
+    bsRackController.addListener(() {
+      if (bsRackController.text != _lastRackVal) {
+        _lastRackVal = bsRackController.text;
+        validateSheet();
+      }
+    });
+
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _checkForChanges());
 
