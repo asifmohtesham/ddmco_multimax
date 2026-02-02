@@ -172,26 +172,6 @@ class SerialBatchBundleWidget extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              flex: 1,
-              child: GlobalItemFormSheet.buildInputGroup(
-                label: 'Qty',
-                color: Colors.purple,
-                child: TextField(
-                  controller: mixin.bsQtyController, // Bind to Mixin Controller
-                  // Temporary text field for creating
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    hintText: '1.0',
-                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (val) {
-                    mixin.addBatchFromInput();
-                  },
-                ),
-              ),
-            ),
 
             // Add Button with Loading State
             Obx(() => mixin.isAddingBatch.value
@@ -206,7 +186,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 : IconButton(
               icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
               onPressed: () {
-                mixin.addBatchFromInput();
+
               },
             )
             ),
