@@ -33,6 +33,10 @@ mixin SerialBatchBundleMixin on GetxController {
   // Store balances: { 'BATCH-001': 50.0 }
   var batchBalances = <String, double>{}.obs;
 
+  // --- Row Edit State Management ---
+  final Map<String, TextEditingController> batchQtyControllers = {};
+  final Map<String, RxBool> batchEditStatus = {};
+
   // Shared Text Controller for the "Add Batch" input
   final bsBatchController = TextEditingController();
   final bsQtyController = TextEditingController(text: '1.0');
@@ -52,6 +56,7 @@ mixin SerialBatchBundleMixin on GetxController {
   void onClose() {
     bsBatchController.dispose();
     bsQtyController.dispose();
+    for (var c in batchQtyControllers.values) c.dispose();
     super.onClose();
   }
 
@@ -72,7 +77,11 @@ mixin SerialBatchBundleMixin on GetxController {
     currentBundleId.value = bundleId;
     sabbEntries.clear();
     bundleTotalQty.value = 0.0;
-    bsBatchController.clear();
+
+    // Clear Row Controllers
+    for (var c in batchQtyControllers.values) c.dispose();
+    batchQtyControllers.clear();
+    batchEditStatus.clear();
 
     // Reset Inputs
     bsBatchController.clear();
@@ -179,21 +188,73 @@ mixin SerialBatchBundleMixin on GetxController {
     }
   }
 
-  void addSabbEntry(String batch, double? qty) {
-    if (batch.isEmpty || qty! <= 0) return;
+  // Helper to setup controller for a batch row
+  void initialiseBatchControl(String batchNo, double initialQty) {
+    if (batchQtyControllers.containsKey(batchNo)) return;
+
+    final controller = TextEditingController(text: initialQty.toStringAsFixed(2)); // or appropriate format
+    final isDirty = false.obs;
+
+    controller.addListener(() {
+      final currentText = controller.text;
+      // Snapshot Comparison: Compare current text vs the 'Committed' entry in sabbEntries
+      final entry = sabbEntries.firstWhereOrNull((e) => e.batchNo == batchNo);
+      if (entry != null) {
+        final committedQty = entry.qty.abs();
+        final currentQty = double.tryParse(currentText) ?? 0.0;
+        // Mark dirty only if value differs significantly
+        isDirty.value = (currentQty - committedQty).abs() > 0.001;
+      }
+    });
+
+    batchQtyControllers[batchNo] = controller;
+    batchEditStatus[batchNo] = isDirty;
+  }
+
+  // Update addSabbEntry to init controller
+  void addSabbEntry(String batch, double qty) {
+    if (batch.isEmpty || qty <= 0) return;
 
     final index = sabbEntries.indexWhere((e) => e.batchNo == batch);
     if (index != -1) {
+      // Logic for merging duplicates if necessary, or just skip
+      // For now, assuming we just update the existing model and controller
       final existing = sabbEntries[index];
+      final newQty = existing.qty + qty;
       sabbEntries[index] = SerialAndBatchEntry(
-          batchNo: existing.batchNo,
-          qty: existing.qty + qty,
-          serialNo: existing.serialNo
+          batchNo: existing.batchNo, qty: newQty, serialNo: existing.serialNo
       );
+      // Update Controller to match new total
+      batchQtyControllers[batch]!.text = newQty.toString();
     } else {
       sabbEntries.add(SerialAndBatchEntry(batchNo: batch, qty: qty));
+      initialiseBatchControl(batch, qty);
     }
     bsBatchController.clear();
+  }
+
+  // New Method: Commit changes from TextField to Model
+  void commitBatchQty(String batchNo) {
+    final controller = batchQtyControllers[batchNo];
+    if (controller == null) return;
+
+    final newQty = double.tryParse(controller.text) ?? 0.0;
+    if (newQty <= 0) return; // Or handle delete?
+
+    final index = sabbEntries.indexWhere((e) => e.batchNo == batchNo);
+    if (index != -1) {
+      final old = sabbEntries[index];
+
+      // Update Model (The "Server Snapshot")
+      sabbEntries[index] = SerialAndBatchEntry(
+          batchNo: old.batchNo,
+          qty: newQty,
+          serialNo: old.serialNo
+      );
+
+      // Reset dirty status (UI hides check button)
+      batchEditStatus[batchNo]?.value = false;
+    }
   }
 
   void updateSabbEntry(int index, double newQty) {
@@ -280,6 +341,7 @@ mixin SerialBatchBundleMixin on GetxController {
 
         // Fetch balances for existing entries to show in UI
         for (var entry in cleanEntries) {
+          initialiseBatchControl(entry.batchNo, entry.qty);
           // Fire and forget balance fetch for UI update
           if (!batchBalances.containsKey(entry.batchNo)) {
             validateAndAddBatch(entry.batchNo, 0); // Hacky reuse to fetch balance, but won't add 0 qty

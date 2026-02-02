@@ -786,7 +786,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       // If a batch was scanned to open this sheet, add it to SABB list
       if (batchNo != null && batchNo.isNotEmpty) {
         if (useSerialBatchFields.value == 0) {
-          addSabbEntry(batchNo, null);
+          addSabbEntry(batchNo, 0);
         } else {
           bsBatchController.text = batchNo;
         }

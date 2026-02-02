@@ -36,6 +36,16 @@ class SerialBatchBundleWidget extends StatelessWidget {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (ctx, index) {
               final entry = mixin.sabbEntries[index];
+              final batchNo = entry.batchNo;
+
+              // Ensure controller exists (safety check for strict mode)
+              if (!mixin.batchQtyControllers.containsKey(batchNo)) {
+                mixin.initialiseBatchControl(batchNo, entry.qty);
+              }
+
+              final balance = mixin.batchBalances[batchNo] ?? 0.0;
+              final isOverStock = entry.qty.abs() > balance;
+
               return ListTile(
                 contentPadding: const EdgeInsets.only(left: 12, right: 4),
                 dense: true,
@@ -60,16 +70,27 @@ class SerialBatchBundleWidget extends StatelessWidget {
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                         ),
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        onFieldSubmitted: (val) {
-                          final q = double.tryParse(val) ?? 0;
-                          mixin.updateSabbEntry(index, q);
-                        },
+                        // Optional: Allow 'Enter' to commit as well
+                        onFieldSubmitted: (_) => mixin.commitBatchQty(batchNo),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                      onPressed: () => mixin.removeSabbEntry(index),
-                    )
+                    // The UX Improvement: Explicit Update Action
+                    Obx(() {
+                      final isDirty = mixin.batchEditStatus[batchNo]?.value ?? false;
+                      if (!isDirty) return const SizedBox(width: 0); // Hide if clean
+
+                      return IconButton(
+                        icon: const Icon(Icons.check_circle, color: Colors.green, size: 28),
+                        tooltip: 'Update Quantity',
+                        onPressed: () => mixin.commitBatchQty(batchNo),
+                      );
+                    }),
+
+                    if (mixin.batchEditStatus[batchNo]?.value != true) // Hide delete if editing? Or keep it.
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                        onPressed: () => mixin.removeSabbEntry(index),
+                      )
                   ],
                 ),
               );
