@@ -40,6 +40,8 @@ class ItemGroupCard extends StatelessWidget {
         ),
       ),
       child: Column(
+        // Ensure the container wraps its children tightly to avoid layout issues
+        mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
             onTap: onToggle,
@@ -76,32 +78,27 @@ class ItemGroupCard extends StatelessWidget {
               ],
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: Container(
-              child: !isExpanded
-                  ? const SizedBox.shrink()
-                  : Column(
-                      children: [
-                        const Divider(height: 1, indent: 16, endIndent: 16),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildInfoColumn('Required', totalQty.toStringAsFixed(0)),
-                              _buildInfoColumn('Scanned', scannedQty.toStringAsFixed(0)),
-                              _buildInfoColumn('Rate', rate.toStringAsFixed(2)),
-                            ],
-                          ),
-                        ),
-                        ...children,
-                      ],
-                    ),
+          // Replaced AnimatedSize with a simpler visibility toggle to fix Semantics Dirty errors
+          // if animations are causing layout/paint sync issues during rapid updates.
+          if (isExpanded)
+            Column(
+              children: [
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildInfoColumn('Required', totalQty.toStringAsFixed(0)),
+                      _buildInfoColumn('Scanned', scannedQty.toStringAsFixed(0)),
+                      _buildInfoColumn('Rate', rate.toStringAsFixed(2)),
+                    ],
+                  ),
+                ),
+                // Ensure children (list items) are rendered directly in the column
+                ...children,
+              ],
             ),
-          ),
         ],
       ),
     );

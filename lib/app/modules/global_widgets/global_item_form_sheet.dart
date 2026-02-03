@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
@@ -27,7 +26,7 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isSaving;
-  final bool isLoading; // External loading state (for Auto-Submit)
+  final bool isLoading;
 
   // Metadata Fields
   final String? owner;
@@ -40,7 +39,6 @@ class GlobalItemFormSheet extends StatelessWidget {
   final TextEditingController? scanController;
   final bool isScanning;
 
-  // Internal Loading State (for Manual Press)
   final _isInternalLoading = false.obs;
 
   GlobalItemFormSheet({
@@ -74,7 +72,6 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
     return Obx(() {
-      // Combines external (Auto-Submit) and internal (Manual Click) loading states
       final internalLoading = _isInternalLoading.value;
       final showLoading = isSaving || isLoading || internalLoading;
       final canPress = enabled && !showLoading;
@@ -84,20 +81,15 @@ class GlobalItemFormSheet extends StatelessWidget {
         onPressed: canPress
             ? () async {
           if (formKey.currentState!.validate()) {
-            // 1. Unfocus Keyboard
             FocusScope.of(context).unfocus();
-
-            // 2. Set Internal Loading & Delay (Manual Feedback)
             _isInternalLoading.value = true;
             await Future.delayed(const Duration(milliseconds: 500));
-
-            // 3. Submit & Close
             try {
               var result = onSubmit();
               if (result is Future) {
                 await result;
               }
-              Get.back(); // Auto-close on manual success
+              Get.back();
             } catch (e) {
               print('Error submitting form: $e');
             } finally {
@@ -127,7 +119,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     });
   }
 
-  // ... [buildInputGroup, _buildMetadataHeader, build() logic remains identical to previous smart implementation] ...
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -229,152 +220,149 @@ class GlobalItemFormSheet extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final mediaQuery = MediaQuery.of(context);
     final topPadding = mediaQuery.viewPadding.top;
-    final bottomPadding = mediaQuery.viewPadding.bottom;
-    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
 
-    return Container(
-      margin: EdgeInsets.only(top: topPadding + 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            color: colorScheme.surface,
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-            alignment: Alignment.center,
-            child: Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        margin: EdgeInsets.only(top: topPadding + 12),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            // Handle Bar
+            Container(
+              color: colorScheme.surface,
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+              alignment: Alignment.center,
+              child: Container(
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: Form(
-              key: formKey,
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                shrinkWrap: true,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  fontFamily: 'ShureTechMono',
-                                  fontSize: 16,
-                                  color: colorScheme.onSurfaceVariant,
+            Expanded(
+              child: Form(
+                key: formKey,
+                child: ListView(
+                  controller: scrollController,
+                  primary: false, // Important: We are in a nested context
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              itemName,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurface,
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontFamily: 'ShureTechMono',
+                                    fontSize: 16,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            _buildMetadataHeader(context),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                itemName,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colorScheme.onSurface,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              _buildMetadataHeader(context),
+                            ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () => Get.back(),
-                        icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(
-                          backgroundColor: colorScheme.surfaceContainerHigh,
-                          foregroundColor: colorScheme.onSurfaceVariant,
+                        IconButton(
+                          onPressed: () => Get.back(),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(
+                            backgroundColor: colorScheme.surfaceContainerHigh,
+                            foregroundColor: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.0),
+                      child: Divider(height: 1),
+                    ),
+                    ...customFields.map((w) => Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: w,
+                    )),
+                    QuantityInputWidget(
+                      controller: qtyController,
+                      onIncrement: onIncrement,
+                      onDecrement: onDecrement,
+                      isReadOnly: isQtyReadOnly,
+                      label: 'Quantity',
+                      infoText: qtyInfoText,
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      child: isSaveEnabledRx != null
+                          ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                          : _buildSaveButton(context, isSaveEnabled),
+                    ),
+                    if (onDelete != null) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Get.back();
+                            onDelete!();
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: colorScheme.error,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Remove Item'),
                         ),
                       ),
                     ],
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.0),
-                    child: Divider(height: 1),
-                  ),
-                  ...customFields.map((w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20.0),
-                    child: w,
-                  )),
-                  QuantityInputWidget(
-                    controller: qtyController,
-                    onIncrement: onIncrement,
-                    onDecrement: onDecrement,
-                    isReadOnly: isQtyReadOnly,
-                    label: 'Quantity',
-                    infoText: qtyInfoText,
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                        : _buildSaveButton(context, isSaveEnabled),
-                  ),
-                  if (onDelete != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          Get.back();
-                          onDelete!();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: colorScheme.error,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Remove Item'),
-                      ),
-                    ),
                   ],
-                  SizedBox(
-                      height: math.max(viewInsetsBottom, bottomPadding) + 20
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-          if (onScan != null)
-            BarcodeInputWidget(
-              onScan: onScan!,
-              controller: scanController,
-              isLoading: isScanning,
-              hintText: 'Scan Rack / Batch / Item',
-              // isEmbedded: true,
-            ),
-        ],
+            if (onScan != null)
+              BarcodeInputWidget(
+                onScan: onScan!,
+                controller: scanController,
+                isLoading: isScanning,
+                hintText: 'Scan Rack / Batch / Item',
+              ),
+          ],
+        ),
       ),
     );
   }

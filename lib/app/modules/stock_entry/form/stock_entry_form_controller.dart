@@ -152,14 +152,16 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     }
 
     // Auto-calculate total bundle qty when entries change
+    // --- SABB IMPLEMENTATION: Sync Logic ---
+    // Replicate logic from DeliveryNoteFormController to keep UI and Bundle in sync
     ever(sabbEntries, (_) {
       double total = 0;
       for (var e in sabbEntries) total += e.qty.abs();
       bundleTotalQty.value = total;
 
-      // Update UI Text if in SABB mode
+      // Sync UI if in SABB mode
       if (useSerialBatchFields.value == 0 && isItemSheetOpen.value) {
-        // Prevent unnecessary updates if value is effectively same
+        // Only update text if significantly different to avoid cursor jumps
         final currentTextVal = double.tryParse(bsQtyController.text) ?? 0.0;
         if ((currentTextVal - total).abs() > 0.001) {
           bsQtyController.text = total.toStringAsFixed(2);
@@ -169,7 +171,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       // Re-validate validity
       validateSheet();
 
-      // Only mark dirty if NOT initializing AND actual content changed
+      // Mark dirty if content changed (unless initialising)
       if (!_isInitialisingSheet) {
         if (_hasChanges()) {
           _markDirty();
@@ -541,8 +543,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   Future<void> addItem() async {
     String? bundleId;
+    final type = selectedStockEntryType.value;
 
-    // 1. Handle SABB Creation if in SABB mode
+    // --- SABB Creation Logic ---
     if (useSerialBatchFields.value == 0) {
       if (sabbEntries.isEmpty) {
         GlobalSnackbar.error(message: "No Batch Entries added");
@@ -551,10 +554,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       try {
         isAddingItem.value = true;
 
-        // MIXIN CALL
-        final type = selectedStockEntryType.value;
-        final isOutward = ['Material Issue', 'Material Transfer'].contains(type); // simplified
-        final wh = isOutward ? (bsItemSourceWarehouse.value ?? selectedFromWarehouse.value!) : (bsItemTargetWarehouse.value ?? selectedToWarehouse.value!);
+        // Determine Direction:
+        // Issue/Transfer = Outward (from Source)
+        // Receipt = Inward (to Target)
+        final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+
+        final wh = isOutward
+            ? (bsItemSourceWarehouse.value ?? selectedFromWarehouse.value)
+            : (bsItemTargetWarehouse.value ?? selectedToWarehouse.value);
+
+        if (wh == null || wh.isEmpty) {
+          GlobalSnackbar.error(message: "Warehouse not defined for Bundle creation");
+          isAddingItem.value = false;
+          return;
+        }
 
         bundleId = await saveOrUpdateSerialBatchBundle(
           itemCode: currentItemCode,
@@ -570,16 +583,10 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       }
     }
 
-    // --- FIX START: Sync Qty with Bundle Total in SABB Mode ---
-    double qty;
-    if (useSerialBatchFields.value == 0) {
-      // In SABB mode, the Item Qty MUST equal the Bundle Total Qty
-      qty = bundleTotalQty.value;
-    } else {
-      // In Legacy mode, use the text field value
-      qty = double.tryParse(bsQtyController.text) ?? 0;
-    }
-    // --- FIX END ---
+    // Sync Qty: SABB uses Bundle Total, Legacy uses text input
+    double qty = useSerialBatchFields.value == 0
+        ? bundleTotalQty.value
+        : (double.tryParse(bsQtyController.text) ?? 0);
 
     if (qty <= 0) {
       isAddingItem.value = false;
@@ -613,7 +620,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         basicRate: existing.basicRate,
         itemGroup: existing.itemGroup,
         customVariantOf: existing.customVariantOf,
-        batchNo: batchNo, // Updated
+        batchNo: batchNo,
         itemName: existing.itemName,
         rack: sourceRack,
         toRack: targetRack,
@@ -627,7 +634,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         modified: existing.modified,
         modifiedBy: existing.modifiedBy,
 
-        // --- FIX: Update SABB Fields ---
+        // --- Store Bundle Info ---
         useSerialBatchFields: useSerialBatchFields.value,
         // If a new bundle was created, use it. Otherwise keep existing (unless switching modes).
         serialAndBatchBundle: bundleId ?? existing.serialAndBatchBundle,
@@ -648,7 +655,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         tWarehouse: tWh,
         customInvoiceSerialNumber: selectedSerial.value,
 
-        // --- FIX: Set SABB Fields ---
+        // --- Store Bundle Info ---
         useSerialBatchFields: useSerialBatchFields.value,
         serialAndBatchBundle: bundleId,
       );
@@ -685,11 +692,22 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   void validateSheet() {
-    isSheetValid.value = _isValidQty() &&
-        _isValidBatch() &&
-        _isValidContext() &&
-        _isValidRacks() &&
-        _hasChanges();
+    bool valid = true;
+
+    // Qty Check
+    if (!_isValidQty()) valid = false;
+
+    // Batch Check (Handles SABB vs Legacy)
+    if (!_isValidBatch()) valid = false;
+
+    // Context & Racks
+    if (!_isValidContext()) valid = false;
+    if (!_isValidRacks()) valid = false;
+
+    // Dirty Check
+    if (!_hasChanges()) valid = false;
+
+    isSheetValid.value = valid;
   }
 
   bool _isValidQty() {
@@ -700,13 +718,13 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   bool _isValidBatch() {
-    // If Legacy Mode: Use old validation
+    // Legacy Mode
     if (useSerialBatchFields.value == 1) {
       if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
       if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
       return true;
     }
-    // If SABB Mode: Check entries list
+    // SABB Mode: Must have entries
     else {
       return sabbEntries.isNotEmpty;
     }
@@ -811,6 +829,16 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       warehouse: wh ?? ''         // Added
     );
 
+    // If scanned batch provided, add it immediately
+    if (scannedBatch != null) {
+      if (useSerialBatchFields.value == 0) {
+        addSabbEntry(scannedBatch, 1.0);
+      } else {
+        bsBatchController.text = scannedBatch;
+        validateBatch(scannedBatch);
+      }
+    }
+
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
       if (ref != null) {
@@ -849,19 +877,16 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     isItemSheetOpen.value = true;
 
     Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return StockEntryItemFormSheet(
-            controller: this,
-            scrollController: scrollController,
-            // formKey: itemFormKey,
-          );
-        },
+      SizedBox(
+        // Takes up 85% of screen height
+        height: Get.height * 0.85,
+        child: StockEntryItemFormSheet(
+          controller: this,
+          scrollController: scrollController,
+          // formKey: itemFormKey,
+        ),
       ),
-      isScrollControlled: true,
+      isScrollControlled: true, // Required to allow height > 50%
     ).whenComplete(() {
       isItemSheetOpen.value = false;
     });
@@ -893,9 +918,11 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsItemCreation.value = item.creation;
     bsItemModified.value = item.modified;
     bsItemModifiedBy.value = item.modifiedBy;
+
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
     bsQtyController.text = qtyStr;
+
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
@@ -963,17 +990,14 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     batchError.value = null;
 
     Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return StockEntryItemFormSheet(
-            controller: this,
-            scrollController: scrollController,
-            // formKey: itemFormKey,
-          );
-        },
+      SizedBox(
+        // Takes up 85% of screen height
+        height: Get.height * 0.85,
+        child: StockEntryItemFormSheet(
+          controller: this,
+          scrollController: scrollController,
+          // formKey: itemFormKey,
+        ),
       ),
       isScrollControlled: true,
     ).whenComplete(() {
@@ -1366,9 +1390,13 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       title: 'Remove Item?',
       message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
       onConfirm: () async {
-        if (item.serialAndBatchBundle != null) {
-          // MIXIN CALL
-          deleteSerialBatchBundle(item.serialAndBatchBundle!);
+        // --- CLEANUP: Delete Bundle if Exists ---
+        if (item.serialAndBatchBundle != null && item.serialAndBatchBundle!.isNotEmpty) {
+          try {
+            await deleteSerialBatchBundle(item.serialAndBatchBundle!);
+          } catch(e) {
+            print("Warning: Failed to delete bundle ${item.serialAndBatchBundle}");
+          }
         }
 
         final currentItems = stockEntry.value?.items.toList() ?? [];

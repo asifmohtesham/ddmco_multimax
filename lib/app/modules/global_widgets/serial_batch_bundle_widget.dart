@@ -47,6 +47,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
               }
 
               return ListTile(
+                key: ValueKey(batchNo),
                 contentPadding: const EdgeInsets.only(left: 12, right: 4),
                 dense: true,
                 title: Text(
@@ -59,7 +60,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                     SizedBox(
                       width: 80,
                       child: TextFormField(
-                        initialValue: entry.qty.abs().toString(),
+                        controller: mixin.batchQtyControllers[batchNo],
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         textAlign: TextAlign.center,
                         decoration: const InputDecoration(
