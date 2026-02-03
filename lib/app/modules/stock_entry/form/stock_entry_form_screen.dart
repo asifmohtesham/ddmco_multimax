@@ -373,13 +373,18 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
       ),
       padding: const EdgeInsets.only(bottom: 0),
-      child: Obx(() => BarcodeInputWidget(
-        onScan: (code) => controller.scanBarcode(code),
-        isLoading: controller.isScanning.value,
-        controller: controller.barcodeController,
-        activeRoute: AppRoutes.STOCK_ENTRY_FORM,
-        hintText: 'Scan Item / Batch ...',
-      )),
+      child: Obx(() {
+        // [FIX] Prevent building if controller is closed/disposing
+        if (controller.isClosed) return const SizedBox.shrink();
+
+        return BarcodeInputWidget(
+          onScan: (code) => controller.scanBarcode(code),
+          isLoading: controller.isScanning.value,
+          controller: controller.barcodeController,
+          activeRoute: AppRoutes.STOCK_ENTRY_FORM,
+          hintText: 'Scan Item / Batch ...',
+        );
+      }),
     );
   }
 

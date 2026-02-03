@@ -79,7 +79,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var isFetchingWarehouses = false.obs;
 
   // --- Item Form State ---
-  final bsQtyController = TextEditingController();
   final bsSourceRackController = TextEditingController();
   final bsTargetRackController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
@@ -143,6 +142,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   void onInit() {
     super.onInit();
     _initDependencies();
+    // [OPTIONAL] Set default value if needed, using the mixin's controller
+    bsQtyController.text = '';
 
     if (mode == 'new') {
       _initNewStockEntry();
@@ -286,7 +287,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
     barcodeController.dispose();
-    bsQtyController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
     customReferenceNoController.dispose();
