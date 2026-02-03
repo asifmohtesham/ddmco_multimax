@@ -182,7 +182,6 @@ mixin SerialBatchBundleMixin on GetxController {
 
       // 3. Add Entry using calculated finalQty (Fixes Null check operator error)
       addSabbEntry(batchNo, finalQty);
-      addBatchFromInput();
 
       // Reset Qty to '' after successful add
       // bsQtyController.text = '';

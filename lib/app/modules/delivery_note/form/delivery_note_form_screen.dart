@@ -245,6 +245,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   Widget _buildItemsView() {
     // Strict Warehouse Check
     return Obx(() {
+      // [FIX] Prevent access if controller is disposed (e.g. navigating away)
+      if (controller.isClosed) return const SizedBox.shrink();
+
       if (controller.setWarehouse.value == null || controller.setWarehouse.value!.isEmpty) {
         return Center(
           child: Column(
@@ -266,28 +269,41 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Obx(() => Row(
-              children: [
-                _buildFilterChip('All', controller.allCount),
-                const SizedBox(width: 8),
-                _buildFilterChip('Pending', controller.pendingCount),
-                const SizedBox(width: 8),
-                _buildFilterChip('Completed', controller.completedCount),
-              ],
-            )),
+            child: Obx(() {
+              final currentFilter = controller.itemFilter.value;
+              final all = controller.allCount;
+              final pending = controller.pendingCount;
+              final completed = controller.completedCount;
+
+              return Row(
+                children: [
+                  _buildFilterChip('All', all, currentFilter),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Pending', pending, currentFilter),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Completed', completed, currentFilter),
+                ],
+              );
+            }),
           ),
           const Divider(height: 1),
 
           // 2. Item List (Middle - Expanded)
           Expanded(
             child: Obx(() {
-              if (controller.isLoading.value && controller.posUpload.value == null) {
+              // [FIX] Explicitly read ALL dependencies at the start to satisfy GetX
+              // regardless of which conditional path is taken below.
+              final loading = controller.isLoading.value;
+              final deliveryNote = controller.deliveryNote.value;
+              final posUpload = controller.posUpload.value;
+              final currentExpandedKey = controller.expandedInvoice.value;
+              final filter = controller.itemFilter.value;
+
+              if (loading && posUpload == null) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final currentExpandedKey = controller.expandedInvoice.value;
-              final posUpload = controller.posUpload.value;
-              final deliveryNoteItems = controller.deliveryNote.value?.items ?? [];
+              final deliveryNoteItems = deliveryNote?.items ?? [];
 
               if (posUpload == null) {
                 if (deliveryNoteItems.isEmpty) {
@@ -308,16 +324,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               }
 
               final posItems = posUpload.items;
-              final groupedDnItems = controller.groupedItems;
+              final groupedDnItems = controller.groupedItems; // This getter accesses deliveryNote.value internally
 
               final filteredItems = posItems.where((posItem) {
                 final serialNumber = (posUpload.items.indexOf(posItem) + 1).toString();
                 final dnItemsForThisPosItem = groupedDnItems[serialNumber] ?? [];
                 final cumulativeQty = dnItemsForThisPosItem.fold(0.0, (sum, item) => sum + item.qty);
 
-                if (controller.itemFilter.value == 'Completed') {
+                if (filter == 'Completed') {
                   return cumulativeQty >= posItem.quantity;
-                } else if (controller.itemFilter.value == 'Pending') {
+                } else if (filter == 'Pending') {
                   return cumulativeQty < posItem.quantity;
                 }
                 return true;
@@ -391,7 +407,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     });
   }
 
-  Widget _buildFilterChip(String label, int count) {
+  Widget _buildFilterChip(String label, int count, String currentFilter) {
     return ChoiceChip(
       label: Text('$label ($count)'),
       selected: controller.itemFilter.value == label,

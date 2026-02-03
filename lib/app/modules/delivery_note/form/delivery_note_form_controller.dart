@@ -60,7 +60,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   // Bottom Sheet State
   final bsRackController = TextEditingController();
-  final bsQtyController = TextEditingController(text: '6');
   final bsRackFocusNode = FocusNode();
 
   // [FIX] Track last values to prevent validation on focus/selection change
@@ -125,6 +124,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   @override
   void onInit() {
     super.onInit();
+    bsQtyController.text = '6';
     fetchWarehouses();
 
     // Add Listeners for Validation
@@ -188,7 +188,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsRackController.dispose();
-    bsQtyController.dispose();
     bsRackFocusNode.dispose();
     scrollController.dispose();
     super.onClose();
@@ -389,7 +388,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
 
     Get.back();
-    barcodeController.clear();
+    // [FIX] Safe Clear
+    if (!isClosed) barcodeController.clear();
     _checkForChanges();
 
     await saveDeliveryNote();

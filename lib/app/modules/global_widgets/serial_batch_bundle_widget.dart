@@ -86,7 +86,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                       );
                     }),
 
-                    if (mixin.batchEditStatus[batchNo]?.value != true) // Hide delete if editing? Or keep it.
+                    if (mixin.batchQtyControllers.length > 1 && mixin.batchEditStatus[batchNo]?.value != true) // Hide delete if editing? Or keep it.
                       IconButton(
                         icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                         onPressed: () => mixin.removeSabbEntry(index),
@@ -186,7 +186,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 : IconButton(
               icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
               onPressed: () {
-
+                mixin.addBatchFromInput();
               },
             )
             ),
