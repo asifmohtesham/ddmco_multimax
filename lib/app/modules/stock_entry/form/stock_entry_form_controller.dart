@@ -903,7 +903,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     }
   }
 
-  void editItem(StockEntryItem item) async {
+  void editItem(StockEntryItem item, {String? autoAddBatch}) async {
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
 
     // Set flag to BLOCK dirty marking during load
@@ -942,6 +942,22 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       warehouse: wh ?? ''      // Added
     );
 
+    // Deep copy current entries for comparison
+    _initialSabbEntries = sabbEntries.map((e) => SerialAndBatchEntry(
+        batchNo: e.batchNo,
+        qty: e.qty,
+        serialNo: e.serialNo
+    )).toList();
+
+    // If a batch was passed from scan, append it to the bundle (SABB Mode)
+    if (autoAddBatch != null && autoAddBatch.isNotEmpty) {
+      // Use mixin to validate and add to bundle.
+      // passing null for qty lets the mixin handle defaults (e.g. packaging qty)
+      await validateAndAddBatch(autoAddBatch, null);
+      // Force dirty flag since _isInitialisingSheet blocks the automatic listener
+      _markDirty();
+    }
+
     // Sync Qty Text to Bundle Total exactly to prevent string mismatch
     if (item.useSerialBatchFields == 0) {
       bsQtyController.text = bundleTotalQty.value.toStringAsFixed(2);
@@ -962,13 +978,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     _initialTargetRack = item.toRack ?? '';
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
-
-    // Deep copy current entries for comparison
-    _initialSabbEntries = sabbEntries.map((e) => SerialAndBatchEntry(
-        batchNo: e.batchNo,
-        qty: e.qty,
-        serialNo: e.serialNo
-    )).toList();
 
     bsValidationMaxQty.value = 0.0;
     if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
@@ -1041,7 +1050,22 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         } else {
           currentScannedEan = result.rawCode;
         }
+
         final itemData = result.itemData!;
+
+        // CHECK IF ITEM EXISTS
+        final existingItem = stockEntry.value?.items.firstWhereOrNull(
+                (item) => item.itemCode == itemData.itemCode
+        );
+
+        if (existingItem != null) {
+          GlobalSnackbar.success(message: 'Item found. Appending batch...');
+          // Trigger edit mode with the scanned batch to auto-add it
+          editItem(existingItem, autoAddBatch: result.batchNo);
+          // Return here; finally block will handle cleanup
+          return;
+        }
+
         currentItemCode = itemData.itemCode;
         currentVariantOf = itemData.variantOf ?? '';
         currentItemName = itemData.itemName;
