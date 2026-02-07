@@ -79,6 +79,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var isFetchingWarehouses = false.obs;
 
   // --- Item Form State ---
+  var rackStockBalance = RxnDouble();
   final bsSourceRackController = TextEditingController();
   final bsTargetRackController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
@@ -813,6 +814,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     _isInitialisingSheet = true;
     _initialSabbEntries = []; // Empty for new item
 
+    rackStockBalance.value = null;
+
     // Resolve Warehouse based on Transaction Type
     final type = selectedStockEntryType.value;
     final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
@@ -931,7 +934,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // Resolve Warehouse
     final type = selectedStockEntryType.value;
     final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-    final wh = isOutward ? item.sWarehouse : item.tWarehouse;
+    final wh = isOutward
+        ? (item.sWarehouse ?? selectedFromWarehouse.value)
+        : (item.tWarehouse ?? selectedToWarehouse.value);
 
     // --- UPDATED MIXIN CALL ---
     await initSabbState(
@@ -991,6 +996,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsIsBatchReadOnly.value = true;
     if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
     if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
+
     _updateAvailableStock();
     validateSheet();
 
@@ -1230,6 +1236,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         }
 
         bsMaxQty.value = totalBalance;
+        rackStockBalance.value = totalBalance;
 
         // Strict Rack Validation
         if (rack.isNotEmpty && totalBalance <= 0) {
@@ -1243,6 +1250,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     } catch (e) {
       print('Failed to fetch stock balance: $e');
       bsMaxQty.value = 0.0;
+      rackStockBalance.value = 0.0;
     }
     validateSheet();
   }

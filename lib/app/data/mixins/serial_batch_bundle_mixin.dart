@@ -79,7 +79,10 @@ mixin SerialBatchBundleMixin on GetxController {
     sabbContextWarehouse.value = warehouse;
     useSerialBatchFields.value = useFields;
     currentBundleId.value = bundleId;
+
     sabbEntries.clear();
+    batchBalances.clear();
+
     bundleTotalQty.value = 0.0;
 
     // Clear Row Controllers
@@ -100,6 +103,44 @@ mixin SerialBatchBundleMixin on GetxController {
   }
 
   // --- Actions ---
+
+  Future<void> _fetchBatchBalance(String batchNo) async {
+    if (sabbContextItemCode.value == null || sabbContextWarehouse.value == null) return;
+
+    try {
+      final balanceResponse = await _sabbApiProvider.getBatchWiseBalance(
+          sabbContextItemCode.value!,
+          batchNo,
+          warehouse: sabbContextWarehouse.value
+      );
+
+      if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
+        var msg = balanceResponse.data['message'];
+        List result = [];
+        if (msg is Map && msg.containsKey('result')) {
+          result = msg['result'] as List? ?? [];
+        } else if (msg is List) {
+          result = msg;
+        }
+
+        if (result.isNotEmpty) {
+          double totalBal = 0.0;
+          for(var row in result) {
+            // Robust parsing for int/double
+            if (row is! Map<String, dynamic>) continue;
+            final dynamic rawBal = row['balance_qty'] ?? row['bal_qty'];
+            totalBal += (rawBal as num?)?.toDouble() ?? 0.0;
+          }
+          batchBalances[batchNo] = totalBal;
+        } else {
+          batchBalances[batchNo] = 0.0;
+        }
+      }
+    } catch (e) {
+      print('Failed to fetch batch balance: $e');
+      batchBalances[batchNo] = 0.0;
+    }
+  }
 
   /// Validates batch existence and fetches stock balance before adding
   Future<void> validateAndAddBatch(String batchNo, [double? qty = 1.0]) async {
@@ -130,54 +171,15 @@ mixin SerialBatchBundleMixin on GetxController {
       }
 
       final batchData = batchesData.first;
-      final pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-      sabbInputQtyController.text = pkgQty > 0 ? pkgQty.toString() : '1.0';
 
       // Determine Quantity
       double finalQty = qty ?? 1.0;
+      // 2. Fetch Balance (Using Helper)
+      await _fetchBatchBalance(batchNo);
       if (qty == null) {
         final pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) finalQty = pkgQty;
-      }
-
-      // 2. Fetch Balance
-      if (sabbContextWarehouse.value != null && sabbContextWarehouse.value!.isNotEmpty) {
-        try {
-          // We use the same API call used in the Delivery Note controller
-          final balanceResponse = await _sabbApiProvider.getBatchWiseBalance(
-              sabbContextItemCode.value!,
-              batchNo,
-              warehouse: sabbContextWarehouse.value
-          );
-
-          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-            // Robust parsing: Handle if message is List or Map
-            var msg = balanceResponse.data['message'];
-            List result = [];
-
-            if (msg is Map && msg.containsKey('result')) {
-              result = msg['result'] as List? ?? [];
-            } else if (msg is List) {
-              result = msg;
-            }
-
-            if (result.isNotEmpty) {
-              double totalBal = 0.0;
-              for(var row in result) {
-                totalBal += (row['balance_qty'] ?? row['bal_qty'] ?? 0.0) as double;
-              }
-              batchBalances[batchNo] = totalBal;
-            } else {
-              // If empty list, balance is 0
-              batchBalances[batchNo] = 0.0;
-            }
-          }
-        } catch (e) {
-          print('Failed to fetch batch balance: $e');
-          // Don't block adding the batch just because balance fetch failed,
-          // just assume 0 or show warning.
-          batchBalances[batchNo] = 0.0;
-        }
+        sabbInputQtyController.text = pkgQty > 0 ? pkgQty.toString() : '1.0';
       }
 
       // 3. Add Entry using calculated finalQty (Fixes Null check operator error)
@@ -325,7 +327,8 @@ mixin SerialBatchBundleMixin on GetxController {
           .whereType<Map<String, dynamic>>()
           .where((row) {
             final String batch = row['batch'] ?? row['batch_no'] ?? '';
-            final double balance = (row['balance_qty'] ?? row['bal_qty'] ?? 0.0) as double;
+            final dynamic rawBal = row['balance_qty'] ?? row['bal_qty'];
+            final double balance = (rawBal as num?)?.toDouble() ?? 0.0;
             return balance > 0 && batch.toLowerCase().contains(query.toLowerCase());
           })
           .map((row) {
@@ -362,13 +365,10 @@ mixin SerialBatchBundleMixin on GetxController {
 
         sabbEntries.assignAll(cleanEntries);
 
-        // Fetch balances for existing entries to show in UI
+        // Populate balances without overhead
         for (var entry in cleanEntries) {
           initialiseBatchControl(entry.batchNo, entry.qty);
-          // Fire and forget balance fetch for UI update
-          if (!batchBalances.containsKey(entry.batchNo)) {
-            validateAndAddBatch(entry.batchNo, 0); // Hacky reuse to fetch balance, but won't add 0 qty
-          }
+          _fetchBatchBalance(entry.batchNo); // Fire and forget
         }
       }
     } catch (e) {

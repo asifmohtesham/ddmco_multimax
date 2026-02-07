@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/mixins/serial_batch_bundle_mixin.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class SerialBatchBundleWidget extends StatelessWidget {
   final SerialBatchBundleMixin mixin;
@@ -53,6 +54,14 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 title: Text(
                     entry.batchNo,
                     style: const TextStyle(fontFamily: 'ShureTechMono', fontWeight: FontWeight.w500)
+                ),
+                subtitle: Text(
+                  "Available Balance: ${FormattingHelper.formatQty(balance)}",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isOverStock ? Colors.red : Colors.green.shade700,
+                  ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
