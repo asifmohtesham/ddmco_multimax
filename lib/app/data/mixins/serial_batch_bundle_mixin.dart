@@ -105,6 +105,7 @@ mixin SerialBatchBundleMixin on GetxController {
   // --- Actions ---
 
   Future<void> _fetchBatchBalance(String batchNo) async {
+    log(name: 'SerialBatchBundleMixin', 'Fetching batch balance for $batchNo');
     if (sabbContextItemCode.value == null || sabbContextWarehouse.value == null) return;
 
     try {
@@ -368,7 +369,7 @@ mixin SerialBatchBundleMixin on GetxController {
         // Populate balances without overhead
         for (var entry in cleanEntries) {
           initialiseBatchControl(entry.batchNo, entry.qty);
-          _fetchBatchBalance(entry.batchNo); // Fire and forget
+          await _fetchBatchBalance(entry.batchNo); // Fire and forget
         }
       }
     } catch (e) {
