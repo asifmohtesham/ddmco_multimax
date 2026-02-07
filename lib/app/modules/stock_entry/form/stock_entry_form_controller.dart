@@ -828,8 +828,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       useFields: 0,
       bundleId: null,
       legacyBatch: scannedBatch,
-      itemCode: currentItemCode,  // Added
-      warehouse: wh ?? ''         // Added
+      itemCode: currentItemCode,
+      warehouse: wh ?? '',
+      validateOutwardStock: isOutward
     );
 
     // If scanned batch provided, add it immediately
@@ -943,8 +944,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       useFields: item.useSerialBatchFields,
       bundleId: item.serialAndBatchBundle,
       legacyBatch: item.batchNo,
-      itemCode: item.itemCode, // Added
-      warehouse: wh ?? ''      // Added
+      itemCode: item.itemCode,
+      warehouse: wh ?? '',
+      validateOutwardStock: isOutward,
     );
 
     // Deep copy current entries for comparison

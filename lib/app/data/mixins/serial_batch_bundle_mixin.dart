@@ -23,6 +23,8 @@ mixin SerialBatchBundleMixin on GetxController {
   var bundleTotalQty = 0.0.obs;
   var currentBundleId = RxnString();
 
+  // [Added] Flag to enable/disable stock validation
+  var validateStock = false.obs;
   // Loading State for Add Button
   var isAddingBatch = false.obs;
 
@@ -74,11 +76,15 @@ mixin SerialBatchBundleMixin on GetxController {
     required String? legacyBatch,
     required itemCode,
     required warehouse,
+    bool validateOutwardStock = false,
   }) async {
     sabbContextItemCode.value = itemCode;
     sabbContextWarehouse.value = warehouse;
     useSerialBatchFields.value = useFields;
     currentBundleId.value = bundleId;
+
+    // [Added] Set validation mode
+    validateStock.value = validateOutwardStock;
 
     sabbEntries.clear();
     batchBalances.clear();
@@ -241,7 +247,24 @@ mixin SerialBatchBundleMixin on GetxController {
   void addSabbEntry(String batch, double qty) {
     if (batch.isEmpty || qty <= 0) return;
 
+    double currentTotal = 0.0;
     final index = sabbEntries.indexWhere((e) => e.batchNo == batch);
+
+    if (index != -1) {
+      currentTotal = sabbEntries[index].qty;
+    }
+
+    final newTotal = currentTotal + qty;
+
+    // [Added] Validation Logic
+    if (validateStock.value) {
+      final balance = batchBalances[batch] ?? 0.0;
+      if (newTotal > balance) {
+        GlobalSnackbar.error(message: "Qty $newTotal exceeds available balance ($balance) for batch $batch");
+        return;
+      }
+    }
+
     if (index != -1) {
       // Logic for merging duplicates if necessary, or just skip
       // For now, assuming we just update the existing model and controller
@@ -267,6 +290,17 @@ mixin SerialBatchBundleMixin on GetxController {
     final newQty = double.tryParse(controller.text) ?? 0.0;
     if (newQty <= 0) return; // Or handle delete?
 
+    // [Added] Validation Logic
+    if (validateStock.value) {
+      final balance = batchBalances[batchNo] ?? 0.0;
+      if (newQty > balance) {
+        GlobalSnackbar.error(message: "Qty exceeds available balance ($balance)");
+        // Reset text to previous valid value or balance?
+        controller.text = balance.toString(); // Auto-correct to max available
+        return;
+      }
+    }
+
     final index = sabbEntries.indexWhere((e) => e.batchNo == batchNo);
     if (index != -1) {
       final old = sabbEntries[index];
@@ -287,6 +321,17 @@ mixin SerialBatchBundleMixin on GetxController {
     if (index < 0 || index >= sabbEntries.length) return;
 
     final validQty = newQty.abs();
+
+    // [Added] Validation Logic
+    if (validateStock.value) {
+      final batchNo = sabbEntries[index].batchNo;
+      final balance = batchBalances[batchNo] ?? 0.0;
+      if (validQty > balance) {
+        GlobalSnackbar.error(message: "Qty exceeds available balance ($balance)");
+        return;
+      }
+    }
+
     final old = sabbEntries[index];
 
     // Check if the quantity has actually changed (using a small epsilon for double comparison)
