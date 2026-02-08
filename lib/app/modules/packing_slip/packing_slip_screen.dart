@@ -6,61 +6,10 @@ import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
-class PackingSlipScreen extends StatefulWidget {
+class PackingSlipScreen extends GetView<PackingSlipController> {
   const PackingSlipScreen({super.key});
-
-  @override
-  State<PackingSlipScreen> createState() => _PackingSlipScreenState();
-}
-
-class _PackingSlipScreenState extends State<PackingSlipScreen> {
-  final PackingSlipController controller = Get.find();
-  final _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    // Only load more if not searching
-    if (controller.searchQuery.value.isEmpty &&
-        _isBottom &&
-        controller.hasMore.value &&
-        !controller.isFetchingMore.value) {
-      controller.fetchPackingSlips(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  void _showFilterBottomSheet(BuildContext context) {
-    Get.bottomSheet(
-      const PackingSlipFilterBottomSheet(),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-    );
-  }
-
-  void _onSearchChanged(String val) {
-    controller.onSearchChanged(val);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,33 +19,40 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       drawer: const AppNavDrawer(),
+      appBar: MainAppBar(
+        title: 'Packing Slips',
+        // Global Search Configuration
+        searchDoctype: 'Packing Slip',
+        searchRoute: AppRoutes.PACKING_SLIP_FORM,
+        showBack: false,
+        actions: [
+          IconButton(
+            icon: Obx(() => Icon(
+              Icons.filter_list,
+              color: controller.activeFilters.isNotEmpty ? colorScheme.primary : null,
+            )),
+            onPressed: () => Get.bottomSheet(
+              const PackingSlipFilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await controller.fetchPackingSlips(clear: true);
         },
         child: CustomScrollView(
-          controller: _scrollController,
+          controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // M3 Large App Bar
-            SliverAppBar.large(
-              title: const Text('Packing Slips'),
-              actions: [
-                IconButton(
-                  icon: Icon(Icons.filter_list,
-                      color: controller.activeFilters.isNotEmpty ? colorScheme.primary : null),
-                  onPressed: () => _showFilterBottomSheet(context),
-                ),
-              ],
-            ),
-
-            // Pinned Search Bar
+            // Local Search Bar
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
+                  onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'Search slips, customers...',
                     prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
@@ -158,7 +114,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
               // Access map length to ensure Obx listens to map updates
               // ignore: unused_local_variable
-              final _dummyListener = controller.posCustomerMap.length;
+              final dummyListener = controller.posCustomerMap.length;
 
               final grouped = controller.groupedPackingSlips;
               final groupKeys = grouped.keys.toList();
@@ -273,7 +229,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: slips.length,
-                            padding: EdgeInsets.zero, // Removed extra space
+                            padding: EdgeInsets.zero,
                             separatorBuilder: (context, index) => Divider(
                               height: 1,
                               indent: 16,

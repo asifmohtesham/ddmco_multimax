@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:flutter/widgets.dart'; // Added for ScrollController
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
@@ -25,7 +26,6 @@ class FilterRow {
     this.attributeName = '',
   });
 
-  // Clone for local editing in the UI
   FilterRow clone() {
     return FilterRow(
       field: field,
@@ -41,6 +41,9 @@ class FilterRow {
 
 class ItemController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
+
+  // UI Controllers
+  final ScrollController scrollController = ScrollController();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -68,7 +71,6 @@ class ItemController extends GetxController {
     FilterRow(field: 'variant_of', label: 'Variant Of', operator: '=', fieldType: 'Link', doctype: 'Item'),
     FilterRow(field: 'customer_name', label: 'Customer Name', operator: 'like'),
     FilterRow(field: 'ref_code', label: 'Customer Ref Code', operator: 'like'),
-    // Special Option to trigger Attribute UI
     FilterRow(field: '_attribute', label: 'Item Attribute', operator: '=', fieldType: 'Attribute'),
   ];
 
@@ -93,19 +95,18 @@ class ItemController extends GetxController {
   var showImagesOnly = true.obs;
   var isGridView = false.obs;
 
-  // Helper for Badge Count
   int get filterCount => activeFilters.length + (showImagesOnly.value ? 1 : 0);
 
   @override
   void onInit() {
     super.onInit();
 
+    // Attach Scroll Listener
+    scrollController.addListener(_onScroll);
+
     // --- ARGUMENT HANDLING LOGIC START ---
-    // Check if arguments were passed (e.g. from ScanService/HomeController)
     if (Get.arguments != null && Get.arguments is Map) {
       final args = Get.arguments as Map;
-
-      // Handle 'filters' argument: {'field_name': ['operator', 'value']}
       if (args.containsKey('filters') && args['filters'] is Map) {
         final filtersMap = args['filters'] as Map;
         final List<FilterRow> parsedFilters = [];
@@ -114,18 +115,13 @@ class ItemController extends GetxController {
           if (valueList is List && valueList.length >= 2) {
             final String op = valueList[0];
             String val = valueList[1].toString();
+            if (op == 'like') val = val.replaceAll('%', '');
 
-            // Clean wildcards for UI consistency (fetchItems re-adds them if needed)
-            if (op == 'like') {
-              val = val.replaceAll('%', '');
-            }
-
-            // Find matching config to ensure correct label and type
             final config = availableFields.firstWhereOrNull((f) => f.field == key);
 
             parsedFilters.add(FilterRow(
               field: key,
-              label: config?.label ?? key, // Fallback to key if not found in availableFields
+              label: config?.label ?? key,
               operator: op,
               value: val,
               fieldType: config?.fieldType ?? 'Data',
@@ -136,7 +132,6 @@ class ItemController extends GetxController {
 
         if (parsedFilters.isNotEmpty) {
           activeFilters.assignAll(parsedFilters);
-          // Disable "Show Images Only" if a specific filter is applied to broaden results
           showImagesOnly.value = false;
         }
       }
@@ -150,6 +145,26 @@ class ItemController extends GetxController {
 
     ever(items, (_) => _applySearch());
     ever(searchQuery, (_) => _applySearch());
+  }
+
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  // Logic moved from UI to Controller
+  void _onScroll() {
+    if (_isBottom && hasMore.value && !isFetchingMore.value) {
+      fetchItems(isLoadMore: true);
+    }
+  }
+
+  bool get _isBottom {
+    if (!scrollController.hasClients) return false;
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final currentScroll = scrollController.offset;
+    return currentScroll >= (maxScroll * 0.9);
   }
 
   void toggleLayout() {
@@ -217,24 +232,18 @@ class ItemController extends GetxController {
       final List<List<dynamic>> reportFilters = [];
       final List<FilterRow> attributeFiltersToProcess = [];
 
-      // 1. Separate Filters (Standard vs Attribute)
       for (var filter in activeFilters) {
         if (filter.value.isEmpty) continue;
-
         if (filter.fieldType == 'Attribute') {
           if (filter.attributeName.isNotEmpty) {
             attributeFiltersToProcess.add(filter);
           }
           continue;
         }
-
-        // --- UPDATE: Apply % wildcards for 'like' operator to ALL fields ---
         String val = filter.value;
         if (filter.operator == 'like' && !val.contains('%')) {
           val = '%$val%';
         }
-
-        // Apply filters to appropriate tables
         if (filter.field == 'customer_name') {
           reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, val]);
         } else if (filter.field == 'ref_code') {
@@ -248,7 +257,6 @@ class ItemController extends GetxController {
         reportFilters.add(['Item', 'image', '!=', '']);
       }
 
-      // 2. Process Attribute Filters (Intersection Logic)
       if (attributeFiltersToProcess.isNotEmpty) {
         Set<String>? commonItemCodes;
         bool permissionErrorOccurred = false;
@@ -259,7 +267,6 @@ class ItemController extends GetxController {
                 filter.attributeName,
                 filter.value
             );
-
             if (response.statusCode == 200 && response.data['data'] != null) {
               final List<String> fetchedCodes = (response.data['data'] as List)
                   .map((e) => e['parent'].toString())
@@ -274,7 +281,6 @@ class ItemController extends GetxController {
             }
           } catch (e) {
             permissionErrorOccurred = true;
-            // Fallback: simple text search in description if exact match fails
             reportFilters.add(['Item', 'description', 'like', '%${filter.value}%']);
           }
         }
@@ -283,7 +289,6 @@ class ItemController extends GetxController {
           if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
             reportFilters.add(['Item', 'name', 'in', commonItemCodes.toList()]);
           } else if (commonItemCodes != null && commonItemCodes.isEmpty) {
-            // No matches for attributes
             items.clear();
             isLoading.value = false;
             hasMore.value = false;

@@ -42,7 +42,6 @@ class SerialBatchBundleWidget extends StatelessWidget {
               final balance = mixin.batchBalances[batchNo] ?? 0.0;
               final isOverStock = entry.qty.abs() > balance;
 
-              // Ensure controller exists (safety check for strict mode)
               if (!mixin.batchQtyControllers.containsKey(batchNo)) {
                 mixin.initialiseBatchControl(batchNo, entry.qty);
               }
@@ -80,14 +79,12 @@ class SerialBatchBundleWidget extends StatelessWidget {
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                         ),
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        // Optional: Allow 'Enter' to commit as well
                         onFieldSubmitted: (_) => mixin.commitBatchQty(batchNo),
                       ),
                     ),
-                    // The UX Improvement: Explicit Update Action
                     Obx(() {
                       final isDirty = mixin.batchEditStatus[batchNo]?.value ?? false;
-                      if (!isDirty) return const SizedBox(width: 0); // Hide if clean
+                      if (!isDirty) return const SizedBox(width: 0);
 
                       return IconButton(
                         icon: const Icon(Icons.check_circle, color: Colors.green, size: 28),
@@ -95,12 +92,10 @@ class SerialBatchBundleWidget extends StatelessWidget {
                         onPressed: () => mixin.commitBatchQty(batchNo),
                       );
                     }),
-
-                    if (mixin.batchQtyControllers.length > 1 && mixin.batchEditStatus[batchNo]?.value != true) // Hide delete if editing? Or keep it.
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                        onPressed: () => mixin.removeSabbEntry(index),
-                      )
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                      onPressed: () => mixin.removeSabbEntry(index),
+                    )
                   ],
                 ),
               );
@@ -129,10 +124,9 @@ class SerialBatchBundleWidget extends StatelessWidget {
                         },
                         displayStringForOption: (Batch option) => option.name ?? '',
                         onSelected: (Batch selection) {
-                          // When selected from list, validate and add immediately or just set text
-                          // Here we just validate and let user type qty
+                          // [UPDATED] Unify workflow: Set text and call the common add method
                           mixin.bsBatchController.text = selection.name ?? '';
-                          mixin.validateAndAddBatch(selection.name ?? '', 0); // 0 qty just to fetch balance
+                          mixin.addBatchFromInput();
                         },
                         fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
                           return TextField(
@@ -145,10 +139,8 @@ class SerialBatchBundleWidget extends StatelessWidget {
                               suffixIcon: Icon(Icons.qr_code_scanner, size: 20),
                             ),
                             onSubmitted: (val) {
-                              // Use quantity from controller
-                              final qty = double.tryParse(mixin.bsQtyController.text) ?? 1.0;
-                              // On manual enter/scan without clicking option
-                              mixin.validateAndAddBatch(val);
+                              // [UPDATED] Use common method for manual entry/scan
+                              mixin.addBatchFromInput();
                             },
                           );
                         },
@@ -159,7 +151,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                               elevation: 4.0,
                               child: SizedBox(
                                 width: constraints.maxWidth,
-                                height: 200, // Limit height
+                                height: 200,
                                 child: ListView.builder(
                                   padding: EdgeInsets.zero,
                                   itemCount: options.length,
@@ -196,6 +188,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 : IconButton(
               icon: const Icon(Icons.add_circle, color: Colors.purple, size: 32),
               onPressed: () {
+                // [UPDATED] Use common method
                 mixin.addBatchFromInput();
               },
             )

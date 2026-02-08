@@ -8,51 +8,10 @@ import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
-class StockEntryScreen extends StatefulWidget {
+class StockEntryScreen extends GetView<StockEntryController> {
   const StockEntryScreen({super.key});
-
-  @override
-  State<StockEntryScreen> createState() => _StockEntryScreenState();
-}
-
-class _StockEntryScreenState extends State<StockEntryScreen> {
-  final StockEntryController controller = Get.find();
-  final _scrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
-      controller.fetchStockEntries(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  void _showFilterBottomSheet(BuildContext context) {
-    Get.bottomSheet(
-      const StockEntryFilterBottomSheet(),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,28 +19,34 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface, // M3 Background
+      backgroundColor: colorScheme.surface,
       drawer: const AppNavDrawer(),
+      appBar: MainAppBar(
+        title: 'Stock Entries',
+        // Global Search Config
+        searchRoute: '/stock-entry',
+        searchDoctype: 'Stock Entry',
+        showBack: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => Get.bottomSheet(
+              const StockEntryFilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchStockEntries(clear: true),
         color: colorScheme.primary,
         backgroundColor: colorScheme.surfaceContainerHighest,
         child: CustomScrollView(
-          controller: _scrollController,
+          controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // M3 Large App Bar
-            SliverAppBar.large(
-              title: const Text('Stock Entries'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: () => _showFilterBottomSheet(context),
-                ),
-              ],
-            ),
-
-            // Search Bar Pinned to top of list
+            // Local Search Bar for List Filtering
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -91,9 +56,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                     hintText: 'Search ID, Purpose...',
                     prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
                     filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest, // M3 Search Bar Color
+                    fillColor: colorScheme.surfaceContainerHighest,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30), // Pill Shape
+                      borderRadius: BorderRadius.circular(30),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -174,7 +139,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                     }
                     final entry = controller.stockEntries[index];
 
-                    // Use Obx to listen to specific card expansion
                     return Obx(() {
                       final isExpanded = controller.expandedEntryName.value == entry.name;
                       final isLoadingDetails = controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
@@ -183,7 +147,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                         title: entry.purpose,
                         subtitle: entry.name,
                         status: entry.status,
-                        // Convert Model fields to Stat Widgets
                         stats: [
                           GenericDocumentCard.buildIconStat(
                             context,
@@ -199,7 +162,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                         isExpanded: isExpanded,
                         isLoadingDetails: isLoadingDetails && isExpanded,
                         onTap: () => controller.toggleExpand(entry.name),
-                        // Pass the specific detailed view here
                         expandedContent: isExpanded ? _buildDetailedContent(context, entry.name) : null,
                       );
                     });
@@ -208,12 +170,14 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 ),
               );
             }),
+
+            // Bottom Padding
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
       ),
-      // Create button with Dynamic Permission Guard
       floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(), // Access list content to trigger Obx
+        roles: controller.writeRoles.toList(),
         child: FloatingActionButton.extended(
           onPressed: controller.openCreateDialog,
           icon: const Icon(Icons.add),
@@ -238,7 +202,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Warehouse Flow (Source -> Target)
           if (detailed.fromWarehouse != null || detailed.toWarehouse != null)
             Container(
               padding: const EdgeInsets.all(12),
@@ -265,7 +228,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
           const SizedBox(height: 16),
 
-          // Additional Details Grid
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -299,7 +261,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
           const SizedBox(height: 16),
 
-          // Contextual Audit Info (Created/Modified)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -310,7 +271,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
               children: [
                 _buildAuditRow(context, 'Created', detailed.owner, detailed.creation),
                 if (detailed.modifiedBy != null && detailed.modified.isNotEmpty) ...[
-                  // Only show modified if it's different from creation
                   if (detailed.creation != detailed.modified)
                     Padding(
                       padding: const EdgeInsets.only(top: 6.0),
@@ -323,7 +283,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
           const SizedBox(height: 16),
 
-          // Actions
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

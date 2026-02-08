@@ -8,70 +8,11 @@ import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/app/modules/global_widgets/info_block.dart'; // Added Import
+import 'package:multimax/app/modules/global_widgets/info_block.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
-class DeliveryNoteScreen extends StatefulWidget {
+class DeliveryNoteScreen extends GetView<DeliveryNoteController> {
   const DeliveryNoteScreen({super.key});
-
-  @override
-  State<DeliveryNoteScreen> createState() => _DeliveryNoteScreenState();
-}
-
-class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
-  final DeliveryNoteController controller = Get.find();
-  final _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
-      controller.fetchDeliveryNotes(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  void _showFilterBottomSheet(BuildContext context) {
-    Get.bottomSheet(
-      const FilterBottomSheet(),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-    );
-  }
-
-  // Local search handler mapping to controller's filter logic
-  void _onSearchChanged(String val) {
-    // Debounce can be added here if needed
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (_searchController.text == val) {
-        final filters = Map<String, dynamic>.from(controller.activeFilters);
-        if (val.isNotEmpty) {
-          filters['name'] = ['like', '%$val%'];
-        } else {
-          filters.remove('name');
-        }
-        controller.applyFilters(filters);
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,32 +22,37 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       drawer: const AppNavDrawer(),
+      appBar: MainAppBar(
+        title: 'Delivery Note',
+        // Global Search Configuration
+        searchDoctype: 'Delivery Note',
+        searchRoute: AppRoutes.DELIVERY_NOTE_FORM,
+        showBack: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => Get.bottomSheet(
+              const FilterBottomSheet(),
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await controller.fetchDeliveryNotes(clear: true);
         },
         child: CustomScrollView(
-          controller: _scrollController,
+          controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // M3 Large App Bar
-            SliverAppBar.large(
-              title: const Text('Delivery Notes'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: () => _showFilterBottomSheet(context),
-                ),
-              ],
-            ),
-
-            // Search Bar
+            // Local Search Bar
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
+                  onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'Search ID...',
                     prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
@@ -216,6 +162,9 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                 ),
               );
             }),
+
+            // Bottom Padding for FAB
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
       ),

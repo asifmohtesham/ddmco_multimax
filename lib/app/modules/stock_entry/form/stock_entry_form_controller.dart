@@ -836,7 +836,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     // If scanned batch provided, add it immediately
     if (scannedBatch != null) {
       if (useSerialBatchFields.value == 0) {
-        addSabbEntry(scannedBatch, 1.0);
+        validateAndAddBatch(scannedBatch, 1.0);
       } else {
         bsBatchController.text = scannedBatch;
         validateBatch(scannedBatch);
@@ -898,7 +898,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     if (scannedBatch != null) {
       if (useSerialBatchFields.value == 0) {
         // SABB Mode: Add to list immediately
-        addSabbEntry(scannedBatch, 1.0);
+        await validateAndAddBatch(scannedBatch, null);
       } else {
         // Legacy Mode: Set text field
         bsBatchController.text = scannedBatch;

@@ -22,6 +22,7 @@ class HomeScreen extends GetView<HomeController> {
       backgroundColor: Colors.grey[50],
       appBar: MainAppBar(
         title: "Dashboard",
+        showBack: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

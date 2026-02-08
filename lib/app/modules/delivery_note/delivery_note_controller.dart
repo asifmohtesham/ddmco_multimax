@@ -5,11 +5,13 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:intl/intl.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+
+  // UI Controllers
+  final ScrollController scrollController = ScrollController();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -26,6 +28,9 @@ class DeliveryNoteController extends GetxController {
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
+  // Search
+  var searchQuery = ''.obs;
+
   // For POS Upload selection dialog
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
@@ -37,6 +42,7 @@ class DeliveryNoteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    scrollController.addListener(_onScroll);
     fetchDeliveryNotes();
   }
 
@@ -48,7 +54,34 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  // ... (Existing Fetch, Filter logic unchanged) ...
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  void _onScroll() {
+    if (_isBottom && hasMore.value && !isFetchingMore.value) {
+      fetchDeliveryNotes(isLoadMore: true);
+    }
+  }
+
+  bool get _isBottom {
+    if (!scrollController.hasClients) return false;
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final currentScroll = scrollController.offset;
+    return currentScroll >= (maxScroll * 0.9);
+  }
+
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+    // Debounce
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (searchQuery.value == val) {
+        fetchDeliveryNotes(clear: true);
+      }
+    });
+  }
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -79,10 +112,16 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
+      // Combine active filters with search query
+      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (searchQuery.value.isNotEmpty) {
+        queryFilters['name'] = ['like', '%${searchQuery.value}%'];
+      }
+
       final response = await _provider.getDeliveryNotes(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
@@ -231,7 +270,6 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  // Moved from Screen
   void openCreateDialog() {
     fetchPosUploadsForSelection();
 
@@ -308,7 +346,6 @@ class DeliveryNoteController extends GetxController {
                         separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final posUpload = posUploadsForSelection[index];
-                          // Simple logic for status color for display
                           Color statusColor = posUpload.status == 'Pending' ? Colors.orange : Colors.blue;
 
                           return ListTile(

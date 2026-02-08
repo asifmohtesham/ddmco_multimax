@@ -43,9 +43,6 @@ mixin SerialBatchBundleMixin on GetxController {
   final bsBatchController = TextEditingController();
   final bsQtyController = TextEditingController(text: '1.0');
 
-  // [NEW] Dedicated controller for the input field to prevent showing the Total Sum
-  final TextEditingController sabbInputQtyController = TextEditingController();
-
   @override
   void onInit() {
     super.onInit();
@@ -60,7 +57,6 @@ mixin SerialBatchBundleMixin on GetxController {
   @override
   void onClose() {
     bsBatchController.dispose();
-    sabbInputQtyController.dispose();
     bsQtyController.dispose();
     for (var c in batchQtyControllers.values) c.dispose();
     super.onClose();
@@ -111,7 +107,6 @@ mixin SerialBatchBundleMixin on GetxController {
   // --- Actions ---
 
   Future<void> _fetchBatchBalance(String batchNo) async {
-    log(name: 'SerialBatchBundleMixin', 'Fetching batch balance for $batchNo');
     if (sabbContextItemCode.value == null || sabbContextWarehouse.value == null) return;
 
     try {
@@ -183,10 +178,9 @@ mixin SerialBatchBundleMixin on GetxController {
       double finalQty = qty ?? 1.0;
       // 2. Fetch Balance (Using Helper)
       await _fetchBatchBalance(batchNo);
-      if (qty == null) {
+      if (qty == null || qty == 0) {
         final pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) finalQty = pkgQty;
-        sabbInputQtyController.text = pkgQty > 0 ? pkgQty.toString() : '1.0';
       }
 
       // 3. Add Entry using calculated finalQty (Fixes Null check operator error)
@@ -206,17 +200,15 @@ mixin SerialBatchBundleMixin on GetxController {
   // [NEW] 2. Add to Bundle & Clear Inputs
   void addBatchFromInput() {
     final batch = bsBatchController.text;
-    final qty = double.tryParse(sabbInputQtyController.text) ?? 0.0;
 
-    if (batch.isEmpty || qty <= 0) {
+    if (batch.isEmpty) {
       GlobalSnackbar.error(message: "Invalid Batch or Qty");
       return;
     }
 
-    addSabbEntry(batch, qty);
+    validateAndAddBatch(batch, null);
 
     // [REQUIREMENT 3] Clear Qty field after adding
-    sabbInputQtyController.clear();
     bsBatchController.clear();
   }
 

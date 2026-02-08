@@ -15,6 +15,9 @@ class PackingSlipController extends GetxController {
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final HomeController _homeController = Get.find<HomeController>();
 
+  // UI Controllers
+  final ScrollController scrollController = ScrollController();
+
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
@@ -33,7 +36,6 @@ class PackingSlipController extends GetxController {
   var searchQuery = ''.obs;
 
   // Cache for POS Customer Names
-  // Observed by the UI to trigger rebuilds when customers are loaded
   var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
@@ -44,6 +46,9 @@ class PackingSlipController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Attach Scroll Listener
+    scrollController.addListener(_onScroll);
+
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
     fetchPackingSlips();
   }
@@ -54,6 +59,30 @@ class PackingSlipController extends GetxController {
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
     }
+  }
+
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  // Moved Scroll Logic from UI
+  void _onScroll() {
+    // Only load more if not searching
+    if (searchQuery.value.isEmpty &&
+        _isBottom &&
+        hasMore.value &&
+        !isFetchingMore.value) {
+      fetchPackingSlips(isLoadMore: true);
+    }
+  }
+
+  bool get _isBottom {
+    if (!scrollController.hasClients) return false;
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final currentScroll = scrollController.offset;
+    return currentScroll >= (maxScroll * 0.9);
   }
 
   void applyFilters(Map<String, dynamic> filters) {
@@ -145,7 +174,6 @@ class PackingSlipController extends GetxController {
           final String customer = doc['customer'] ?? 'Unknown';
           posCustomerMap[name] = customer;
         }
-        // Force refresh to ensure all UI listeners update immediately after bulk load
         posCustomerMap.refresh();
       }
     } catch (e) {

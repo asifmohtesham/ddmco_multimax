@@ -147,7 +147,7 @@ class AppNavDrawer extends StatelessWidget {
                           AppRoutes.MATERIAL_REQUEST
                         ].contains(currentRoute),
                         children: [
-                          DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item Master', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
+                          DocTypeGuard(doctype: 'Item', loading: skeleton, child: _DrawerItem(title: 'Item', icon: Icons.category_rounded, isSelected: currentRoute == AppRoutes.ITEM, onTap: homeController.goToItem)),
                           DocTypeGuard(doctype: 'Batch', loading: skeleton, child: _DrawerItem(title: 'Batch', icon: Icons.qr_code_scanner_rounded, isSelected: currentRoute == AppRoutes.BATCH, onTap: homeController.goToBatch)),
                           DocTypeGuard(doctype: 'Material Request', loading: skeleton, child: _DrawerItem(
                               title: 'Material Request',

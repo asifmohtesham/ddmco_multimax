@@ -6,130 +6,155 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
-class ItemScreen extends StatefulWidget {
+class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
 
   @override
-  State<ItemScreen> createState() => _ItemScreenState();
-}
-
-class _ItemScreenState extends State<ItemScreen> {
-  final ItemController controller = Get.find();
-  final _scrollController = ScrollController();
-  final String _baseUrl = Get.find<ApiProvider>().baseUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
-      controller.fetchItems(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GenericListPage(
-      title: 'Item Master',
-      isLoading: controller.isLoading,
-      data: controller.displayedItems,
-      onRefresh: () => controller.fetchItems(clear: true),
-      scrollController: _scrollController,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    // Base URL needed for images
+    final String baseUrl = Get.find<ApiProvider>().baseUrl;
 
-      // Global API Search Configuration
-      searchDoctype: 'Item',
-      searchRoute: AppRoutes.ITEM_FORM,
-
-      // Local List Search
-      onSearch: controller.onSearchChanged,
-      searchHint: 'Search Items (Name, Code, Desc...)',
-
-      actions: [
-        Obx(() {
-          final count = controller.filterCount;
-          return IconButton(
-            icon: Badge(
-              isLabelVisible: count > 0,
-              label: Text('$count'),
-              child: Icon(
-                Icons.filter_list,
-                color: count > 0 ? Colors.amber : null,
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: MainAppBar(
+        title: 'Item',
+        // Global Search Configuration
+        searchDoctype: 'Item',
+        searchRoute: AppRoutes.ITEM_FORM,
+        showBack: false,
+        actions: [
+          // Filter Action
+          Obx(() {
+            final count = controller.filterCount;
+            return IconButton(
+              icon: Badge(
+                isLabelVisible: count > 0,
+                label: Text('$count'),
+                child: Icon(
+                  Icons.filter_list,
+                  color: count > 0 ? Colors.amber : null,
+                ),
+              ),
+              onPressed: () => Get.bottomSheet(
+                const ItemFilterBottomSheet(),
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+              ),
+            );
+          }),
+          // View Toggle Action
+          Obx(() => IconButton(
+            icon: Icon(controller.isGridView.value ? Icons.view_list : Icons.grid_view),
+            onPressed: controller.toggleLayout,
+          )),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchItems(clear: true),
+        child: CustomScrollView(
+          controller: controller.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // Local Search Input
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  onChanged: controller.onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search Items (Name, Code, Desc...)',
+                    prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  ),
+                ),
               ),
             ),
-            onPressed: () => Get.bottomSheet(
-              const ItemFilterBottomSheet(),
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-            ),
-          );
-        }),
-        Obx(() => IconButton(
-          icon: Icon(controller.isGridView.value ? Icons.view_list : Icons.grid_view),
-          onPressed: controller.toggleLayout,
-        )),
-      ],
 
-      // Custom Body for Grid View Toggle
-      sliverBody: Obx(() {
-        if (controller.isGridView.value) {
-          return SliverPadding(
-            padding: const EdgeInsets.all(8.0),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  if (index >= controller.displayedItems.length) return const SizedBox.shrink();
-                  return _buildGridCard(controller.displayedItems[index]);
-                },
-                childCount: controller.displayedItems.length,
-              ),
-            ),
-          );
-        }
-
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-                (context, index) {
-              if (index >= controller.displayedItems.length) {
-                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+            // Item List/Grid
+            Obx(() {
+              if (controller.isLoading.value && controller.items.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
               }
-              return _buildListCard(controller.displayedItems[index]);
-            },
-            childCount: controller.displayedItems.length + (controller.hasMore.value ? 1 : 0),
-          ),
-        );
-      }),
-      itemBuilder: (ctx, idx) => const SizedBox.shrink(), // Not used due to sliverBody override
+
+              if (controller.displayedItems.isEmpty) {
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.search_off, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No items found',
+                          style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              if (controller.isGridView.value) {
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.75,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                        if (index >= controller.displayedItems.length) return const SizedBox.shrink();
+                        return _buildGridCard(context, controller.displayedItems[index], baseUrl);
+                      },
+                      childCount: controller.displayedItems.length,
+                    ),
+                  ),
+                );
+              }
+
+              return SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 0.0),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                      if (index >= controller.displayedItems.length) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      }
+                      return _buildListCard(context, controller.displayedItems[index], baseUrl);
+                    },
+                    childCount: controller.displayedItems.length + (controller.hasMore.value ? 1 : 0),
+                  ),
+                ),
+              );
+            }),
+
+            // Bottom Padding for FAB/Scroll
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
+        ),
+      ),
     );
   }
 
-  // --- List View Card (Standard GenericDocumentCard) ---
-  Widget _buildListCard(Item item) {
+  // --- List View Card ---
+  Widget _buildListCard(BuildContext context, Item item, String baseUrl) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
@@ -139,7 +164,7 @@ class _ItemScreenState extends State<ItemScreen> {
         title: item.itemName,
         subtitle: item.itemCode,
         status: item.itemGroup,
-        leading: _buildImage(item, size: 56),
+        leading: _buildImage(item, baseUrl, size: 56),
 
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingStock,
@@ -160,7 +185,7 @@ class _ItemScreenState extends State<ItemScreen> {
                 child: Text(item.description!, style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 3, overflow: TextOverflow.ellipsis),
               ),
 
-            // --- Customer Items Section ---
+            // Customer Items Section
             if (item.customerItems.isNotEmpty) ...[
               const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 8),
@@ -213,15 +238,15 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // --- Grid View Card (Custom M3 Style) ---
-  Widget _buildGridCard(Item item) {
+  // --- Grid View Card ---
+  Widget _buildGridCard(BuildContext context, Item item, String baseUrl) {
     return Card(
       elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainer,
+      color: Colors.white,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
       ),
       child: InkWell(
         onTap: () => Get.toNamed(AppRoutes.ITEM_FORM, arguments: {'itemCode': item.itemCode}),
@@ -231,7 +256,7 @@ class _ItemScreenState extends State<ItemScreen> {
             Expanded(
               child: SizedBox(
                 width: double.infinity,
-                child: _buildImage(item, fit: BoxFit.cover),
+                child: _buildImage(item, baseUrl, fit: BoxFit.cover),
               ),
             ),
             Padding(
@@ -264,12 +289,12 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  Widget _buildImage(Item item, {double? size, BoxFit fit = BoxFit.contain}) {
+  Widget _buildImage(Item item, String baseUrl, {double? size, BoxFit fit = BoxFit.contain}) {
     if (item.image != null && item.image!.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.network(
-          '$_baseUrl${item.image}',
+          '$baseUrl${item.image}',
           width: size,
           height: size,
           fit: fit,

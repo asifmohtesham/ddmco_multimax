@@ -19,6 +19,9 @@ class StockEntryController extends GetxController {
   final UserProvider _userProvider = Get.find<UserProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  // UI Scroll Controller
+  final ScrollController scrollController = ScrollController();
+
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
@@ -64,6 +67,10 @@ class StockEntryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
+    // Attach Scroll Listener
+    scrollController.addListener(_onScroll);
+
     fetchStockEntries();
     fetchStockEntryTypes();
     fetchUsers();
@@ -76,6 +83,26 @@ class StockEntryController extends GetxController {
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
     }
+  }
+
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  // Moved Scroll Logic from UI
+  void _onScroll() {
+    if (_isBottom && hasMore.value && !isFetchingMore.value) {
+      fetchStockEntries(isLoadMore: true);
+    }
+  }
+
+  bool get _isBottom {
+    if (!scrollController.hasClients) return false;
+    final maxScroll = scrollController.position.maxScrollExtent;
+    final currentScroll = scrollController.offset;
+    return currentScroll >= (maxScroll * 0.9);
   }
 
   Future<void> fetchDocTypePermissions() async {
