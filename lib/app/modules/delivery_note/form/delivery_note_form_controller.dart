@@ -768,7 +768,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       // Initialise Mixin
       await initSabbState(
-        itemCode: editingItem.itemCode,
+        itemCode: editingItem.itemCode ?? itemCode,
         warehouse: wh ?? '',
         useFields: editingItem.useSerialBatchFields ?? 0, // Default to SABB if null
         bundleId: editingItem.serialAndBatchBundle,
@@ -796,14 +796,15 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         useFields: 0,
         bundleId: null,
         legacyBatch: batchNo,
-        itemCode: editingItem?.itemCode,
+        itemCode: editingItem?.itemCode ?? itemCode,
         warehouse: wh ?? '',
       );
 
       // If a batch was scanned to open this sheet, add it to SABB list
       if (batchNo != null && batchNo.isNotEmpty) {
         if (useSerialBatchFields.value == 0) {
-          addSabbEntry(batchNo, 0);
+          // REPLACED: Use mixin to validate and fetch correct qty (e.g. packaging)
+          await validateAndAddBatch(batchNo, null);
         } else {
           bsBatchController.text = batchNo;
         }
@@ -1094,13 +1095,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     // Clear loading state once sheet is ready to show
     loadingEditItemId.value = null;
     Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-        },
+      SizedBox(
+        height: Get.height * 0.85,
+        child: DeliveryNoteItemBottomSheet(
+          scrollController: scrollController
+        ),
       ),
       isScrollControlled: true,
     ).then((_) {
@@ -1151,8 +1150,16 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
-        bsBatchController.text = result.batchNo!;
-        validateAndFetchBatch(result.batchNo!);
+        // [FIX] Handle SABB vs Legacy Mode for Scans
+        if (useSerialBatchFields.value == 0) {
+          // SABB Mode: Add directly to bundle list (Fixes loading hang)
+          await validateAndAddBatch(result.batchNo!, null);
+          bsBatchController.clear(); // Clear input to allow next scan
+        } else {
+          // Legacy Mode: Validate and set field
+          bsBatchController.text = result.batchNo!;
+          await validateAndFetchBatch(result.batchNo!);
+        }
       } else if (result.type == ScanType.error) {
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       }
@@ -1214,16 +1221,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           await initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
 
           await Get.bottomSheet(
-            DraggableScrollableSheet(
-              initialChildSize: 0.6,
-              minChildSize: 0.4,
-              maxChildSize: 0.95,
-              builder: (context, scrollController) {
-                return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-              },
+            SizedBox(
+              height: Get.height * 0.85,
+              child: DeliveryNoteItemBottomSheet(
+                scrollController: scrollController
+              ),
             ),
             isScrollControlled: true,
-          );
+          ).then((_) {
+            isItemSheetOpen.value = false;
+            editingItemName.value = null;
+          });
           isItemSheetOpen.value = false;
         }
       } else if (result.type == ScanType.multiple && result.candidates != null) {

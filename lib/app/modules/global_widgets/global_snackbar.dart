@@ -3,6 +3,9 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
+  // Timestamp to track the last snackbar shown
+  static DateTime? _lastSnackbarTime;
+
   // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
@@ -49,7 +52,21 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    // 1. DEBOUNCE: If a snackbar was triggered less than 500ms ago, ignore this one.
+    // This handles the "double-tap" issue by preventing the second snackbar from
+    // attempting to show up, rather than trying to close the first one.
+    final now = DateTime.now();
+    if (_lastSnackbarTime != null &&
+        now.difference(_lastSnackbarTime!).inMilliseconds < 500) {
+      return;
+    }
+    _lastSnackbarTime = now;
+
+    // 2. CRITICAL FIX: The lines 'Get.closeCurrentSnackbar()' and 'Get.closeAllSnackbars()'
+    // HAVE BEEN REMOVED.
+    // Why? Attempting to close a snackbar that is still animating in causes the
+    // "LateInitializationError" inside GetX. Removing the close logic fixes the crash.
+    // The debounce logic above ensures we don't spam the user with stacked messages.
 
     if (shouldVibrate) HapticFeedback.lightImpact();
 

@@ -117,7 +117,7 @@ class SerialBatchBundleWidget extends StatelessWidget {
                 child: LayoutBuilder(
                     builder: (context, constraints) {
                       return RawAutocomplete<Batch>(
-                        focusNode: FocusNode(),
+                        focusNode: mixin.bsBatchFocusNode, // [UPDATED] Use persistent node from Mixin
                         textEditingController: mixin.bsBatchController,
                         optionsBuilder: (TextEditingValue textEditingValue) {
                           return mixin.searchBatches(textEditingValue.text);

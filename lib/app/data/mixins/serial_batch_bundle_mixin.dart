@@ -41,6 +41,7 @@ mixin SerialBatchBundleMixin on GetxController {
 
   // Shared Text Controller for the "Add Batch" input
   final bsBatchController = TextEditingController();
+  final bsBatchFocusNode = FocusNode(); // [ADDED] Persistent FocusNode
   final bsQtyController = TextEditingController(text: '1.0');
 
   @override
@@ -57,6 +58,7 @@ mixin SerialBatchBundleMixin on GetxController {
   @override
   void onClose() {
     bsBatchController.dispose();
+    bsBatchFocusNode.dispose(); // [ADDED] Dispose FocusNode
     bsQtyController.dispose();
     for (var c in batchQtyControllers.values) c.dispose();
     super.onClose();
