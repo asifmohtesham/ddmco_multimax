@@ -340,7 +340,19 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   Future<void> submitSheet() async {
     String? bundleId;
-    double qty = double.tryParse(bsQtyController.text) ?? 0;
+    double sheetQty = double.tryParse(bsQtyController.text) ?? 0;
+
+    // --- CHECK FOR EXISTING ITEM MATCH (Same Item + Same Invoice Serial) ---
+    final targetInvoiceSerial = bsInvoiceSerialNo.value ?? '0';
+    final existingItem = deliveryNote.value?.items.firstWhereOrNull((item) =>
+    item.itemCode == currentItemCode &&
+        (item.customInvoiceSerialNumber ?? '0') == targetInvoiceSerial
+    );
+
+    String? existingBundleId;
+    if (existingItem != null) {
+      existingBundleId = existingItem.serialAndBatchBundle;
+    }
 
     // 1. Handle SABB Creation
     if (useSerialBatchFields.value == 0) {
@@ -359,16 +371,46 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           return;
         }
 
+        // [FIX] Handling Merge: If merging into an existing bundle, we must:
+        // 1. Fetch the existing bundle entries
+        // 2. Append current (newly scanned) entries to them
+        // 3. Set 'currentBundleId' state so the mixin performs an UPDATE instead of CREATE
+        if (existingBundleId != null && existingBundleId.isNotEmpty) {
+          try {
+            final response = await _apiProvider.getDocument('Serial and Batch Bundle', existingBundleId);
+            if (response.statusCode == 200 && response.data['data'] != null) {
+              final List<dynamic> entriesJson = response.data['data']['entries'] ?? [];
+              final List<SerialAndBatchEntry> previousEntries = entriesJson
+                  .map((e) => SerialAndBatchEntry.fromJson(e))
+                  .toList();
+
+              // Append new scans to the existing list
+              previousEntries.addAll(sabbEntries);
+
+              // Update local state to reflect the FULL list (Old + New)
+              sabbEntries.assignAll(previousEntries);
+
+              // Set the ID so the mixin knows to UPDATE this specific bundle
+              currentBundleId.value = existingBundleId;
+            }
+          } catch (e) {
+            print('Error fetching existing bundle for merge: $e');
+            // Fallback: Set ID to attempt update, though this risks overwriting if fetch failed
+            currentBundleId.value = existingBundleId;
+          }
+        }
+
+        // [FIX] Removed 'bundleId' parameter. Using 'currentBundleId.value' (set above) for updates.
         bundleId = await saveOrUpdateSerialBatchBundle(
-            itemCode: currentItemCode,
-            warehouse: wh,
-            isOutward: true, // Delivery Note is always Outward
-            voucherType: 'Delivery Note',
-            voucherNo: (mode != 'new') ? name : null
+          itemCode: currentItemCode,
+          warehouse: wh,
+          isOutward: true,
+          voucherType: 'Delivery Note',
+          voucherNo: (mode != 'new') ? name : null,
         );
 
-        // Sync Qty
-        qty = bundleTotalQty.value;
+        // Sync Qty (This is now the Total Qty of Old + New entries)
+        sheetQty = bundleTotalQty.value;
       } catch (e) {
         isAddingItem.value = false;
         GlobalSnackbar.error(message: 'Error creating Bundle: $e');
@@ -381,14 +423,15 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     final rack = bsRackController.text;
     final invoiceSerial = bsInvoiceSerialNo.value;
 
-    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
-      _updateItemLocally(editingItemName.value!, qty, rack, batchNo, invoiceSerial);
+    if (existingItem != null) {
+      // MERGE INTO EXISTING ITEM
+      // Pass replaceQty: true for SABB because 'sheetQty' is already the Grand Total from the bundle
+      _mergeItemLocally(existingItem, sheetQty, rack, batchNo, invoiceSerial, bundleId, replaceQty: useSerialBatchFields.value == 0);
     } else {
-      _addItemLocally(currentItemCode, currentItemName, qty, rack, batchNo, invoiceSerial);
+      // ADD NEW ITEM
+      _addItemLocally(currentItemCode, currentItemName, sheetQty, rack, batchNo, invoiceSerial);
     }
 
-    // Get.back();
-    // [FIX] Safe Clear
     if (!isClosed) barcodeController.clear();
     _checkForChanges();
 
@@ -400,7 +443,36 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isAddingItem.value = false;
   }
 
+  // [UPDATED] Helper to handle local merging logic
+  void _mergeItemLocally(DeliveryNoteItem existing, double qty, String rack, String? batchNo, String? invoiceSerial, String? bundleId, {bool replaceQty = false}) {
+    final currentItems = deliveryNote.value?.items.toList() ?? [];
+    final index = currentItems.indexOf(existing);
+
+    if (index != -1) {
+      final isEditMode = editingItemName.value != null;
+
+      // If explicit replace (SABB merge) OR edit mode, use 'qty' as the new total.
+      // Otherwise (Legacy Add), add 'qty' to existing.
+      final double newTotalQty = (replaceQty || isEditMode) ? qty : (existing.qty + qty);
+
+      currentItems[index] = existing.copyWith(
+          qty: newTotalQty,
+          rack: rack,
+          batchNo: batchNo,
+          customInvoiceSerialNumber: invoiceSerial,
+          useSerialBatchFields: useSerialBatchFields.value,
+          serialAndBatchBundle: bundleId ?? existing.serialAndBatchBundle
+      );
+
+      deliveryNote.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+      _triggerItemFeedback(existing.itemCode, invoiceSerial ?? '0');
+    }
+  }
+
   void _updateItemLocally(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    // Kept for backward compatibility, but effectively similar to merge with replacement
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final index = currentItems.indexWhere((item) => item.name == itemNameID);
     if (index != -1) {
@@ -427,11 +499,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
     // Simple duplicate check (can be enhanced to check Bundle ID)
     final existingIndex = currentItems.indexWhere((item) =>
-      item.itemCode == itemCode &&
-      (item.batchNo ?? '') == (batchNo ?? '') && // Legacy Check
-      (item.rack ?? '') == rack &&
-      (item.customInvoiceSerialNumber ?? '0') == serial &&
-      (item.serialAndBatchBundle == currentBundleId.value) // SABB Check
+    item.itemCode == itemCode &&
+        (item.batchNo ?? '') == (batchNo ?? '') && // Legacy Check
+        (item.rack ?? '') == rack &&
+        (item.customInvoiceSerialNumber ?? '0') == serial &&
+        (item.serialAndBatchBundle == currentBundleId.value) // SABB Check
     );
 
     if (existingIndex != -1) {
@@ -715,12 +787,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> initBottomSheet(
-    String itemCode,
-    String itemName,
-    String? batchNo,
-    double maxQty,
-    {DeliveryNoteItem? editingItem, String? autoAddBatch}
-  ) async {
+      String itemCode,
+      String itemName,
+      String? batchNo,
+      double maxQty,
+      String? initialSerial,
+      {DeliveryNoteItem? editingItem, String? autoAddBatch}
+      ) async {
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -802,11 +875,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       // If a batch was scanned to open this sheet, add it to SABB list
       if (batchNo != null && batchNo.isNotEmpty) {
+        // [FIX] Always use mixin to validate and fetch correct qty (e.g. packaging) even for new items
+        // The previous code had a condition here that used `bsBatchController.text = batchNo` which is wrong for SABB mode
         if (useSerialBatchFields.value == 0) {
-          // REPLACED: Use mixin to validate and fetch correct qty (e.g. packaging)
+          // NEW: Use mixin to validate and fetch correct qty
+          // Passing 'autoAddBatch' via initBottomSheet's logic is preferred,
+          // but since we are here:
           await validateAndAddBatch(batchNo, null);
         } else {
           bsBatchController.text = batchNo;
+        }
+      }
+
+      // Also handle the explicitly passed 'autoAddBatch' argument if it differs
+      if (autoAddBatch != null && autoAddBatch.isNotEmpty && autoAddBatch != batchNo) {
+        if (useSerialBatchFields.value == 0) {
+          await validateAndAddBatch(autoAddBatch, null);
         }
       }
 
@@ -1066,9 +1150,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
 
         final balanceResponse = await _apiProvider.getBatchWiseBalance(
-          item.itemCode,
-          item.batchNo!,
-          warehouse: targetWh
+            item.itemCode,
+            item.batchNo!,
+            warehouse: targetWh
         );
 
         if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
@@ -1084,12 +1168,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
 
     await initBottomSheet(
-      item.itemCode,
-      item.itemName ?? '',
-      item.batchNo,
-      fetchedQty,
-      editingItem: item,
-      autoAddBatch: autoAddBatch
+        item.itemCode,
+        item.itemName ?? '',
+        item.batchNo,
+        fetchedQty,
+        editingItem: item,
+        autoAddBatch: autoAddBatch,
+        _initialSerial
     );
 
     // Clear loading state once sheet is ready to show
@@ -1098,7 +1183,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       SizedBox(
         height: Get.height * 0.85,
         child: DeliveryNoteItemBottomSheet(
-          scrollController: scrollController
+            scrollController: scrollController
         ),
       ),
       isScrollControlled: true,
@@ -1169,6 +1254,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
+      log(name: 'ScanBarcode 1', result.toString());
 
       if (result.isSuccess && result.itemData != null) {
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
@@ -1180,60 +1266,59 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         final itemData = result.itemData!;
         final scannedBatch = result.batchNo;
 
-        // CHECK IF ITEM EXISTS
-        final existingItem = deliveryNote.value?.items.firstWhereOrNull(
-          (item) => item.itemCode == itemData.itemCode
+        // [LOGIC CHANGE]
+        // OLD: Check if existing item exists and open edit mode.
+        // NEW: Always open new sheet mode.
+        // If the item exists under a specific Invoice Serial, we will catch it during submitSheet() and merge.
+
+        double maxQty = 0.0;
+
+        if (scannedBatch != null) {
+          try {
+            final balanceResponse = await _apiProvider.getBatchWiseBalance(
+                itemData.itemCode,
+                scannedBatch!,
+                warehouse: setWarehouse.value
+            );
+
+            if (balanceResponse.statusCode == 200 &&
+                balanceResponse.data['message']?['result'] != null) {
+              final list = balanceResponse.data['message']['result'] as List;
+              if (list.isNotEmpty)
+                maxQty = (list[0]['balance_qty'] as num).toDouble();
+            }
+          } catch (_) {
+            maxQty = 6.0;
+          }
+        }
+
+        isScanning.value = false;
+        barcodeController.clear();
+
+        // Open Sheet in New Mode (editingItem is null), but pass autoAddBatch
+        await initBottomSheet(
+            itemData.itemCode,
+            itemData.itemName,
+            result.batchNo,
+            maxQty,
+            null,
+            autoAddBatch: scannedBatch // This ensures the batch is added to the fresh list immediately
         );
 
-        if (existingItem != null) {
-          // EDIT EXISTING ITEM + APPEND BATCH
-          isScanning.value = false;
-          barcodeController.clear();
-          GlobalSnackbar.success(message: 'Item found. Appending batch...');
-
-          await editItem(existingItem, autoAddBatch: scannedBatch);
-
-        } else {
-          double maxQty = 0.0;
-
-          if (scannedBatch != null) {
-            try {
-              final balanceResponse = await _apiProvider.getBatchWiseBalance(
-                  itemData.itemCode,
-                  scannedBatch!,
-                  warehouse: setWarehouse.value
-              );
-
-              if (balanceResponse.statusCode == 200 &&
-                  balanceResponse.data['message']?['result'] != null) {
-                final list = balanceResponse.data['message']['result'] as List;
-                if (list.isNotEmpty)
-                  maxQty = (list[0]['balance_qty'] as num).toDouble();
-              }
-            } catch (_) {
-              maxQty = 6.0;
-            }
-          }
-
-          isScanning.value = false;
-          barcodeController.clear();
-
-          await initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
-
-          await Get.bottomSheet(
-            SizedBox(
-              height: Get.height * 0.85,
-              child: DeliveryNoteItemBottomSheet(
+        await Get.bottomSheet(
+          SizedBox(
+            height: Get.height * 0.85,
+            child: DeliveryNoteItemBottomSheet(
                 scrollController: scrollController
-              ),
             ),
-            isScrollControlled: true,
-          ).then((_) {
-            isItemSheetOpen.value = false;
-            editingItemName.value = null;
-          });
+          ),
+          isScrollControlled: true,
+        ).then((_) {
           isItemSheetOpen.value = false;
-        }
+          editingItemName.value = null;
+        });
+        isItemSheetOpen.value = false;
+
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
       } else {
