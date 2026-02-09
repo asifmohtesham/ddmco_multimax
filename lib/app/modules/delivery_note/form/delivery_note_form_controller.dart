@@ -387,7 +387,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batchNo, invoiceSerial);
     }
 
-    Get.back();
+    // Get.back();
     // [FIX] Safe Clear
     if (!isClosed) barcodeController.clear();
     _checkForChanges();

@@ -89,7 +89,9 @@ class GlobalItemFormSheet extends StatelessWidget {
               if (result is Future) {
                 await result;
               }
-              Get.back();
+              // REPLACED: Get.back();
+              // FIX: Use native Navigator to pop the Sheet, ignoring the Snackbar overlay
+              if (context.mounted) Navigator.of(context).pop();
             } catch (e) {
               print('Error submitting form: $e');
             } finally {

@@ -92,10 +92,11 @@ class SerialBatchBundleWidget extends StatelessWidget {
                         onPressed: () => mixin.commitBatchQty(batchNo),
                       );
                     }),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                      onPressed: () => mixin.removeSabbEntry(index),
-                    )
+                    if (mixin.sabbEntries.length > 1)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                        onPressed: () => mixin.removeSabbEntry(index),
+                      )
                   ],
                 ),
               );
