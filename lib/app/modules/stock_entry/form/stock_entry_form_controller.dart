@@ -311,7 +311,7 @@ class StockEntryFormController extends GetxController {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (ctx, scroll) => StockEntryItemFormSheet(
-          controller: itemController,
+          controller: itemController,  // FIX: Changed from 'this' to 'itemController'
           scrollController: scroll,
         ),
       ),
@@ -587,17 +587,29 @@ class StockEntryFormController extends GetxController {
 }
 
 extension StockEntryItemHelpers on StockEntryItem {
-  StockEntryItem copyWith({String? serialAndBatchBundle}) {
+  StockEntryItem copyWith({String? serialAndBatchBundle, String? name, double? qty}) {
     return StockEntryItem(
-        name: name, itemCode: itemCode, qty: qty, basicRate: basicRate,
-        itemGroup: itemGroup, customVariantOf: customVariantOf,
-        batchNo: batchNo, useSerialBatchFields: useSerialBatchFields,
-        itemName: itemName, rack: rack, toRack: toRack, sWarehouse: sWarehouse,
-        tWarehouse: tWarehouse, customInvoiceSerialNumber: customInvoiceSerialNumber,
+        name: name ?? this.name, 
+        itemCode: itemCode, 
+        qty: qty ?? this.qty, 
+        basicRate: basicRate,
+        itemGroup: itemGroup, 
+        customVariantOf: customVariantOf,
+        batchNo: batchNo, 
+        useSerialBatchFields: useSerialBatchFields,
+        itemName: itemName, 
+        rack: rack, 
+        toRack: toRack, 
+        sWarehouse: sWarehouse,
+        tWarehouse: tWarehouse, 
+        customInvoiceSerialNumber: customInvoiceSerialNumber,
         serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
         materialRequest: materialRequest,
-        materialRequestItem: materialRequestItem, owner: owner, creation: creation,
-        modified: modified, modifiedBy: modifiedBy
+        materialRequestItem: materialRequestItem, 
+        owner: owner, 
+        creation: creation,
+        modified: modified, 
+        modifiedBy: modifiedBy
     );
   }
 
