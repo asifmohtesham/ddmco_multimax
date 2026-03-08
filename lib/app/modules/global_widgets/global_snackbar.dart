@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
-  // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
       title: title,
@@ -49,9 +48,31 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    // FIX: Safely check if GetX context is initialized and if snackbar is open
+    // This prevents LateInitializationError during app startup
+    try {
+      if (Get.isSnackbarOpen == true) {
+        Get.closeCurrentSnackbar();
+      }
+    } catch (e) {
+      // Silently ignore if GetX context isn't ready yet
+      // This happens during early app initialization
+    }
 
-    if (shouldVibrate) HapticFeedback.lightImpact();
+    if (shouldVibrate) {
+      try {
+        HapticFeedback.lightImpact();
+      } catch (e) {
+        // Ignore haptic feedback errors
+      }
+    }
+
+    // Additional safety check: ensure GetX navigation is initialized
+    if (Get.key?.currentContext == null) {
+      // If context isn't available, fallback to print statement for debugging
+      print('[$title] $message');
+      return;
+    }
 
     Get.snackbar(
       title,
