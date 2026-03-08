@@ -1,42 +1,46 @@
 import 'package:equatable/equatable.dart';
 
-/// Base class for all failures in the application
+/// Base class for all failures in the domain layer
 abstract class Failure extends Equatable {
   final String message;
+
+  const Failure(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+/// Failure due to network connectivity issues
+class NetworkFailure extends Failure {
+  const NetworkFailure(String message) : super(message);
+}
+
+/// Failure due to server errors
+class ServerFailure extends Failure {
   final int? statusCode;
 
-  const Failure(this.message, [this.statusCode]);
+  const ServerFailure(String message, [this.statusCode]) : super(message);
 
   @override
   List<Object?> get props => [message, statusCode];
 }
 
-/// Network-related failures (no internet, timeout, etc.)
-class NetworkFailure extends Failure {
-  const NetworkFailure(String message) : super(message);
-}
-
-/// Server-related failures (API errors, 500, etc.)
-class ServerFailure extends Failure {
-  const ServerFailure(String message, [int? statusCode]) : super(message, statusCode);
-}
-
-/// Cache-related failures (local database errors)
-class CacheFailure extends Failure {
-  const CacheFailure(String message) : super(message);
-}
-
-/// Validation failures (invalid input)
+/// Failure due to validation errors
 class ValidationFailure extends Failure {
   const ValidationFailure(String message) : super(message);
 }
 
-/// Authentication failures (unauthorized, token expired)
+/// Failure due to authentication/authorization issues
 class AuthFailure extends Failure {
-  const AuthFailure(String message, [int? statusCode]) : super(message, statusCode);
+  const AuthFailure(String message) : super(message);
 }
 
-/// Generic failure for unexpected errors
+/// Failure due to cache/local storage errors
+class CacheFailure extends Failure {
+  const CacheFailure(String message) : super(message);
+}
+
+/// Failure for unexpected errors
 class UnexpectedFailure extends Failure {
-  const UnexpectedFailure([String message = 'An unexpected error occurred']) : super(message);
+  const UnexpectedFailure(String message) : super(message);
 }

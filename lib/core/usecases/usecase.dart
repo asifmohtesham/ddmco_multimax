@@ -1,14 +1,14 @@
-import 'package:dartz/dartz.dart';
+import '../utils/either.dart';
 import '../error/failures.dart';
 
 /// Base class for all use cases
 /// [Type] is the return type
-/// [Params] is the input parameters type
+/// [Params] is the input parameter type
 abstract class UseCase<Type, Params> {
   Future<Either<Failure, Type>> call(Params params);
 }
 
-/// Use this when the use case doesn't need any parameters
+/// Used for use cases that don't require parameters
 class NoParams {
   const NoParams();
 }
