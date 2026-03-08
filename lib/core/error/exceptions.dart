@@ -1,76 +1,35 @@
-/// Base class for all exceptions in the application
+/// Base exception class
 class AppException implements Exception {
   final String message;
-  final int? code;
-  final dynamic originalError;
+  final int? statusCode;
 
-  AppException({
-    required this.message,
-    this.code,
-    this.originalError,
-  });
+  AppException(this.message, [this.statusCode]);
 
   @override
-  String toString() => 'AppException: $message (code: $code)';
+  String toString() => message;
 }
 
-/// Exception thrown when server returns an error
-class ServerException extends AppException {
-  ServerException({
-    required String message,
-    int? code,
-    dynamic originalError,
-  }) : super(message: message, code: code, originalError: originalError);
-}
-
-/// Exception thrown when there's a network error
+/// Thrown when network request fails
 class NetworkException extends AppException {
-  NetworkException({
-    String message = 'Network connection error',
-    dynamic originalError,
-  }) : super(message: message, originalError: originalError);
+  NetworkException(String message) : super(message);
 }
 
-/// Exception thrown when there's a cache error
+/// Thrown when server returns an error
+class ServerException extends AppException {
+  ServerException(String message, [int? statusCode]) : super(message, statusCode);
+}
+
+/// Thrown when cache operation fails
 class CacheException extends AppException {
-  CacheException({
-    String message = 'Cache error',
-    dynamic originalError,
-  }) : super(message: message, originalError: originalError);
+  CacheException(String message) : super(message);
 }
 
-/// Exception thrown when data validation fails
+/// Thrown when validation fails
 class ValidationException extends AppException {
-  final Map<String, String>? fieldErrors;
-
-  ValidationException({
-    required String message,
-    this.fieldErrors,
-    dynamic originalError,
-  }) : super(message: message, originalError: originalError);
+  ValidationException(String message) : super(message);
 }
 
-/// Exception thrown when authentication fails
-class AuthenticationException extends AppException {
-  AuthenticationException({
-    String message = 'Authentication failed',
-    int? code,
-    dynamic originalError,
-  }) : super(message: message, code: code, originalError: originalError);
-}
-
-/// Exception thrown when user is not authorized
-class AuthorizationException extends AppException {
-  AuthorizationException({
-    String message = 'Not authorized',
-    dynamic originalError,
-  }) : super(message: message, originalError: originalError);
-}
-
-/// Exception thrown when resource is not found
-class NotFoundException extends AppException {
-  NotFoundException({
-    String message = 'Resource not found',
-    dynamic originalError,
-  }) : super(message: message, originalError: originalError);
+/// Thrown when authentication fails
+class AuthException extends AppException {
+  AuthException(String message, [int? statusCode]) : super(message, statusCode);
 }
