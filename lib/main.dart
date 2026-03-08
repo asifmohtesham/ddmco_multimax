@@ -14,7 +14,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set up the database factory based on the platform
-  if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     // Initialise FFI
     sqfliteFfiInit();
     // Change the default factory for sqflite
@@ -28,7 +28,6 @@ Future<void> main() async {
   // Initialise API Provider (which now depends on DatabaseService)
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
 
-  await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
   // Removed explicit put of HomeController to avoid dependency issues. 
   // It will be initialised via HomeBinding when needed.

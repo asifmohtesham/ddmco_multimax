@@ -71,8 +71,11 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
     ];
 
+    // Check if the current Scaffold has a drawer
+    final bool hasDrawer = Scaffold.maybeOf(context)?.hasDrawer ?? false;
+
     return AppBar(
-      leading: leading ?? (showBack && Navigator.canPop(context)
+      leading: leading ?? (showBack && !hasDrawer && Navigator.canPop(context)
           ? IconButton(
         icon: const Icon(Icons.arrow_back),
         onPressed: () => Get.back(),

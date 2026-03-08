@@ -26,6 +26,9 @@ abstract class AppRoutes {
   static const MATERIAL_REQUEST = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
   static const ABOUT = '/about';
+  static const STOCK_BALANCE_REPORT = _Paths.STOCK_BALANCE_REPORT;
+  static const STOCK_LEDGER_REPORT = _Paths.STOCK_LEDGER_REPORT;
+  static const BATCH_WISE_BALANCE_REPORT = _Paths.BATCH_WISE_BALANCE_REPORT;
 }
 
 abstract class _Paths {
@@ -53,4 +56,7 @@ abstract class _Paths {
   static const BATCH_FORM = '/batch/form';
   static const MATERIAL_REQUEST = '/material-request';
   static const MATERIAL_REQUEST_FORM = '/material-request/form';
+  static const STOCK_BALANCE_REPORT = '/stock/reports/balance';
+  static const STOCK_LEDGER_REPORT = '/stock/reports/ledger';
+  static const BATCH_WISE_BALANCE_REPORT = '/stock/reports/batch-wise-balance';
 }

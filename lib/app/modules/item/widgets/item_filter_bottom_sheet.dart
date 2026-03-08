@@ -145,7 +145,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       activeFilterCount: localFilters.length + (showImagesOnly.value ? 1 : 0),
       sortOptions: const [
         SortOption('Modified', 'modified'),
-        SortOption('Item Name', 'item_name'),
+        SortOption('Status', 'docstatus'),
         SortOption('Item Code', 'item_code'),
       ],
       currentSortField: controller.sortField.value,
@@ -158,17 +158,17 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         controller.clearFilters();
       },
       filterWidgets: [
-        SwitchListTile(
-          title: const Text('Show Images Only'),
-          value: showImagesOnly.value,
-          onChanged: (val) => showImagesOnly.value = val,
-          contentPadding: EdgeInsets.zero,
-        ),
-        const Divider(),
-        const SizedBox(height: 8),
+        // SwitchListTile(
+        //   title: const Text('Show Images Only'),
+        //   value: showImagesOnly.value,
+        //   onChanged: (val) => showImagesOnly.value = val,
+        //   contentPadding: EdgeInsets.zero,
+        // ),
+        // const Divider(),
+        // const SizedBox(height: 8),
 
-        const Text("Filter Conditions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
+        // const Text("Filter Conditions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        // const SizedBox(height: 12),
 
         ...localFilters.asMap().entries.map((entry) {
           final index = entry.key;

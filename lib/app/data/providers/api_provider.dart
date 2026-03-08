@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -48,15 +49,26 @@ class ApiProvider {
         _baseUrl = storedUrl;
       }
     }
-    final appSupportDir = await getApplicationSupportDirectory();
-    final cookiePath = '${appSupportDir.path}/.cookies/';
-    _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+
+    if (!kIsWeb) {
+      final appSupportDir = await getApplicationSupportDirectory();
+      final cookiePath = '${appSupportDir.path}/.cookies/';
+      _cookieJar = PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookiePath));
+    } else {
+      _cookieJar = CookieJar();
+    }
+
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
     ));
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    
+    // Only add CookieManager on native platforms (Android/iOS/Desktop)
+    if (!kIsWeb) {
+      _dio.interceptors.add(CookieManager(_cookieJar));
+    }
+    
     _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
     _dioInitialised = true;
   }
@@ -249,7 +261,15 @@ class ApiProvider {
     );
   }
 
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
+  /// Fetches Batch-Wise Balance History
+  /// Updated to accept date range
+  Future<Response> getBatchWiseBalance({
+    required String itemCode,
+    required String? batchNo,
+    required String? fromDate,
+    required String? toDate,
+    String? warehouse,
+  }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
@@ -258,15 +278,14 @@ class ApiProvider {
 
     final Map<String, dynamic> filters = {
       "company": company,
-      "from_date": today,
-      "to_date": today,
-      "item_code": itemCode,
-      "batch_no": batchNo,
+      "from_date": fromDate ?? today,
+      "to_date": toDate ?? today,
     };
 
-    if (warehouse != null && warehouse.isNotEmpty) {
-      filters["warehouse"] = warehouse;
-    }
+    // ERP typically requires Item Code for this report
+    if (itemCode.isNotEmpty) filters["item_code"] = itemCode;
+    if (batchNo != null && batchNo.isNotEmpty) filters["batch_no"] = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
 
     return await _dio.get('/api/method/frappe.desk.query_report.run',
         queryParameters: {
@@ -329,13 +348,18 @@ class ApiProvider {
     }
   }
   Future<bool> hasSessionCookies() async {
+    // On Web, we assume optimistic true and let API verification fail if invalid
+    if (kIsWeb) return true;
+
     if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
   Future<void> clearSessionCookies() async {
     if (!_dioInitialised) await _initDio();
-    await _cookieJar.deleteAll();
+    if (!kIsWeb) {
+      await _cookieJar.deleteAll();
+    }
   }
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
@@ -358,6 +382,40 @@ class ApiProvider {
     return await _dio.post('/api/method/frappe.core.doctype.user.user.update_password',
         data: {'old_password': oldPassword, 'new_password': newPassword, 'logout_all_sessions': 0},
         options: Options(contentType: Headers.formUrlEncodedContentType)
+    );
+  }
+
+  // Updated to include getStockLedger and ensure consistency
+  Future<Response> getStockLedger({
+    required String company,
+    required String fromDate,
+    required String toDate,
+    String? itemCode,
+    String? warehouse,
+    String? batchNo,
+    String? segregateSerialBatchBundle = 'true',
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final Map<String, dynamic> filters = {
+      "company": company,
+      "from_date": fromDate,
+      "to_date": toDate,
+      "segregate_serial_batch_bundle": segregateSerialBatchBundle
+    };
+
+    if (itemCode != null && itemCode.isNotEmpty) filters["item_code"] = itemCode;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
+    if (batchNo != null && batchNo.isNotEmpty) filters["batch_no"] = batchNo;
+
+    return await _dio.get('/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name': 'Stock Ledger',
+          'filters': json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters': 'false',
+          '_': DateTime.now().millisecondsSinceEpoch
+        }
     );
   }
 }

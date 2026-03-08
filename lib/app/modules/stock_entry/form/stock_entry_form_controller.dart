@@ -20,7 +20,6 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
 // 1. Define the Enum used by the screen
 enum StockEntrySource {
@@ -29,7 +28,7 @@ enum StockEntrySource {
   posUpload
 }
 
-class StockEntryFormController extends GetxController with OptimisticLockingMixin {
+class StockEntryFormController extends GetxController {
   // --- Dependencies ---
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -846,10 +845,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
-
-    // 2. USE MIXIN GUARD
-    if (checkStaleAndBlock()) return;
-
     if (barcode.isEmpty) return;
 
     // Prevent double processing if scan is already in progress
@@ -889,19 +884,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       isScanning.value = false;
       barcodeController.clear();
     }
-  }
-
-  // 3. IMPLEMENT THE MIXIN METHOD (CORRECTLY OVERRIDDEN)
-  @override
-  Future<void> reloadDocument() async {
-    await fetchStockEntry(); // This pulls the latest data
-    isStale.value = false;   // Reset the flag from the mixin
-
-    // Optional: If you had a pending item in the buffer (recentlyAddedItemName),
-    // you might want to clear it or try to re-apply it here,
-    // though safer to just clear.
-    isScanning.value = false;
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   void _handleSheetScan(String barcode) async {
@@ -1251,10 +1233,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
-
-    // 3. USE MIXIN GUARD
-    if (checkStaleAndBlock()) return;
-
     if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
       final firstItem = stockEntry.value!.items.first;
       if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
@@ -1278,8 +1256,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       'from_warehouse': selectedFromWarehouse.value,
       'to_warehouse': selectedToWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
-      // 2. CRITICAL: Pass 'modified' timestamp for Optimistic Locking
-      'modified': stockEntry.value?.modified,
     };
     final itemsJson = stockEntry.value?.items.map((i) {
       final json = i.toJson();
@@ -1327,20 +1303,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       } else {
         final response = await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
-          // 3. UPDATE LOCAL TIMESTAMP ON SUCCESS
-          // Frappe returns the updated document. We must update our local 'modified'
-          // timestamp to match the server, otherwise the NEXT save will fail.
-          final updatedDoc = response.data['data'];
-          if (updatedDoc != null) {
-            stockEntry.update((val) {
-              val?.items.assignAll((updatedDoc['items'] as List).map((i) => StockEntryItem.fromJson(i)).toList());
-              // Update the modified timestamp to the new valid one
-              // You might need to add a setter or copyWith to your Model,
-              // or just re-instantiate:
-              stockEntry.value = StockEntry.fromJson(updatedDoc);
-            });
-          }
-
           GlobalSnackbar.success(message: 'Stock Entry updated');
           await fetchStockEntry();
         } else {
@@ -1349,20 +1311,14 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       }
     } on DioException catch (e) {
       String errorMessage = 'Save failed';
-      // 5. USE MIXIN HANDLER instead of manual parsing for TimestampMismatch
-      if (handleVersionConflict(e)) {
-        // If it was a conflict, the mixin showed the dialog and set isStale=true.
-        // We just exit.
-      } else {
-        if (e.response != null && e.response!.data != null) {
-          if (e.response!.data is Map && e.response!.data['exception'] != null) {
-            errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-          } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-            errorMessage = 'Validation Error: Check form details';
-          }
+      if (e.response != null && e.response!.data != null) {
+        if (e.response!.data is Map && e.response!.data['exception'] != null) {
+          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
+        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+          errorMessage = 'Validation Error: Check form details';
         }
-        GlobalSnackbar.error(message: errorMessage);
       }
+      GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
