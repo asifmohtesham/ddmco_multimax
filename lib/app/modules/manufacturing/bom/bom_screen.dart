@@ -15,100 +15,89 @@ class BomScreen extends GetView<BomController> {
         title: 'Bill of Materials',
         actions: [
           IconButton(
-            icon: const Icon(Icons.search, size: 26),
-            onPressed: () => _showSearchDialog(context),
-            tooltip: 'Search',
-          ),
-          IconButton(
             icon: const Icon(Icons.refresh, size: 26),
             onPressed: controller.fetchBoms,
             tooltip: 'Refresh',
           ),
         ],
       ),
-      body: Obx(() {
-        if (controller.isLoading.value && controller.boms.isEmpty) {
-          return const Center(child: CircularProgressIndicator(strokeWidth: 6));
-        }
-
-        if (controller.boms.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.description_outlined, size: 80, color: Colors.grey[400]),
-                const SizedBox(height: 24),
-                Text(
-                  'No BOMs Found',
-                  style: TextStyle(
-                    fontSize: 24,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.bold,
-                  ),
+      body: Column(
+        children: [
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              onChanged: controller.searchBoms,
+              decoration: InputDecoration(
+                hintText: 'Search by item name...',
+                hintStyle: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                prefixIcon: const Icon(Icons.search, size: 28),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  controller.searchQuery.value.isNotEmpty
-                      ? 'Try a different search'
-                      : 'Create BOMs in ERPNext',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[500],
-                  ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-              ],
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Colors.blue, width: 2),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+              style: const TextStyle(fontSize: 18),
             ),
-          );
-        }
+          ),
 
-        return RefreshIndicator(
-          onRefresh: controller.fetchBoms,
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: controller.boms.length,
-            itemBuilder: (context, index) {
-              final bom = controller.boms[index];
-              return _BomCard(bom: bom);
-            },
-          ),
-        );
-      }),
-    );
-  }
+          // BOM List
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value && controller.boms.isEmpty) {
+                return const Center(child: CircularProgressIndicator(strokeWidth: 6));
+              }
 
-  void _showSearchDialog(BuildContext context) {
-    final searchController = TextEditingController(text: controller.searchQuery.value);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Search BOMs'),
-        content: TextField(
-          controller: searchController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Enter item name or code',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (value) {
-            controller.searchBoms(value);
-            Navigator.pop(context);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.searchBoms('');
-              Navigator.pop(context);
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              controller.searchBoms(searchController.text);
-              Navigator.pop(context);
-            },
-            child: const Text('Search'),
+              if (controller.boms.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.description_outlined, size: 80, color: Colors.grey[400]),
+                      const SizedBox(height: 24),
+                      Text(
+                        'No BOMs Found',
+                        style: TextStyle(
+                          fontSize: 24,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        controller.searchQuery.value.isNotEmpty
+                            ? 'Try a different search term'
+                            : 'Create BOMs in ERPNext first',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: controller.fetchBoms,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: controller.boms.length,
+                  itemBuilder: (context, index) {
+                    final bom = controller.boms[index];
+                    return _BomCard(bom: bom);
+                  },
+                ),
+              );
+            }),
           ),
         ],
       ),
@@ -147,13 +136,15 @@ class _BomCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.15),
+                      color: bom.isActive
+                          ? Colors.green.withOpacity(0.15)
+                          : Colors.grey.withOpacity(0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.description,
-                      color: Colors.blue,
-                      size: 32,
+                    child: Icon(
+                      Icons.precision_manufacturing,
+                      color: bom.isActive ? Colors.green : Colors.grey,
+                      size: 28,
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -166,6 +157,7 @@ class _BomCard extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: Colors.black87,
                           ),
                         ),
                         if (bom.itemName != null) ..[
@@ -175,6 +167,7 @@ class _BomCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -185,46 +178,46 @@ class _BomCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.green,
+                        color: Colors.blue,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
                         'DEFAULT',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 11,
                           fontWeight: FontWeight.bold,
+                          fontSize: 11,
                         ),
                       ),
                     ),
                 ],
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              // Stats Row
+              // BOM Info
               Row(
                 children: [
                   Expanded(
-                    child: _StatBox(
+                    child: _InfoBox(
                       icon: Icons.inventory_2,
                       label: 'Items',
-                      value: bom.items.length.toString(),
+                      value: '${bom.items.length}',
                       color: Colors.blue,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _StatBox(
+                    child: _InfoBox(
                       icon: Icons.settings,
                       label: 'Operations',
-                      value: bom.operations.length.toString(),
-                      color: Colors.orange,
+                      value: '${bom.operations.length}',
+                      color: Colors.purple,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _StatBox(
+                    child: _InfoBox(
                       icon: Icons.attach_money,
                       label: 'Total Cost',
                       value: bom.totalCost.toStringAsFixed(0),
@@ -234,29 +227,43 @@ class _BomCard extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // Quantity Info
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.production_quantity_limits, color: Colors.grey[700], size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Produces ${bom.quantity} ${bom.uom ?? "unit"}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                        fontWeight: FontWeight.w600,
+              // BOM ID and Status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    bom.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: bom.isActive
+                          ? Colors.green.withOpacity(0.1)
+                          : Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: bom.isActive
+                            ? Colors.green.withOpacity(0.3)
+                            : Colors.grey.withOpacity(0.3),
                       ),
                     ),
-                  ],
-                ),
+                    child: Text(
+                      bom.isActive ? 'ACTIVE' : 'INACTIVE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: bom.isActive ? Colors.green.shade700 : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -275,13 +282,13 @@ class _BomCard extends StatelessWidget {
   }
 }
 
-class _StatBox extends StatelessWidget {
+class _InfoBox extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
   final Color color;
 
-  const _StatBox({
+  const _InfoBox({
     required this.icon,
     required this.label,
     required this.value,
@@ -291,7 +298,7 @@ class _StatBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -300,11 +307,11 @@ class _StatBox extends StatelessWidget {
       child: Column(
         children: [
           Icon(icon, color: color, size: 24),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -312,7 +319,7 @@ class _StatBox extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: Colors.grey[700],
               fontWeight: FontWeight.w600,
             ),
@@ -367,13 +374,54 @@ class _BomDetailsSheet extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        bom.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                      if (bom.itemName != null) ..[
+                        const SizedBox(height: 4),
+                        Text(
+                          bom.itemName!,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
                         ),
+                      ],
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          if (bom.isActive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'ACTIVE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          if (bom.isDefault) ..[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'DEFAULT',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -401,11 +449,11 @@ class _BomDetailsSheet extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: [Colors.green.shade400, Colors.green.shade600],
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.green.withOpacity(0.3),
-                          blurRadius: 16,
+                          blurRadius: 12,
                           spreadRadius: 2,
                         ),
                       ],
@@ -418,7 +466,7 @@ class _BomDetailsSheet extends StatelessWidget {
                             color: Colors.white70,
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
+                            letterSpacing: 1.5,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -432,19 +480,50 @@ class _BomDetailsSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            Expanded(
-                              child: _CostItem(
-                                label: 'Material',
-                                value: bom.rawMaterialCost.toStringAsFixed(2),
-                              ),
+                            Column(
+                              children: [
+                                Text(
+                                  bom.rawMaterialCost.toStringAsFixed(2),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Text(
+                                  'Materials',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _CostItem(
-                                label: 'Operating',
-                                value: bom.operatingCost.toStringAsFixed(2),
-                              ),
+                            Container(
+                              width: 1,
+                              height: 40,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            Column(
+                              children: [
+                                Text(
+                                  bom.operatingCost.toStringAsFixed(2),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Text(
+                                  'Operations',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -454,92 +533,109 @@ class _BomDetailsSheet extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // Materials Section
-                  if (bom.items.isNotEmpty) ..[
-                    Row(
+                  // Production Quantity
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.inventory_2, color: Colors.blue[700], size: 24),
-                        const SizedBox(width: 8),
                         Text(
-                          'Materials (${bom.items.length})',
+                          'Quantity per BOM',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                        Text(
+                          '${bom.quantity.toInt()} ${bom.uom ?? "units"}',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
+                            color: Colors.blue.shade700,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Materials Section
+                  if (bom.items.isNotEmpty) ..[
+                    Text(
+                      'Materials (${bom.items.length})',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ...bom.items.map((item) => Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue.shade200),
+                        border: Border.all(color: Colors.grey.shade300),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.itemCode,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    if (item.itemName != null)
-                                      Text(
-                                        item.itemName!,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${item.qty} ${item.uom ?? ""}',
+                          Icon(Icons.inventory_2, color: Colors.blue[600], size: 28),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.itemCode,
                                   style: const TextStyle(
-                                    color: Colors.white,
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                                    fontSize: 16,
                                   ),
                                 ),
-                              ),
-                            ],
+                                if (item.itemName != null)
+                                  Text(
+                                    item.itemName!,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Qty: ${item.qty} ${item.uom ?? ""}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                'Rate: ${item.rate.toStringAsFixed(2)}',
+                                item.amount.toStringAsFixed(2),
                                 style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[700],
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green[700],
                                 ),
                               ),
                               Text(
-                                'Amount: ${item.amount.toStringAsFixed(2)}',
+                                '@ ${item.rate.toStringAsFixed(2)}',
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue[800],
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
                                 ),
                               ),
                             ],
@@ -552,19 +648,13 @@ class _BomDetailsSheet extends StatelessWidget {
 
                   // Operations Section
                   if (bom.operations.isNotEmpty) ..[
-                    Row(
-                      children: [
-                        Icon(Icons.settings, color: Colors.orange[700], size: 24),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Operations (${bom.operations.length})',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Operations (${bom.operations.length})',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ...bom.operations.asMap().entries.map((entry) {
@@ -574,9 +664,9 @@ class _BomDetailsSheet extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
+                          color: Colors.purple.shade50,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade200),
+                          border: Border.all(color: Colors.purple.shade200),
                         ),
                         child: Row(
                           children: [
@@ -584,7 +674,7 @@ class _BomDetailsSheet extends StatelessWidget {
                               width: 36,
                               height: 36,
                               decoration: BoxDecoration(
-                                color: Colors.orange,
+                                color: Colors.purple,
                                 shape: BoxShape.circle,
                               ),
                               child: Center(
@@ -618,60 +708,64 @@ class _BomDetailsSheet extends StatelessWidget {
                                         color: Colors.grey[600],
                                       ),
                                     ),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    '${op.timeInMins.toInt()} mins • Cost: ${op.operatingCost.toStringAsFixed(2)}',
+                                    '${op.timeInMins.toInt()} minutes',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.grey[500],
+                                      color: Colors.purple[700],
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
+                              ),
+                            ),
+                            Text(
+                              op.operatingCost.toStringAsFixed(2),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.purple[700],
                               ),
                             ),
                           ],
                         ),
                       );
                     }),
+                    const SizedBox(height: 24),
                   ],
 
-                  const SizedBox(height: 24),
+                  // Description
+                  if (bom.description != null) ..[
+                    Text(
+                      'Description',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        bom.description!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[700],
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CostItem extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _CostItem({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ],
