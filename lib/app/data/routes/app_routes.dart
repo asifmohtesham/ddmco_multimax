@@ -1,62 +1,21 @@
-abstract class AppRoutes {
-  static const LOGIN = '/login';
-  static const HOME = '/home';
-  static const PROFILE = _Paths.PROFILE;
-  static const PURCHASE_RECEIPT = _Paths.PURCHASE_RECEIPT;
-  static const PURCHASE_RECEIPT_FORM = _Paths.PURCHASE_RECEIPT_FORM;
-  static const PURCHASE_ORDER = _Paths.PURCHASE_ORDER; // Added
-  static const PURCHASE_ORDER_FORM = _Paths.PURCHASE_ORDER_FORM; // Added
-  static const STOCK_ENTRY = _Paths.STOCK_ENTRY;
-  static const STOCK_ENTRY_FORM = _Paths.STOCK_ENTRY_FORM;
-  static const DELIVERY_NOTE = _Paths.DELIVERY_NOTE;
-  static const DELIVERY_NOTE_FORM = _Paths.DELIVERY_NOTE_FORM;
-  static const PACKING_SLIP = _Paths.PACKING_SLIP;
-  static const PACKING_SLIP_FORM = _Paths.PACKING_SLIP_FORM;
-  static const POS_UPLOAD = _Paths.POS_UPLOAD;
-  static const POS_UPLOAD_FORM = _Paths.POS_UPLOAD_FORM;
-  static const TODO = _Paths.TODO;
-  static const TODO_FORM = _Paths.TODO_FORM;
-  static const ITEM = _Paths.ITEM;
-  static const ITEM_FORM = _Paths.ITEM_FORM;
-  static const BOM = _Paths.BOM;
-  static const WORK_ORDER = _Paths.WORK_ORDER;
-  static const JOB_CARD = _Paths.JOB_CARD;
-  static const BATCH = _Paths.BATCH;
-  static const BATCH_FORM = _Paths.BATCH_FORM;
-  static const MATERIAL_REQUEST = _Paths.MATERIAL_REQUEST;
-  static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
-  static const ABOUT = '/about';
-  static const STOCK_BALANCE_REPORT = _Paths.STOCK_BALANCE_REPORT;
-  static const STOCK_LEDGER_REPORT = _Paths.STOCK_LEDGER_REPORT;
-  static const BATCH_WISE_BALANCE_REPORT = _Paths.BATCH_WISE_BALANCE_REPORT;
-}
-
-abstract class _Paths {
-  static const PROFILE = '/profile';
-  static const PURCHASE_RECEIPT = '/purchase-receipt';
-  static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
-  static const PURCHASE_ORDER = '/purchase-order'; // Added
-  static const PURCHASE_ORDER_FORM = '/purchase-order/form'; // Added
-  static const STOCK_ENTRY = '/stock-entry';
-  static const STOCK_ENTRY_FORM = '/stock-entry/form';
-  static const DELIVERY_NOTE = '/delivery-note';
-  static const DELIVERY_NOTE_FORM = '/delivery-note/form';
-  static const PACKING_SLIP = '/packing-slip';
-  static const PACKING_SLIP_FORM = '/packing-slip/form';
-  static const POS_UPLOAD = '/pos-upload';
-  static const POS_UPLOAD_FORM = '/pos-upload/form';
-  static const TODO = '/todo';
-  static const TODO_FORM = '/todo/form';
-  static const ITEM = '/item';
-  static const ITEM_FORM = '/item/form';
-  static const BOM = '/bom';
-  static const WORK_ORDER = '/work-order';
-  static const JOB_CARD = '/job-card';
-  static const BATCH = '/batch';
-  static const BATCH_FORM = '/batch/form';
-  static const MATERIAL_REQUEST = '/material-request';
-  static const MATERIAL_REQUEST_FORM = '/material-request/form';
-  static const STOCK_BALANCE_REPORT = '/stock/reports/balance';
-  static const STOCK_LEDGER_REPORT = '/stock/reports/ledger';
-  static const BATCH_WISE_BALANCE_REPORT = '/stock/reports/batch-wise-balance';
+class AppRoutes {
+  // Existing routes
+  static const String HOME = '/home';
+  static const String LOGIN = '/login';
+  static const String WORK_ORDER = '/work-order';
+  static const String JOB_CARD = '/job-card';
+  static const String STOCK_ENTRY = '/stock-entry';
+  static const String PURCHASE_RECEIPT = '/purchase-receipt';
+  static const String DELIVERY_NOTE = '/delivery-note';
+  static const String PACKING_SLIP = '/packing-slip';
+  
+  // Manufacturing routes
+  static const String MANUFACTURING_HOME = '/manufacturing';
+  static const String BOM_LIST = '/manufacturing/bom';
+  static const String BOM_DETAIL = '/manufacturing/bom/:id';
+  static const String WORK_ORDER_LIST = '/manufacturing/work-order';
+  static const String WORK_ORDER_DETAIL = '/manufacturing/work-order/:id';
+  static const String JOB_CARD_LIST = '/manufacturing/job-card';
+  static const String JOB_CARD_DETAIL = '/manufacturing/job-card/:id';
+  static const String JOB_CARD_ACTIVE = '/manufacturing/job-card-active';
 }
