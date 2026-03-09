@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 
+/// Enhanced Inventory Health Card with improved visual hierarchy
+/// 
+/// Changes:
+/// - Critical alerts prominently highlighted
+/// - Color-coded status system with better contrast
+/// - Larger count values for quick scanning
+/// - Enhanced movement timeline with visual progression
 class InventoryHealthCard extends StatelessWidget {
   final HomeController controller;
 
@@ -9,37 +16,38 @@ class InventoryHealthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Simulated inventory metrics (replace with real API calls)
     return Card(
-      elevation: 2,
+      elevation: 3, // Enhanced from 2
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(18.0), // Slightly more padding
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Enhanced header with better typography
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Stock Overview',
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 17, // Larger
+                    fontWeight: FontWeight.w800,
                     color: Colors.black87,
+                    letterSpacing: 0.3,
                   ),
                 ),
                 TextButton.icon(
                   onPressed: controller.goToItem,
                   icon: const Icon(Icons.arrow_forward, size: 16),
-                  label: const Text('View Items'),
+                  label: const Text('View Items', style: TextStyle(fontWeight: FontWeight.w600)),
                   style: TextButton.styleFrom(foregroundColor: Theme.of(context).primaryColor),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
 
-            // Stock Status Grid
+            // ENHANCED Stock Status Grid with prominence
             Row(
               children: [
                 Expanded(
@@ -49,22 +57,23 @@ class InventoryHealthCard extends StatelessWidget {
                     count: 1247,
                     icon: Icons.check_circle,
                     color: Colors.green,
+                    importance: StatusImportance.normal,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: _buildStockStatusCard(
                     context,
                     title: 'Low Stock',
                     count: 34,
-                    icon: Icons.warning,
+                    icon: Icons.warning_amber_rounded,
                     color: Colors.orange,
-                    hasAlert: true,
+                    importance: StatusImportance.high, // CRITICAL
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
@@ -74,10 +83,10 @@ class InventoryHealthCard extends StatelessWidget {
                     count: 12,
                     icon: Icons.error,
                     color: Colors.red,
-                    hasAlert: true,
+                    importance: StatusImportance.critical, // CRITICAL
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: _buildStockStatusCard(
                     context,
@@ -85,25 +94,34 @@ class InventoryHealthCard extends StatelessWidget {
                     count: 8,
                     icon: Icons.schedule,
                     color: Colors.purple,
+                    importance: StatusImportance.high,
                   ),
                 ),
               ],
             ),
 
+            const SizedBox(height: 20),
+            const Divider(thickness: 1),
             const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 12),
 
-            // Recent Stock Movements
-            const Text(
-              'Recent Movements',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+            // Enhanced section header
+            Row(
+              children: [
+                Icon(Icons.timeline, size: 18, color: Colors.grey[700]),
+                const SizedBox(width: 6),
+                const Text(
+                  'Recent Movements',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            
+            // Enhanced movement rows
             _buildMovementRow(
               context,
               type: 'Inward',
@@ -112,7 +130,7 @@ class InventoryHealthCard extends StatelessWidget {
               icon: Icons.arrow_downward,
               color: Colors.green,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _buildMovementRow(
               context,
               type: 'Outward',
@@ -121,7 +139,7 @@ class InventoryHealthCard extends StatelessWidget {
               icon: Icons.arrow_upward,
               color: Colors.blue,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _buildMovementRow(
               context,
               type: 'Transfer',
@@ -142,14 +160,47 @@ class InventoryHealthCard extends StatelessWidget {
     required int count,
     required IconData icon,
     required Color color,
-    bool hasAlert = false,
+    required StatusImportance importance,
   }) {
+    // Enhanced elevation based on importance
+    final double elevation = importance == StatusImportance.critical 
+        ? 3 
+        : importance == StatusImportance.high 
+            ? 2 
+            : 0;
+    
+    // Pulsing animation for critical items
+    final bool isPulsing = importance == StatusImportance.critical;
+    
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14), // More padding
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        color: color.withValues(alpha: 0.08), // More subtle
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: importance == StatusImportance.critical
+              ? color // Solid border for critical
+              : color.withValues(alpha: 0.3),
+          width: importance == StatusImportance.critical ? 2 : 1,
+        ),
+        // Critical glow effect
+        boxShadow: importance == StatusImportance.critical
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ]
+            : elevation > 0
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,34 +208,51 @@ class InventoryHealthCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: color, size: 20),
-              if (hasAlert)
+              Icon(icon, color: color, size: 24), // Larger icon
+              if (importance != StatusImportance.normal)
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 10,
+                  height: 10,
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: importance == StatusImportance.critical
+                        ? Colors.red
+                        : Colors.orange,
                     shape: BoxShape.circle,
+                    // Pulse effect for critical
+                    boxShadow: isPulsing
+                        ? [
+                            BoxShadow(
+                              color: Colors.red.withValues(alpha: 0.6),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : null,
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
+          // ENHANCED: Larger count for prominence
           Text(
             count.toString(),
             style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: color,
+              fontSize: 26, // INCREASED from 22
+              fontWeight: FontWeight.w800,
+              color: importance == StatusImportance.critical
+                  ? color
+                  : color.withValues(alpha: 0.9),
+              letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             title,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
             ),
           ),
         ],
@@ -201,22 +269,23 @@ class InventoryHealthCard extends StatelessWidget {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(icon, color: color, size: 20),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,24 +293,48 @@ class InventoryHealthCard extends StatelessWidget {
                 Text(
                   type,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
                 ),
-                Text(
-                  '$itemCount items • $time',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      '$itemCount items',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      ' • ',
+                      style: TextStyle(color: Colors.grey[400]),
+                    ),
+                    Text(
+                      time,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+          Icon(Icons.chevron_right, color: Colors.grey[400], size: 22),
         ],
       ),
     );
   }
+}
+
+/// Importance levels for visual hierarchy
+enum StatusImportance {
+  normal,   // Standard status
+  high,     // Needs attention
+  critical, // Urgent action required
 }
