@@ -1,99 +1,86 @@
 import 'package:get/get.dart';
-import 'package:multimax/app/data/models/manufacturing/bom_model.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/erpnext_provider.dart';
+import 'package:multimax/app/modules/manufacturing/models/bom_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class BomController extends GetxController {
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final ErpnextProvider _provider = Get.find<ErpnextProvider>();
 
-  // Observables
+  final RxList<BomModel> boms = <BomModel>[].obs;
   final RxBool isLoading = false.obs;
-  final RxBool isLoadingDetail = false.obs;
-  final RxList<BomModel> bomList = <BomModel>[].obs;
-  final Rx<BomModel?> selectedBom = Rx<BomModel?>(null);
   final RxString searchQuery = ''.obs;
-  final RxString filterStatus = 'All'.obs; // All, Active, Inactive
 
   @override
   void onInit() {
     super.onInit();
-    fetchBomList();
+    fetchBoms();
   }
 
-  /// Fetch BOM list with filters
-  Future<void> fetchBomList() async {
+  Future<void> fetchBoms({bool silent = false}) async {
     try {
-      isLoading.value = true;
-      
+      if (!silent) isLoading.value = true;
+
       final filters = <String, dynamic>{
-        'docstatus': 1, // Submitted only
+        'is_active': 1,
       };
 
-      if (filterStatus.value == 'Active') {
-        filters['is_active'] = 1;
-      } else if (filterStatus.value == 'Inactive') {
-        filters['is_active'] = 0;
-      }
-
       if (searchQuery.value.isNotEmpty) {
-        // Search by item code or name
+        filters['item'] = ['like', '%${searchQuery.value}%'];
       }
 
-      final response = await _apiProvider.get(
-        '/api/resource/BOM',
-        queryParameters: {
-          'fields': '[
-            "name", "item", "item_name", "description", "quantity", "uom", 
-            "is_active", "is_default", "total_cost", "with_operations", 
-            "image", "modified", "creation"
-          ]',
-          'filters': filters,
-          'limit_page_length': 100,
-        },
+      final response = await _provider.getListWithFilters(
+        doctype: 'BOM',
+        fields: [
+          'name', 'item', 'item_name', 'quantity', 'uom',
+          'is_active', 'is_default', 'company', 'total_cost',
+          'operating_cost', 'raw_material_cost', 'description', 'modified'
+        ],
+        filters: filters,
+        orderBy: 'modified desc',
+        limit: 50,
       );
 
-      if (response.statusCode == 200) {
-        final data = response.body['data'] as List;
-        bomList.value = data.map((json) => BomModel.fromJson(json)).toList();
+      if (response != null && response['data'] != null) {
+        final List<dynamic> data = response['data'];
+        
+        // Fetch full BOM details including items and operations
+        final List<BomModel> fullBoms = [];
+        for (var bomData in data) {
+          final fullBom = await _fetchFullBom(bomData['name']);
+          if (fullBom != null) {
+            fullBoms.add(fullBom);
+          }
+        }
+        
+        boms.value = fullBoms;
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load BOM list: $e');
+      if (!silent) {
+        GlobalSnackbar.error(message: 'Failed to load BOMs: $e');
+      }
     } finally {
-      isLoading.value = false;
+      if (!silent) isLoading.value = false;
     }
   }
 
-  /// Fetch BOM detail
-  Future<void> fetchBomDetail(String bomName) async {
+  Future<BomModel?> _fetchFullBom(String name) async {
     try {
-      isLoadingDetail.value = true;
+      final response = await _provider.getDoc(
+        doctype: 'BOM',
+        name: name,
+      );
 
-      final response = await _apiProvider.get('/api/resource/BOM/$bomName');
-
-      if (response.statusCode == 200) {
-        selectedBom.value = BomModel.fromJson(response.body['data']);
+      if (response != null && response['data'] != null) {
+        return BomModel.fromJson(response['data']);
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load BOM details: $e');
-    } finally {
-      isLoadingDetail.value = false;
+      // Silent failure for individual BOMs
     }
+    return null;
   }
 
-  /// Set filter status
-  void setFilterStatus(String status) {
-    filterStatus.value = status;
-    fetchBomList();
-  }
-
-  /// Search BOM
-  void searchBom(String query) {
+  void searchBoms(String query) {
     searchQuery.value = query;
-    fetchBomList();
-  }
-
-  /// Navigate to BOM detail
-  void goToBomDetail(String bomName) {
-    Get.toNamed('/manufacturing/bom/$bomName');
+    fetchBoms();
   }
 }
