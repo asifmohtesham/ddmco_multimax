@@ -2,305 +2,140 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:dio/dio.dart';
-import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
+import 'package:collection/collection.dart';
 
+// Models
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'package:multimax/app/data/models/scan_result_model.dart';
 
+// Providers
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 
-import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
+// Services
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
-import 'package:multimax/app/data/models/serial_and_batch_bundle_model.dart';
-import 'package:multimax/app/data/mixins/serial_batch_bundle_mixin.dart';
 
-// 1. Define the Enum used by the screen
-enum StockEntrySource {
-  manual,
-  materialRequest,
-  posUpload
-}
+// Widgets & Sheets
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
+import 'controllers/stock_entry_item_form_controller.dart';
 
-class StockEntryFormController extends GetxController with OptimisticLockingMixin, SerialBatchBundleMixin {
+enum StockEntrySource { manual, materialRequest, posUpload }
+
+class StockEntryFormController extends GetxController {
   // --- Dependencies ---
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
-  final StorageService _storageService = Get.find<StorageService>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
-  // --- Arguments ---
+  // --- Arguments & State ---
   String name = Get.arguments?['name'] ?? '';
   String mode = Get.arguments?['mode'] ?? 'view';
-  final String? argStockEntryType = Get.arguments?['stockEntryType'];
-  final String? argCustomReferenceNo = Get.arguments?['customReferenceNo'];
 
-  // --- State ---
+  // --- UI Controllers ---
+  final ScrollController scrollController = ScrollController();
+  final TextEditingController barcodeController = TextEditingController();
+  final TextEditingController customReferenceNoController = TextEditingController();
+
   var isLoading = true.obs;
-  var isScanning = false.obs;
   var isSaving = false.obs;
   var isDirty = false.obs;
-  var isAddingItem = false.obs;
+  var isScanning = false.obs;
 
-  var stockEntry = Rx<StockEntry?>(null);
+  var stockEntry = Rxn<StockEntry>();
 
-  // 2. Define the source variable accessed by the screen
-  var entrySource = StockEntrySource.manual;
-
-  // --- Context Data ---
-  // 3. Define the reference items list accessed by the screen
-  var mrReferenceItems = <Map<String, dynamic>>[];
-
-  var posUpload = Rx<PosUpload?>(null);
-  var posUploadSerialOptions = <String>[].obs;
-  var expandedInvoice = ''.obs;
-
-  // --- Form Fields ---
+  // Header Fields
+  var selectedStockEntryType = 'Material Transfer'.obs;
   var selectedFromWarehouse = RxnString();
   var selectedToWarehouse = RxnString();
-  final customReferenceNoController = TextEditingController();
 
-  var stockEntryTypes = <String>[].obs;
-  var isFetchingTypes = false.obs;
-  var selectedStockEntryType = 'Material Transfer'.obs;
-
+  // Reference Data
   var warehouses = <String>[].obs;
+  var stockEntryTypes = <String>[].obs;
   var isFetchingWarehouses = false.obs;
+  var isFetchingTypes = false.obs;
 
-  // --- Item Form State ---
-  var rackStockBalance = RxnDouble();
-  final bsSourceRackController = TextEditingController();
-  final bsTargetRackController = TextEditingController();
-  final TextEditingController barcodeController = TextEditingController();
+  // Context Data
+  var entrySource = StockEntrySource.manual;
+  var mrReferenceItems = <Map<String, dynamic>>[];
+  var posUpload = Rxn<PosUpload>();
+  var posUploadSerialOptions = <String>[].obs;
 
-  // New Item Level Warehouse Fields
-  var bsItemSourceWarehouse = RxnString();
-  var bsItemTargetWarehouse = RxnString();
-
-  var bsMaxQty = 0.0.obs;
-  var bsValidationMaxQty = 0.0.obs;
-
+  // UI State
   var isItemSheetOpen = false.obs;
-  var isSheetValid = false.obs;
-  // FLAG to block dirty check during init
-  bool _isInitialisingSheet = false;
-
-  var bsIsBatchReadOnly = false.obs;
-  var bsIsBatchValid = false.obs;
-  var isValidatingBatch = false.obs;
-
-  var isSourceRackValid = false.obs;
-  var isTargetRackValid = false.obs;
-  var isValidatingSourceRack = false.obs;
-  var isValidatingTargetRack = false.obs;
-
-  var rackError = RxnString();
-  var batchError = RxnString();
-
-  var currentItemCode = '';
-  var currentVariantOf = '';
-  var currentItemName = '';
-  var currentUom = '';
-  var currentItemNameKey = RxnString();
-  var selectedSerial = RxnString();
-  var bsItemOwner = RxnString();
-  var bsItemCreation = RxnString();
-  var bsItemModified = RxnString();
-  var bsItemModifiedBy = RxnString();
-
-  var derivedSourceWarehouse = RxnString();
-  var derivedTargetWarehouse = RxnString();
-
-  String _initialQty = '';
-  String _initialBatch = '';
-  String _initialSourceRack = '';
-  String _initialTargetRack = '';
-  // Snapshot of initial bundle entries for change detection
-  List<SerialAndBatchEntry> _initialSabbEntries = [];
-
-  String currentScannedEan = '';
   var recentlyAddedItemName = ''.obs;
-
-  var itemFormKey = GlobalKey<FormState>();
-  final ScrollController scrollController = ScrollController();
+  var expandedInvoice = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
 
-  Timer? _autoSubmitTimer;
+  // --- Dirty Data Tracking (Sidecar Pattern) ---
+  // Map of <BundleID, BundleObject>.
+  // Key can be a real ID (if editing existing) or "local_timestamp" (if new).
+  final Map<String, SerialAndBatchBundle> unsavedBundles = {};
+
   Worker? _scanWorker;
+
+  // --- Computed Props ---
+  Map<String, List<StockEntryItem>> get groupedItems {
+    if (stockEntry.value == null) return {};
+    // Group items by their serial number (invoice index) for POS view
+    return groupBy(stockEntry.value!.items, (item) => item.customInvoiceSerialNumber ?? 'Other');
+  }
 
   @override
   void onInit() {
     super.onInit();
-    _initDependencies();
-    // [OPTIONAL] Set default value if needed, using the mixin's controller
-    bsQtyController.text = '';
-
-    if (mode == 'new') {
-      _initNewStockEntry();
-    } else {
-      fetchStockEntry();
-    }
-
-    // Auto-calculate total bundle qty when entries change
-    // --- SABB IMPLEMENTATION: Sync Logic ---
-    // Replicate logic from DeliveryNoteFormController to keep UI and Bundle in sync
-    ever(sabbEntries, (_) {
-      double total = 0;
-      for (var e in sabbEntries) total += e.qty.abs();
-      bundleTotalQty.value = total;
-
-      // Sync UI if in SABB mode
-      if (useSerialBatchFields.value == 0 && isItemSheetOpen.value) {
-        // Only update text if significantly different to avoid cursor jumps
-        final currentTextVal = double.tryParse(bsQtyController.text) ?? 0.0;
-        if ((currentTextVal - total).abs() > 0.001) {
-          bsQtyController.text = total.toStringAsFixed(2);
-        }
-      }
-
-      // Re-validate validity
-      validateSheet();
-
-      // Mark dirty if content changed (unless initialising)
-      if (!_isInitialisingSheet) {
-        if (_hasChanges()) {
-          _markDirty();
-        }
-        // Restart timer regardless of dirty flag if valid (to catch updates)
-        _restartAutoSubmitTimer();
-      }
-    });
+    _initWorkers();
+    _loadInitialData();
   }
 
-  void _initDependencies() {
-    fetchWarehouses();
-    fetchStockEntryTypes();
+  @override
+  void onClose() {
+    _scanWorker?.dispose();
+    customReferenceNoController.dispose();
+    scrollController.dispose();
+    barcodeController.dispose();
+    super.onClose();
+  }
 
+  // --- Initialization ---
+  void _initWorkers() {
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty) scanBarcode(code);
+      if (code.isNotEmpty) _handleGlobalScan(code);
     });
 
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
 
-    // Watch item warehouse changes to update stock balance
-    ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
-
     customReferenceNoController.addListener(() {
       _markDirty();
-      if (entrySource == StockEntrySource.manual &&
-          selectedStockEntryType.value == 'Material Issue' &&
-          customReferenceNoController.text.isNotEmpty) {
-        final ref = customReferenceNoController.text;
-        if (ref.startsWith('KX') || ref.startsWith('MX')) {
-          _fetchPosUploadDetails(ref);
-        }
-      }
-    });
-
-    bsQtyController.addListener(validateSheet);
-    bsBatchController.addListener(validateSheet);
-    bsSourceRackController.addListener(validateSheet);
-    bsTargetRackController.addListener(validateSheet);
-    ever(selectedSerial, (_) => validateSheet());
-    ever(bsItemSourceWarehouse, (_) => validateSheet());
-    ever(bsItemTargetWarehouse, (_) => validateSheet());
-
-    _setupAutoSubmit();
-  }
-
-  void _setupAutoSubmit() {
-    ever(isSheetValid, (bool valid) {
-      _restartAutoSubmitTimer();
+      _checkPosUploadReference();
     });
   }
 
-  void _restartAutoSubmitTimer() {
-    _autoSubmitTimer?.cancel();
-    // Only auto-submit if sheet is valid AND open AND doc is draft
-    // AND we actually have changes (to avoid looping on open)
-    if (isSheetValid.value && isItemSheetOpen.value && stockEntry.value?.docstatus == 0) {
-      if (_hasChanges() && _storageService.getAutoSubmitEnabled()) {
-        final int delay = _storageService.getAutoSubmitDelay();
-        _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
-          if (isSheetValid.value && isItemSheetOpen.value) {
-            isAddingItem.value = true;
-            await Future.delayed(const Duration(milliseconds: 500));
-            await addItem();
-            isAddingItem.value = false;
-            if (Get.isBottomSheetOpen == true) Get.back();
-          }
-        });
-      }
-    }
-  }
+  Future<void> _loadInitialData() async {
+    await Future.wait([
+      fetchWarehouses(),
+      _fetchStockEntryTypes(),
+    ]);
 
-  // Helper to compare current SABB entries with initial snapshot
-  bool _areSabbEntriesEqual(List<SerialAndBatchEntry> list1, List<SerialAndBatchEntry> list2) {
-    if (list1.length != list2.length) return false;
-
-    // Create sorted copies to ignore order changes if any
-    final l1 = List.of(list1)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
-    final l2 = List.of(list2)..sort((a,b) => (a.batchNo ?? '').compareTo(b.batchNo ?? ''));
-
-    for(int i=0; i<l1.length; i++) {
-      if (l1[i].batchNo != l2[i].batchNo) return false;
-      // Compare absolute values to handle Inward/Outward sign differences logic safely
-      if ((l1[i].qty.abs() - l2[i].qty.abs()).abs() > 0.001) return false;
-    }
-    return true;
-  }
-
-  // Modified _hasChanges to use Deep Comparison for SABB
-  bool _hasChanges() {
-    // New items are always considered "changed"
-    if (currentItemNameKey.value == null) return true;
-
-    // SABB Mode Deep Check
-    if (useSerialBatchFields.value == 0) {
-      if (!_areSabbEntriesEqual(sabbEntries, _initialSabbEntries)) return true;
+    if (mode == 'new') {
+      await _initNewStockEntry();
     } else {
-      // Legacy Mode Check
-      if (bsBatchController.text != _initialBatch) return true;
-      // Only check Qty text in Legacy mode.
-      // In SABB mode, Qty text is derived from entries, so we trust _areSabbEntriesEqual
-      if (bsQtyController.text != _initialQty) return true;
+      await _fetchExistingStockEntry();
     }
-
-    if (bsSourceRackController.text != _initialSourceRack) return true;
-    if (bsTargetRackController.text != _initialTargetRack) return true;
-
-    return false;
-  }
-
-  @override
-  void onClose() {
-    _scanWorker?.dispose();
-    _autoSubmitTimer?.cancel();
-    barcodeController.dispose();
-    bsSourceRackController.dispose();
-    bsTargetRackController.dispose();
-    customReferenceNoController.dispose();
-    super.onClose();
   }
 
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
-    final now = DateTime.now();
-    final type = argStockEntryType ?? 'Material Transfer';
-    final ref = argCustomReferenceNo ?? '';
+    final type = Get.arguments?['stockEntryType'] ?? 'Material Transfer';
+    final ref = Get.arguments?['customReferenceNo'] ?? '';
 
     selectedStockEntryType.value = type;
     customReferenceNoController.text = ref;
@@ -310,29 +145,29 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     if (entrySource == StockEntrySource.materialRequest) {
       await _initMaterialRequestFlow(ref);
     } else if (entrySource == StockEntrySource.posUpload) {
-      await _initPosUploadFlow(ref);
+      await _fetchPosUploadDetails(ref);
     }
 
     stockEntry.value = StockEntry(
       name: 'New Stock Entry',
       purpose: type,
       totalAmount: 0.0,
-      postingDate: DateFormat('yyyy-MM-dd').format(now),
+      postingDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
       modified: '',
-      creation: now.toString(),
+      creation: DateTime.now().toString(),
       status: 'Draft',
       docstatus: 0,
       stockEntryType: type,
-      postingTime: DateFormat('HH:mm:ss').format(now),
-      customTotalQty: 0.0,
-      customReferenceNo: ref,
       currency: 'AED',
       items: [],
+      customReferenceNo: ref,
     );
 
     isLoading.value = false;
     isDirty.value = true;
   }
+
+  // --- Core Methods ---
 
   void _determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {
@@ -340,7 +175,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     } else if (type == 'Material Issue' && (ref.startsWith('KX') || ref.startsWith('MX'))) {
       entrySource = StockEntrySource.posUpload;
     } else if (ref.isNotEmpty) {
-      // If items are not passed but a reference exists (and not POS), treat as Material Request fetch
       entrySource = StockEntrySource.materialRequest;
     } else {
       entrySource = StockEntrySource.manual;
@@ -348,11 +182,11 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   Future<void> _initMaterialRequestFlow(String ref) async {
+    // Logic to fetch MR items if passed in args or via API
     if (Get.arguments?['items'] is List && Get.arguments?['items'].isNotEmpty) {
       final rawItems = Get.arguments['items'] as List;
       mrReferenceItems = rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } else {
-      // Fetch MR Items if not passed in arguments
       try {
         final response = await _apiProvider.getDocument('Material Request', ref);
         if (response.statusCode == 200 && response.data['data'] != null) {
@@ -364,59 +198,20 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
             'material_request': ref,
             'material_request_item': i['name']
           }).toList();
-        } else {
-          GlobalSnackbar.error(message: 'Failed to fetch Material Request details');
         }
       } catch (e) {
-        GlobalSnackbar.error(message: 'Error fetching Material Request: $e');
+        GlobalSnackbar.error(message: 'Error fetching MR: $e');
       }
     }
   }
 
-  Future<void> _initPosUploadFlow(String ref) async {
-    await _fetchPosUploadDetails(ref);
-  }
-
-  Future<void> fetchStockEntry() async {
-    isLoading.value = true;
-    try {
-      final response = await _provider.getStockEntry(name);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final entry = StockEntry.fromJson(response.data['data']);
-        stockEntry.value = entry;
-
-        selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
-        selectedFromWarehouse.value = entry.fromWarehouse;
-        selectedToWarehouse.value = entry.toWarehouse;
-        customReferenceNoController.text = entry.customReferenceNo ?? '';
-
-        if (entry.stockEntryType == 'Material Issue' && entry.customReferenceNo != null) {
-          final ref = entry.customReferenceNo!;
-          if (ref.startsWith('KX') || ref.startsWith('MX')) {
-            entrySource = StockEntrySource.posUpload;
-            await _fetchPosUploadDetails(ref);
-          } else if (entry.items.any((i) => i.materialRequest != null)) {
-            entrySource = StockEntrySource.materialRequest;
-            // If items are linked to a Material Request, fetch its details to restore context (like max qty)
-            final firstLinkedItem = entry.items.firstWhereOrNull((i) => i.materialRequest != null);
-            if (firstLinkedItem != null && firstLinkedItem.materialRequest!.isNotEmpty) {
-              await _initMaterialRequestFlow(firstLinkedItem.materialRequest!);
-            }
-          } else {
-            entrySource = StockEntrySource.manual;
-          }
-        } else {
-          entrySource = StockEntrySource.manual;
-        }
-
-        isDirty.value = false;
-      } else {
-        GlobalSnackbar.error(message: 'Failed to fetch stock entry');
+  void _checkPosUploadReference() {
+    if (entrySource == StockEntrySource.manual &&
+        selectedStockEntryType.value == 'Material Issue') {
+      final ref = customReferenceNoController.text;
+      if (ref.startsWith('KX') || ref.startsWith('MX')) {
+        _fetchPosUploadDetails(ref);
       }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -426,739 +221,281 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       if (response.statusCode == 200 && response.data['data'] != null) {
         final pos = PosUpload.fromJson(response.data['data']);
         posUpload.value = pos;
-        final count = pos.items.length;
-        posUploadSerialOptions.value = List.generate(count, (index) => (index + 1).toString());
+        posUploadSerialOptions.value = List.generate(pos.items.length, (index) => (index + 1).toString());
+        entrySource = StockEntrySource.posUpload;
       }
     } catch (e) {
       print('Error fetching POS Upload: $e');
     }
   }
 
-  bool _validateScanContext(ScanResult result) {
-    if (entrySource == StockEntrySource.materialRequest) {
-      if (mrReferenceItems.isEmpty) return true;
+  // --- Scanning & UI Actions ---
 
-      final scannedItemCode = result.itemData?.itemCode ?? '';
-      bool found = false;
-
-      for (var item in mrReferenceItems) {
-        if (item['item_code'].toString().trim().toLowerCase() == scannedItemCode.trim().toLowerCase()) {
-          found = true;
-          break;
-        }
+  void _handleGlobalScan(String code) {
+    if (isItemSheetOpen.value) {
+      if (Get.isRegistered<StockEntryItemFormController>()) {
+        Get.find<StockEntryItemFormController>().handleScan(code);
       }
-
-      if (!found) {
-        GlobalSnackbar.error(message: 'Item $scannedItemCode not found in Material Request');
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// Checks if the entered quantity exceeds the remaining quantity in the Material Request.
-  bool _checkMrConstraints() {
-    if (mrReferenceItems.isEmpty) return true;
-    final ref = mrReferenceItems.firstWhereOrNull((r) =>
-    r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
-
-    // Step 2: If item exists in MR, validate quantity
-    if (ref != null) {
-      final double allowed = (ref['qty'] as num).toDouble();
-      bsValidationMaxQty.value = allowed; // Update UI hint
-
-      final current = double.tryParse(bsQtyController.text) ?? 0;
-      if (current > allowed) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  /// Validates POS Upload specific logic.
-  bool _checkPosConstraints() {
-    // Only applies to 'Material Issue' types (Selling logic)
-    if (selectedStockEntryType.value != 'Material Issue') return true;
-
-    // Step 1: Check if Serial is missing
-    if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
-
-      // Step 2: Bypass for 'MAT-STE-' references (Legacy/Manual overrides)
-      if (!customReferenceNoController.text.startsWith('MAT-STE-')) {
-
-        // Step 3: Failure Condition
-        // If we have Serial Options available (fetched from API) but none is selected, FAIL.
-        // This forces the user to select which Invoice/Serial this item belongs to.
-        if (posUploadSerialOptions.isNotEmpty) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  StockEntryItem _enrichItemWithSourceData(StockEntryItem item) {
-    String? matReq = item.materialRequest;
-    String? matReqItem = item.materialRequestItem;
-    String? serial = item.customInvoiceSerialNumber;
-
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) =>
-      r['item_code'].toString().trim().toLowerCase() == item.itemCode.trim().toLowerCase());
-
-      if (ref != null) {
-        matReq = ref['material_request'];
-        matReqItem = ref['material_request_item'];
-        serial = "0";
-      }
-    } else if (entrySource == StockEntrySource.posUpload) {
-      serial = selectedSerial.value;
-    }
-
-    return StockEntryItem(
-      name: item.name,
-      itemCode: item.itemCode,
-      qty: item.qty,
-      basicRate: item.basicRate,
-      itemGroup: item.itemGroup,
-      customVariantOf: item.customVariantOf,
-      batchNo: item.batchNo,
-      itemName: item.itemName,
-      rack: item.rack,
-      toRack: item.toRack,
-      sWarehouse: item.sWarehouse,
-      tWarehouse: item.tWarehouse,
-      customInvoiceSerialNumber: serial,
-      materialRequest: matReq,
-      materialRequestItem: matReqItem,
-      owner: item.owner,
-      creation: item.creation,
-      modified: item.modified,
-      modifiedBy: item.modifiedBy,
-      // --- FIX: Pass the SABB fields here ---
-      serialAndBatchBundle: item.serialAndBatchBundle,
-      useSerialBatchFields: item.useSerialBatchFields,
-    );
-  }
-
-  Future<void> addItem() async {
-    String? bundleId;
-    final type = selectedStockEntryType.value;
-
-    // --- SABB Creation Logic ---
-    if (useSerialBatchFields.value == 0) {
-      if (sabbEntries.isEmpty) {
-        GlobalSnackbar.error(message: "No Batch Entries added");
-        return;
-      }
-      try {
-        isAddingItem.value = true;
-
-        // Determine Direction:
-        // Issue/Transfer = Outward (from Source)
-        // Receipt = Inward (to Target)
-        final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-
-        final wh = isOutward
-            ? (bsItemSourceWarehouse.value ?? selectedFromWarehouse.value)
-            : (bsItemTargetWarehouse.value ?? selectedToWarehouse.value);
-
-        if (wh == null || wh.isEmpty) {
-          GlobalSnackbar.error(message: "Warehouse not defined for Bundle creation");
-          isAddingItem.value = false;
-          return;
-        }
-
-        bundleId = await saveOrUpdateSerialBatchBundle(
-          itemCode: currentItemCode,
-          warehouse: wh,
-          isOutward: isOutward,
-          voucherType: 'Stock Entry',
-          voucherNo: (mode != 'new') ? name : null
-        );
-      } catch (e) {
-        isAddingItem.value = false;
-        GlobalSnackbar.error(message: 'Error creating Bundle: $e');
-        return;
-      }
-    }
-
-    // Sync Qty: SABB uses Bundle Total, Legacy uses text input
-    double qty = useSerialBatchFields.value == 0
-        ? bundleTotalQty.value
-        : (double.tryParse(bsQtyController.text) ?? 0);
-
-    if (qty <= 0) {
-      isAddingItem.value = false;
-      return;
-    }
-
-    // Prepare fields
-    // If SABB mode (0), batchNo must be empty string. If Legacy (1), use controller text.
-    final String batchNo = useSerialBatchFields.value == 0 ? '' : bsBatchController.text;
-
-    final sourceRack = bsSourceRackController.text;
-    final targetRack = bsTargetRackController.text;
-
-    // Updated Logic: Prefer Item Level Warehouse, fallback to Derived (scan), fallback to Header
-    final sWh = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
-    final tWh = bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value;
-
-    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    final currentItems = stockEntry.value?.items.toList() ?? [];
-    final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
-
-    StockEntryItem newItem;
-
-    if (existingIndex != -1) {
-      // --- UPDATE EXISTING ITEM ---
-      final existing = currentItems[existingIndex];
-      newItem = StockEntryItem(
-        name: existing.name,
-        itemCode: existing.itemCode,
-        qty: qty,
-        basicRate: existing.basicRate,
-        itemGroup: existing.itemGroup,
-        customVariantOf: existing.customVariantOf,
-        batchNo: batchNo,
-        itemName: existing.itemName,
-        rack: sourceRack,
-        toRack: targetRack,
-        sWarehouse: sWh,
-        tWarehouse: tWh,
-        customInvoiceSerialNumber: selectedSerial.value,
-        materialRequest: existing.materialRequest,
-        materialRequestItem: existing.materialRequestItem,
-        owner: existing.owner,
-        creation: existing.creation,
-        modified: existing.modified,
-        modifiedBy: existing.modifiedBy,
-
-        // --- Store Bundle Info ---
-        useSerialBatchFields: useSerialBatchFields.value,
-        // If a new bundle was created, use it. Otherwise keep existing (unless switching modes).
-        serialAndBatchBundle: bundleId ?? existing.serialAndBatchBundle,
-      );
     } else {
-      newItem = StockEntryItem(
-        name: uniqueId,
-        itemCode: currentItemCode,
-        qty: qty,
-        basicRate: 0.0,
-        itemGroup: null,
-        customVariantOf: currentVariantOf,
-        batchNo: batchNo,
-        itemName: currentItemName,
-        rack: sourceRack,
-        toRack: targetRack,
-        sWarehouse: sWh,
-        tWarehouse: tWh,
-        customInvoiceSerialNumber: selectedSerial.value,
-
-        // --- Store Bundle Info ---
-        useSerialBatchFields: useSerialBatchFields.value,
-        serialAndBatchBundle: bundleId,
-      );
-    }
-
-    // Enrich with context data (Material Request / POS links)
-    newItem = _enrichItemWithSourceData(newItem);
-
-    if (existingIndex != -1) {
-      currentItems[existingIndex] = newItem;
-    } else {
-      currentItems.add(newItem);
-    }
-
-    stockEntry.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-
-    barcodeController.clear();
-    triggerHighlight(uniqueId);
-
-    if (mode == 'new') {
-      saveStockEntry();
-    } else {
-      isDirty.value = true;
-      saveStockEntry().then((_) {
-        GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
-      }).catchError((e) {
-        print("Background save error: $e");
-      });
-    }
-
-    isAddingItem.value = false;
-  }
-
-  void validateSheet() {
-    bool valid = true;
-
-    // Qty Check
-    if (!_isValidQty()) valid = false;
-
-    // Batch Check (Handles SABB vs Legacy)
-    if (!_isValidBatch()) valid = false;
-
-    // Context & Racks
-    if (!_isValidContext()) valid = false;
-    if (!_isValidRacks()) valid = false;
-
-    // Dirty Check
-    if (!_hasChanges()) valid = false;
-
-    isSheetValid.value = valid;
-  }
-
-  bool _isValidQty() {
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) return false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
-    return true;
-  }
-
-  bool _isValidBatch() {
-    // Legacy Mode
-    if (useSerialBatchFields.value == 1) {
-      if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
-      if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
-      return true;
-    }
-    // SABB Mode: Must have entries
-    else {
-      return sabbEntries.isNotEmpty;
+      _processNewItemScan(code);
     }
   }
 
-  /// Validates the context-specific rules for Material Requests or POS Uploads.
-  /// If this returns false, the [Sheet] validation fails.
-  bool _isValidContext() {
-    print('--- Checking Context Validity ---');
-    print('Current Entry Source: $entrySource');
+  // Exposed for BarcodeInputWidget
+  void scanBarcode(String code) => _handleGlobalScan(code);
 
-    // SCENARIO 1: Material Request
-    // Rules: Must have a valid Serial (Invoice/Ref), Item Code, and Qty within limits.
-    if (entrySource == StockEntrySource.materialRequest) {
-      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) return false;
-      if (currentItemCode.isEmpty) return false;
-      return _checkMrConstraints();
-    } else if (entrySource == StockEntrySource.posUpload) {
-      return _checkPosConstraints();
-    }
-    return true;
-  }
-
-  bool _isValidRacks() {
-    final type = selectedStockEntryType.value;
-    final requiresSource = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-    final requiresTarget = ['Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-
-    // 1. Source Rack Validation
-    if (requiresSource) {
-      if (bsSourceRackController.text.isNotEmpty) {
-        // If rack entered, it must be valid (async check sets isSourceRackValid)
-        if (!isSourceRackValid.value) return false;
-      } else {
-        // Updated: Check Item Level Warehouse as valid fallback
-        final effectiveSWh = bsItemSourceWarehouse.value ?? selectedFromWarehouse.value;
-        if (effectiveSWh == null || effectiveSWh.isEmpty) {
-          rackError.value = 'Source Warehouse or Rack required';
-          return false;
-        } else if (rackError.value == 'Source Warehouse or Rack required' || rackError.value == 'No Warehouse Selected') {
-          // Clear specific errors if resolved by warehouse selection
-          rackError.value = null;
-        }
-      }
-    }
-
-    // 2. Target Rack Validation
-    if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) return false;
-    }
-
-    // 3. Cross-Check (Source != Target)
-    if (requiresSource && requiresTarget) {
-      final source = bsSourceRackController.text.trim();
-      final target = bsTargetRackController.text.trim();
-      if (source.isNotEmpty && source == target) {
-        rackError.value = "Source and Target Racks cannot be the same";
-        return false;
-      }
-    }
-
-    // Clear cross-check error if valid
-    if (rackError.value == "Source and Target Racks cannot be the same") {
-      rackError.value = null;
-    }
-
-    return true;
-  }
-
-  void _openQtySheet({String? scannedBatch}) async {
-    itemFormKey = GlobalKey<FormState>();
-    bsQtyController.clear();
-    bsBatchController.clear();
-    bsSourceRackController.clear();
-    bsTargetRackController.clear();
-    derivedSourceWarehouse.value = null;
-    derivedTargetWarehouse.value = null;
-    bsMaxQty.value = 0.0;
-    bsValidationMaxQty.value = 0.0;
-
-    // Reset Item Warehouses
-    bsItemSourceWarehouse.value = null;
-    bsItemTargetWarehouse.value = null;
-
-    // Set flag before calling mixin
-    _isInitialisingSheet = true;
-    _initialSabbEntries = []; // Empty for new item
-
-    rackStockBalance.value = null;
-
-    // Resolve Warehouse based on Transaction Type
-    final type = selectedStockEntryType.value;
-    final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-    final wh = isOutward
-      ? (bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value)
-      : (bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value);
-
-    // --- UPDATED MIXIN CALL ---
-    await initSabbState(
-      useFields: 0,
-      bundleId: null,
-      legacyBatch: scannedBatch,
-      itemCode: currentItemCode,
-      warehouse: wh ?? '',
-      validateOutwardStock: isOutward
-    );
-
-    // If scanned batch provided, add it immediately
-    if (scannedBatch != null) {
-      if (useSerialBatchFields.value == 0) {
-        validateAndAddBatch(scannedBatch, 1.0);
-      } else {
-        bsBatchController.text = scannedBatch;
-        validateBatch(scannedBatch);
-      }
-    }
-
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
-      if (ref != null) {
-        bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
-      }
-    }
-
-    bsIsBatchReadOnly.value = false;
-    bsIsBatchValid.value = false;
-    isValidatingBatch.value = false;
-    isSourceRackValid.value = false;
-    isTargetRackValid.value = false;
-    isSheetValid.value = false;
-    rackError.value = null;
-    batchError.value = null;
-    selectedSerial.value = null;
-    currentItemNameKey.value = null;
-    bsItemOwner.value = null;
-    bsItemCreation.value = null;
-    bsItemModified.value = null;
-    bsItemModifiedBy.value = null;
-    _initialQty = '';
-    _initialBatch = '';
-    _initialSourceRack = '';
-    _initialTargetRack = '';
-
-    if (scannedBatch != null) {
-      bsBatchController.text = scannedBatch;
-      validateBatch(scannedBatch);
-    }
-
-    if (entrySource == StockEntrySource.materialRequest) {
-      selectedSerial.value = '0';
-    }
-
-    isItemSheetOpen.value = true;
-
-    Get.bottomSheet(
-      SizedBox(
-        // Takes up 85% of screen height
-        height: Get.height * 0.85,
-        child: StockEntryItemFormSheet(
-          controller: this,
-          scrollController: scrollController,
-          // formKey: itemFormKey,
-        ),
-      ),
-      isScrollControlled: true, // Required to allow height > 50%
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-    });
-
-    if (scannedBatch != null) {
-      if (useSerialBatchFields.value == 0) {
-        // SABB Mode: Add to list immediately
-        await validateAndAddBatch(scannedBatch, null);
-      } else {
-        // Legacy Mode: Set text field
-        bsBatchController.text = scannedBatch;
-        validateBatch(scannedBatch);
-      }
-    }
-  }
-
-  void editItem(StockEntryItem item, {String? autoAddBatch}) async {
-    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
-
-    // Set flag to BLOCK dirty marking during load
-    _isInitialisingSheet = true;
-
-    itemFormKey = GlobalKey<FormState>();
-    currentItemCode = item.itemCode;
-    currentVariantOf = item.customVariantOf ?? '';
-    currentItemName = item.itemName ?? '';
-    currentItemNameKey.value = item.name;
-    bsItemOwner.value = item.owner;
-    bsItemCreation.value = item.creation;
-    bsItemModified.value = item.modified;
-    bsItemModifiedBy.value = item.modifiedBy;
-
-    String qtyStr = item.qty.toString();
-    if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
-    bsQtyController.text = qtyStr;
-
-    bsBatchController.text = item.batchNo ?? '';
-    bsSourceRackController.text = item.rack ?? '';
-    bsTargetRackController.text = item.toRack ?? '';
-    selectedSerial.value = item.customInvoiceSerialNumber;
-
-    // Resolve Warehouse
-    final type = selectedStockEntryType.value;
-    final isOutward = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-    final wh = isOutward
-        ? (item.sWarehouse ?? selectedFromWarehouse.value)
-        : (item.tWarehouse ?? selectedToWarehouse.value);
-
-    // --- UPDATED MIXIN CALL ---
-    await initSabbState(
-      useFields: item.useSerialBatchFields,
-      bundleId: item.serialAndBatchBundle,
-      legacyBatch: item.batchNo,
-      itemCode: item.itemCode,
-      warehouse: wh ?? '',
-      validateOutwardStock: isOutward,
-    );
-
-    // Deep copy current entries for comparison
-    _initialSabbEntries = sabbEntries.map((e) => SerialAndBatchEntry(
-        batchNo: e.batchNo,
-        qty: e.qty,
-        serialNo: e.serialNo
-    )).toList();
-
-    // If a batch was passed from scan, append it to the bundle (SABB Mode)
-    if (autoAddBatch != null && autoAddBatch.isNotEmpty) {
-      // Use mixin to validate and add to bundle.
-      // passing null for qty lets the mixin handle defaults (e.g. packaging qty)
-      await validateAndAddBatch(autoAddBatch, null);
-      // Force dirty flag since _isInitialisingSheet blocks the automatic listener
-      _markDirty();
-    }
-
-    // Sync Qty Text to Bundle Total exactly to prevent string mismatch
-    if (item.useSerialBatchFields == 0) {
-      bsQtyController.text = bundleTotalQty.value.toStringAsFixed(2);
-    }
-
-    bsItemSourceWarehouse.value = item.sWarehouse;
-    bsItemTargetWarehouse.value = item.tWarehouse;
-
-    // Ensure serial is '0' if null when editing MR items (handling legacy/uninitialised items)
-    if (entrySource == StockEntrySource.materialRequest && (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
-      selectedSerial.value = '0';
-    }
-
-    // Capture Snapshots
-    _initialQty = bsQtyController.text;
-    _initialBatch = item.batchNo ?? '';
-    _initialSourceRack = item.rack ?? '';
-    _initialTargetRack = item.toRack ?? '';
-    derivedSourceWarehouse.value = item.sWarehouse;
-    derivedTargetWarehouse.value = item.tWarehouse;
-
-    bsValidationMaxQty.value = 0.0;
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == item.itemCode);
-      if (ref != null) {
-        bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
-      }
-    }
-
-    bsIsBatchValid.value = true;
-    bsIsBatchReadOnly.value = true;
-    if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
-    if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
-
-    _updateAvailableStock();
-    validateSheet();
-
-    isItemSheetOpen.value = true;
-    rackError.value = null;
-    batchError.value = null;
-
-    Get.bottomSheet(
-      SizedBox(
-        // Takes up 85% of screen height
-        height: Get.height * 0.85,
-        child: StockEntryItemFormSheet(
-          controller: this,
-          scrollController: scrollController,
-          // formKey: itemFormKey,
-        ),
-      ),
-      isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-      currentItemNameKey.value = null;
-      rackError.value = null;
-      batchError.value = null;
-    });
-
-    // Unblock dirty check after data is fully loaded
-    _isInitialisingSheet = false;
-  }
-
-  Future<void> scanBarcode(String barcode) async {
-    if (isClosed) return;
-
-    // 2. USE MIXIN GUARD
-    if (checkStaleAndBlock()) return;
-
-    if (barcode.isEmpty) return;
-
-    // Prevent double processing if scan is already in progress
+  Future<void> _processNewItemScan(String barcode) async {
     if (isScanning.value) return;
-
-    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
-      _handleSheetScan(barcode);
-      return;
-    }
-
     isScanning.value = true;
+
     try {
       final result = await _scanService.processScan(barcode);
-      if (result.isSuccess && result.itemData != null) {
-        if (!_validateScanContext(result)) {
-          isScanning.value = false;
-          return;
-        }
-
-        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
-          currentScannedEan = result.rawCode.split('-')[0];
-        } else {
-          currentScannedEan = result.rawCode;
-        }
-
-        final itemData = result.itemData!;
-
-        // CHECK IF ITEM EXISTS
-        final existingItem = stockEntry.value?.items.firstWhereOrNull(
-                (item) => item.itemCode == itemData.itemCode
-        );
-
-        if (existingItem != null) {
-          GlobalSnackbar.success(message: 'Item found. Appending batch...');
-          // Trigger edit mode with the scanned batch to auto-add it
-          editItem(existingItem, autoAddBatch: result.batchNo);
-          // Return here; finally block will handle cleanup
-          return;
-        }
-
-        currentItemCode = itemData.itemCode;
-        currentVariantOf = itemData.variantOf ?? '';
-        currentItemName = itemData.itemName;
-        currentUom = itemData.stockUom ?? 'Nos';
-        _openQtySheet(scannedBatch: result.batchNo);
-      } else {
+      if (!result.isSuccess || result.itemData == null) {
         GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+        return;
       }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Scan processing error: $e');
+
+      if (!_validateItemContext(result.itemData!.itemCode)) return;
+
+      _openItemSheet(
+          itemCode: result.itemData!.itemCode,
+          scannedBatch: result.batchNo,
+          itemData: result.itemData
+      );
     } finally {
       isScanning.value = false;
       barcodeController.clear();
     }
   }
 
-  // 3. IMPLEMENT THE MIXIN METHOD (CORRECTLY OVERRIDDEN)
-  @override
-  Future<void> reloadDocument() async {
-    await fetchStockEntry(); // This pulls the latest data
-    isStale.value = false;   // Reset the flag from the mixin
-
-    // Optional: If you had a pending item in the buffer (recentlyAddedItemName),
-    // you might want to clear it or try to re-apply it here,
-    // though safer to just clear.
-    isScanning.value = false;
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
-  }
-
-  void _handleSheetScan(String barcode) async {
-    barcodeController.clear();
-    final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-    final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
-
-    if (result.type == ScanType.rack && result.rackId != null) {
-      _handleSheetRackScan(result.rackId!);
-    }
-    else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
-      bsBatchController.text = result.batchNo!;
-      validateBatch(result.batchNo!);
-    }
-    else {
-      _tryApplyAsRackFallback(barcode);
-    }
-  }
-
-  void _handleSheetRackScan(String code) {
-    final type = selectedStockEntryType.value;
-
-    if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
-      if (bsSourceRackController.text.isEmpty) {
-        bsSourceRackController.text = code;
-        validateRack(code, true);
+  bool _validateItemContext(String itemCode) {
+    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
+      final found = mrReferenceItems.any((item) =>
+      item['item_code'].toString().trim().toLowerCase() == itemCode.trim().toLowerCase()
+      );
+      if (!found) {
+        GlobalSnackbar.error(message: 'Item $itemCode not found in Material Request');
+        return false;
       }
-      else {
-        if (code == bsSourceRackController.text) {
-          rackError.value = 'Source and Target Racks cannot be the same';
-          return;
-        }
-        bsTargetRackController.text = code;
-        validateRack(code, false);
-      }
-    } else if (type == 'Material Issue') {
-      bsSourceRackController.text = code;
-      validateRack(code, true);
-    } else if (type == 'Material Receipt') {
-      bsTargetRackController.text = code;
-      validateRack(code, false);
     }
+    return true;
   }
 
-  void _tryApplyAsRackFallback(String code) {
-    final type = selectedStockEntryType.value;
-    bool needed = false;
+  // --- Item Management ---
 
-    if (type == 'Material Issue' && bsSourceRackController.text.isEmpty) needed = true;
-    if (type == 'Material Receipt' && bsTargetRackController.text.isEmpty) needed = true;
-    if ((type == 'Material Transfer' || type == 'Material Transfer for Manufacture') &&
-        (bsSourceRackController.text.isEmpty || bsTargetRackController.text.isEmpty)) needed = true;
+  void editItem(StockEntryItem item) => _openItemSheet(existingItem: item);
 
-    if (needed) {
-      _handleSheetRackScan(code);
+  void onAddItemTap() => _openItemSheet();
+
+  void _openItemSheet({
+    String? itemCode,
+    String? scannedBatch,
+    StockEntryItem? existingItem,
+    dynamic itemData
+  }) {
+    final itemController = Get.put(StockEntryItemFormController());
+
+    itemController.initialise(
+        parentController: this,
+        existingItem: existingItem,
+        initialItemCode: itemCode,
+        initialBatch: scannedBatch,
+        scannedItemData: itemData
+    );
+
+    isItemSheetOpen.value = true;
+
+    Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (ctx, scroll) => StockEntryItemFormSheet(
+          controller: itemController,
+          scrollController: scroll,
+        ),
+      ),
+      isScrollControlled: true,
+    ).whenComplete(() {
+      isItemSheetOpen.value = false;
+      Get.delete<StockEntryItemFormController>();
+    });
+  }
+
+  void upsertItem(StockEntryItem newItem, {SerialAndBatchBundle? bundle}) {
+    // Handle dirty bundle
+    StockEntryItem itemToSave = newItem;
+
+    if (bundle != null) {
+      // If the bundle has no ID (new) or we are editing, we need a key to store it in the map
+      String bundleKey = bundle.name ?? 'local_sabb_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Ensure the bundle object has this key set (if it was null)
+      bundle.name = bundleKey;
+
+      // Register in sidecar map
+      unsavedBundles[bundleKey] = bundle;
+
+      // Update item to reference this key
+      itemToSave = newItem.copyWith(serialAndBatchBundle: bundleKey);
+    }
+
+    final currentItems = stockEntry.value?.items.toList() ?? [];
+    final index = currentItems.indexWhere((i) => i.name == itemToSave.name);
+
+    if (index != -1) {
+      currentItems[index] = itemToSave;
     } else {
-      GlobalSnackbar.error(message: 'Invalid Scan');
+      currentItems.add(itemToSave);
     }
+
+    stockEntry.update((val) => val?.items.assignAll(currentItems));
+    _triggerHighlight(itemToSave.name ?? '');
+    _autoSaveIfNew();
+  }
+
+  void deleteItem(String uniqueName) {
+    final item = stockEntry.value?.items.firstWhereOrNull((i) => i.name == uniqueName);
+    if (item == null) return;
+
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Are you sure you want to remove ${item.itemCode}?',
+      onConfirm: () {
+        stockEntry.update((val) {
+          val?.items.removeWhere((i) => i.name == uniqueName);
+        });
+
+        // Clean up unsaved bundle map if needed
+        if (item.serialAndBatchBundle != null && unsavedBundles.containsKey(item.serialAndBatchBundle)) {
+          unsavedBundles.remove(item.serialAndBatchBundle);
+        }
+
+        isDirty.value = true;
+      },
+    );
+  }
+
+  // --- Persistence & Logic ---
+
+  Future<void> confirmDiscard() async {
+    if (!isDirty.value) {
+      Get.back();
+      return;
+    }
+    GlobalDialog.showConfirmation(
+      title: 'Discard Changes?',
+      message: 'You have unsaved changes. Are you sure you want to leave?',
+      onConfirm: () => Get.back(result: true),
+    );
+  }
+
+  Future<void> saveStockEntry() async {
+    if (isSaving.value) return;
+    isSaving.value = true;
+
+    try {
+      if (!_validateHeader()) return;
+      final processedItems = await _processItemsForSave(stockEntry.value?.items ?? []);
+      final payload = _buildSavePayload(processedItems);
+
+      if (mode == 'new') {
+        await _createEntry(payload);
+      } else {
+        await _updateEntry(payload);
+      }
+
+      // Clear unsaved bundles after successful save
+      unsavedBundles.clear();
+
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Save failed: $e');
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  bool _validateHeader() {
+    if (selectedStockEntryType.value == 'Material Transfer' &&
+        (selectedFromWarehouse.value == null || selectedToWarehouse.value == null)) {
+      GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
+      return false;
+    }
+    return true;
+  }
+
+  Future<List<StockEntryItem>> _processItemsForSave(List<StockEntryItem> items) async {
+    var updatedList = <StockEntryItem>[];
+    for (var item in items) {
+      // Check if this item has a pending dirty bundle in our sidecar map
+      if (item.serialAndBatchBundle != null && unsavedBundles.containsKey(item.serialAndBatchBundle)) {
+        try {
+          final dirtyBundle = unsavedBundles[item.serialAndBatchBundle]!;
+
+          // Process Bundle (Create or Update based on if name is a real ID or 'local_')
+          final realBundleId = await _processSerialBatchBundle(dirtyBundle);
+
+          // Update item to use the REAL ID returned by server
+          updatedList.add(item.copyWith(serialAndBatchBundle: realBundleId));
+        } catch(e) { rethrow; }
+      } else {
+        updatedList.add(item);
+      }
+    }
+    return updatedList;
+  }
+
+  Future<String?> _processSerialBatchBundle(SerialAndBatchBundle bundleData) async {
+    final type = selectedStockEntryType.value;
+    final isOutward = ['Material Issue', 'Material Transfer'].contains(type);
+    final warehouse = isOutward ? selectedFromWarehouse.value : selectedToWarehouse.value;
+
+    // Construct Payload
+    final payload = {
+      'type_of_transaction': isOutward ? 'Outward' : 'Inward',
+      'item_code': bundleData.itemCode,
+      'warehouse': warehouse ?? bundleData.warehouse,
+      'has_batch_no': 1,
+      'voucher_type': 'Stock Entry',
+      'voucher_no': name, // Optional: link to parent if needed
+      'entries': bundleData.entries.map((b) => b.toJson()).toList(),
+    };
+
+    // Check if it's a local temp ID or a real existing ID
+    bool isLocal = bundleData.name != null && bundleData.name!.startsWith('local_');
+
+    if (!isLocal && bundleData.name != null && bundleData.name!.isNotEmpty) {
+      // UPDATE Existing Bundle
+      try {
+        final response = await _apiProvider.updateDocument('Serial and Batch Bundle', bundleData.name!, payload);
+        if (response.statusCode == 200) {
+          return response.data['data']['name'];
+        } else {
+          // Fallback: If update fails (e.g., submitted), try creating new?
+          // For now, throw error to warn user.
+          throw Exception('Failed to update Bundle ${bundleData.name}: ${response.data}');
+        }
+      } catch (e) {
+        print('Error updating SABB: $e');
+        rethrow;
+      }
+    } else {
+      // CREATE New Bundle
+      final response = await _apiProvider.createDocument('Serial and Batch Bundle', payload);
+      return response.statusCode == 200 ? response.data['data']['name'] : null;
+    }
+  }
+
+  Map<String, dynamic> _buildSavePayload(List<StockEntryItem> items) {
+    return {
+      'stock_entry_type': selectedStockEntryType.value,
+      'posting_date': stockEntry.value?.postingDate,
+      'posting_time': stockEntry.value?.postingTime,
+      'from_warehouse': selectedFromWarehouse.value,
+      'to_warehouse': selectedToWarehouse.value,
+      'custom_reference_no': customReferenceNoController.text,
+      'items': items.map((i) => i.toApiJson(mrReferenceItems: mrReferenceItems)).toList(),
+    };
   }
 
   Future<void> fetchWarehouses() async {
@@ -1168,14 +505,43 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       if (response.statusCode == 200 && response.data['data'] != null) {
         warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
-    } catch (e) {
-      print('Error fetching warehouses: $e');
     } finally {
       isFetchingWarehouses.value = false;
     }
   }
 
-  Future<void> fetchStockEntryTypes() async {
+  // --- Private Helpers ---
+
+  Future<void> _fetchExistingStockEntry() async {
+    isLoading.value = true;
+    try {
+      final response = await _provider.getStockEntry(name);
+      if(response.statusCode == 200 && response.data['data'] != null) {
+        final entry = StockEntry.fromJson(response.data['data']);
+        stockEntry.value = entry;
+        _populateFieldsFromEntry(entry);
+      }
+    } catch(e) {
+      GlobalSnackbar.error(message: 'Error fetching entry: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void _populateFieldsFromEntry(StockEntry entry) {
+    selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
+    selectedFromWarehouse.value = entry.fromWarehouse;
+    selectedToWarehouse.value = entry.toWarehouse;
+    customReferenceNoController.text = entry.customReferenceNo ?? '';
+    isDirty.value = false;
+    if (entry.stockEntryType == 'Material Issue' && entry.customReferenceNo != null) {
+      if (entry.customReferenceNo!.startsWith('KX') || entry.customReferenceNo!.startsWith('MX')) {
+        _fetchPosUploadDetails(entry.customReferenceNo!);
+      }
+    }
+  }
+
+  Future<void> _fetchStockEntryTypes() async {
     isFetchingTypes.value = true;
     try {
       final response = await _provider.getStockEntryTypes();
@@ -1183,451 +549,72 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         stockEntryTypes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
-      if (stockEntryTypes.isEmpty) {
-        stockEntryTypes.assignAll(['Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture']);
-      }
+      stockEntryTypes.assignAll(['Material Issue', 'Material Receipt', 'Material Transfer']);
     } finally {
       isFetchingTypes.value = false;
     }
   }
 
-  Future<void> _updateAvailableStock() async {
-    final type = selectedStockEntryType.value;
-    final isSourceOp = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-
-    // If not a source operation, we don't limit max qty
-    if (!isSourceOp) {
-      bsMaxQty.value = 999999.0;
-      return;
-    }
-
-    // Only run this if we aren't already validating a specific batch
-    // (If batch is present, validateBatch handles the bsMaxQty more strictly via Batch-Wise History)
-    if (bsBatchController.text.isNotEmpty) return;
-
-    final effectiveWarehouse = bsItemSourceWarehouse.value ??
-        derivedSourceWarehouse.value ??
-        selectedFromWarehouse.value;
-
-    if (effectiveWarehouse == null || effectiveWarehouse.isEmpty) {
-      bsMaxQty.value = 0.0;
-      rackError.value = 'No Warehouse Selected';
-      return;
-    }
-
-    String rack = bsSourceRackController.text.trim();
-
-    try {
-      // Fetch Stock Balance
-      // Note: Passing 'rack' filter ensures the API only returns stock for that rack
-      final response = await _apiProvider.getStockBalance(
-          itemCode: currentItemCode,
-          warehouse: effectiveWarehouse,
-          rack: rack.isNotEmpty ? rack : null
-      );
-
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
-        final List<dynamic> result = response.data['message']['result'];
-        double totalBalance = 0.0;
-
-        for (var row in result) {
-          if (row is! Map) continue;
-          // Filter safety check (API should handle it, but good to be safe)
-          if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
-          totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
-        }
-
-        bsMaxQty.value = totalBalance;
-        rackStockBalance.value = totalBalance;
-
-        // Strict Rack Validation
-        if (rack.isNotEmpty && totalBalance <= 0) {
-          rackError.value = 'Insufficient stock in Rack: $rack';
-          isSourceRackValid.value = false;
-        } else if (rack.isNotEmpty) {
-          // Clear rack error if stock exists
-          rackError.value = null;
-        }
-      }
-    } catch (e) {
-      print('Failed to fetch stock balance: $e');
-      bsMaxQty.value = 0.0;
-      rackStockBalance.value = 0.0;
-    }
-    validateSheet();
-  }
-
-  Future<void> validateBatch(String batch) async {
-    batchError.value = null;
-    if (batch.isEmpty) return;
-
-    if (batch.contains('-')) {
-      final parts = batch.split('-');
-      if (parts.length >= 2 && parts[0] == parts[1]) {
-        bsIsBatchValid.value = false;
-        batchError.value = "Invalid Batch: Batch ID cannot match EAN";
-        validateSheet();
-        return;
-      }
-    }
-
-    isValidatingBatch.value = true;
-    try {
-      // Step A: Check Batch Existence & Packaging Qty
-      final batchDocResponse = await _apiProvider.getDocumentList('Batch', filters: {
-        'item': currentItemCode,
-        'name': batch
-      }, fields: ['name', 'custom_packaging_qty']);
-
-      if (batchDocResponse.statusCode == 200 &&
-          batchDocResponse.data['data'] != null &&
-          (batchDocResponse.data['data'] as List).isNotEmpty) {
-
-        final batchData = batchDocResponse.data['data'][0];
-        bsIsBatchValid.value = true;
-        bsIsBatchReadOnly.value = true;
-
-        // Auto-set packaging qty if available
-        final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-        if (pkgQty > 0 && bsQtyController.text.isEmpty) {
-          bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
-        }
-
-        // Step B: Strict Stock Check using Batch-Wise Balance History
-        // Determine warehouse: Item Level -> Derived -> Header
-        final effectiveWarehouse = bsItemSourceWarehouse.value ??
-            derivedSourceWarehouse.value ??
-            selectedFromWarehouse.value;
-
-        if (effectiveWarehouse != null) {
-          final balanceResponse = await _apiProvider.getBatchWiseBalance(
-              currentItemCode,
-              batch,
-              warehouse: effectiveWarehouse
-          );
-
-          if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-            final result = balanceResponse.data['message']['result'];
-            if (result is List && result.isNotEmpty) {
-              // Update Max Qty to match strictly what is in the batch
-              final batchQty = (result[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
-              bsMaxQty.value = batchQty;
-
-              if (batchQty <= 0) {
-                batchError.value = "Batch is empty in $effectiveWarehouse";
-                bsIsBatchValid.value = false;
-              }
-            } else {
-              bsMaxQty.value = 0.0;
-              batchError.value = "No stock found for batch in $effectiveWarehouse";
-              bsIsBatchValid.value = false;
-            }
-          }
-        }
-      } else {
-        bsIsBatchValid.value = false;
-        GlobalSnackbar.error(message: 'Batch not found for this item');
-      }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to validate batch: $e');
-      bsIsBatchValid.value = false;
-    } finally {
-      isValidatingBatch.value = false;
-      validateSheet();
+  Future<void> _createEntry(Map<String, dynamic> data) async {
+    final response = await _provider.createStockEntry(data);
+    if (response.statusCode == 200) {
+      final createdDoc = response.data['data'];
+      name = createdDoc['name'];
+      mode = 'edit';
+      await _fetchExistingStockEntry();
+      GlobalSnackbar.success(message: 'Stock Entry created');
     }
   }
 
-  Future<void> validateRack(String rack, bool isSource) async {
-    if (rack.isEmpty) {
-      if (isSource) {
-        isSourceRackValid.value = false;
-        derivedSourceWarehouse.value = null;
-      } else {
-        isTargetRackValid.value = false;
-        derivedTargetWarehouse.value = null;
-      }
-      validateSheet();
-      return;
-    }
-
-    // Reset derived warehouse before parsing
-    if (isSource) derivedSourceWarehouse.value = null;
-    else derivedTargetWarehouse.value = null;
-
-    // Parse Warehouse from Rack Code (Format: ZONE-WH-RACK or similar)
-    // Updates the specific s_warehouse / t_warehouse field values if derived
-    if (rack.contains('-')) {
-      final parts = rack.split('-');
-      if (parts.length >= 3) {
-        // Example logic: reconstructing warehouse name from rack parts
-        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
-        if (isSource) {
-          derivedSourceWarehouse.value = wh;
-          bsItemSourceWarehouse.value = wh; // Set s_warehouse field
-        } else {
-          derivedTargetWarehouse.value = wh;
-          bsItemTargetWarehouse.value = wh; // Set t_warehouse field
-        }
-      }
-    }
-
-    if (isSource) isValidatingSourceRack.value = true;
-    else isValidatingTargetRack.value = true;
-
-    try {
-      final response = await _apiProvider.getDocument('Rack', rack);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        if (isSource) {
-          isSourceRackValid.value = true;
-          // Refetch stock availability now that we have a valid rack and potentially new warehouse
-          await _updateAvailableStock();
-        } else {
-          isTargetRackValid.value = true;
-        }
-      } else {
-        if (isSource) isSourceRackValid.value = false;
-        else isTargetRackValid.value = false;
-        GlobalSnackbar.error(message: 'Rack not found');
-      }
-    } catch (e) {
-      if (isSource) isSourceRackValid.value = false;
-      else isTargetRackValid.value = false;
-    } finally {
-      if (isSource) isValidatingSourceRack.value = false;
-      else isValidatingTargetRack.value = false;
-      validateSheet();
+  Future<void> _updateEntry(Map<String, dynamic> data) async {
+    final response = await _provider.updateStockEntry(name, data);
+    if (response.statusCode == 200) {
+      GlobalSnackbar.success(message: 'Stock Entry updated');
+      await _fetchExistingStockEntry();
     }
   }
 
-  void resetSourceRackValidation() {
-    isSourceRackValid.value = false;
-    validateSheet();
+  void _markDirty() => isDirty.value = true;
+  void _triggerHighlight(String id) {
+    recentlyAddedItemName.value = id;
+    Future.delayed(const Duration(seconds: 2), () => recentlyAddedItemName.value = '');
   }
-
-  void resetTargetRackValidation() {
-    isTargetRackValid.value = false;
-    validateSheet();
+  void _autoSaveIfNew() {
+    if (mode == 'new') saveStockEntry();
+    else isDirty.value = true;
   }
+  void toggleInvoiceExpand(String key) => expandedInvoice.value = expandedInvoice.value == key ? '' : key;
+}
 
-  void resetBatchValidation() {
-    bsIsBatchValid.value = false;
-    bsIsBatchReadOnly.value = false;
-    batchError.value = null;
-    validateSheet();
-  }
-
-  void deleteItem(String uniqueName) {
-    final item = stockEntry.value?.items.firstWhereOrNull((i) => i.name == uniqueName);
-    if (item == null) return;
-
-    GlobalDialog.showConfirmation(
-      title: 'Remove Item?',
-      message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
-      onConfirm: () async {
-        // --- CLEANUP: Delete Bundle if Exists ---
-        if (item.serialAndBatchBundle != null && item.serialAndBatchBundle!.isNotEmpty) {
-          try {
-            await deleteSerialBatchBundle(item.serialAndBatchBundle!);
-          } catch(e) {
-            print("Warning: Failed to delete bundle ${item.serialAndBatchBundle}");
-          }
-        }
-
-        final currentItems = stockEntry.value?.items.toList() ?? [];
-        currentItems.removeWhere((i) => i.name == uniqueName);
-        stockEntry.update((val) {
-          val?.items.assignAll(currentItems);
-        });
-        isDirty.value = true;
-        GlobalSnackbar.success(message: 'Item removed');
-      },
+extension StockEntryItemHelpers on StockEntryItem {
+  StockEntryItem copyWith({String? serialAndBatchBundle}) {
+    return StockEntryItem(
+        name: name, itemCode: itemCode, qty: qty, basicRate: basicRate,
+        itemGroup: itemGroup, customVariantOf: customVariantOf,
+        batchNo: batchNo, useSerialBatchFields: useSerialBatchFields,
+        itemName: itemName, rack: rack, toRack: toRack, sWarehouse: sWarehouse,
+        tWarehouse: tWarehouse, customInvoiceSerialNumber: customInvoiceSerialNumber,
+        serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
+        materialRequest: materialRequest,
+        materialRequestItem: materialRequestItem, owner: owner, creation: creation,
+        modified: modified, modifiedBy: modifiedBy
     );
   }
 
-  void triggerHighlight(String uniqueId) {
-    recentlyAddedItemName.value = uniqueId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        final key = itemKeys[uniqueId];
-        if (key?.currentContext != null) {
-          Scrollable.ensureVisible(
-            key!.currentContext!,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-            alignment: 0.5,
-          );
-        }
-      });
-    });
-    Future.delayed(const Duration(seconds: 2), () {
-      recentlyAddedItemName.value = '';
-    });
-  }
+  Map<String, dynamic> toApiJson({List<Map<String, dynamic>>? mrReferenceItems}) {
+    var json = toJson();
+    if (json['name']?.toString().startsWith('local_') == true) json.remove('name');
+    if (json['basic_rate'] == 0.0) json.remove('basic_rate');
 
-  void adjustSheetQty(double delta) {
-    final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta);
-
-    double limit = 999999.0;
-    if (bsMaxQty.value > 0) limit = bsMaxQty.value;
-    if (bsValidationMaxQty.value > 0 && bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
-
-    if (newVal >= 0 && newVal <= limit) {
-      bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
-      validateSheet();
-    }
-  }
-
-  void toggleInvoiceExpand(String key) {
-    if (expandedInvoice.value == key) {
-      expandedInvoice.value = '';
-    } else {
-      expandedInvoice.value = key;
-    }
-  }
-
-  Map<String, List<StockEntryItem>> get groupedItems {
-    if (stockEntry.value == null || stockEntry.value!.items.isEmpty) {
-      return {};
-    }
-    return groupBy(stockEntry.value!.items, (StockEntryItem item) {
-      return item.customInvoiceSerialNumber ?? '0';
-    });
-  }
-
-  Future<void> saveStockEntry() async {
-    if (isSaving.value) return;
-
-    // 3. USE MIXIN GUARD
-    if (checkStaleAndBlock()) return;
-
-    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
-      final firstItem = stockEntry.value!.items.first;
-      if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
-        selectedFromWarehouse.value = firstItem.sWarehouse;
-      }
-      if (selectedToWarehouse.value == null && firstItem.tWarehouse != null) {
-        selectedToWarehouse.value = firstItem.tWarehouse;
+    if (json['material_request'] == null && mrReferenceItems != null) {
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+      r['item_code'].toString().trim().toLowerCase() == itemCode.trim().toLowerCase());
+      if (ref != null) {
+        json['material_request'] = ref['material_request'];
+        json['material_request_item'] = ref['material_request_item'];
       }
     }
-    if (selectedStockEntryType.value == 'Material Transfer') {
-      if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
-        GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
-        return;
-      }
-    }
-    isSaving.value = true;
-    final Map<String, dynamic> data = {
-      'stock_entry_type': selectedStockEntryType.value,
-      'posting_date': stockEntry.value?.postingDate,
-      'posting_time': stockEntry.value?.postingTime,
-      'from_warehouse': selectedFromWarehouse.value,
-      'to_warehouse': selectedToWarehouse.value,
-      'custom_reference_no': customReferenceNoController.text,
-      // 2. CRITICAL: Pass 'modified' timestamp for Optimistic Locking
-      'modified': stockEntry.value?.modified,
-    };
-    final itemsJson = stockEntry.value?.items.map((i) {
-      final json = i.toJson();
-      if (json['name'] != null && json['name'].toString().startsWith('local_')) {
-        json.remove('name');
-      }
-      if (json['basic_rate'] == 0.0) {
-        json.remove('basic_rate');
-      }
-
-      // Safety Patch: If material request link is missing in the item but exists in context, try to resolve it now
-      if (json['material_request'] == null && entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-        final ref = mrReferenceItems.firstWhereOrNull((r) =>
-        r['item_code'].toString().trim().toLowerCase() == i.itemCode.trim().toLowerCase());
-        if (ref != null) {
-          json['material_request'] = ref['material_request'];
-          json['material_request_item'] = ref['material_request_item'];
-        }
-      }
-
-      // Explicitly preserve if present
-      if (i.materialRequest != null) {
-        json['material_request'] = i.materialRequest;
-      }
-      if (i.materialRequestItem != null) {
-        json['material_request_item'] = i.materialRequestItem;
-      }
-
-      json.removeWhere((key, value) => value == null);
-      return json;
-    }).toList() ?? [];
-    data['items'] = itemsJson;
-    try {
-      if (mode == 'new') {
-        final response = await _provider.createStockEntry(data);
-        if (response.statusCode == 200) {
-          final createdDoc = response.data['data'];
-          name = createdDoc['name'];
-          mode = 'edit';
-          await fetchStockEntry();
-          GlobalSnackbar.success(message: 'Stock Entry created: $name');
-        } else {
-          GlobalSnackbar.error(message: 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
-        }
-      } else {
-        final response = await _provider.updateStockEntry(name, data);
-        if (response.statusCode == 200) {
-          // 3. UPDATE LOCAL TIMESTAMP ON SUCCESS
-          // Frappe returns the updated document. We must update our local 'modified'
-          // timestamp to match the server, otherwise the NEXT save will fail.
-          final updatedDoc = response.data['data'];
-          if (updatedDoc != null) {
-            stockEntry.update((val) {
-              val?.items.assignAll((updatedDoc['items'] as List).map((i) => StockEntryItem.fromJson(i)).toList());
-              // Update the modified timestamp to the new valid one
-              // You might need to add a setter or copyWith to your Model,
-              // or just re-instantiate:
-              stockEntry.value = StockEntry.fromJson(updatedDoc);
-            });
-          }
-
-          GlobalSnackbar.success(message: 'Stock Entry updated');
-          await fetchStockEntry();
-        } else {
-          GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
-        }
-      }
-    } on DioException catch (e) {
-      String errorMessage = 'Save failed';
-      // 5. USE MIXIN HANDLER instead of manual parsing for TimestampMismatch
-      if (handleVersionConflict(e)) {
-        // If it was a conflict, the mixin showed the dialog and set isStale=true.
-        // We just exit.
-      } else {
-        if (e.response != null && e.response!.data != null) {
-          if (e.response!.data is Map && e.response!.data['exception'] != null) {
-            errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-          } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-            errorMessage = 'Validation Error: Check form details';
-          }
-        }
-        GlobalSnackbar.error(message: errorMessage);
-      }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Save failed: $e');
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  void _markDirty() {
-    if (!isLoading.value && !isDirty.value) {
-      isDirty.value = true;
-    }
-  }
-
-  Future<void> confirmDiscard() async {
-    GlobalDialog.showUnsavedChanges(
-      onDiscard: () {
-        isDirty.value = false;
-        Get.back();
-      },
-    );
+    json.removeWhere((key, value) => value == null);
+    return json;
   }
 }

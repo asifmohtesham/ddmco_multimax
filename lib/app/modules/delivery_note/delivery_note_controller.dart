@@ -5,8 +5,10 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:intl/intl.dart';
 
 class DeliveryNoteController extends GetxController {
+  final docType = 'Delivery Note';
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
 
@@ -24,12 +26,11 @@ class DeliveryNoteController extends GetxController {
   var isLoadingDetails = false.obs;
   final _detailedNotesCache = <String, DeliveryNote>{}.obs;
 
+  // Search & Filter
   final activeFilters = <String, dynamic>{}.obs;
+  final RxString searchQuery = ''.obs;
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
-
-  // Search
-  var searchQuery = ''.obs;
 
   // For POS Upload selection dialog
   var isFetchingPosUploads = false.obs;
@@ -42,8 +43,9 @@ class DeliveryNoteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    scrollController.addListener(_onScroll);
     fetchDeliveryNotes();
+    _setupPagination();
+    _setupSearch();
   }
 
   @override
@@ -60,27 +62,32 @@ class DeliveryNoteController extends GetxController {
     super.onClose();
   }
 
-  void _onScroll() {
-    if (_isBottom && hasMore.value && !isFetchingMore.value) {
-      fetchDeliveryNotes(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!scrollController.hasClients) return false;
-    final maxScroll = scrollController.position.maxScrollExtent;
-    final currentScroll = scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    // Debounce
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchDeliveryNotes(clear: true);
+  void _setupPagination() {
+    scrollController.addListener(() {
+      if (scrollController.hasClients) {
+        final maxScroll = scrollController.position.maxScrollExtent;
+        final currentScroll = scrollController.offset;
+        if (currentScroll >= (maxScroll * 0.9) && hasMore.value && !isFetchingMore.value) {
+          fetchDeliveryNotes(isLoadMore: true);
+        }
       }
     });
+  }
+
+  void _setupSearch() {
+    debounce(searchQuery, (callback) {
+      final filters = Map<String, dynamic>.from(activeFilters);
+      if (callback.isNotEmpty) {
+        filters['name'] = ['like', '%$callback%'];
+      } else {
+        filters.remove('name');
+      }
+      applyFilters(filters);
+    }, time: const Duration(milliseconds: 500));
+  }
+
+  void onSearch(String val) {
+    searchQuery.value = val;
   }
 
   void applyFilters(Map<String, dynamic> filters) {
@@ -112,16 +119,10 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
-      // Combine active filters with search query
-      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
-      if (searchQuery.value.isNotEmpty) {
-        queryFilters['name'] = ['like', '%${searchQuery.value}%'];
-      }
-
       final response = await _provider.getDeliveryNotes(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: queryFilters,
+        filters: activeFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
@@ -346,6 +347,7 @@ class DeliveryNoteController extends GetxController {
                         separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final posUpload = posUploadsForSelection[index];
+                          // Simple logic for status color for display
                           Color statusColor = posUpload.status == 'Pending' ? Colors.orange : Colors.blue;
 
                           return ListTile(

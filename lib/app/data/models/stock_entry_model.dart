@@ -125,6 +125,8 @@ class StockEntryItem {
   final String? sWarehouse;
   final String? tWarehouse;
   final String? customInvoiceSerialNumber;
+  final String? serialAndBatchBundle;
+  final int? useSerialBatchFields;
   // Link Fields
   final String? materialRequest;
   final String? materialRequestItem;
@@ -133,9 +135,6 @@ class StockEntryItem {
   final String? creation;
   final String? modified;
   final String? modifiedBy;
-  // --- NEW FIELDS ---
-  final String? serialAndBatchBundle;
-  final int useSerialBatchFields; // 0 = SABB (New), 1 = Legacy
 
   StockEntryItem({
     this.name,
@@ -151,15 +150,63 @@ class StockEntryItem {
     this.sWarehouse,
     this.tWarehouse,
     this.customInvoiceSerialNumber,
+    this.serialAndBatchBundle,
+    this.useSerialBatchFields,
     this.materialRequest,
     this.materialRequestItem,
     this.owner,
     this.creation,
     this.modified,
     this.modifiedBy,
-    this.serialAndBatchBundle,
-    this.useSerialBatchFields = 0, // Default to 0 for new items
   });
+
+  StockEntryItem copyWith({
+    String? name,
+    String? itemCode,
+    double? qty,
+    double? basicRate,
+    String? itemGroup,
+    String? customVariantOf,
+    String? batchNo,
+    String? itemName,
+    String? rack,
+    String? toRack,
+    String? sWarehouse,
+    String? tWarehouse,
+    String? customInvoiceSerialNumber,
+    String? serialAndBatchBundle,
+    int? useSerialBatchFields,
+    String? materialRequest,
+    String? materialRequestItem,
+    String? owner,
+    String? creation,
+    String? modified,
+    String? modifiedBy,
+  }) {
+    return StockEntryItem(
+      name: name ?? this.name,
+      itemCode: itemCode ?? this.itemCode,
+      qty: qty ?? this.qty,
+      basicRate: basicRate ?? this.basicRate,
+      itemGroup: itemGroup ?? this.itemGroup,
+      customVariantOf: customVariantOf ?? this.customVariantOf,
+      batchNo: batchNo ?? this.batchNo,
+      itemName: itemName ?? this.itemName,
+      rack: rack ?? this.rack,
+      toRack: toRack ?? this.toRack,
+      sWarehouse: sWarehouse ?? this.sWarehouse,
+      tWarehouse: tWarehouse ?? this.tWarehouse,
+      customInvoiceSerialNumber: customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
+      serialAndBatchBundle: serialAndBatchBundle ?? this.serialAndBatchBundle,
+      useSerialBatchFields: useSerialBatchFields ?? this.useSerialBatchFields,
+      materialRequest: materialRequest ?? this.materialRequest,
+      materialRequestItem: materialRequestItem ?? this.materialRequestItem,
+      owner: owner ?? this.owner,
+      creation: creation ?? this.creation,
+      modified: modified ?? this.modified,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
+    );
+  }
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
     return StockEntryItem(
@@ -176,15 +223,14 @@ class StockEntryItem {
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
+      useSerialBatchFields: StockEntry._parseInt(json['use_serial_batch_fields']),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
       owner: json['owner']?.toString(),
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
       modifiedBy: json['modified_by']?.toString(),
-      serialAndBatchBundle: json['serial_and_batch_bundle']?.toString(),
-      // If null, we assume 0 (SABB) unless explicitly set to 1
-      useSerialBatchFields: StockEntry._parseInt(json['use_serial_batch_fields']),
     );
   }
 
@@ -199,16 +245,140 @@ class StockEntryItem {
       'rack': rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
+      'serial_and_batch_bundle': serialAndBatchBundle,
+      'use_serial_batch_fields': useSerialBatchFields,
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
-      // --- CHANGED LOGIC ---
-      // Pass the instance variable instead of hardcoded '1'
-      'use_serial_batch_fields': useSerialBatchFields,
-      'serial_and_batch_bundle': serialAndBatchBundle,
     };
     if (name != null) {
       data['name'] = name;
     }
+    return data;
+  }
+}
+
+class SerialAndBatchBundle {
+  // Mutable ID to allow updating from 'local_' to real ID
+  String? name;
+  final String itemCode;
+  final String warehouse;
+  final String? typeOfTransaction;
+  final String? voucherType;
+  final String? voucherNo;
+  final String? voucherDetailNo;
+  final String? company;
+  final double totalQty;
+  final double totalAmount;
+  final double avgRate;
+  final int isCancelled;
+  final int isRejected;
+  final String? postingDate;
+  final String? postingTime;
+  final int docstatus;
+  final List<SerialAndBatchEntry> entries;
+
+  SerialAndBatchBundle({
+    this.name,
+    required this.itemCode,
+    required this.warehouse,
+    this.typeOfTransaction,
+    this.voucherType,
+    this.voucherNo,
+    this.voucherDetailNo,
+    this.company,
+    this.totalQty = 0.0,
+    this.totalAmount = 0.0,
+    this.avgRate = 0.0,
+    this.isCancelled = 0,
+    this.isRejected = 0,
+    this.postingDate,
+    this.postingTime,
+    this.docstatus = 0,
+    required this.entries,
+  });
+
+  factory SerialAndBatchBundle.fromJson(Map<String, dynamic> json) {
+    var entriesList = json['entries'] as List? ?? [];
+    List<SerialAndBatchEntry> entries = entriesList.map((i) => SerialAndBatchEntry.fromJson(i)).toList();
+
+    return SerialAndBatchBundle(
+      name: json['name']?.toString(),
+      itemCode: json['item_code']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      typeOfTransaction: json['type_of_transaction']?.toString(),
+      voucherType: json['voucher_type']?.toString(),
+      voucherNo: json['voucher_no']?.toString(),
+      voucherDetailNo: json['voucher_detail_no']?.toString(),
+      company: json['company']?.toString(),
+      totalQty: StockEntry._parseDouble(json['total_qty']),
+      totalAmount: StockEntry._parseDouble(json['total_amount']),
+      avgRate: StockEntry._parseDouble(json['avg_rate']),
+      isCancelled: StockEntry._parseInt(json['is_cancelled']),
+      isRejected: StockEntry._parseInt(json['is_rejected']),
+      postingDate: json['posting_date']?.toString(),
+      postingTime: json['posting_time']?.toString(),
+      docstatus: StockEntry._parseInt(json['docstatus']),
+      entries: entries,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'item_code': itemCode,
+      'warehouse': warehouse,
+      'total_qty': totalQty,
+      'entries': entries.map((e) => e.toJson()).toList(),
+    };
+
+    if (name != null) data['name'] = name;
+    if (typeOfTransaction != null) data['type_of_transaction'] = typeOfTransaction;
+    if (voucherType != null) data['voucher_type'] = voucherType;
+    if (voucherNo != null) data['voucher_no'] = voucherNo;
+    if (voucherDetailNo != null) data['voucher_detail_no'] = voucherDetailNo;
+    if (company != null) data['company'] = company;
+    if (postingDate != null) data['posting_date'] = postingDate;
+    if (postingTime != null) data['posting_time'] = postingTime;
+
+    data['is_cancelled'] = isCancelled;
+    data['is_rejected'] = isRejected;
+    data['docstatus'] = docstatus;
+
+    return data;
+  }
+}
+
+class SerialAndBatchEntry {
+  // Mutable fields for local editing
+  String? batchNo;
+  String? serialNo;
+  String? warehouse;
+  double qty;
+  String? incomingRate;
+
+  SerialAndBatchEntry({
+    this.batchNo,
+    this.serialNo,
+    this.warehouse,
+    required this.qty,
+    this.incomingRate,
+  });
+
+  factory SerialAndBatchEntry.fromJson(Map<String, dynamic> json) {
+    return SerialAndBatchEntry(
+      batchNo: json['batch_no']?.toString(),
+      serialNo: json['serial_no']?.toString(),
+      warehouse: json['warehouse']?.toString(),
+      qty: StockEntry._parseDouble(json['qty']),
+      incomingRate: json['incoming_rate']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {'qty': qty};
+    if (batchNo != null) data['batch_no'] = batchNo;
+    if (serialNo != null) data['serial_no'] = serialNo;
+    if (warehouse != null) data['warehouse'] = warehouse;
+    if (incomingRate != null) data['incoming_rate'] = incomingRate;
     return data;
   }
 }

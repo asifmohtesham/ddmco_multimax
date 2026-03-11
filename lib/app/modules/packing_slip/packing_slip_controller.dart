@@ -10,6 +10,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipController extends GetxController {
+  final docType = 'Packing Slip';
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();

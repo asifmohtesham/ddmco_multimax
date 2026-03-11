@@ -6,10 +6,14 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
+import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_metric_card.dart';
+import 'package:multimax/app/modules/home/widgets/inventory_health_card.dart';
+import 'package:multimax/app/modules/home/widgets/team_performance_card.dart';
 
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
@@ -21,8 +25,7 @@ class HomeScreen extends GetView<HomeController> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: MainAppBar(
-        title: "Dashboard",
-        showBack: false,
+        title: "Operations Dashboard",
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -33,11 +36,9 @@ class HomeScreen extends GetView<HomeController> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Notifications',
-            onPressed: () {
-              GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
-            },
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filters',
+            onPressed: () => _showFilterOptions(context),
           ),
         ],
       ),
@@ -51,22 +52,30 @@ class HomeScreen extends GetView<HomeController> {
                 await controller.fetchPerformanceData();
               },
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // User Context Selector
                     _buildUserContextCard(context),
+                    const SizedBox(height: 20),
+
+                    // === SECTION 1: OPERATIONAL OVERVIEW ===
+                    _buildSectionHeader(context, 'Operational Overview', Icons.dashboard),
+                    const SizedBox(height: 12),
+                    _buildOperationalMetricsGrid(context),
                     const SizedBox(height: 24),
 
-                    // 1. Quick Access Grid
-                    Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    // === SECTION 2: QUICK ACTIONS ===
+                    _buildSectionHeader(context, 'Quick Actions', Icons.flash_on),
                     const SizedBox(height: 12),
                     _buildQuickAccessGrid(context),
-
                     const SizedBox(height: 24),
 
-                    // 2. Timeline
+                    // === SECTION 3: PERFORMANCE TIMELINE ===
+                    _buildSectionHeader(context, 'Performance Timeline', Icons.show_chart),
+                    const SizedBox(height: 12),
                     Obx(() => PerformanceTimelineCard(
                       viewMode: controller.timelineViewMode.value,
                       onToggleView: controller.toggleTimelineView,
@@ -81,11 +90,22 @@ class HomeScreen extends GetView<HomeController> {
                       onDateChanged: controller.onDailyDateChanged,
                       onRangeChanged: controller.onWeeklyRangeChanged,
                     )),
-
                     const SizedBox(height: 24),
 
-                    // 3. KPIs
-                    Text('Daily Goals', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    // === SECTION 4: TEAM PERFORMANCE ===
+                    _buildSectionHeader(context, 'Team Performance', Icons.people),
+                    const SizedBox(height: 12),
+                    TeamPerformanceCard(controller: controller),
+                    const SizedBox(height: 24),
+
+                    // === SECTION 5: INVENTORY HEALTH ===
+                    _buildSectionHeader(context, 'Inventory Health', Icons.inventory_2),
+                    const SizedBox(height: 12),
+                    InventoryHealthCard(controller: controller),
+                    const SizedBox(height: 24),
+
+                    // === SECTION 6: DAILY GOALS ===
+                    _buildSectionHeader(context, 'Daily Goals', Icons.track_changes),
                     const SizedBox(height: 12),
                     Obx(() {
                       if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
@@ -102,7 +122,7 @@ class HomeScreen extends GetView<HomeController> {
                               onTap: controller.goToWorkOrder,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: SpeedometerKpiCard(
                               title: 'Job Cards',
@@ -140,39 +160,112 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Theme.of(context).primaryColor),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOperationalMetricsGrid(BuildContext context) {
+    return Obx(() {
+      if (controller.isLoadingStats.value) {
+        return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+      }
+
+      return GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.6,
+        children: [
+          DashboardMetricCard(
+            title: 'Active Orders',
+            value: controller.activeWorkOrdersCount.value.toString(),
+            icon: Icons.pending_actions,
+            color: Colors.blue,
+            trend: '+12%',
+            onTap: controller.goToWorkOrder,
+          ),
+          DashboardMetricCard(
+            title: 'Job Cards',
+            value: controller.activeJobCardsCount.value.toString(),
+            icon: Icons.assignment_ind,
+            color: Colors.purple,
+            trend: '+8%',
+            onTap: controller.goToJobCard,
+          ),
+          DashboardMetricCard(
+            title: 'Pending Deliveries',
+            value: '${controller.activeWorkOrdersCount.value * 2}',
+            icon: Icons.local_shipping,
+            color: Colors.orange,
+            trend: '-5%',
+            onTap: controller.goToDeliveryNote,
+          ),
+          DashboardMetricCard(
+            title: 'Stock Movements',
+            value: '${controller.activeJobCardsCount.value * 3}',
+            icon: Icons.compare_arrows,
+            color: Colors.green,
+            trend: '+15%',
+            onTap: controller.goToStockEntry,
+          ),
+        ],
+      );
+    });
+  }
+
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
-        builder: (context, constraints) {
-          final double itemWidth = (constraints.maxWidth - 24) / 3; // 3 items per row
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
-                      () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
-
-              // Modified: Delivery Note now opens the selection sheet with KA/ML filter
-              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
+      builder: (context, constraints) {
+        final double itemWidth = (constraints.maxWidth - 24) / 3;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _buildQuickActionItem(
+              context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
+              () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})
+            ),
+            _buildQuickActionItem(
+              context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
                 controller.setFulfillmentPrefixFilter(['KA', 'ML']);
                 _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
-              }),
-
-              _buildQuickActionItem(context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
-                      () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})),
-              _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
-                      () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
-
-              // Modified: Fulfilment POS explicitly clears filters
-              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
-                controller.setFulfillmentPrefixFilter([]); // Empty list = No filter
+              }
+            ),
+            _buildQuickActionItem(
+              context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
+              () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})
+            ),
+            _buildQuickActionItem(
+              context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
+              () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})
+            ),
+            _buildQuickActionItem(
+              context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
+                controller.setFulfillmentPrefixFilter([]);
                 _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
-              }),
-
-              _buildQuickActionItem(context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
-                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }),
-            ],
-          );
-        }
+              }
+            ),
+            _buildQuickActionItem(
+              context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
+              () => GlobalSnackbar.info(message: 'Stay tuned for more features')
+            ),
+          ],
+        );
+      }
     );
   }
 
@@ -206,6 +299,54 @@ class HomeScreen extends GetView<HomeController> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showFilterOptions(BuildContext context) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Filter Options', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Date Range'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Get.back();
+                // Implement date range picker
+                GlobalSnackbar.info(message: 'Date range filter coming soon');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Team Member'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Get.back();
+                _showUserSearchModal(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Performance View'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Get.back();
+                GlobalSnackbar.info(message: 'Performance views coming soon');
+              },
+            ),
+          ],
         ),
       ),
     );
