@@ -981,7 +981,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     try {
       final response = await _provider.getStockEntryTypes();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        stockEntryTypes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        stockEntryTypes.value = (response.statusCode == 200 && response.data['data'] != null) ?
+          (response.data['data'] as List).map((e) => e['name'] as String).toList() :
+          <String>[];
       }
     } catch (e) {
       if (stockEntryTypes.isEmpty) {
@@ -1383,5 +1385,65 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         Get.back();
       },
     );
+  }
+
+  Future<void> pickPostingDate(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+
+    DateTime initialDate;
+    try {
+      initialDate = current.postingDate != null && current.postingDate!.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(current.postingDate!)
+          : DateTime.now();
+    } catch (_) {
+      initialDate = DateTime.now();
+    }
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked != null) {
+      final formatted = DateFormat('yyyy-MM-dd').format(picked);
+      stockEntry.update((val) {
+        val?.postingDate = formatted;
+      });
+      _markDirty();
+    }
+  }
+
+  Future<void> pickPostingTime(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+
+    TimeOfDay initialTime;
+    try {
+      if (current.postingTime != null && current.postingTime!.isNotEmpty) {
+        final parsed = DateFormat('HH:mm:ss').parse(current.postingTime!);
+        initialTime = TimeOfDay.fromDateTime(parsed);
+      } else {
+        initialTime = TimeOfDay.now();
+      }
+    } catch (_) {
+      initialTime = TimeOfDay.now();
+    }
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+    );
+
+    if (picked != null) {
+      final dt = DateTime(0, 1, 1, picked.hour, picked.minute);
+      final formatted = DateFormat('HH:mm:ss').format(dt);
+      stockEntry.update((val) {
+        val?.postingTime = formatted;
+      });
+      _markDirty();
+    }
   }
 }
