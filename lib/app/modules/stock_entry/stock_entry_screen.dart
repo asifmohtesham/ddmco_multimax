@@ -84,7 +84,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             // Search Bar Pinned to top of list
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
@@ -100,6 +100,40 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                   ),
                 ),
               ),
+            ),
+
+            // Active filter / search chips
+            SliverToBoxAdapter(
+              child: Obx(() {
+                final hasFilters = controller.activeFilters.isNotEmpty;
+                final hasSearch = controller.searchQuery.value.isNotEmpty;
+                if (!hasFilters && !hasSearch) return const SizedBox.shrink();
+
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (hasSearch)
+                        Chip(
+                          label: Text('Search: ${controller.searchQuery.value}'),
+                          avatar: const Icon(Icons.search, size: 18),
+                          onDeleted: () {
+                            controller.searchQuery.value = '';
+                            controller.fetchStockEntries(clear: true);
+                          },
+                        ),
+                      if (hasFilters)
+                        Chip(
+                          label: Text('${controller.activeFilters.length} filter${controller.activeFilters.length > 1 ? 's' : ''} applied'),
+                          avatar: const Icon(Icons.filter_alt, size: 18),
+                          onDeleted: controller.clearFilters,
+                        ),
+                    ],
+                  ),
+                );
+              }),
             ),
 
             // List Content
@@ -161,23 +195,44 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 );
               }
 
+              // childCount includes an extra slot either for loader or end-of-list label
+              final showLoader = controller.hasMore.value;
+              final baseCount = controller.stockEntries.length;
+              final extraCount = 1; // reserved for loader or end-of-list
+
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    if (index >= controller.stockEntries.length) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(),
+                  (context, index) {
+                    if (index >= baseCount) {
+                      if (showLoader) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16.0),
+                        child: Center(
+                          child: Text(
+                            'End of results',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       );
                     }
+
                     final entry = controller.stockEntries[index];
 
                     // Use Obx to listen to specific card expansion
                     return Obx(() {
                       final isExpanded = controller.expandedEntryName.value == entry.name;
-                      final isLoadingDetails = controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
+                      final isLoadingDetails =
+                          controller.isLoadingDetails.value && controller.detailedEntry?.name != entry.name;
 
                       return GenericDocumentCard(
                         title: entry.purpose,
@@ -204,7 +259,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                       );
                     });
                   },
-                  childCount: controller.stockEntries.length + (controller.hasMore.value ? 1 : 0),
+                  childCount: baseCount + extraCount,
                 ),
               );
             }),
@@ -213,16 +268,16 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       ),
       // Create button with Dynamic Permission Guard
       floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(), // Access list content to trigger Obx
-        child: FloatingActionButton.extended(
-          onPressed: controller.openCreateDialog,
-          icon: const Icon(Icons.add),
-          label: const Text('Create'),
-          backgroundColor: colorScheme.primaryContainer,
-          foregroundColor: colorScheme.onPrimaryContainer,
-          elevation: 4,
-        ),
-      )),
+            roles: controller.writeRoles.toList(), // Access list content to trigger Obx
+            child: FloatingActionButton.extended(
+              onPressed: controller.openCreateDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Create'),
+              backgroundColor: colorScheme.primaryContainer,
+              foregroundColor: colorScheme.onPrimaryContainer,
+              elevation: 4,
+            ),
+          )),
     );
   }
 
@@ -273,8 +328,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 child: _buildDetailField(
                     context,
                     'Posted',
-                    FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')
-                ),
+                    FormattingHelper.getRelativeTime('${detailed.postingDate} ${detailed.postingTime ?? ''}')),
               ),
               if (detailed.totalAmount > 0)
                 Expanded(
@@ -282,14 +336,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('Total Value',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 2),
                       Text(
                         '${FormattingHelper.getCurrencySymbol(detailed.currency)} ${NumberFormat.decimalPatternDigits(decimalDigits: 2).format(detailed.totalAmount)}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                        ),
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.primary,
+                            ),
                       ),
                     ],
                   ),
@@ -395,9 +452,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       children: [
         Text(label.toUpperCase(),
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-            )),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.bold,
+                )),
         const SizedBox(height: 2),
         Text(
           value,
@@ -414,7 +471,10 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(value, style: Theme.of(context).textTheme.bodyMedium),
       ],
