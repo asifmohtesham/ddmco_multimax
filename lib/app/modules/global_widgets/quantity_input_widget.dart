@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-class QuantityInputWidget extends StatelessWidget {
+class QuantityInputWidget extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -25,6 +26,31 @@ class QuantityInputWidget extends StatelessWidget {
   });
 
   @override
+  State<QuantityInputWidget> createState() => _QuantityInputWidgetState();
+}
+
+class _QuantityInputWidgetState extends State<QuantityInputWidget> {
+  Timer? _repeatTimer;
+
+  void _startRepeat(VoidCallback action) {
+    // Immediate feedback on press
+    action();
+    _repeatTimer?.cancel();
+    _repeatTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => action());
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _repeatTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final borderColor = Colors.grey.shade300;
@@ -33,21 +59,21 @@ class QuantityInputWidget extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header Row: Label + Info Badge
-        if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
+        if (widget.label.isNotEmpty || (widget.infoText != null && widget.infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  label,
+                  widget.label,
                   style: TextStyle(
-                    color: color,
+                    color: widget.color,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                if (infoText != null && infoText!.isNotEmpty)
+                if (widget.infoText != null && widget.infoText!.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
@@ -55,7 +81,7 @@ class QuantityInputWidget extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      infoText!,
+                      widget.infoText!,
                       style: TextStyle(
                         fontSize: 11,
                         color: primaryColor,
@@ -71,32 +97,34 @@ class QuantityInputWidget extends StatelessWidget {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: isReadOnly ? Colors.grey.shade50 : Colors.white,
+            color: widget.isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: isReadOnly ? [] : [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            boxShadow: widget.isReadOnly
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.grey.withValues(alpha: 0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Row(
             children: [
               // Text Field (Left Side)
               Expanded(
                 child: TextFormField(
-                  controller: controller,
-                  readOnly: isReadOnly,
+                  controller: widget.controller,
+                  readOnly: widget.isReadOnly,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   textAlign: TextAlign.start,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                    color: widget.isReadOnly ? Colors.grey.shade600 : Colors.black87,
                   ),
-                  onChanged: onChanged,
+                  onChanged: widget.onChanged,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                   ],
@@ -116,14 +144,14 @@ class QuantityInputWidget extends StatelessWidget {
               ),
 
               // Buttons Group (Right Side)
-              if (!isReadOnly) ...[
+              if (!widget.isReadOnly) ...[
                 // Vertical Divider
                 Container(width: 1, height: 32, color: Colors.grey.shade200),
 
                 // Decrement Button
                 _buildActionButton(
                   icon: Icons.remove,
-                  onPressed: onDecrement,
+                  onPressed: widget.onDecrement,
                   color: Colors.grey.shade700,
                 ),
 
@@ -133,7 +161,7 @@ class QuantityInputWidget extends StatelessWidget {
                 // Increment Button
                 _buildActionButton(
                   icon: Icons.add,
-                  onPressed: onIncrement,
+                  onPressed: widget.onIncrement,
                   color: primaryColor,
                   borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
                 ),
@@ -155,10 +183,12 @@ class QuantityInputWidget extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
-        onTap: () {
+        onTapDown: (_) {
           HapticFeedback.lightImpact();
-          onPressed();
+          _startRepeat(onPressed);
         },
+        onTapUp: (_) => _stopRepeat(),
+        onTapCancel: _stopRepeat,
         child: SizedBox(
           width: 56,
           height: double.infinity,

@@ -20,6 +20,18 @@ class StockEntryItemFormSheet extends StatelessWidget {
       final isEditing = controller.currentItemNameKey.value != null;
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
+      final maxStock = controller.bsMaxQty.value;
+      final maxMr = controller.bsValidationMaxQty.value;
+      String? qtyInfoText;
+      if (maxStock > 0 && maxMr > 0) {
+        qtyInfoText = 'Avail: ${maxStock.toStringAsFixed(0)} 
+• MR max: ${maxMr.toStringAsFixed(0)}';
+      } else if (maxStock > 0) {
+        qtyInfoText = 'Available: ${maxStock.toStringAsFixed(0)}';
+      } else if (maxMr > 0) {
+        qtyInfoText = 'MR max: ${maxMr.toStringAsFixed(0)}';
+      }
+
       return GlobalItemFormSheet(
         key: ValueKey(controller.currentItemNameKey.value ?? 'new'),
         formKey: controller.itemFormKey,
@@ -32,7 +44,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
-        qtyInfoText: null,
+        qtyInfoText: qtyInfoText,
 
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: docStatus == 0,
@@ -51,122 +63,73 @@ class StockEntryItemFormSheet extends StatelessWidget {
         customFields: [
           // Batch No
           Obx(() => GlobalItemFormSheet.buildInputGroup(
-            label: 'Batch No',
-            color: Colors.purple,
-            bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
-            child: TextFormField(
-              key: const ValueKey('batch_field'),
-              controller: controller.bsBatchController,
-              readOnly: controller.bsIsBatchValid.value,
-              autofocus: false,
-              style: const TextStyle(fontFamily: 'ShureTechMono'),
-              decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
-                // UX FIX: Use helperText to indicate Invalid Batch gracefully
-                helperText: controller.batchError.value,
-                helperStyle: TextStyle(
-                    color: controller.batchError.value != null ? Colors.red : Colors.grey,
-                    fontWeight: controller.batchError.value != null ? FontWeight.bold : FontWeight.normal
+                label: 'Batch No',
+                color: Colors.purple,
+                bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
+                child: TextFormField(
+                  key: const ValueKey('batch_field'),
+                  controller: controller.bsBatchController,
+                  readOnly: controller.bsIsBatchValid.value,
+                  autofocus: false,
+                  style: const TextStyle(fontFamily: 'ShureTechMono'),
+                  decoration: InputDecoration(
+                    hintText: 'Enter or scan batch',
+                    // UX FIX: Use helperText to indicate Invalid Batch gracefully
+                    helperText: controller.batchError.value,
+                    helperStyle: TextStyle(
+                        color: controller.batchError.value != null ? Colors.red : Colors.grey,
+                        fontWeight: controller.batchError.value != null ? FontWeight.bold : FontWeight.normal),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple, width: 2),
+                    ),
+                    filled: true,
+                    fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
+                    suffixIcon: controller.isValidatingBatch.value
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                          )
+                        : (controller.bsIsBatchValid.value
+                            ? IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.purple),
+                                onPressed: controller.resetBatchValidation,
+                                tooltip: 'Edit Batch',
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.check),
+                                onPressed: () => controller.validateBatch(controller.bsBatchController.text),
+                                tooltip: 'Validate',
+                              )),
+                  ),
+                  onFieldSubmitted: (value) => controller.validateBatch(value),
                 ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: controller.batchError.value != null ? Colors.red : Colors.purple, width: 2),
-                ),
-                filled: true,
-                fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
-                suffixIcon: controller.isValidatingBatch.value
-                    ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
-                    : (controller.bsIsBatchValid.value
-                    ? IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.purple),
-                  onPressed: controller.resetBatchValidation,
-                  tooltip: 'Edit Batch',
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => controller.validateBatch(controller.bsBatchController.text),
-                  tooltip: 'Validate',
-                )),
-              ),
-              onFieldSubmitted: (value) => controller.validateBatch(value),
-            ),
-          )),
+              )),
 
           // Invoice Serial
           if (controller.posUploadSerialOptions.isNotEmpty)
             Obx(() => GlobalItemFormSheet.buildInputGroup(
-              label: 'Invoice Serial No',
-              color: Colors.blueGrey,
-              child: DropdownButtonFormField<String>(
-                value: controller.selectedSerial.value,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                ),
-                items: controller.posUploadSerialOptions.map((s) {
-                  return DropdownMenuItem(value: s, child: Text(s));
-                }).toList(),
-                onChanged: (value) => controller.selectedSerial.value = value,
-              ),
-            )),
-
-          // --- New Warehouse Fields ---
-          Builder(builder: (context) {
-            final type = controller.selectedStockEntryType.value;
-            final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-            final showTarget = type == 'Material Receipt' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
-
-            return Column(
-              children: [
-                if (showSource)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: GlobalItemFormSheet.buildInputGroup(
-                      label: 'Source Warehouse',
-                      color: Colors.orange,
-                      child: Obx(() => DropdownButtonFormField<String>(
-                        value: controller.bsItemSourceWarehouse.value,
-                        decoration: InputDecoration(
-                          hintText: 'Default: ${controller.selectedFromWarehouse.value ?? "None"}',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                        ),
-                        isExpanded: true,
-                        items: controller.warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w, overflow: TextOverflow.ellipsis))).toList(),
-                        onChanged: (val) => controller.bsItemSourceWarehouse.value = val,
-                      )),
+                  label: 'Invoice Serial No',
+                  color: Colors.blueGrey,
+                  child: DropdownButtonFormField<String>(
+                    value: controller.selectedSerial.value,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
+                    items: controller.posUploadSerialOptions.map((s) {
+                      return DropdownMenuItem(value: s, child: Text(s));
+                    }).toList(),
+                    onChanged: (value) => controller.selectedSerial.value = value,
                   ),
+                )),
 
-                if (showTarget)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: GlobalItemFormSheet.buildInputGroup(
-                      label: 'Target Warehouse',
-                      color: Colors.green,
-                      child: Obx(() => DropdownButtonFormField<String>(
-                        value: controller.bsItemTargetWarehouse.value,
-                        decoration: InputDecoration(
-                          hintText: 'Default: ${controller.selectedToWarehouse.value ?? "None"}',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                        ),
-                        isExpanded: true,
-                        items: controller.warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w, overflow: TextOverflow.ellipsis))).toList(),
-                        onChanged: (val) => controller.bsItemTargetWarehouse.value = val,
-                      )),
-                    ),
-                  ),
-              ],
-            );
-          }),
-
-          // Rack Fields
+          // Rack Fields + Derived Warehouses
           Builder(builder: (context) {
             final type = controller.selectedStockEntryType.value;
             final showSource = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
@@ -183,41 +146,64 @@ class StockEntryItemFormSheet extends StatelessWidget {
                       color: Colors.orange,
                       bgColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : null,
                       child: Obx(() => TextFormField(
-                        key: const ValueKey('source_rack_field'),
-                        controller: controller.bsSourceRackController,
-                        readOnly: controller.isSourceRackValid.value,
-                        autofocus: false,
-                        decoration: InputDecoration(
-                          hintText: 'Rack',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.orange.shade200),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Colors.orange, width: 2),
-                          ),
-                          filled: true,
-                          fillColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : Colors.white,
-                          suffixIcon: controller.isValidatingSourceRack.value
-                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
-                              : (controller.isSourceRackValid.value
-                              ? IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.orange),
-                            onPressed: controller.resetSourceRackValidation,
-                          )
-                              : IconButton(
-                            icon: const Icon(Icons.arrow_forward, color: Colors.orange),
-                            onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
+                            key: const ValueKey('source_rack_field'),
+                            controller: controller.bsSourceRackController,
+                            readOnly: controller.isSourceRackValid.value,
+                            autofocus: false,
+                            decoration: InputDecoration(
+                              hintText: 'Rack',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: Colors.orange.shade200),
+                              ),
+                              focusedBorder: const OutlineInputBorder(
+                                borderRadius: BorderRadius.all(Radius.circular(8)),
+                                borderSide: BorderSide(color: Colors.orange, width: 2),
+                              ),
+                              filled: true,
+                              fillColor: controller.isSourceRackValid.value ? Colors.orange.shade50 : Colors.white,
+                              suffixIcon: controller.isValidatingSourceRack.value
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)),
+                                    )
+                                  : (controller.isSourceRackValid.value
+                                      ? IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.orange),
+                                          onPressed: controller.resetSourceRackValidation,
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.check, color: Colors.orange),
+                                          onPressed: () => controller.validateRack(controller.bsSourceRackController.text, true),
+                                        )),
+                            ),
+                            onFieldSubmitted: (val) => controller.validateRack(val, true),
                           )),
-                        ),
-                        onFieldSubmitted: (val) => controller.validateRack(val, true),
-                      )),
                     ),
                   ),
-
-                if (showSource && showTarget) const SizedBox(width: 12),
+                if (showSource)
+                  Obx(() {
+                    final itemWh = controller.bsItemSourceWarehouse.value;
+                    final derivedWh = controller.derivedSourceWarehouse.value;
+                    final headerWh = controller.selectedFromWarehouse.value;
+                    String? text;
+                    if (itemWh != null && itemWh.isNotEmpty) {
+                      text = 'Warehouse: $itemWh (auto from rack)';
+                    } else if (derivedWh != null && derivedWh.isNotEmpty) {
+                      text = 'Warehouse: $derivedWh (auto from rack)';
+                    } else if (headerWh != null && headerWh.isNotEmpty) {
+                      text = 'Warehouse: $headerWh (from header)';
+                    }
+                    if (text == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
+                      child: Text(
+                        text,
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      ),
+                    );
+                  }),
 
                 if (showTarget)
                   Padding(
@@ -227,39 +213,65 @@ class StockEntryItemFormSheet extends StatelessWidget {
                       color: Colors.green,
                       bgColor: controller.isTargetRackValid.value ? Colors.green.shade50 : null,
                       child: Obx(() => TextFormField(
-                        key: const ValueKey('target_rack_field'),
-                        controller: controller.bsTargetRackController,
-                        readOnly: controller.isTargetRackValid.value,
-                        autofocus: false,
-                        decoration: InputDecoration(
-                          hintText: 'Rack',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.green.shade200),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Colors.green, width: 2),
-                          ),
-                          filled: true,
-                          fillColor: controller.isTargetRackValid.value ? Colors.green.shade50 : Colors.white,
-                          suffixIcon: controller.isValidatingTargetRack.value
-                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green)))
-                              : (controller.isTargetRackValid.value
-                              ? IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.green),
-                            onPressed: controller.resetTargetRackValidation,
-                          )
-                              : IconButton(
-                            icon: const Icon(Icons.arrow_forward, color: Colors.green),
-                            onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
+                            key: const ValueKey('target_rack_field'),
+                            controller: controller.bsTargetRackController,
+                            readOnly: controller.isTargetRackValid.value,
+                            autofocus: false,
+                            decoration: InputDecoration(
+                              hintText: 'Rack',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: Colors.green.shade200),
+                              ),
+                              focusedBorder: const OutlineInputBorder(
+                                borderRadius: BorderRadius.all(Radius.circular(8)),
+                                borderSide: BorderSide(color: Colors.green, width: 2),
+                              ),
+                              filled: true,
+                              fillColor: controller.isTargetRackValid.value ? Colors.green.shade50 : Colors.white,
+                              suffixIcon: controller.isValidatingTargetRack.value
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green)),
+                                    )
+                                  : (controller.isTargetRackValid.value
+                                      ? IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.green),
+                                          onPressed: controller.resetTargetRackValidation,
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.check, color: Colors.green),
+                                          onPressed: () => controller.validateRack(controller.bsTargetRackController.text, false),
+                                        )),
+                            ),
+                            onFieldSubmitted: (val) => controller.validateRack(val, false),
                           )),
-                        ),
-                        onFieldSubmitted: (val) => controller.validateRack(val, false),
-                      )),
                     ),
                   ),
+                if (showTarget)
+                  Obx(() {
+                    final itemWh = controller.bsItemTargetWarehouse.value;
+                    final derivedWh = controller.derivedTargetWarehouse.value;
+                    final headerWh = controller.selectedToWarehouse.value;
+                    String? text;
+                    if (itemWh != null && itemWh.isNotEmpty) {
+                      text = 'Warehouse: $itemWh (auto from rack)';
+                    } else if (derivedWh != null && derivedWh.isNotEmpty) {
+                      text = 'Warehouse: $derivedWh (auto from rack)';
+                    } else if (headerWh != null && headerWh.isNotEmpty) {
+                      text = 'Warehouse: $headerWh (from header)';
+                    }
+                    if (text == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
+                      child: Text(
+                        text,
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      ),
+                    );
+                  }),
+
                 Obx(() {
                   if (controller.rackError.value != null) {
                     return Padding(
