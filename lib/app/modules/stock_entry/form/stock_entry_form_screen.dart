@@ -20,6 +20,11 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
       final VoidCallback? onSave = isEditable ? controller.saveStockEntry : null;
 
+      // Show the reload button for any persisted document (edit or view mode),
+      // but not while a new entry is being created for the first time.
+      final VoidCallback? onReload =
+          controller.mode != 'new' ? controller.reloadDocument : null;
+
       final String title = entry == null
           ? 'Loading...'
           : (entry.name?.isNotEmpty == true
@@ -41,6 +46,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               isDirty: controller.isDirty.value,
               isSaving: controller.isSaving.value,
               onSave: onSave,
+              onReload: onReload,
               bottom: const TabBar(
                 tabs: [
                   Tab(text: 'Details'),
@@ -271,14 +277,20 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               ),
               if (isMaterialIssue) ...[
                 const SizedBox(height: 12),
+                // Reference No is always read-only: its value is set by the
+                // system (POS upload ID or Material Request ref) and must not
+                // be editable by the user. Rendering it read-only also prevents
+                // a focus tap from triggering the dirty-state listener.
                 TextFormField(
                   controller: controller.customReferenceNoController,
-                  readOnly: !isEditable,
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'Reference No',
-                    hintText: 'Enter reference number',
+                    hintText: 'Reference number',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.confirmation_number_outlined),
+                    // Lock icon signals clearly that this field is not editable
+                    suffixIcon: const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),

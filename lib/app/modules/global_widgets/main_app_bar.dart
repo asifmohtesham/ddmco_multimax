@@ -10,6 +10,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isDirty;
   final bool isSaving;
   final VoidCallback? onSave;
+  final VoidCallback? onReload;
   final List<Widget>? actions;
   final Widget? leading;
   final bool showBack;
@@ -26,6 +27,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.status,
     this.isSaving = false,
     this.onSave,
+    this.onReload,
     this.actions,
     this.leading,
     this.showBack = true,
@@ -41,7 +43,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Save]
+    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Reload] -> [Save]
     final List<Widget> appActions = [
       // Global Search Action
       if (searchDoctype != null && searchRoute != null)
@@ -62,6 +64,15 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
       // Custom Actions injected by the screen
       ...(actions ?? []),
 
+      // Reload Action — only shown when onReload is provided
+      if (onReload != null)
+        IconButton(
+          tooltip: 'Reload document',
+          icon: const Icon(Icons.refresh),
+          // Disable while a save is in progress to avoid concurrent requests
+          onPressed: isSaving ? null : onReload,
+        ),
+
       // Global Save Action
       if (onSave != null)
         SaveIconButton(
@@ -72,19 +83,24 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     ];
 
     return AppBar(
-      leading: leading ?? (showBack && Navigator.canPop(context)
-          ? IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Get.back(),
-      )
-          : null),
+      // Fix: use Navigator.maybePop so PopScope.canPop / onPopInvokedWithResult
+      // is respected. Get.back() bypasses the PopScope guard entirely.
+      leading: leading ??
+          (showBack && Navigator.canPop(context)
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.maybePop(context),
+                )
+              : null),
       title: Column(
-        crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+            title,
+            style:
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           if (displayStatus != null) ...[
             const SizedBox(height: 4),
@@ -103,5 +119,6 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 }

@@ -63,6 +63,11 @@ class StockEntryFormController extends GetxController
   var selectedToWarehouse = RxnString();
   final customReferenceNoController = TextEditingController();
 
+  // Snapshot of the Reference No value as loaded from the server.
+  // _markDirty() is only called when the current text differs from this,
+  // preventing a read-only tap or programmatic population from dirtying the doc.
+  String _initialReferenceNo = '';
+
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
   var selectedStockEntryType = 'Material Transfer'.obs;
@@ -164,14 +169,19 @@ class StockEntryFormController extends GetxController
     ever(selectedStockEntryType, (_) => _markDirty());
     ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
+    // Only mark dirty when the text actually changes from the server-loaded
+    // snapshot. This prevents a mere tap (focus) or programmatic setText from
+    // flipping isDirty, and makes the field safe to render as readOnly.
     customReferenceNoController.addListener(() {
-      _markDirty();
+      final current = customReferenceNoController.text;
+      if (current != _initialReferenceNo) {
+        _markDirty();
+      }
       if (entrySource == StockEntrySource.manual &&
           selectedStockEntryType.value == 'Material Issue' &&
-          customReferenceNoController.text.isNotEmpty) {
-        final ref = customReferenceNoController.text;
-        if (ref.startsWith('KX') || ref.startsWith('MX')) {
-          _fetchPosUploadDetails(ref);
+          current.isNotEmpty) {
+        if (current.startsWith('KX') || current.startsWith('MX')) {
+          _fetchPosUploadDetails(current);
         }
       }
     });
@@ -227,6 +237,9 @@ class StockEntryFormController extends GetxController
 
     selectedStockEntryType.value = type;
     customReferenceNoController.text = ref;
+    // Snapshot so the listener does not mark a brand-new entry as dirty
+    // simply because the controller was populated programmatically.
+    _initialReferenceNo = ref;
 
     _determineSource(type, ref);
 
@@ -318,14 +331,19 @@ class StockEntryFormController extends GetxController
             entry.stockEntryType ?? 'Material Transfer';
         selectedFromWarehouse.value = entry.fromWarehouse;
         selectedToWarehouse.value = entry.toWarehouse;
-        customReferenceNoController.text = entry.customReferenceNo ?? '';
+
+        // Populate the controller and snapshot in one step so the listener
+        // sees current == _initialReferenceNo and does NOT call _markDirty().
+        final ref = entry.customReferenceNo ?? '';
+        _initialReferenceNo = ref;
+        customReferenceNoController.text = ref;
 
         if (entry.stockEntryType == 'Material Issue' &&
             entry.customReferenceNo != null) {
-          final ref = entry.customReferenceNo!;
-          if (ref.startsWith('KX') || ref.startsWith('MX')) {
+          final refNo = entry.customReferenceNo!;
+          if (refNo.startsWith('KX') || refNo.startsWith('MX')) {
             entrySource = StockEntrySource.posUpload;
-            await _fetchPosUploadDetails(ref);
+            await _fetchPosUploadDetails(refNo);
           } else if (entry.items.any((i) => i.materialRequest != null)) {
             entrySource = StockEntrySource.materialRequest;
             final firstLinkedItem = entry.items
@@ -586,10 +604,6 @@ class StockEntryFormController extends GetxController
 
   // Batch is always required and must pass server validation before the sheet
   // is considered valid, regardless of entrySource or entry type.
-  // Rules:
-  //   - Empty batch         → invalid (batch not yet entered)
-  //   - Non-empty, not yet validated (bsIsBatchValid == false) → invalid
-  //   - Non-empty + validated → valid
   bool _isValidBatch() {
     if (bsBatchController.text.isEmpty) return false;
     if (!bsIsBatchValid.value) return false;
@@ -608,14 +622,6 @@ class StockEntryFormController extends GetxController
     return true;
   }
 
-  // Rack validation gates per entry type:
-  //   Material Receipt                   : target rack required + validated
-  //   Material Issue                     : source rack required + validated
-  //   Material Transfer / for Manufacture: source AND target racks required + validated
-  //
-  // An empty rack field or a warehouse-only resolution (no validateRack() call)
-  // no longer satisfies these gates — the field must have been explicitly
-  // validated (isSourceRackValid / isTargetRackValid == true).
   bool _isValidRacks() {
     final type = selectedStockEntryType.value;
     final requiresSource = [
@@ -629,21 +635,18 @@ class StockEntryFormController extends GetxController
       'Material Transfer for Manufacture'
     ].contains(type);
 
-    // Source rack: must be non-empty AND validated.
     if (requiresSource) {
       if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
         return false;
       }
     }
 
-    // Target rack: must be non-empty AND validated.
     if (requiresTarget) {
       if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
         return false;
       }
     }
 
-    // Source and target racks must differ when both are required.
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
@@ -662,8 +665,6 @@ class StockEntryFormController extends GetxController
 
   bool _hasChanges() {
     if (currentItemNameKey.value == null) return true;
-    // Compare quantities as doubles to avoid false positives from formatting
-    // differences such as "12" vs "12.0" produced by different code paths.
     final currentQty = double.tryParse(bsQtyController.text) ?? 0;
     final initialQty = double.tryParse(_initialQty) ?? 0;
     if (currentQty != initialQty) return true;
@@ -718,8 +719,6 @@ class StockEntryFormController extends GetxController
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
-          // Capture the sheet's BuildContext so addItem() can close it via
-          // Navigator.of(context).pop() instead of Get.back().
           _sheetContext = context;
           return StockEntryItemFormSheet(
             controller: this,
@@ -776,15 +775,10 @@ class StockEntryFormController extends GetxController
     bsItemModified.value = item.modified;
     bsItemModifiedBy.value = item.modifiedBy;
 
-    // Normalise to integer string when qty has no fractional part so that
-    // _hasChanges() can compare cleanly against adjustSheetQty output.
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
     bsQtyController.text = qtyStr;
 
-    // Populate rack/batch controllers BEFORE setting bsItemSourceWarehouse so
-    // that the ever() worker fires _updateAvailableStock() with the correct
-    // rack text already in place (avoids a zero-balance race condition).
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
@@ -823,24 +817,17 @@ class StockEntryFormController extends GetxController
     rackError.value = null;
     batchError.value = null;
 
-    // Raise the dedicated balance-chip loading flags BEFORE opening the sheet
-    // so the chips display a spinner immediately on first build rather than
-    // briefly rendering SizedBox.shrink() (balance=0, isLoading=false).
     if (item.batchNo != null && item.batchNo!.isNotEmpty) {
       isLoadingBatchBalance.value = true;
     }
     isLoadingRackBalance.value = true;
 
-    // Now safe to set bsItemSourceWarehouse — rack controllers are already
-    // populated so the ever() worker reads the correct rack text.
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
     validateSheet();
     _openSheet();
 
-    // Fetch live balances after the sheet is open; Obx widgets update
-    // reactively and the dedicated flags are cleared in the finally blocks.
     unawaited(Future.wait([
       if (item.batchNo != null && item.batchNo!.isNotEmpty)
         _updateBatchBalance(),
