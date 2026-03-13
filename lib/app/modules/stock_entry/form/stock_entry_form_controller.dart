@@ -129,6 +129,10 @@ class StockEntryFormController extends GetxController
   Timer? _autoSubmitTimer;
   Worker? _scanWorker;
 
+  // Navigator key for the sheet route — set by _openSheet, cleared on close.
+  // Used by addItem() to pop the sheet without touching GetX's snackbar queue.
+  BuildContext? _sheetContext;
+
   @override
   void onInit() {
     super.onInit();
@@ -186,7 +190,7 @@ class StockEntryFormController extends GetxController
             if (isSheetValid.value && isItemSheetOpen.value) {
               isAddingItem.value = true;
               await Future.delayed(const Duration(milliseconds: 500));
-              await addItem(); // addItem() closes the sheet
+              await addItem();
               isAddingItem.value = false;
             }
           });
@@ -449,6 +453,10 @@ class StockEntryFormController extends GetxController
   }
 
   Future<void> addItem() async {
+    // Cancel any pending auto-submit timer so a concurrent call triggered
+    // by the timer cannot race with a manual submit that is already running.
+    _autoSubmitTimer?.cancel();
+
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
@@ -525,8 +533,16 @@ class StockEntryFormController extends GetxController
     barcodeController.clear();
     triggerHighlight(uniqueId);
 
-    // Single source of truth: controller closes the sheet.
-    if (Get.isBottomSheetOpen == true) Get.back();
+    // Close the sheet via the Flutter Navigator on the captured sheet context.
+    // Using Get.back() here would call closeCurrentSnackbar() as a side-effect,
+    // which crashes when a snackbar is queued but not yet initialised (GetX bug).
+    // Falling back to Get.back() only when the context is unavailable.
+    final ctx = _sheetContext;
+    if (ctx != null && ctx.mounted) {
+      Navigator.of(ctx).pop();
+    } else if (Get.isBottomSheetOpen == true) {
+      Get.back();
+    }
 
     if (mode == 'new') {
       saveStockEntry();
@@ -634,7 +650,11 @@ class StockEntryFormController extends GetxController
 
   bool _hasChanges() {
     if (currentItemNameKey.value == null) return true;
-    if (bsQtyController.text != _initialQty) return true;
+    // Compare quantities as doubles to avoid false positives from formatting
+    // differences such as "12" vs "12.0" produced by different code paths.
+    final currentQty = double.tryParse(bsQtyController.text) ?? 0;
+    final initialQty = double.tryParse(_initialQty) ?? 0;
+    if (currentQty != initialQty) return true;
     if (bsBatchController.text != _initialBatch) return true;
     if (bsSourceRackController.text != _initialSourceRack) return true;
     if (bsTargetRackController.text != _initialTargetRack) return true;
@@ -673,6 +693,7 @@ class StockEntryFormController extends GetxController
     _initialBatch = '';
     _initialSourceRack = '';
     _initialTargetRack = '';
+    _sheetContext = null;
   }
 
   void _openSheet() {
@@ -683,6 +704,9 @@ class StockEntryFormController extends GetxController
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
+          // Capture the sheet's BuildContext so addItem() can close it via
+          // Navigator.of(context).pop() instead of Get.back().
+          _sheetContext = context;
           return StockEntryItemFormSheet(
             controller: this,
             scrollController: scrollController,
@@ -695,11 +719,11 @@ class StockEntryFormController extends GetxController
       currentItemNameKey.value = null;
       rackError.value = null;
       batchError.value = null;
+      _sheetContext = null;
     });
   }
 
   void _openQtySheet({String? scannedBatch}) {
-    // Guard: never open a second sheet while one is already live
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     _resetSheetState();
@@ -726,7 +750,6 @@ class StockEntryFormController extends GetxController
   }
 
   void editItem(StockEntryItem item) {
-    // Guard: never open a second sheet while one is already live
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     itemFormKey = GlobalKey<FormState>();
@@ -739,6 +762,8 @@ class StockEntryFormController extends GetxController
     bsItemModified.value = item.modified;
     bsItemModifiedBy.value = item.modifiedBy;
 
+    // Normalise to integer string when qty has no fractional part so that
+    // _hasChanges() can compare cleanly against adjustSheetQty output.
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
     bsQtyController.text = qtyStr;

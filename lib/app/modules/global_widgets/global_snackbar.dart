@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
-  // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
       title: title,
@@ -49,7 +48,16 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    // GetX bug: Get.isSnackbarOpen returns true for a snackbar that is queued
+    // but whose internal AnimationController has not been initialised yet.
+    // Calling closeCurrentSnackbar() on such an entry throws
+    // LateInitializationError.  Swallow the exception so the new snackbar
+    // is always enqueued regardless of the state of any prior entry.
+    if (Get.isSnackbarOpen) {
+      try {
+        Get.closeCurrentSnackbar();
+      } catch (_) {}
+    }
 
     if (shouldVibrate) HapticFeedback.lightImpact();
 
@@ -70,7 +78,7 @@ class GlobalSnackbar {
           color: Colors.black87,
           fontSize: 14,
         ),
-        maxLines: 4, // Prevents overflow
+        maxLines: 4,
         overflow: TextOverflow.ellipsis,
       ),
       backgroundColor: Colors.white,
