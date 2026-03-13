@@ -16,7 +16,11 @@ class StockEntryItemFormSheet extends StatelessWidget {
 
   // ---------------------------------------------------------------------------
   // Shared balance chip used below both Batch and Source Rack fields.
-  // Shows a loading spinner while fetching, hides when value is zero.
+  // [isLoading] must be the DEDICATED balance-loading flag
+  // (isLoadingBatchBalance / isLoadingRackBalance), NOT the field-level
+  // validation spinner (isValidatingBatch / isValidatingSourceRack).
+  // The field-level spinners are never toggled in editItem(), so using them
+  // here caused the chip to stay hidden in edit mode.
   // ---------------------------------------------------------------------------
   static Widget _balanceChip({
     required RxDouble balance,
@@ -196,10 +200,11 @@ class StockEntryItemFormSheet extends StatelessWidget {
                           controller.validateBatch(value),
                     ),
                   ),
-                  // Batch balance — shown in both add and edit modes.
+                  // Use the dedicated batch-balance loading flag so the chip
+                  // shows a spinner in both add-mode and edit-mode.
                   _balanceChip(
                     balance: controller.bsBatchBalance,
-                    isLoading: controller.isValidatingBatch,
+                    isLoading: controller.isLoadingBatchBalance,
                     label: 'Batch Balance',
                     color: Colors.purple.shade700,
                   ),
@@ -317,10 +322,11 @@ class StockEntryItemFormSheet extends StatelessWidget {
                           )),
                     ),
                   ),
-                  // Source rack balance — shown in both add and edit modes.
+                  // Use the dedicated rack-balance loading flag so the chip
+                  // shows a spinner in both add-mode and edit-mode.
                   _balanceChip(
                     balance: controller.bsRackBalance,
-                    isLoading: controller.isValidatingSourceRack,
+                    isLoading: controller.isLoadingRackBalance,
                     label: 'Rack Balance',
                     color: Colors.orange.shade800,
                   ),

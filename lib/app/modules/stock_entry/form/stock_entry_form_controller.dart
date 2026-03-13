@@ -97,6 +97,13 @@ class StockEntryFormController extends GetxController
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
+  // Dedicated loading flags for the balance chips so they show a spinner in
+  // both add-mode (scan flow) and edit-mode (editItem) independently of the
+  // field-level validation spinners (isValidatingBatch / isValidatingSourceRack)
+  // which are never toggled in editItem().
+  var isLoadingBatchBalance = false.obs;
+  var isLoadingRackBalance = false.obs;
+
   var rackError = RxnString();
   var batchError = RxnString();
 
@@ -681,6 +688,8 @@ class StockEntryFormController extends GetxController
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
     isSheetValid.value = false;
+    isLoadingBatchBalance.value = false;
+    isLoadingRackBalance.value = false;
     rackError.value = null;
     batchError.value = null;
     selectedSerial.value = null;
@@ -767,13 +776,14 @@ class StockEntryFormController extends GetxController
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
     bsQtyController.text = qtyStr;
+
+    // Populate rack/batch controllers BEFORE setting bsItemSourceWarehouse so
+    // that the ever() worker fires _updateAvailableStock() with the correct
+    // rack text already in place (avoids a zero-balance race condition).
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
-
-    bsItemSourceWarehouse.value = item.sWarehouse;
-    bsItemTargetWarehouse.value = item.tWarehouse;
 
     if (entrySource == StockEntrySource.materialRequest &&
         (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
@@ -808,19 +818,29 @@ class StockEntryFormController extends GetxController
     rackError.value = null;
     batchError.value = null;
 
-    // Fetch live balance data so the sheet shows the same figures in edit
-    // mode as it does when first adding an item via scan.
-    // Both calls run in parallel; the sheet opens immediately and the Obx
-    // widgets in the sheet will update reactively once the futures complete.
+    // Raise the dedicated balance-chip loading flags BEFORE opening the sheet
+    // so the chips display a spinner immediately on first build rather than
+    // briefly rendering SizedBox.shrink() (balance=0, isLoading=false).
+    if (item.batchNo != null && item.batchNo!.isNotEmpty) {
+      isLoadingBatchBalance.value = true;
+    }
+    isLoadingRackBalance.value = true;
+
+    // Now safe to set bsItemSourceWarehouse — rack controllers are already
+    // populated so the ever() worker reads the correct rack text.
+    bsItemSourceWarehouse.value = item.sWarehouse;
+    bsItemTargetWarehouse.value = item.tWarehouse;
+
+    validateSheet();
+    _openSheet();
+
+    // Fetch live balances after the sheet is open; Obx widgets update
+    // reactively and the dedicated flags are cleared in the finally blocks.
     unawaited(Future.wait([
       if (item.batchNo != null && item.batchNo!.isNotEmpty)
         _updateBatchBalance(),
       _updateAvailableStock(),
     ]));
-
-    validateSheet();
-
-    _openSheet();
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -984,6 +1004,7 @@ class StockEntryFormController extends GetxController
     if (!isSourceOp) {
       bsMaxQty.value = 999999.0;
       bsRackBalance.value = 0.0;
+      isLoadingRackBalance.value = false;
       return;
     }
 
@@ -999,10 +1020,12 @@ class StockEntryFormController extends GetxController
     if (effectiveWarehouse == null || effectiveWarehouse.isEmpty) {
       bsMaxQty.value = 0.0;
       bsRackBalance.value = 0.0;
+      isLoadingRackBalance.value = false;
       rackError.value = 'No Warehouse Selected';
       return;
     }
 
+    isLoadingRackBalance.value = true;
     final batch = bsBatchController.text.trim();
     final rack = bsSourceRackController.text.trim();
 
@@ -1046,6 +1069,8 @@ class StockEntryFormController extends GetxController
           message: e.toString().contains('Session Defaults')
               ? 'Please set Session Defaults in Dashboard'
               : 'Failed to fetch stock for $effectiveWarehouse');
+    } finally {
+      isLoadingRackBalance.value = false;
     }
   }
 
@@ -1053,8 +1078,10 @@ class StockEntryFormController extends GetxController
     final batch = bsBatchController.text.trim();
     if (batch.isEmpty || currentItemCode.isEmpty) {
       bsBatchBalance.value = 0.0;
+      isLoadingBatchBalance.value = false;
       return;
     }
+    isLoadingBatchBalance.value = true;
     final String? warehouse = bsItemSourceWarehouse.value ??
         derivedSourceWarehouse.value ??
         selectedFromWarehouse.value;
@@ -1106,6 +1133,8 @@ class StockEntryFormController extends GetxController
     } catch (e) {
       debugPrint('Failed to fetch batch-wise balance: $e');
       bsBatchBalance.value = 0.0;
+    } finally {
+      isLoadingBatchBalance.value = false;
     }
   }
 
