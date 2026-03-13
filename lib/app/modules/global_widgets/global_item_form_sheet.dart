@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
-class GlobalItemFormSheet extends StatefulWidget {
+class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
   final String title;
@@ -23,24 +24,28 @@ class GlobalItemFormSheet extends StatefulWidget {
   final Function onSubmit;
   final VoidCallback? onDelete;
 
-  // State
+  // State driven by parent DocType controller
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isSaving;
-  final bool isLoading; // External loading state (for Auto-Submit)
+  final bool isLoading; // External loading state (e.g. auto-submit)
 
-  // Metadata Fields
+  // Metadata
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
-  // Scan Integration
+  // Scan integration
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
 
-  const GlobalItemFormSheet({
+  /// Unique tag used to scope [ItemFormSheetController] to this sheet instance.
+  /// Derived from [key] when provided, otherwise a timestamp is used.
+  late final String _sheetTag;
+
+  GlobalItemFormSheet({
     super.key,
     required this.formKey,
     required this.scrollController,
@@ -67,9 +72,16 @@ class GlobalItemFormSheet extends StatefulWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
-  });
+  }) {
+    // Build a stable tag from the widget key so re-builds reuse the same
+    // controller, but a new sheet open (different key) gets a fresh one.
+    _sheetTag = key != null ? key.toString() : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
+  }
 
-  // Keep static helper accessible from sub-widgets without instantiation
+  // ---------------------------------------------------------------------------
+  // Static helper — accessible from DocType-specific customFields builders
+  // without needing a widget instance.
+  // ---------------------------------------------------------------------------
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -103,43 +115,46 @@ class GlobalItemFormSheet extends StatefulWidget {
     );
   }
 
-  @override
-  State<GlobalItemFormSheet> createState() => _GlobalItemFormSheetState();
-}
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
 
-class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
-  // Stable reactive flag — lives in State, not in the widget itself,
-  // so it survives rebuilds triggered by Obx/GetX reactivity.
-  final _isInternalLoading = false.obs;
+  /// Lazily registers the scoped controller on first access; GetX returns the
+  /// existing instance on subsequent calls within the same sheet lifetime.
+  ItemFormSheetController get _sheetCtrl =>
+      Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
   Widget _buildSaveButton(BuildContext context, bool enabled) {
+    // Access once so Obx below captures the correct tag.
+    final ctrl = _sheetCtrl;
+
     return Obx(() {
-      final showLoading =
-          widget.isSaving || widget.isLoading || _isInternalLoading.value;
+      final showLoading = isSaving || isLoading || ctrl.isSubmitting.value;
       final canPress = enabled && !showLoading;
       final colorScheme = Theme.of(context).colorScheme;
 
       return FilledButton(
         onPressed: canPress
             ? () async {
-                if (widget.formKey.currentState!.validate()) {
-                  // 1. Unfocus keyboard
+                if (formKey.currentState!.validate()) {
+                  // 1. Dismiss keyboard
                   FocusScope.of(context).unfocus();
 
-                  // 2. Show loading indicator
-                  _isInternalLoading.value = true;
+                  // 2. Show sheet-local spinner
+                  ctrl.isSubmitting.value = true;
                   await Future.delayed(const Duration(milliseconds: 300));
 
-                  // 3. Submit
+                  // 3. Delegate to parent controller; it owns Get.back()
                   try {
-                    final result = widget.onSubmit();
+                    final result = onSubmit();
                     if (result is Future) await result;
-                    // onSubmit() (i.e. controller.addItem()) is responsible
-                    // for calling Get.back() — no duplicate close here.
                   } catch (e) {
-                    debugPrint('Sheet submit error: $e');
+                    debugPrint('GlobalItemFormSheet submit error: $e');
                   } finally {
-                    _isInternalLoading.value = false;
+                    // Guard: controller may already be deleted if sheet closed
+                    if (Get.isRegistered<ItemFormSheetController>(tag: _sheetTag)) {
+                      ctrl.isSubmitting.value = false;
+                    }
                   }
                 }
               }
@@ -160,74 +175,69 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
                 ),
               )
             : Text(
-                widget.title,
+                title,
                 style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
       );
     });
   }
 
   Widget _buildMetadataHeader(BuildContext context) {
-    if (widget.owner == null &&
-        widget.creation == null &&
-        widget.modified == null &&
-        widget.modifiedBy == null) {
+    if (owner == null && creation == null && modified == null && modifiedBy == null) {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
     final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
+
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.owner != null || widget.creation != null)
+          if (owner != null || creation != null)
             Row(
               children: [
-                if (widget.owner != null) ...[
+                if (owner != null) ...[
                   Icon(Icons.person_outline, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(widget.owner!,
-                      style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
-                if (widget.owner != null && widget.creation != null)
+                if (owner != null && creation != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (widget.creation != null) ...[
+                if (creation != null)
                   Text(
-                    'Created ${FormattingHelper.getRelativeTime(widget.creation)}',
+                    'Created ${FormattingHelper.getRelativeTime(creation)}',
                     style: style,
                   ),
-                ],
               ],
             ),
-          if ((widget.modified != null || widget.modifiedBy != null) &&
-              (widget.modified != widget.creation ||
-                  widget.modifiedBy != widget.owner)) ...[
+          if ((modified != null || modifiedBy != null) &&
+              (modified != creation || modifiedBy != owner)) ...[
             const SizedBox(height: 4),
             Row(
               children: [
-                if (widget.modifiedBy != null) ...[
+                if (modifiedBy != null) ...[
                   Icon(Icons.edit_outlined, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(widget.modifiedBy!,
-                      style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
-                if (widget.modifiedBy != null && widget.modified != null)
+                if (modifiedBy != null && modified != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (widget.modified != null) ...[
+                if (modified != null)
                   Text(
-                    'Modified ${FormattingHelper.getRelativeTime(widget.modified)}',
+                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
                     style: style,
                   ),
-                ],
               ],
             ),
           ],
@@ -238,6 +248,11 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Register the scoped controller as soon as the widget enters the tree.
+    // GetX will dispose it automatically when Get.back() removes the route,
+    // because permanent: false means it is tied to the current Get scope.
+    _sheetCtrl;
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final mediaQuery = MediaQuery.of(context);
@@ -249,14 +264,13 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
       margin: EdgeInsets.only(top: topPadding + 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(28.0)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
+          // ── Drag handle ────────────────────────────────────────────────────
           Container(
             color: colorScheme.surface,
             width: double.infinity,
@@ -271,14 +285,17 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
               ),
             ),
           ),
+
+          // ── Scrollable form body ────────────────────────────────────────────
           Expanded(
             child: Form(
-              key: widget.formKey,
+              key: formKey,
               child: ListView(
-                controller: widget.scrollController,
+                controller: scrollController,
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                 shrinkWrap: true,
                 children: [
+                  // Header row: item identity + close button
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -288,7 +305,7 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.title,
+                              title,
                               style: theme.textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onSurface,
@@ -303,7 +320,8 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${widget.itemCode}${widget.itemSubtext != null && widget.itemSubtext!.isNotEmpty ? ' • ${widget.itemSubtext}' : ''}',
+                                '$itemCode'
+                                '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
                                 style: theme.textTheme.labelMedium?.copyWith(
                                   fontFamily: 'ShureTechMono',
                                   fontSize: 16,
@@ -313,7 +331,7 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              widget.itemName,
+                              itemName,
                               style: theme.textTheme.bodyLarge?.copyWith(
                                 color: colorScheme.onSurface,
                               ),
@@ -328,86 +346,95 @@ class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
                         onPressed: () => Get.back(),
                         icon: const Icon(Icons.close),
                         style: IconButton.styleFrom(
-                          backgroundColor:
-                              colorScheme.surfaceContainerHigh,
+                          backgroundColor: colorScheme.surfaceContainerHigh,
                           foregroundColor: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
+
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                     child: Divider(height: 1),
                   ),
-                  ...widget.customFields.map(
+
+                  // DocType-specific custom fields
+                  ...customFields.map(
                     (w) => Padding(
                       padding: const EdgeInsets.only(bottom: 20.0),
                       child: w,
                     ),
                   ),
+
+                  // Quantity input
                   QuantityInputWidget(
-                    controller: widget.qtyController,
-                    onIncrement: widget.onIncrement,
-                    onDecrement: widget.onDecrement,
-                    isReadOnly: widget.isQtyReadOnly,
+                    controller: qtyController,
+                    onIncrement: onIncrement,
+                    onDecrement: onDecrement,
+                    isReadOnly: isQtyReadOnly,
                     label: 'Quantity',
-                    infoText: widget.qtyInfoText,
+                    infoText: qtyInfoText,
                   ),
+
                   const SizedBox(height: 32),
+
+                  // Save button
                   SizedBox(
                     width: double.infinity,
-                    child: widget.isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(
-                            context, widget.isSaveEnabledRx!.value))
-                        : _buildSaveButton(context, widget.isSaveEnabled),
+                    child: isSaveEnabledRx != null
+                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                        : _buildSaveButton(context, isSaveEnabled),
                   ),
-                  if (widget.onDelete != null) ...[
+
+                  // Delete button (edit mode only)
+                  if (onDelete != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: TextButton.icon(
                         onPressed: () {
                           Get.back();
-                          widget.onDelete!();
+                          onDelete!();
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: colorScheme.error,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Remove Item'),
                       ),
                     ),
                   ],
+
                   SizedBox(
-                    height:
-                        math.max(viewInsetsBottom, bottomPadding) + 20,
+                    height: math.max(viewInsetsBottom, bottomPadding) + 20,
                   ),
                 ],
               ),
             ),
           ),
-          if (widget.onScan != null)
+
+          // ── Scan bar (optional) ─────────────────────────────────────────────
+          if (onScan != null)
             Container(
               decoration: BoxDecoration(
                 color: colorScheme.surface,
                 border: Border(
-                    top: BorderSide(color: colorScheme.outlineVariant)),
+                  top: BorderSide(color: colorScheme.outlineVariant),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 4,
                     offset: const Offset(0, -2),
-                  )
+                  ),
                 ],
               ),
-              padding: EdgeInsets.fromLTRB(
-                  16, 12, 16, bottomPadding + 12),
+              padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
               child: BarcodeInputWidget(
-                onScan: widget.onScan!,
-                controller: widget.scanController,
-                isLoading: widget.isScanning,
+                onScan: onScan!,
+                controller: scanController,
+                isLoading: isScanning,
                 hintText: 'Scan Rack / Batch / Item',
                 isEmbedded: true,
               ),
