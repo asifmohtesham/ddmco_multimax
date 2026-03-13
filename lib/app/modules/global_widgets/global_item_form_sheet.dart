@@ -5,7 +5,7 @@ import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
-class GlobalItemFormSheet extends StatelessWidget {
+class GlobalItemFormSheet extends StatefulWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
   final String title;
@@ -40,10 +40,7 @@ class GlobalItemFormSheet extends StatelessWidget {
   final TextEditingController? scanController;
   final bool isScanning;
 
-  // Internal Loading State (for Manual Press)
-  final _isInternalLoading = false.obs;
-
-  GlobalItemFormSheet({
+  const GlobalItemFormSheet({
     super.key,
     required this.formKey,
     required this.scrollController,
@@ -72,62 +69,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.isScanning = false,
   });
 
-  Widget _buildSaveButton(BuildContext context, bool enabled) {
-    return Obx(() {
-      // Combines external (Auto-Submit) and internal (Manual Click) loading states
-      final internalLoading = _isInternalLoading.value;
-      final showLoading = isSaving || isLoading || internalLoading;
-      final canPress = enabled && !showLoading;
-      final colorScheme = Theme.of(context).colorScheme;
-
-      return FilledButton(
-        onPressed: canPress
-            ? () async {
-          if (formKey.currentState!.validate()) {
-            // 1. Unfocus Keyboard
-            FocusScope.of(context).unfocus();
-
-            // 2. Set Internal Loading & Delay (Manual Feedback)
-            _isInternalLoading.value = true;
-            await Future.delayed(const Duration(milliseconds: 500));
-
-            // 3. Submit & Close
-            try {
-              var result = onSubmit();
-              if (result is Future) {
-                await result;
-              }
-              Get.back(); // Auto-close on manual success
-            } catch (e) {
-              print('Error submitting form: $e');
-            } finally {
-              _isInternalLoading.value = false;
-            }
-          }
-        }
-            : null,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: showLoading
-            ? SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            color: colorScheme.onPrimary,
-            strokeWidth: 2.5,
-          ),
-        )
-            : Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      );
-    });
-  }
-
-  // ... [buildInputGroup, _buildMetadataHeader, build() logic remains identical to previous smart implementation] ...
+  // Keep static helper accessible from sub-widgets without instantiation
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -161,8 +103,76 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  @override
+  State<GlobalItemFormSheet> createState() => _GlobalItemFormSheetState();
+}
+
+class _GlobalItemFormSheetState extends State<GlobalItemFormSheet> {
+  // Stable reactive flag — lives in State, not in the widget itself,
+  // so it survives rebuilds triggered by Obx/GetX reactivity.
+  final _isInternalLoading = false.obs;
+
+  Widget _buildSaveButton(BuildContext context, bool enabled) {
+    return Obx(() {
+      final showLoading =
+          widget.isSaving || widget.isLoading || _isInternalLoading.value;
+      final canPress = enabled && !showLoading;
+      final colorScheme = Theme.of(context).colorScheme;
+
+      return FilledButton(
+        onPressed: canPress
+            ? () async {
+                if (widget.formKey.currentState!.validate()) {
+                  // 1. Unfocus keyboard
+                  FocusScope.of(context).unfocus();
+
+                  // 2. Show loading indicator
+                  _isInternalLoading.value = true;
+                  await Future.delayed(const Duration(milliseconds: 300));
+
+                  // 3. Submit
+                  try {
+                    final result = widget.onSubmit();
+                    if (result is Future) await result;
+                    // onSubmit() (i.e. controller.addItem()) is responsible
+                    // for calling Get.back() — no duplicate close here.
+                  } catch (e) {
+                    debugPrint('Sheet submit error: $e');
+                  } finally {
+                    _isInternalLoading.value = false;
+                  }
+                }
+              }
+            : null,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: showLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: colorScheme.onPrimary,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : Text(
+                widget.title,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+      );
+    });
+  }
+
   Widget _buildMetadataHeader(BuildContext context) {
-    if (owner == null && creation == null && modified == null && modifiedBy == null) {
+    if (widget.owner == null &&
+        widget.creation == null &&
+        widget.modified == null &&
+        widget.modifiedBy == null) {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
@@ -173,45 +183,48 @@ class GlobalItemFormSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (owner != null || creation != null)
+          if (widget.owner != null || widget.creation != null)
             Row(
               children: [
-                if (owner != null) ...[
+                if (widget.owner != null) ...[
                   Icon(Icons.person_outline, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(widget.owner!,
+                      style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
-                if (owner != null && creation != null)
+                if (widget.owner != null && widget.creation != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (creation != null) ...[
+                if (widget.creation != null) ...[
                   Text(
-                    'Created ${FormattingHelper.getRelativeTime(creation)}',
+                    'Created ${FormattingHelper.getRelativeTime(widget.creation)}',
                     style: style,
                   ),
                 ],
               ],
             ),
-          if ((modified != null || modifiedBy != null) &&
-              (modified != creation || modifiedBy != owner)) ...[
+          if ((widget.modified != null || widget.modifiedBy != null) &&
+              (widget.modified != widget.creation ||
+                  widget.modifiedBy != widget.owner)) ...[
             const SizedBox(height: 4),
             Row(
               children: [
-                if (modifiedBy != null) ...[
+                if (widget.modifiedBy != null) ...[
                   Icon(Icons.edit_outlined, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(widget.modifiedBy!,
+                      style: style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
-                if (modifiedBy != null && modified != null)
+                if (widget.modifiedBy != null && widget.modified != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (modified != null) ...[
+                if (widget.modified != null) ...[
                   Text(
-                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                    'Modified ${FormattingHelper.getRelativeTime(widget.modified)}',
                     style: style,
                   ),
                 ],
@@ -236,12 +249,14 @@ class GlobalItemFormSheet extends StatelessWidget {
       margin: EdgeInsets.only(top: topPadding + 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Drag handle
           Container(
             color: colorScheme.surface,
             width: double.infinity,
@@ -258,9 +273,9 @@ class GlobalItemFormSheet extends StatelessWidget {
           ),
           Expanded(
             child: Form(
-              key: formKey,
+              key: widget.formKey,
               child: ListView(
-                controller: scrollController,
+                controller: widget.scrollController,
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                 shrinkWrap: true,
                 children: [
@@ -273,7 +288,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              title,
+                              widget.title,
                               style: theme.textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onSurface,
@@ -281,13 +296,14 @@ class GlobalItemFormSheet extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                '${widget.itemCode}${widget.itemSubtext != null && widget.itemSubtext!.isNotEmpty ? ' • ${widget.itemSubtext}' : ''}',
                                 style: theme.textTheme.labelMedium?.copyWith(
                                   fontFamily: 'ShureTechMono',
                                   fontSize: 16,
@@ -297,7 +313,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              itemName,
+                              widget.itemName,
                               style: theme.textTheme.bodyLarge?.copyWith(
                                 color: colorScheme.onSurface,
                               ),
@@ -312,7 +328,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                         onPressed: () => Get.back(),
                         icon: const Icon(Icons.close),
                         style: IconButton.styleFrom(
-                          backgroundColor: colorScheme.surfaceContainerHigh,
+                          backgroundColor:
+                              colorScheme.surfaceContainerHigh,
                           foregroundColor: colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -322,37 +339,41 @@ class GlobalItemFormSheet extends StatelessWidget {
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                     child: Divider(height: 1),
                   ),
-                  ...customFields.map((w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20.0),
-                    child: w,
-                  )),
+                  ...widget.customFields.map(
+                    (w) => Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: w,
+                    ),
+                  ),
                   QuantityInputWidget(
-                    controller: qtyController,
-                    onIncrement: onIncrement,
-                    onDecrement: onDecrement,
-                    isReadOnly: isQtyReadOnly,
+                    controller: widget.qtyController,
+                    onIncrement: widget.onIncrement,
+                    onDecrement: widget.onDecrement,
+                    isReadOnly: widget.isQtyReadOnly,
                     label: 'Quantity',
-                    infoText: qtyInfoText,
+                    infoText: widget.qtyInfoText,
                   ),
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
-                    child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                        : _buildSaveButton(context, isSaveEnabled),
+                    child: widget.isSaveEnabledRx != null
+                        ? Obx(() => _buildSaveButton(
+                            context, widget.isSaveEnabledRx!.value))
+                        : _buildSaveButton(context, widget.isSaveEnabled),
                   ),
-                  if (onDelete != null) ...[
+                  if (widget.onDelete != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: TextButton.icon(
                         onPressed: () {
                           Get.back();
-                          onDelete!();
+                          widget.onDelete!();
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: colorScheme.error,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Remove Item'),
@@ -360,17 +381,19 @@ class GlobalItemFormSheet extends StatelessWidget {
                     ),
                   ],
                   SizedBox(
-                      height: math.max(viewInsetsBottom, bottomPadding) + 20
+                    height:
+                        math.max(viewInsetsBottom, bottomPadding) + 20,
                   ),
                 ],
               ),
             ),
           ),
-          if (onScan != null)
+          if (widget.onScan != null)
             Container(
               decoration: BoxDecoration(
                 color: colorScheme.surface,
-                border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+                border: Border(
+                    top: BorderSide(color: colorScheme.outlineVariant)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.05),
@@ -380,15 +403,11 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ],
               ),
               padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  bottomPadding + 12
-              ),
+                  16, 12, 16, bottomPadding + 12),
               child: BarcodeInputWidget(
-                onScan: onScan!,
-                controller: scanController,
-                isLoading: isScanning,
+                onScan: widget.onScan!,
+                controller: widget.scanController,
+                isLoading: widget.isScanning,
                 hintText: 'Scan Rack / Batch / Item',
                 isEmbedded: true,
               ),
