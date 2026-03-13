@@ -129,8 +129,8 @@ class StockEntryFormController extends GetxController
   Timer? _autoSubmitTimer;
   Worker? _scanWorker;
 
-  // Navigator key for the sheet route — set by _openSheet, cleared on close.
-  // Used by addItem() to pop the sheet without touching GetX's snackbar queue.
+  // Navigator context captured from the sheet builder — used by addItem() to
+  // pop the sheet via Navigator instead of Get.back() (avoids snackbar race).
   BuildContext? _sheetContext;
 
   @override
@@ -749,7 +749,7 @@ class StockEntryFormController extends GetxController
     _openSheet();
   }
 
-  void editItem(StockEntryItem item) {
+  Future<void> editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     itemFormKey = GlobalKey<FormState>();
@@ -808,7 +808,16 @@ class StockEntryFormController extends GetxController
     rackError.value = null;
     batchError.value = null;
 
-    _updateAvailableStock();
+    // Fetch live balance data so the sheet shows the same figures in edit
+    // mode as it does when first adding an item via scan.
+    // Both calls run in parallel; the sheet opens immediately and the Obx
+    // widgets in the sheet will update reactively once the futures complete.
+    unawaited(Future.wait([
+      if (item.batchNo != null && item.batchNo!.isNotEmpty)
+        _updateBatchBalance(),
+      _updateAvailableStock(),
+    ]));
+
     validateSheet();
 
     _openSheet();
@@ -1008,18 +1017,21 @@ class StockEntryFormController extends GetxController
           response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
         double totalBalance = 0.0;
+        double rackBalance = 0.0;
         for (var row in result) {
           if (row is! Map) continue;
+          final rowQty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+          totalBalance += rowQty;
           if (rack.isNotEmpty &&
               row['rack'] != null &&
-              row['rack'] != rack) continue;
-          totalBalance +=
-              (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+              row['rack'] == rack) {
+            rackBalance += rowQty;
+          }
         }
         bsMaxQty.value = totalBalance;
-        bsRackBalance.value = rack.isNotEmpty ? totalBalance : 0.0;
+        bsRackBalance.value = rack.isNotEmpty ? rackBalance : 0.0;
 
-        if (rack.isNotEmpty && totalBalance <= 0) {
+        if (rack.isNotEmpty && rackBalance <= 0) {
           rackError.value =
               'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)';
           GlobalSnackbar.error(
