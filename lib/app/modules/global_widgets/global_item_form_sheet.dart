@@ -73,14 +73,13 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.scanController,
     this.isScanning = false,
   }) {
-    // Build a stable tag from the widget key so re-builds reuse the same
-    // controller, but a new sheet open (different key) gets a fresh one.
-    _sheetTag = key != null ? key.toString() : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
+    _sheetTag = key != null
+        ? key.toString()
+        : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
   }
 
   // ---------------------------------------------------------------------------
-  // Static helper — accessible from DocType-specific customFields builders
-  // without needing a widget instance.
+  // Static helper — accessible from DocType-specific customFields builders.
   // ---------------------------------------------------------------------------
   static Widget buildInputGroup({
     required String label,
@@ -119,13 +118,20 @@ class GlobalItemFormSheet extends StatelessWidget {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  /// Lazily registers the scoped controller on first access; GetX returns the
-  /// existing instance on subsequent calls within the same sheet lifetime.
   ItemFormSheetController get _sheetCtrl =>
       Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
+  /// Pops only the sheet route without touching GetX's snackbar queue.
+  ///
+  /// [Get.back()] internally calls [closeCurrentSnackbar()] first, which
+  /// crashes with a [LateInitializationError] when a snackbar exists in the
+  /// queue but its internal [AnimationController] has not been initialised yet
+  /// (i.e. the snackbar was enqueued but never displayed). Using the Flutter
+  /// [Navigator] directly bypasses that code path entirely.
+  static void _popSheet(BuildContext context) =>
+      Navigator.of(context).pop();
+
   Widget _buildSaveButton(BuildContext context, bool enabled) {
-    // Access once so Obx below captures the correct tag.
     final ctrl = _sheetCtrl;
 
     return Obx(() {
@@ -137,22 +143,21 @@ class GlobalItemFormSheet extends StatelessWidget {
         onPressed: canPress
             ? () async {
                 if (formKey.currentState!.validate()) {
-                  // 1. Dismiss keyboard
                   FocusScope.of(context).unfocus();
-
-                  // 2. Show sheet-local spinner
                   ctrl.isSubmitting.value = true;
                   await Future.delayed(const Duration(milliseconds: 300));
-
-                  // 3. Delegate to parent controller; it owns Get.back()
                   try {
                     final result = onSubmit();
                     if (result is Future) await result;
+                    // The parent DocType controller (e.g. addItem()) owns the
+                    // sheet close via Navigator — it must call
+                    // Navigator.of(context).pop() or Get.back() from a context
+                    // that is not inside the sheet's snackbar-race window.
                   } catch (e) {
                     debugPrint('GlobalItemFormSheet submit error: $e');
                   } finally {
-                    // Guard: controller may already be deleted if sheet closed
-                    if (Get.isRegistered<ItemFormSheetController>(tag: _sheetTag)) {
+                    if (Get.isRegistered<ItemFormSheetController>(
+                        tag: _sheetTag)) {
                       ctrl.isSubmitting.value = false;
                     }
                   }
@@ -186,7 +191,10 @@ class GlobalItemFormSheet extends StatelessWidget {
   }
 
   Widget _buildMetadataHeader(BuildContext context) {
-    if (owner == null && creation == null && modified == null && modifiedBy == null) {
+    if (owner == null &&
+        creation == null &&
+        modified == null &&
+        modifiedBy == null) {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
@@ -204,11 +212,14 @@ class GlobalItemFormSheet extends StatelessWidget {
                 if (owner != null) ...[
                   Icon(Icons.person_outline, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(owner!,
+                      style:
+                          style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (owner != null && creation != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
                 if (creation != null)
@@ -226,11 +237,14 @@ class GlobalItemFormSheet extends StatelessWidget {
                 if (modifiedBy != null) ...[
                   Icon(Icons.edit_outlined, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(modifiedBy!,
+                      style:
+                          style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (modifiedBy != null && modified != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
                 if (modified != null)
@@ -248,10 +262,7 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Register the scoped controller as soon as the widget enters the tree.
-    // GetX will dispose it automatically when Get.back() removes the route,
-    // because permanent: false means it is tied to the current Get scope.
-    _sheetCtrl;
+    _sheetCtrl; // register on first build
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -264,13 +275,14 @@ class GlobalItemFormSheet extends StatelessWidget {
       margin: EdgeInsets.only(top: topPadding + 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Drag handle ────────────────────────────────────────────────────
+          // ── Drag handle ──────────────────────────────────────────────────
           Container(
             color: colorScheme.surface,
             width: double.infinity,
@@ -286,7 +298,7 @@ class GlobalItemFormSheet extends StatelessWidget {
             ),
           ),
 
-          // ── Scrollable form body ────────────────────────────────────────────
+          // ── Scrollable form body ─────────────────────────────────────────
           Expanded(
             child: Form(
               key: formKey,
@@ -295,7 +307,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                 shrinkWrap: true,
                 children: [
-                  // Header row: item identity + close button
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -306,7 +317,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                           children: [
                             Text(
                               title,
-                              style: theme.textTheme.headlineSmall?.copyWith(
+                              style: theme.textTheme.headlineSmall
+                                  ?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onSurface,
                               ),
@@ -316,13 +328,15 @@ class GlobalItemFormSheet extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
+                                color:
+                                    colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 '$itemCode'
                                 '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: theme.textTheme.labelMedium?.copyWith(
+                                style: theme.textTheme.labelMedium
+                                    ?.copyWith(
                                   fontFamily: 'ShureTechMono',
                                   fontSize: 16,
                                   color: colorScheme.onSurfaceVariant,
@@ -342,11 +356,13 @@ class GlobalItemFormSheet extends StatelessWidget {
                           ],
                         ),
                       ),
+                      // Close button — uses Navigator.pop, NOT Get.back()
                       IconButton(
-                        onPressed: () => Get.back(),
+                        onPressed: () => _popSheet(context),
                         icon: const Icon(Icons.close),
                         style: IconButton.styleFrom(
-                          backgroundColor: colorScheme.surfaceContainerHigh,
+                          backgroundColor:
+                              colorScheme.surfaceContainerHigh,
                           foregroundColor: colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -358,7 +374,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                     child: Divider(height: 1),
                   ),
 
-                  // DocType-specific custom fields
                   ...customFields.map(
                     (w) => Padding(
                       padding: const EdgeInsets.only(bottom: 20.0),
@@ -366,7 +381,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                     ),
                   ),
 
-                  // Quantity input
                   QuantityInputWidget(
                     controller: qtyController,
                     onIncrement: onIncrement,
@@ -378,27 +392,28 @@ class GlobalItemFormSheet extends StatelessWidget {
 
                   const SizedBox(height: 32),
 
-                  // Save button
                   SizedBox(
                     width: double.infinity,
                     child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                        ? Obx(() => _buildSaveButton(
+                            context, isSaveEnabledRx!.value))
                         : _buildSaveButton(context, isSaveEnabled),
                   ),
 
-                  // Delete button (edit mode only)
+                  // Delete button — uses Navigator.pop, NOT Get.back()
                   if (onDelete != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: TextButton.icon(
                         onPressed: () {
-                          Get.back();
+                          _popSheet(context);
                           onDelete!();
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: colorScheme.error,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Remove Item'),
@@ -407,14 +422,15 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ],
 
                   SizedBox(
-                    height: math.max(viewInsetsBottom, bottomPadding) + 20,
+                    height:
+                        math.max(viewInsetsBottom, bottomPadding) + 20,
                   ),
                 ],
               ),
             ),
           ),
 
-          // ── Scan bar (optional) ─────────────────────────────────────────────
+          // ── Scan bar (optional) ──────────────────────────────────────────
           if (onScan != null)
             Container(
               decoration: BoxDecoration(
@@ -430,7 +446,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 ],
               ),
-              padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
+              padding:
+                  EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
               child: BarcodeInputWidget(
                 onScan: onScan!,
                 controller: scanController,
