@@ -584,11 +584,15 @@ class StockEntryFormController extends GetxController
     return true;
   }
 
+  // Batch is always required and must pass server validation before the sheet
+  // is considered valid, regardless of entrySource or entry type.
+  // Rules:
+  //   - Empty batch         → invalid (batch not yet entered)
+  //   - Non-empty, not yet validated (bsIsBatchValid == false) → invalid
+  //   - Non-empty + validated → valid
   bool _isValidBatch() {
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value)
-      return false;
-    if (entrySource == StockEntrySource.materialRequest &&
-        bsBatchController.text.isEmpty) return false;
+    if (bsBatchController.text.isEmpty) return false;
+    if (!bsIsBatchValid.value) return false;
     return true;
   }
 
@@ -604,6 +608,14 @@ class StockEntryFormController extends GetxController
     return true;
   }
 
+  // Rack validation gates per entry type:
+  //   Material Receipt                   : target rack required + validated
+  //   Material Issue                     : source rack required + validated
+  //   Material Transfer / for Manufacture: source AND target racks required + validated
+  //
+  // An empty rack field or a warehouse-only resolution (no validateRack() call)
+  // no longer satisfies these gates — the field must have been explicitly
+  // validated (isSourceRackValid / isTargetRackValid == true).
   bool _isValidRacks() {
     final type = selectedStockEntryType.value;
     final requiresSource = [
@@ -617,28 +629,21 @@ class StockEntryFormController extends GetxController
       'Material Transfer for Manufacture'
     ].contains(type);
 
+    // Source rack: must be non-empty AND validated.
     if (requiresSource) {
-      if (bsSourceRackController.text.isNotEmpty) {
-        if (!isSourceRackValid.value) return false;
-      } else {
-        final effectiveSWh =
-            bsItemSourceWarehouse.value ?? selectedFromWarehouse.value;
-        if (effectiveSWh == null || effectiveSWh.isEmpty) {
-          rackError.value = 'Source Warehouse or Rack required';
-          return false;
-        } else if (rackError.value ==
-                'Source Warehouse or Rack required' ||
-            rackError.value == 'No Warehouse Selected') {
-          rackError.value = null;
-        }
+      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
+        return false;
       }
     }
 
+    // Target rack: must be non-empty AND validated.
     if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty ||
-          !isTargetRackValid.value) return false;
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+        return false;
+      }
     }
 
+    // Source and target racks must differ when both are required.
     if (requiresSource && requiresTarget) {
       final source = bsSourceRackController.text.trim();
       final target = bsTargetRackController.text.trim();
