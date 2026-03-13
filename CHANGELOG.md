@@ -1,3 +1,28 @@
+## [1.4.1+10-beta] — 2026-03-13
+
+> Beta release targeting internal QA on the `release/play-store-ui-stock-entry` branch.  
+> Builds on `1.4.1+9-beta` with three targeted UX/reliability fixes for the Stock Entry form.
+
+---
+
+### 🐛 Bug Fixes
+
+#### Stock Entry — Form Screen
+- **Back button now respects `PopScope`** — replaced `Get.back()` with `Navigator.maybePop(context)` in `MainAppBar`. The unsaved-changes confirmation dialog is correctly triggered when the user presses back on a dirty document (`isDirty == true`). Previously `Get.back()` bypassed Flutter's `PopScope` guard entirely, so the dialog never appeared.
+- **Reference No false-dirty on load** — `customReferenceNoController` listener now only calls `_markDirty()` when the field value actually differs from the server-loaded snapshot (`_initialReferenceNo`). A focus tap or programmatic text population no longer flips `isDirty`. The field is also rendered `readOnly: true` with a lock icon, matching its system-assigned semantics (value set by POS upload ID or Material Request ref, not by the user).
+
+---
+
+### ✨ New Features
+
+#### Stock Entry — Form Screen
+- **Reload button in app bar** — a `Icons.refresh` action button now appears in the `MainAppBar` for any existing document (edit or view mode). Tapping it calls `controller.reloadDocument()` to re-fetch the latest server state; the button is disabled while a save is in progress. Hidden for brand-new unsaved entries.
+
+#### Global
+- **`MainAppBar.onReload`** — new optional `VoidCallback? onReload` parameter added to `MainAppBar`. When non-null, a reload `IconButton` is inserted between custom actions and the save button, grayed out while `isSaving` is true.
+
+---
+
 ## [1.4.1+9-beta] — 2026-03-13
 
 > Beta release targeting internal QA on the `release/play-store-ui-stock-entry` branch.
