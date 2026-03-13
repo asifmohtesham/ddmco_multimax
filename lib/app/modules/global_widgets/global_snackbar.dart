@@ -48,16 +48,19 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    // GetX bug: Get.isSnackbarOpen returns true for a snackbar that is queued
-    // but whose internal AnimationController has not been initialised yet.
-    // Calling closeCurrentSnackbar() on such an entry throws
-    // LateInitializationError.  Swallow the exception so the new snackbar
-    // is always enqueued regardless of the state of any prior entry.
-    if (Get.isSnackbarOpen) {
-      try {
-        Get.closeCurrentSnackbar();
-      } catch (_) {}
-    }
+    // Do NOT call Get.closeCurrentSnackbar() here.
+    //
+    // GetX's _SnackBarQueue already serialises entries: a new snackbar is
+    // held until the current one finishes.  Calling closeCurrentSnackbar()
+    // manually is therefore unnecessary, and it is actively harmful when a
+    // SnackbarController has been pushed onto the queue but its internal
+    // `late AnimationController _controller` has not yet been initialised
+    // (i.e. before the snackbar enters the Overlay).  Calling close() on
+    // such a controller throws LateInitializationError and aborts _show()
+    // before Get.snackbar() is ever reached, swallowing the message entirely.
+    //
+    // Removing the call means snackbars queue naturally and every message
+    // is guaranteed to be shown.
 
     if (shouldVibrate) HapticFeedback.lightImpact();
 
