@@ -1,28 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
+import 'package:multimax/app/modules/batch/widgets/batch_list_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 
-class BatchScreen extends GetView<BatchController> {
+class BatchScreen extends StatefulWidget {
   const BatchScreen({super.key});
+
+  @override
+  State<BatchScreen> createState() => _BatchScreenState();
+}
+
+class _BatchScreenState extends State<BatchScreen> {
+  late final BatchController controller;
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.find<BatchController>();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_isBottom &&
+        controller.hasMore.value &&
+        !controller.isFetchingMore.value) {
+      controller.fetchBatches(isLoadMore: true);
+    }
+  }
+
+  bool get _isBottom {
+    if (!_scrollController.hasClients) return false;
+    return _scrollController.offset >=
+        _scrollController.position.maxScrollExtent * 0.9;
+  }
+
+  // ── build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final scrollController = ScrollController();
-
-    scrollController.addListener(() {
-      if (scrollController.position.pixels >= scrollController.position.maxScrollExtent * 0.9 &&
-          controller.hasMore.value &&
-          !controller.isFetchingMore.value) {
-        controller.fetchBatches(isLoadMore: true);
-      }
-    });
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -31,83 +59,28 @@ class BatchScreen extends GetView<BatchController> {
         onRefresh: () => controller.fetchBatches(clear: true),
         color: colorScheme.primary,
         child: CustomScrollView(
-          controller: scrollController,
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverAppBar.large(
-              title: const Text('Batch'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  tooltip: 'Global Search',
-                  onPressed: () {
-                    showSearch(
-                      context: context,
-                      delegate: GlobalSearchDelegate(
-                        doctype: 'Batch',
-                        targetRoute: AppRoutes.BATCH_FORM,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+            // ── DocTypeListAppBar (collapsing title + search) ─────────────────
+            const BatchListAppBar(),
 
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: TextField(
-                  onChanged: controller.onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Filter List...',
-                    prefixIcon: Icon(Icons.filter_list, color: colorScheme.onSurfaceVariant),
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  ),
-                ),
-              ),
-            ),
-
+            // ── Content ──────────────────────────────────────────────────────
             Obx(() {
-              if (controller.isLoading.value && controller.batches.isEmpty) {
+              if (controller.isLoading.value &&
+                  controller.batches.isEmpty) {
                 return const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
                 );
               }
 
               if (controller.batches.isEmpty) {
-                return SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.qr_code_scanner, size: 64, color: colorScheme.outlineVariant),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No Batches Found',
-                          style: theme.textTheme.titleMedium?.copyWith(color: colorScheme.onSurface),
-                        ),
-                        const SizedBox(height: 8),
-                        FilledButton.tonalIcon(
-                          onPressed: () => controller.fetchBatches(clear: true),
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Reload'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
+                return _buildEmptyState(context, theme, colorScheme);
               }
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+                  (context, index) {
                     if (index >= controller.batches.length) {
                       return const Center(
                         child: Padding(
@@ -116,53 +89,16 @@ class BatchScreen extends GetView<BatchController> {
                         ),
                       );
                     }
-                    final batch = controller.batches[index];
-
-                    // Determine Status
-                    String status = 'Active';
-                    if (batch.expiryDate != null) {
-                      final expiry = DateTime.tryParse(batch.expiryDate!);
-                      if (expiry != null && expiry.isBefore(DateTime.now())) {
-                        status = 'Expired';
-                      }
-                    }
-
-                    return Obx(() {
-                      final isExpanded = controller.expandedBatchName.value == batch.name;
-
-                      return GenericDocumentCard(
-                        title: batch.item,
-                        subtitle: batch.name,
-                        status: status,
-                        isExpanded: isExpanded,
-                        onTap: () => controller.toggleExpand(batch.name),
-                        stats: [
-                          if (batch.manufacturingDate != null)
-                            GenericDocumentCard.buildIconStat(
-                              context,
-                              Icons.precision_manufacturing_outlined,
-                              DateFormat('dd MMM yyyy').format(DateTime.parse(batch.manufacturingDate!)),
-                            ),
-                          if (batch.expiryDate != null)
-                            GenericDocumentCard.buildIconStat(
-                              context,
-                              Icons.event_busy_outlined,
-                              DateFormat('dd MMM yyyy').format(DateTime.parse(batch.expiryDate!)),
-                            ),
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.layers_outlined,
-                            'Qty: ${batch.customPackagingQty}',
-                          ),
-                        ],
-                        expandedContent: isExpanded ? _buildExpandedContent(context, batch) : null,
-                      );
-                    });
+                    return _buildBatchCard(
+                        context, controller.batches[index]);
                   },
-                  childCount: controller.batches.length + (controller.hasMore.value ? 1 : 0),
+                  childCount: controller.batches.length +
+                      (controller.hasMore.value ? 1 : 0),
                 ),
               );
             }),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
       ),
@@ -176,6 +112,120 @@ class BatchScreen extends GetView<BatchController> {
     );
   }
 
+  // ── empty state ────────────────────────────────────────────────────────────
+
+  Widget _buildEmptyState(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final hasSearch = controller.searchQuery.value.isNotEmpty;
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                hasSearch
+                    ? Icons.search_off_outlined
+                    : Icons.qr_code_scanner_outlined,
+                size: 64,
+                color: colorScheme.outlineVariant,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                hasSearch ? 'No Matching Batches' : 'No Batches Found',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                hasSearch
+                    ? 'Try a different search term.'
+                    : 'Pull to refresh or create a new batch.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 24),
+              if (hasSearch)
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    controller.searchQuery.value = '';
+                    controller.fetchBatches(clear: true);
+                  },
+                  icon: const Icon(Icons.search_off),
+                  label: const Text('Clear Search'),
+                )
+              else
+                FilledButton.tonalIcon(
+                  onPressed: () => controller.fetchBatches(clear: true),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reload'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── batch card ──────────────────────────────────────────────────────────────
+
+  Widget _buildBatchCard(BuildContext context, dynamic batch) {
+    // Derive status from expiry date
+    String status = 'Active';
+    if (batch.expiryDate != null) {
+      final expiry = DateTime.tryParse(batch.expiryDate!);
+      if (expiry != null && expiry.isBefore(DateTime.now())) {
+        status = 'Expired';
+      }
+    }
+
+    return Obx(() {
+      final isExpanded =
+          controller.expandedBatchName.value == batch.name;
+
+      return GenericDocumentCard(
+        title: batch.item,
+        subtitle: batch.name,
+        status: status,
+        isExpanded: isExpanded,
+        onTap: () => controller.toggleExpand(batch.name),
+        stats: [
+          if (batch.manufacturingDate != null)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.precision_manufacturing_outlined,
+              DateFormat('dd MMM yyyy')
+                  .format(DateTime.parse(batch.manufacturingDate!)),
+            ),
+          if (batch.expiryDate != null)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.event_busy_outlined,
+              DateFormat('dd MMM yyyy')
+                  .format(DateTime.parse(batch.expiryDate!)),
+            ),
+          GenericDocumentCard.buildIconStat(
+            context,
+            Icons.layers_outlined,
+            'Qty: ${batch.customPackagingQty}',
+          ),
+        ],
+        expandedContent:
+            isExpanded ? _buildExpandedContent(context, batch) : null,
+      );
+    });
+  }
+
+  // ── expanded content ─────────────────────────────────────────────────────────
+
   Widget _buildExpandedContent(BuildContext context, dynamic batch) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -183,32 +233,36 @@ class BatchScreen extends GetView<BatchController> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // const Divider(),
-        // const SizedBox(height: 8),
-
-        // Purchase Order Field
         _buildInfoRow(
           context,
           'Purchase Order',
           batch.customPurchaseOrder ?? 'Not Linked',
           icon: Icons.receipt_long,
         ),
-
         const SizedBox(height: 12),
 
-        // Variant Of Field
         Obx(() {
           final variant = controller.itemVariants[batch.item];
-          final isLoading = controller.isLoadingDetails.value && variant == null;
+          final isLoading =
+              controller.isLoadingDetails.value && variant == null;
 
           if (isLoading) {
             return Row(
               children: [
-                Icon(Icons.style_outlined, size: 16, color: colorScheme.onSurfaceVariant),
+                Icon(Icons.style_outlined,
+                    size: 16, color: colorScheme.onSurfaceVariant),
                 const SizedBox(width: 8),
-                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(width: 8),
-                Text('Loading Variant...', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.outline)),
+                Text(
+                  'Loading Variant…',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: colorScheme.outline),
+                ),
               ],
             );
           }
@@ -223,7 +277,6 @@ class BatchScreen extends GetView<BatchController> {
 
         const SizedBox(height: 16),
 
-        // Actions
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -238,7 +291,14 @@ class BatchScreen extends GetView<BatchController> {
     );
   }
 
-  Widget _buildInfoRow(BuildContext context, String label, String value, {required IconData icon}) {
+  // ── info row helper ──────────────────────────────────────────────────────────
+
+  Widget _buildInfoRow(
+    BuildContext context,
+    String label,
+    String value, {
+    required IconData icon,
+  }) {
     final theme = Theme.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,10 +309,15 @@ class BatchScreen extends GetView<BatchController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.outline),
+              ),
               Text(
                 value,
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
