@@ -58,6 +58,7 @@ class MaterialRequest {
 class MaterialRequestItem {
   final String? name;
   final String itemCode;
+  final String? variantOf;
   final String? itemName;
   final double qty;
   final double receivedQty;
@@ -71,6 +72,7 @@ class MaterialRequestItem {
   MaterialRequestItem({
     this.name,
     required this.itemCode,
+    required this.variantOf,
     this.itemName,
     required this.qty,
     this.receivedQty = 0.0,
@@ -86,6 +88,7 @@ class MaterialRequestItem {
     return MaterialRequestItem(
       name: json['name']?.toString(),
       itemCode: json['item_code']?.toString() ?? '',
+      variantOf: json['variant_of']?.toString() ?? '',
       itemName: json['item_name']?.toString(),
       qty: double.tryParse(json['qty']?.toString() ?? '0') ?? 0.0,
       receivedQty: double.tryParse(json['received_qty']?.toString() ?? '0') ?? 0.0,
