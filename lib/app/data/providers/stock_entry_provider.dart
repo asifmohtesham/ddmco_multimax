@@ -17,16 +17,16 @@ class StockEntryProvider {
       limitStart: limitStart,
       filters: filters,
       orderBy: orderBy,
-      // from_warehouse, to_warehouse and posting_date added so the list card
-      // can show warehouse and date without a separate detail fetch.
       fields: [
         'name',
         'purpose',
         'total_amount',
         'custom_total_qty',
         'modified',
+        'modified_by',
         'docstatus',
         'creation',
+        'owner',
         'stock_entry_type',
         'from_warehouse',
         'to_warehouse',

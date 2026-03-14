@@ -6,6 +6,11 @@ class GenericDocumentCard extends StatelessWidget {
   final String subtitle;
   final String? status;
   final List<Widget> stats;
+
+  /// Optional second row of stats shown at a visually lower hierarchy
+  /// (smaller, muted). Used for audit fields like Created By / Modified By.
+  final List<Widget> auditStats;
+
   final bool isExpanded;
   final bool isLoadingDetails;
   final VoidCallback onTap;
@@ -18,6 +23,7 @@ class GenericDocumentCard extends StatelessWidget {
     required this.subtitle,
     this.status,
     this.stats = const [],
+    this.auditStats = const [],
     required this.isExpanded,
     required this.onTap,
     this.isLoadingDetails = false,
@@ -25,25 +31,23 @@ class GenericDocumentCard extends StatelessWidget {
     this.leading,
   });
 
-  // ---------------------------------------------------------------------------
   // Frappe / ERPNext canonical status colours — matches StatusPill exactly.
-  // ---------------------------------------------------------------------------
   static Color _statusAccentColor(String? status) {
     switch (status) {
       case 'Submitted':
       case 'Active':
       case 'Completed':
       case 'Paid':
-        return const Color(0xFF36A564);
+        return const Color(0xFF36A564); // Frappe success green
       case 'Draft':
-        return const Color(0xFFE54D4D);
+        return const Color(0xFFE54D4D); // Frappe danger red
       case 'Cancelled':
       case 'Rejected':
-        return const Color(0xFF5A6673);
+        return const Color(0xFF5A6673); // Frappe muted grey
       case 'Pending':
       case 'In Progress':
       case 'Open':
-        return const Color(0xFFFFA00A);
+        return const Color(0xFFFFA00A); // Frappe warning orange
       default:
         return Colors.transparent;
     }
@@ -89,10 +93,8 @@ class GenericDocumentCard extends StatelessWidget {
               // Card body
               Expanded(
                 child: Padding(
-                  // Reduce left padding slightly when accent bar is present
-                  // so total leading space stays visually consistent.
-                  padding: EdgeInsets.fromLTRB(
-                      hasAccent ? 12 : 16, 14, 16, 14),
+                  padding:
+                      EdgeInsets.fromLTRB(hasAccent ? 12 : 16, 14, 16, 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -110,8 +112,7 @@ class GenericDocumentCard extends StatelessWidget {
                               children: [
                                 Text(
                                   title,
-                                  style:
-                                      theme.textTheme.titleSmall?.copyWith(
+                                  style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     color: colorScheme.onSurface,
                                   ),
@@ -139,12 +140,11 @@ class GenericDocumentCard extends StatelessWidget {
                         ],
                       ),
 
-                      // ── Stats row + expand chevron ───────────────────────
+                      // ── Row 1: primary stats + expand chevron ───────────
                       if (stats.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            // Stats wrap so a 3-stat row doesn't overflow
                             Expanded(
                               child: Wrap(
                                 spacing: 12,
@@ -158,8 +158,7 @@ class GenericDocumentCard extends StatelessWidget {
                                   isExpanded ? 'Collapse' : 'Show details',
                               child: AnimatedRotation(
                                 turns: isExpanded ? 0.5 : 0.0,
-                                duration:
-                                    const Duration(milliseconds: 300),
+                                duration: const Duration(milliseconds: 300),
                                 child: Icon(
                                   Icons.expand_more,
                                   size: 20,
@@ -184,7 +183,20 @@ class GenericDocumentCard extends StatelessWidget {
                           ),
                         ),
 
-                      // ── Expanded section ─────────────────────────────────
+                      // ── Row 2: audit stats (muted, smaller) ────────────
+                      // Shown when present. No chevron — it sits on row 1.
+                      if (auditStats.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 2,
+                          children: auditStats
+                              .map((w) => _AuditStatWrapper(child: w))
+                              .toList(),
+                        ),
+                      ],
+
+                      // ── Expanded section ────────────────────────────────
                       AnimatedSize(
                         duration: const Duration(milliseconds: 280),
                         curve: Curves.easeInOut,
@@ -192,8 +204,7 @@ class GenericDocumentCard extends StatelessWidget {
                         child: !isExpanded
                             ? const SizedBox.shrink()
                             : Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 10),
                                   Divider(
@@ -208,11 +219,9 @@ class GenericDocumentCard extends StatelessWidget {
                                         child: SizedBox(
                                           width: 20,
                                           height: 20,
-                                          child:
-                                              CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: colorScheme
-                                                      .primary),
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: colorScheme.primary),
                                         ),
                                       ),
                                     )
@@ -232,7 +241,6 @@ class GenericDocumentCard extends StatelessWidget {
     );
   }
 
-  // Stats cells — now uses bodySmall consistently, weight w500
   static Widget buildIconStat(
       BuildContext context, IconData icon, String text) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -254,6 +262,25 @@ class GenericDocumentCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Wraps an audit stat widget with reduced opacity to signal lower hierarchy
+/// without changing the buildIconStat signature or adding a separate builder.
+class _AuditStatWrapper extends StatelessWidget {
+  final Widget child;
+  const _AuditStatWrapper({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.72,
+      child: Transform.scale(
+        scale: 0.92,
+        alignment: Alignment.centerLeft,
+        child: child,
+      ),
     );
   }
 }
