@@ -34,7 +34,8 @@ class PurchaseReceiptController extends GetxController {
   List<PurchaseOrder> _allFetchedPOs = [];
   var poSearchQuery = ''.obs;
 
-  PurchaseReceipt? get detailedReceipt => _detailedReceiptsCache[expandedReceiptName.value];
+  PurchaseReceipt? get detailedReceipt =>
+      _detailedReceiptsCache[expandedReceiptName.value];
 
   @override
   void onInit() {
@@ -61,13 +62,19 @@ class PurchaseReceiptController extends GetxController {
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
 
-  void clearFilters() {
-    activeFilters.clear();
-    // Reset sort to default if desired, or keep user preference. keeping preference here.
+  /// Remove a single filter key and re-fetch.
+  void removeFilter(String key) {
+    activeFilters.remove(key);
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
 
-  Future<void> fetchPurchaseReceipts({bool isLoadMore = false, bool clear = false}) async {
+  void clearFilters() {
+    activeFilters.clear();
+    fetchPurchaseReceipts(isLoadMore: false, clear: true);
+  }
+
+  Future<void> fetchPurchaseReceipts(
+      {bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
@@ -80,23 +87,21 @@ class PurchaseReceiptController extends GetxController {
     }
 
     try {
-      // FIX: Do not mix order_by into filters. Pass it separately.
       final orderBy = '${sortField.value} ${sortOrder.value}';
 
       final response = await _provider.getPurchaseReceipts(
         limit: _limit,
         limitStart: _currentPage * _limit,
         filters: activeFilters,
-        orderBy: orderBy,       // Pass sorting here
+        orderBy: orderBy,
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newReceipts = data.map((json) => PurchaseReceipt.fromJson(json)).toList();
+        final newReceipts =
+            data.map((json) => PurchaseReceipt.fromJson(json)).toList();
 
-        if (newReceipts.length < _limit) {
-          hasMore.value = false;
-        }
+        if (newReceipts.length < _limit) hasMore.value = false;
 
         if (isLoadMore) {
           purchaseReceipts.addAll(newReceipts);
@@ -119,9 +124,7 @@ class PurchaseReceiptController extends GetxController {
   }
 
   Future<void> _fetchAndCacheReceiptDetails(String name) async {
-    if (_detailedReceiptsCache.containsKey(name)) {
-      return;
-    }
+    if (_detailedReceiptsCache.containsKey(name)) return;
 
     isLoadingDetails.value = true;
     try {
@@ -148,14 +151,21 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
-  // --- Creation Logic ---
+  // ---------------------------------------------------------------------------
+  // Creation flow
+  // ---------------------------------------------------------------------------
+
   Future<void> fetchPurchaseOrdersForSelection() async {
     isFetchingPOs.value = true;
     try {
-      final response = await _poProvider.getPurchaseOrders(limit: 0, filters: {'docstatus': 1, 'status': ['!=', 'Closed']});
+      final response = await _poProvider.getPurchaseOrders(
+        limit: 0,
+        filters: {'docstatus': 1, 'status': ['!=', 'Closed']},
+      );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        _allFetchedPOs = data.map((json) => PurchaseOrder.fromJson(json)).toList();
+        _allFetchedPOs =
+            data.map((json) => PurchaseOrder.fromJson(json)).toList();
         purchaseOrdersForSelection.value = _allFetchedPOs;
       }
     } catch (e) {
@@ -199,7 +209,8 @@ class PurchaseReceiptController extends GetxController {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -231,23 +242,30 @@ class PurchaseReceiptController extends GetxController {
                   Expanded(
                     child: Obx(() {
                       if (isFetchingPOs.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
-
                       if (purchaseOrdersForSelection.isEmpty) {
-                        return const Center(child: Text('No Purchase Orders found.'));
+                        return const Center(
+                            child:
+                                Text('No Purchase Orders found.'));
                       }
-
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: purchaseOrdersForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (_, __) => const Divider(
+                            height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
-                          final po = purchaseOrdersForSelection[index];
+                          final po =
+                              purchaseOrdersForSelection[index];
                           return ListTile(
-                            title: Text(po.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${po.supplier} • ${po.transactionDate}'),
-                            trailing: const Icon(Icons.chevron_right),
+                            title: Text(po.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                                '${po.supplier} \u2022 ${po.transactionDate}'),
+                            trailing:
+                                const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();
                               initiatePurchaseReceiptCreation(po);
