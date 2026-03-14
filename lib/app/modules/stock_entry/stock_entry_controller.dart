@@ -6,6 +6,7 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -17,6 +18,7 @@ class StockEntryController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final MaterialRequestProvider _materialRequestProvider = Get.find<MaterialRequestProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
+  final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
@@ -32,32 +34,31 @@ class StockEntryController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
-  // Search Query State
   var searchQuery = ''.obs;
 
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
-  // For POS Selection
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
-  // For Material Request Selection
   var isFetchingMaterialRequests = false.obs;
   var materialRequestsForSelection = <MaterialRequest>[].obs;
   List<MaterialRequest> _allFetchedMaterialRequests = [];
 
-  // Stock Entry Types for Filter
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
 
-  // Users for Filter
+  // Users for filter
   var users = <User>[].obs;
   var isFetchingUsers = false.obs;
 
-  // Dynamic Permissions
-  var writeRoles = <String>['System Manager'].obs; // Default to System Manager
+  // Warehouses for filter
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+
+  var writeRoles = <String>['System Manager'].obs;
 
   StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
 
@@ -67,6 +68,7 @@ class StockEntryController extends GetxController {
     fetchStockEntries();
     fetchStockEntryTypes();
     fetchUsers();
+    fetchWarehouses();
     fetchDocTypePermissions();
   }
 
@@ -81,14 +83,11 @@ class StockEntryController extends GetxController {
   Future<void> fetchDocTypePermissions() async {
     try {
       final response = await _apiProvider.getDocument('DocType', 'Stock Entry');
-
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'}; // Always allowed
-
+        final newRoles = <String>{'System Manager'};
         for (var p in perms) {
-          // Check for Write access (1) at permlevel 0 (Standard fields)
           if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
             newRoles.add(p['role']);
           }
@@ -110,8 +109,6 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  /// Removes a single filter key and re-fetches.
-  /// Used by the individual dismissible chips on the list screen.
   void removeFilter(String key) {
     activeFilters.remove(key);
     fetchStockEntries(isLoadMore: false, clear: true);
@@ -125,7 +122,6 @@ class StockEntryController extends GetxController {
 
   void onSearchChanged(String val) {
     searchQuery.value = val;
-    // Simple debounce to prevent API spamming
     Future.delayed(const Duration(milliseconds: 500), () {
       if (searchQuery.value == val) {
         fetchStockEntries(clear: true);
@@ -146,7 +142,6 @@ class StockEntryController extends GetxController {
     }
 
     try {
-      // Prepare filters including search
       final Map<String, dynamic> queryFilters = Map.from(activeFilters);
       if (searchQuery.value.isNotEmpty) {
         queryFilters['name'] = ['like', '%${searchQuery.value}%'];
@@ -162,11 +157,7 @@ class StockEntryController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newEntries = data.map((json) => StockEntry.fromJson(json)).toList();
-
-        if (newEntries.length < _limit) {
-          hasMore.value = false;
-        }
-
+        if (newEntries.length < _limit) hasMore.value = false;
         if (isLoadMore) {
           stockEntries.addAll(newEntries);
         } else {
@@ -191,7 +182,6 @@ class StockEntryController extends GetxController {
     isFetchingTypes.value = true;
     try {
       final response = await _provider.getStockEntryTypes();
-
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         stockEntryTypes.value = data.map((e) => e['name'].toString()).toList();
@@ -219,11 +209,24 @@ class StockEntryController extends GetxController {
     }
   }
 
-  Future<void> _fetchAndCacheEntryDetails(String name) async {
-    if (_detailedEntriesCache.containsKey(name)) {
-      return;
+  Future<void> fetchWarehouses() async {
+    if (warehouses.isNotEmpty) return;
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _warehouseProvider.getWarehouses();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        warehouses.value = data.map((e) => e['name'].toString()).toList();
+      }
+    } catch (e) {
+      print('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
     }
+  }
 
+  Future<void> _fetchAndCacheEntryDetails(String name) async {
+    if (_detailedEntriesCache.containsKey(name)) return;
     isLoadingDetails.value = true;
     try {
       final response = await _provider.getStockEntry(name);
@@ -258,16 +261,14 @@ class StockEntryController extends GetxController {
             'status': ['in', ['Pending', 'In Progress']],
             'name': ['like', 'KX%']
           },
-          orderBy: 'modified desc'
-      );
+          orderBy: 'modified desc');
       final mxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
           filters: {
             'status': ['in', ['Pending', 'In Progress']],
             'name': ['like', 'MX%']
           },
-          orderBy: 'modified desc'
-      );
+          orderBy: 'modified desc');
       final results = await Future.wait([kxFuture, mxFuture]);
       final List<PosUpload> mergedList = [];
       for (var response in results) {
@@ -293,10 +294,11 @@ class StockEntryController extends GetxController {
       posUploadsForSelection.value = _allFetchedPosUploads;
     } else {
       final q = query.toLowerCase();
-      posUploadsForSelection.value = _allFetchedPosUploads.where((upload) {
-        return upload.name.toLowerCase().contains(q) ||
-            upload.customer.toLowerCase().contains(q);
-      }).toList();
+      posUploadsForSelection.value = _allFetchedPosUploads
+          .where((u) =>
+              u.name.toLowerCase().contains(q) ||
+              u.customer.toLowerCase().contains(q))
+          .toList();
     }
   }
 
@@ -306,16 +308,15 @@ class StockEntryController extends GetxController {
       final response = await _materialRequestProvider.getMaterialRequests(
           limit: 50,
           filters: {
-            'docstatus': 1, // Submitted
-            'status': ['!=', 'Stopped'], // Not stopped
-            'material_request_type': ['!=', 'Purchase'], // Not Purchase
+            'docstatus': 1,
+            'status': ['!=', 'Stopped'],
+            'material_request_type': ['!=', 'Purchase'],
           },
-          orderBy: 'modified desc'
-      );
-
+          orderBy: 'modified desc');
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        _allFetchedMaterialRequests = data.map((json) => MaterialRequest.fromJson(json)).toList();
+        _allFetchedMaterialRequests =
+            data.map((json) => MaterialRequest.fromJson(json)).toList();
         materialRequestsForSelection.value = _allFetchedMaterialRequests;
       }
     } catch (e) {
@@ -330,10 +331,11 @@ class StockEntryController extends GetxController {
       materialRequestsForSelection.value = _allFetchedMaterialRequests;
     } else {
       final q = query.toLowerCase();
-      materialRequestsForSelection.value = _allFetchedMaterialRequests.where((mr) {
-        return mr.name.toLowerCase().contains(q) ||
-            mr.materialRequestType.toLowerCase().contains(q);
-      }).toList();
+      materialRequestsForSelection.value = _allFetchedMaterialRequests
+          .where((mr) =>
+              mr.name.toLowerCase().contains(q) ||
+              mr.materialRequestType.toLowerCase().contains(q))
+          .toList();
     }
   }
 
@@ -422,8 +424,11 @@ class StockEntryController extends GetxController {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Select POS Upload', style: Theme.of(context).textTheme.titleLarge),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
+                      Text('Select POS Upload',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Get.back()),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -432,7 +437,8 @@ class StockEntryController extends GetxController {
                     decoration: InputDecoration(
                       labelText: 'Search (KX/MX Only)',
                       prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                       filled: true,
                       fillColor: Colors.grey.shade50,
                     ),
@@ -444,26 +450,31 @@ class StockEntryController extends GetxController {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (posUploadsForSelection.isEmpty) {
-                        return const Center(child: Text('No matching POS Uploads found.'));
+                        return const Center(
+                            child: Text('No matching POS Uploads found.'));
                       }
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final pos = posUploadsForSelection[index];
                           return Card(
                             elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.grey.shade200)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
-                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                                  'name': '',
-                                  'mode': 'new',
-                                  'stockEntryType': 'Material Issue',
-                                  'customReferenceNo': pos.name
-                                });
+                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                                    arguments: {
+                                      'name': '',
+                                      'mode': 'new',
+                                      'stockEntryType': 'Material Issue',
+                                      'customReferenceNo': pos.name
+                                    });
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Padding(
@@ -472,39 +483,64 @@ class StockEntryController extends GetxController {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                        Text(pos.name,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16)),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
                                               color: Colors.orange.shade50,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: Colors.orange.shade200)
-                                          ),
-                                          child: Text(pos.status, style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                  color:
+                                                      Colors.orange.shade200)),
+                                          child: Text(pos.status,
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color:
+                                                      Colors.orange.shade800,
+                                                  fontWeight:
+                                                      FontWeight.bold)),
                                         )
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(pos.customer, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    Text(pos.customer,
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500)),
                                     const SizedBox(height: 8),
                                     const Divider(height: 1),
                                     const SizedBox(height: 8),
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(Icons.inventory_2_outlined, size: 14, color: Colors.grey),
+                                            const Icon(
+                                                Icons.inventory_2_outlined,
+                                                size: 14,
+                                                color: Colors.grey),
                                             const SizedBox(width: 4),
                                             Text(
                                               '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
-                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold),
                                             ),
                                           ],
                                         ),
-                                        Text(pos.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                        Text(pos.date,
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey)),
                                       ],
                                     ),
                                   ],
@@ -547,8 +583,11 @@ class StockEntryController extends GetxController {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Select Material Request', style: Theme.of(context).textTheme.titleLarge),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
+                      Text('Select Material Request',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Get.back()),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -557,7 +596,8 @@ class StockEntryController extends GetxController {
                     decoration: InputDecoration(
                       labelText: 'Search',
                       prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                       filled: true,
                       fillColor: Colors.grey.shade50,
                     ),
@@ -569,36 +609,41 @@ class StockEntryController extends GetxController {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (materialRequestsForSelection.isEmpty) {
-                        return const Center(child: Text('No matching Material Requests found.'));
+                        return const Center(
+                            child:
+                                Text('No matching Material Requests found.'));
                       }
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: materialRequestsForSelection.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final mr = materialRequestsForSelection[index];
                           return Card(
                             elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.grey.shade200)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
-
-                                // Map the items to include keys expected by StockEntryFormController
-                                final itemsList = mr.items.map((i) => {
-                                  'item_code': i.itemCode,
-                                  'qty': i.qty,
-                                  'material_request': mr.name,
-                                  'material_request_item': i.name,
-                                }).toList();
-
-                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
-                                  'name': '',
-                                  'mode': 'new',
-                                  'stockEntryType': mr.materialRequestType,
-                                  'customReferenceNo': mr.name,
-                                  'items': itemsList
-                                });
+                                final itemsList = mr.items
+                                    .map((i) => {
+                                          'item_code': i.itemCode,
+                                          'qty': i.qty,
+                                          'material_request': mr.name,
+                                          'material_request_item': i.name,
+                                        })
+                                    .toList();
+                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                                    arguments: {
+                                      'name': '',
+                                      'mode': 'new',
+                                      'stockEntryType': mr.materialRequestType,
+                                      'customReferenceNo': mr.name,
+                                      'items': itemsList
+                                    });
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Padding(
@@ -607,28 +652,42 @@ class StockEntryController extends GetxController {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(mr.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                        Text(mr.name,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16)),
                                         StatusPill(status: mr.status)
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text('Type: ${mr.materialRequestType}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    Text('Type: ${mr.materialRequestType}',
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500)),
                                     const SizedBox(height: 8),
                                     const Divider(height: 1),
                                     const SizedBox(height: 8),
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(Icons.date_range, size: 14, color: Colors.grey),
+                                            const Icon(Icons.date_range,
+                                                size: 14, color: Colors.grey),
                                             const SizedBox(width: 4),
-                                            Text(mr.transactionDate, style: const TextStyle(fontSize: 12)),
+                                            Text(mr.transactionDate,
+                                                style: const TextStyle(
+                                                    fontSize: 12)),
                                           ],
                                         ),
-                                        Text('Items: ${mr.items.length}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                        Text('Items: ${mr.items.length}',
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey)),
                                       ],
                                     ),
                                   ],

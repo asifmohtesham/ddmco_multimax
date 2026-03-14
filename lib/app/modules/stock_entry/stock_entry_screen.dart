@@ -96,16 +96,13 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       ));
     }
 
-    if (filters.containsKey('purpose')) {
-      final val = filters['purpose'];
-      final display = val is List && val.length > 1
-          ? val[1].toString().replaceAll('%', '')
-          : val.toString();
+    if (filters.containsKey('from_warehouse')) {
+      final val = filters['from_warehouse'];
       chips.add(_filterChip(
         context,
-        icon: Icons.label_outline,
-        label: 'Purpose: $display',
-        onDeleted: () => controller.removeFilter('purpose'),
+        icon: Icons.warehouse_outlined,
+        label: 'Warehouse: $val',
+        onDeleted: () => controller.removeFilter('from_warehouse'),
       ));
     }
 
@@ -127,13 +124,23 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       chips.add(_filterChip(
         context,
         icon: Icons.person_outline,
-        label: 'Owner: ${filters['owner']}',
+        label: 'Created By: ${filters['owner']}',
         onDeleted: () => controller.removeFilter('owner'),
       ));
     }
 
-    if (filters.containsKey('creation')) {
-      final f = filters['creation'];
+    if (filters.containsKey('modified_by') &&
+        filters['modified_by'].toString().isNotEmpty) {
+      chips.add(_filterChip(
+        context,
+        icon: Icons.edit_outlined,
+        label: 'Modified By: ${filters['modified_by']}',
+        onDeleted: () => controller.removeFilter('modified_by'),
+      ));
+    }
+
+    if (filters.containsKey('posting_date')) {
+      final f = filters['posting_date'];
       if (f is List &&
           f.length >= 2 &&
           f[0] == 'between' &&
@@ -144,7 +151,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
-          onDeleted: () => controller.removeFilter('creation'),
+          onDeleted: () => controller.removeFilter('posting_date'),
         ));
       }
     }
@@ -182,6 +189,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // Bottom inset for nav bar — used by the list footer.
+    final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -194,65 +203,19 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverAppBar.large(
-              title: const Text('Stock Entries'),
-              actions: [
-                Obx(() {
-                  final filterCount = controller.activeFilters.length;
-                  return IconButton(
-                    tooltip: filterCount > 0
-                        ? '$filterCount filter${filterCount > 1 ? 's' : ''} active'
-                        : 'Filter entries',
-                    onPressed: () => _showFilterBottomSheet(context),
-                    icon: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Icon(
-                          filterCount > 0
-                              ? Icons.filter_alt
-                              : Icons.filter_list,
-                        ),
-                        if (filterCount > 0)
-                          Positioned(
-                            top: -4,
-                            right: -6,
-                            child: Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: colorScheme.error,
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 16,
-                                minHeight: 16,
-                              ),
-                              child: Text(
-                                '$filterCount',
-                                style: TextStyle(
-                                  color: colorScheme.onError,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.0,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
+            // ── AppBar (no actions — filter moved to SearchBar trailing) ──
+            const SliverAppBar.large(
+              title: Text('Stock Entries'),
             ),
 
-            // Result count pill
+            // ── Result count pill ─────────────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 if (controller.isLoading.value &&
                     controller.stockEntries.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.stockEntries.length;
+                final count   = controller.stockEntries.length;
                 final hasMore = controller.hasMore.value;
                 final hasFilters = controller.activeFilters.isNotEmpty ||
                     controller.searchQuery.value.isNotEmpty;
@@ -299,41 +262,100 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
               }),
             ),
 
-            // Search Bar
+            // ── Search Bar + Filter button (inline trailing) ──────────────
+            // The filter IconButton lives here rather than in the AppBar
+            // actions so it stays in the thumb zone and is visually grouped
+            // with the search action it modifies.
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Obx(() => SearchBar(
-                      hintText: 'Search ID, Purpose...',
-                      leading: const Icon(Icons.search),
-                      onChanged: controller.onSearchChanged,
-                      trailing: [
-                        if (controller.searchQuery.value.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: 'Clear search',
-                            onPressed: () {
-                              controller.searchQuery.value = '';
-                              controller.fetchStockEntries(clear: true);
-                            },
+                child: Obx(() {
+                  final filterCount = controller.activeFilters.length;
+                  return SearchBar(
+                    hintText: 'Search ID, Purpose...',
+                    leading: const Icon(Icons.search),
+                    onChanged: controller.onSearchChanged,
+                    trailing: [
+                      if (controller.searchQuery.value.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            controller.searchQuery.value = '';
+                            controller.fetchStockEntries(clear: true);
+                          },
+                        ),
+                      // Filter button — always visible as the last trailing
+                      // widget so it stays in the thumb zone at all times.
+                      Tooltip(
+                        message: filterCount > 0
+                            ? '$filterCount filter${filterCount > 1 ? 's' : ''} active'
+                            : 'Filter entries',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => _showFilterBottomSheet(context),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 8),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(
+                                  filterCount > 0
+                                      ? Icons.filter_alt
+                                      : Icons.filter_list,
+                                  color: filterCount > 0
+                                      ? colorScheme.primary
+                                      : colorScheme.onSurfaceVariant,
+                                ),
+                                if (filterCount > 0)
+                                  Positioned(
+                                    top: -4,
+                                    right: -6,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                          minWidth: 16, minHeight: 16),
+                                      child: Text(
+                                        '$filterCount',
+                                        style: TextStyle(
+                                          color: colorScheme.onError,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                      ],
-                      elevation: const WidgetStatePropertyAll(0),
-                      backgroundColor: WidgetStatePropertyAll(
-                          colorScheme.surfaceContainerHighest),
-                      shape: WidgetStatePropertyAll(
-                        RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28)),
+                        ),
                       ),
-                    )),
+                    ],
+                    elevation: const WidgetStatePropertyAll(0),
+                    backgroundColor: WidgetStatePropertyAll(
+                        colorScheme.surfaceContainerHighest),
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(28)),
+                    ),
+                  );
+                }),
               ),
             ),
 
-            // Active filter chips
+            // ── Active filter chips ───────────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 final hasFilters = controller.activeFilters.isNotEmpty;
-                final hasSearch = controller.searchQuery.value.isNotEmpty;
+                final hasSearch  = controller.searchQuery.value.isNotEmpty;
                 if (!hasFilters && !hasSearch) return const SizedBox.shrink();
                 final chips = _buildActiveFilterChips(context);
                 return Padding(
@@ -362,7 +384,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
               }),
             ),
 
-            // List Content
+            // ── List content ──────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.stockEntries.isEmpty) {
@@ -378,7 +400,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 String emptySubtitle;
                 if (hasFilters) {
                   final parts = <String>[];
-                  final af = controller.activeFilters;
+                  final af    = controller.activeFilters;
                   if (af.containsKey('docstatus')) {
                     const labels = {
                       0: 'Draft',
@@ -430,8 +452,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                           Text(
                             emptySubtitle,
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 24),
                           if (hasFilters)
@@ -455,7 +477,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
               }
 
               final showLoader = controller.hasMore.value;
-              final baseCount = controller.stockEntries.length;
+              final baseCount  = controller.stockEntries.length;
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -469,8 +491,13 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                           ),
                         );
                       }
+                      // "End of results" — bottom padding accounts for the
+                      // system navigation bar so the text is never obscured.
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16.0),
+                        padding: EdgeInsets.only(
+                          top: 16,
+                          bottom: 16 + navBarHeight,
+                        ),
                         child: Center(
                           child: Text(
                             'End of results',
@@ -490,7 +517,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                           controller.isLoadingDetails.value &&
                               controller.detailedEntry?.name != entry.name;
 
-                      // Warehouse: prefer fromWarehouse, fall back to toWarehouse
                       final warehouseLabel =
                           entry.fromWarehouse?.isNotEmpty == true
                               ? entry.fromWarehouse!
@@ -498,12 +524,10 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                                   ? entry.toWarehouse!
                                   : null;
 
-                      // Posting date: use posting_date if set, else relative creation
                       final dateLabel = entry.postingDate.isNotEmpty
                           ? entry.postingDate
                           : FormattingHelper.getRelativeTime(entry.creation);
 
-                      // Show modified-by only when it differs from owner
                       final showModified = entry.modifiedBy != null &&
                           entry.modifiedBy!.isNotEmpty &&
                           entry.modifiedBy != entry.owner &&
@@ -513,7 +537,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                         title: entry.purpose,
                         subtitle: entry.name,
                         status: entry.status,
-                        // ── Row 1: Items  ·  Warehouse  ·  Date ──────────
                         stats: [
                           GenericDocumentCard.buildIconStat(
                             context,
@@ -532,7 +555,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                             dateLabel,
                           ),
                         ],
-                        // ── Row 2: Created by  ·  Modified by (if differs) ─
                         auditStats: [
                           if (entry.owner != null && entry.owner!.isNotEmpty)
                             GenericDocumentCard.buildIconStat(
@@ -586,13 +608,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Expanded section — now only shows detail-only data:
-  //   • Warehouse flow (FROM → TO) when both exist — not in list API
-  //   • Total value — not in list API
-  //   • Action button
-  // Posted date, Created by, and Modified by are already visible on the card.
-  // ---------------------------------------------------------------------------
   Widget _buildDetailedContent(BuildContext context, String entryName) {
     return Obx(() {
       final detailed = controller.detailedEntry;
@@ -606,7 +621,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Warehouse flow (FROM → TO) ─────────────────────────────────
           if (detailed.fromWarehouse != null &&
               detailed.fromWarehouse!.isNotEmpty &&
               detailed.toWarehouse != null &&
@@ -642,7 +656,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             const SizedBox(height: 12),
           ],
 
-          // ── Total value ─────────────────────────────────────────────────
           if (detailed.totalAmount > 0) ...[
             _infoCell(
               context,
@@ -658,7 +671,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             const SizedBox(height: 12),
           ],
 
-          // ── Action button ──────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

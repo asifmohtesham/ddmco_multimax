@@ -5,13 +5,9 @@ import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
-// ---------------------------------------------------------------------------
-// Frappe / ERPNext canonical docstatus colours — kept in sync with
-// GenericDocumentCard._statusAccentColor and StatusPill.
-// ---------------------------------------------------------------------------
-const _kDraftColor     = Color(0xFFE54D4D); // Frappe danger red
-const _kSubmittedColor = Color(0xFF36A564); // Frappe success green
-const _kCancelledColor = Color(0xFF5A6673); // Frappe muted grey
+const _kDraftColor     = Color(0xFFE54D4D);
+const _kSubmittedColor = Color(0xFF36A564);
+const _kCancelledColor = Color(0xFF5A6673);
 
 class StockEntryFilterBottomSheet extends StatefulWidget {
   const StockEntryFilterBottomSheet({super.key});
@@ -31,17 +27,14 @@ class _StockEntryFilterBottomSheetState
   late TextEditingController ownerController;
   late TextEditingController modifiedByController;
 
-  // Display name observables (email stored separately as filter value)
   final ownerDisplayName      = ''.obs;
   final modifiedByDisplayName = ''.obs;
 
-  // Reactive state
   final selectedDocstatus      = RxnInt();
   final selectedStockEntryType = RxnString();
   final startDate              = Rxn<DateTime>();
   final endDate                = Rxn<DateTime>();
 
-  // Reactive mirrors for active count
   final fromWarehouse = ''.obs;
   final reference     = ''.obs;
   final owner         = ''.obs;
@@ -70,22 +63,18 @@ class _StockEntryFilterBottomSheetState
     selectedDocstatus.value      = controller.activeFilters['docstatus'];
     selectedStockEntryType.value = controller.activeFilters['stock_entry_type'];
 
-    // Resolve owner email → display name on open
     if (initialOwner.isNotEmpty) {
       final match = controller.users.firstWhereOrNull(
-        (u) => u.email == initialOwner || u.id == initialOwner,
-      );
+          (u) => u.email == initialOwner || u.id == initialOwner);
       final display =
           (match != null && match.name.isNotEmpty) ? match.name : initialOwner;
-      ownerController.text      = display;
-      ownerDisplayName.value    = display;
+      ownerController.text   = display;
+      ownerDisplayName.value = display;
     }
 
-    // Resolve modifiedBy email → display name on open
     if (initialModifiedBy.isNotEmpty) {
       final match = controller.users.firstWhereOrNull(
-        (u) => u.email == initialModifiedBy || u.id == initialModifiedBy,
-      );
+          (u) => u.email == initialModifiedBy || u.id == initialModifiedBy);
       final display = (match != null && match.name.isNotEmpty)
           ? match.name
           : initialModifiedBy;
@@ -93,7 +82,11 @@ class _StockEntryFilterBottomSheetState
       modifiedByDisplayName.value = display;
     }
 
-    // Restore date range — now stored under posting_date
+    // Restore warehouse filter display (stored as 'like' value)
+    if (initialFromWarehouse.isNotEmpty) {
+      fromWarehouseController.text = initialFromWarehouse;
+    }
+
     final dateFilter = controller.activeFilters['posting_date'];
     if (dateFilter is List &&
         dateFilter.isNotEmpty &&
@@ -144,7 +137,6 @@ class _StockEntryFilterBottomSheetState
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
-      // Allow up to 30 days ahead — ERPNext permits future posting dates
       lastDate: DateTime.now().add(const Duration(days: 30)),
       initialDateRange: startDate.value != null && endDate.value != null
           ? DateTimeRange(start: startDate.value!, end: endDate.value!)
@@ -161,8 +153,7 @@ class _StockEntryFilterBottomSheetState
   }
 
   // ---------------------------------------------------------------------------
-  // Generic user picker — reused for both Owner and Modified By.
-  // Stores email/id as filter value; shows display name in the text field.
+  // Generic user picker — reused for Owner and Modified By.
   // ---------------------------------------------------------------------------
   void _showUserPicker({
     required String title,
@@ -210,16 +201,12 @@ class _StockEntryFilterBottomSheetState
                           const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
-                      if (val.isEmpty) {
-                        filteredUsers.assignAll(controller.users);
-                      } else {
-                        final term = val.toLowerCase();
-                        filteredUsers.assignAll(
-                          controller.users.where((u) =>
+                      final term = val.toLowerCase();
+                      filteredUsers.assignAll(val.isEmpty
+                          ? controller.users
+                          : controller.users.where((u) =>
                               u.name.toLowerCase().contains(term) ||
-                              u.email.toLowerCase().contains(term)),
-                        );
-                      }
+                              u.email.toLowerCase().contains(term)));
                     },
                   ),
                   const SizedBox(height: 12),
@@ -250,8 +237,7 @@ class _StockEntryFilterBottomSheetState
                               child: Text(
                                 displayName[0].toUpperCase(),
                                 style: TextStyle(
-                                    color:
-                                        colorScheme.onSecondaryContainer),
+                                    color: colorScheme.onSecondaryContainer),
                               ),
                             ),
                             title: Text(displayName,
@@ -277,6 +263,120 @@ class _StockEntryFilterBottomSheetState
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Warehouse picker — searchable list from Warehouse DocType.
+  // ---------------------------------------------------------------------------
+  void _showWarehousePicker() {
+    final searchController = TextEditingController();
+    final RxList<String> filtered = RxList<String>(controller.warehouses);
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            final colorScheme = Theme.of(context).colorScheme;
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Source Warehouse',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: Get.back),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search warehouses...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      final term = val.toLowerCase();
+                      filtered.assignAll(val.isEmpty
+                          ? controller.warehouses
+                          : controller.warehouses.where(
+                              (w) => w.toLowerCase().contains(term)));
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingWarehouses.value) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
+                      if (filtered.isEmpty) {
+                        return const Center(
+                            child: Text('No warehouses found'));
+                      }
+                      return ListView.separated(
+                        controller: scrollController,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final wh = filtered[index];
+                          final isSelected = fromWarehouse.value == wh;
+                          return ListTile(
+                            leading: Icon(
+                              Icons.warehouse_outlined,
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                            title: Text(
+                              wh,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                    color: colorScheme.primary, size: 18)
+                                : null,
+                            onTap: () {
+                              Get.back();
+                              fromWarehouse.value        = wh;
+                              fromWarehouseController.text = wh;
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   void _applyFilters() {
     final filters = <String, dynamic>{};
 
@@ -284,22 +384,16 @@ class _StockEntryFilterBottomSheetState
       filters['docstatus'] = selectedDocstatus.value;
     if (selectedStockEntryType.value != null)
       filters['stock_entry_type'] = selectedStockEntryType.value;
-    if (fromWarehouseController.text.isNotEmpty)
-      filters['from_warehouse'] = [
-        'like',
-        '%${fromWarehouseController.text}%'
-      ];
+    if (fromWarehouse.value.isNotEmpty)
+      filters['from_warehouse'] = fromWarehouse.value;
     if (referenceController.text.isNotEmpty)
       filters['custom_reference_no'] = [
         'like',
         '%${referenceController.text}%'
       ];
-    if (owner.value.isNotEmpty)
-      filters['owner'] = owner.value;
-    if (modifiedBy.value.isNotEmpty)
-      filters['modified_by'] = modifiedBy.value;
+    if (owner.value.isNotEmpty)      filters['owner']       = owner.value;
+    if (modifiedBy.value.isNotEmpty) filters['modified_by'] = modifiedBy.value;
 
-    // Filter on posting_date — the warehouse movement date, not creation time
     if (startDate.value != null && endDate.value != null) {
       filters['posting_date'] = [
         'between',
@@ -314,20 +408,16 @@ class _StockEntryFilterBottomSheetState
     Get.back();
   }
 
-  // ---------------------------------------------------------------------------
-  // Frappe-coloured docstatus chip helper.
-  // Selected state uses the canonical Frappe palette instead of generic M3.
-  // ---------------------------------------------------------------------------
   Widget _statusChip({
     required int value,
     required String label,
     required Color frappeColor,
   }) {
     final isSelected = selectedDocstatus.value == value;
-    // Derive a light background (10% opacity) from the Frappe colour
     final bgColor    = frappeColor.withOpacity(0.12);
-    final labelColor = isSelected ? frappeColor : Theme.of(context).colorScheme.onSurfaceVariant;
-
+    final labelColor = isSelected
+        ? frappeColor
+        : Theme.of(context).colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: ChoiceChip(
@@ -336,10 +426,13 @@ class _StockEntryFilterBottomSheetState
         onSelected: (_) =>
             selectedDocstatus.value = isSelected ? null : value,
         showCheckmark: false,
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        backgroundColor:
+            Theme.of(context).colorScheme.surfaceContainerHighest,
         selectedColor: bgColor,
         side: BorderSide(
-          color: isSelected ? frappeColor : Theme.of(context).colorScheme.outline,
+          color: isSelected
+              ? frappeColor
+              : Theme.of(context).colorScheme.outline,
           width: isSelected ? 1.5 : 1.0,
         ),
         labelStyle: TextStyle(
@@ -355,14 +448,12 @@ class _StockEntryFilterBottomSheetState
 
   @override
   Widget build(BuildContext context) {
-    final theme        = Theme.of(context);
-    final colorScheme  = theme.colorScheme;
+    final theme = Theme.of(context);
 
     return Obx(() => GlobalFilterBottomSheet(
           title: 'Filter Stock Entries',
           activeFilterCount: _activeCount,
           sortOptions: const [
-            // posting_date first — most meaningful for warehouse staff
             SortOption('Posting Date', 'posting_date'),
             SortOption('Creation',     'creation'),
             SortOption('Modified',     'modified'),
@@ -390,34 +481,31 @@ class _StockEntryFilterBottomSheetState
             controller.clearFilters();
           },
           filterWidgets: [
-            // ── Status (Frappe-coloured chips) ─────────────────────────────
+            // ── Status chips ───────────────────────────────────────────────
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Obx(() => Row(
-                children: [
-                  _statusChip(
-                    value: 0,
-                    label: 'Draft',
-                    frappeColor: _kDraftColor,
-                  ),
-                  _statusChip(
-                    value: 1,
-                    label: 'Submitted',
-                    frappeColor: _kSubmittedColor,
-                  ),
-                  _statusChip(
-                    value: 2,
-                    label: 'Cancelled',
-                    frappeColor: _kCancelledColor,
-                  ),
-                ],
-              )),
+                    children: [
+                      _statusChip(
+                          value: 0,
+                          label: 'Draft',
+                          frappeColor: _kDraftColor),
+                      _statusChip(
+                          value: 1,
+                          label: 'Submitted',
+                          frappeColor: _kSubmittedColor),
+                      _statusChip(
+                          value: 2,
+                          label: 'Cancelled',
+                          frappeColor: _kCancelledColor),
+                    ],
+                  )),
             ),
             const SizedBox(height: 16),
 
-            // ── Entry Type chips ───────────────────────────────────────────
+            // ── Entry Type chips ─────────────────────────────────────────
             Text('Entry Type', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             ShaderMask(
@@ -453,8 +541,7 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Posting Date range ─────────────────────────────────────────
-            // Uses posting_date (warehouse movement date), not creation time.
+            // ── Posting Date range ────────────────────────────────────────
             TextFormField(
               controller: dateRangeController,
               readOnly: true,
@@ -469,19 +556,29 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Source warehouse (replaces free-text purpose) ──────────────
-            // from_warehouse is the meaningful differentiator within a type.
-            TextFormField(
-              controller: fromWarehouseController,
-              decoration: const InputDecoration(
-                labelText: 'Source Warehouse',
-                hintText: 'e.g. Main Store - DXB',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.warehouse_outlined),
-                isDense: true,
-              ),
-              onChanged: (val) => fromWarehouse.value = val,
-            ),
+            // ── Source Warehouse (Warehouse DocType picker) ────────────────
+            Obx(() => TextFormField(
+                  controller: fromWarehouseController,
+                  readOnly: true,
+                  onTap: _showWarehousePicker,
+                  decoration: InputDecoration(
+                    labelText: 'Source Warehouse',
+                    hintText: 'Tap to select',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.warehouse_outlined),
+                    suffixIcon: fromWarehouse.value.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: 'Clear',
+                            onPressed: () {
+                              fromWarehouse.value = '';
+                              fromWarehouseController.clear();
+                            },
+                          )
+                        : const Icon(Icons.arrow_drop_down),
+                    isDense: true,
+                  ),
+                )),
             const SizedBox(height: 16),
 
             // ── Reference No ───────────────────────────────────────────────
@@ -497,7 +594,7 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Owner (Created By) ─────────────────────────────────────────
+            // ── Created By ────────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: ownerController,
                   readOnly: true,
@@ -529,7 +626,7 @@ class _StockEntryFilterBottomSheetState
                 )),
             const SizedBox(height: 16),
 
-            // ── Modified By ────────────────────────────────────────────────
+            // ── Modified By ───────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: modifiedByController,
                   readOnly: true,
