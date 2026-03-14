@@ -46,7 +46,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var posUpload = Rx<PosUpload?>(null);
 
   final TextEditingController barcodeController = TextEditingController();
-  var expandedItemCode = ''.obs;
   var expandedInvoice = ''.obs;
 
   var itemFilter = 'All'.obs;
@@ -66,8 +65,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   /// True while [editItem] is fetching the batch balance before opening the sheet.
   var isLoadingItemEdit = false.obs;
   /// The item.name of the item currently being loaded for editing.
-  /// Set before the async fetch begins so the card can show a spinner
-  /// on exactly the right row immediately — before currentItemCode is updated.
   var loadingForItemName = RxnString();
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
@@ -95,7 +92,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var isFormDirty = false.obs;
   var isSheetValid = false.obs;
 
-  // Current item being shown in the sheet (also used for variant_of display)
   var bsItemVariantOf = RxnString();
 
   String _initialBatch = '';
@@ -188,8 +184,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
         isDirty.value = false;
-        // Use Navigator directly — Get.back() calls closeCurrentSnackbar()
-        // which crashes when a snackbar is enqueued but not yet initialised.
         final ctx = Get.context;
         if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
       },
@@ -318,12 +312,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    // Use Navigator directly to avoid Get.back() calling closeCurrentSnackbar()
-    // which crashes when a snackbar is enqueued but not yet initialised.
     final ctx = Get.context;
-    if (ctx != null && ctx.mounted) {
-      Navigator.of(ctx).pop();
-    }
+    if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
 
     barcodeController.clear();
     _checkForChanges();
@@ -502,10 +492,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       recentlyAddedItemCode.value = '';
       recentlyAddedSerial.value = '';
     });
-  }
-
-  void toggleExpand(String itemCode) {
-    expandedItemCode.value = expandedItemCode.value == itemCode ? '' : itemCode;
   }
 
   void toggleInvoiceExpand(String key) {
@@ -865,14 +851,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
-  /// Opens the edit sheet for [item].
-  ///
-  /// [loadingForItemName] is set to [item.name] immediately (before any async
-  /// work) so the card can show a spinner on exactly the right row from the
-  /// first frame — without waiting for [currentItemCode] to be updated inside
-  /// [initBottomSheet] which only runs after the fetch completes.
   Future<void> editItem(DeliveryNoteItem item) async {
-    loadingForItemName.value = item.name; // ← set BEFORE any await
+    loadingForItemName.value = item.name;
     isLoadingItemEdit.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
@@ -911,7 +891,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       isLoadingBatchBalance.value = false;
       isLoadingRackBalance.value = false;
       isLoadingItemEdit.value = false;
-      loadingForItemName.value = null; // ← clear after fetch completes
+      loadingForItemName.value = null;
     }
 
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty,
@@ -1051,9 +1031,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 }
 
-// ---------------------------------------------------------------------------
-// Private fade+slide wrapper — reused by editItem() and scanBarcode().
-// ---------------------------------------------------------------------------
 class _FadeSlideSheet extends StatelessWidget {
   final Widget child;
   const _FadeSlideSheet({required this.child});
