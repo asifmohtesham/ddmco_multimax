@@ -65,6 +65,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var isItemSheetOpen = false.obs;
   /// True while [editItem] is fetching the batch balance before opening the sheet.
   var isLoadingItemEdit = false.obs;
+  /// The item.name of the item currently being loaded for editing.
+  /// Set before the async fetch begins so the card can show a spinner
+  /// on exactly the right row immediately — before currentItemCode is updated.
+  var loadingForItemName = RxnString();
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
@@ -184,7 +188,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
         isDirty.value = false;
-        Get.back();
+        // Use Navigator directly — Get.back() calls closeCurrentSnackbar()
+        // which crashes when a snackbar is enqueued but not yet initialised.
+        final ctx = Get.context;
+        if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
       },
     );
   }
@@ -311,9 +318,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    // Use Navigator directly to avoid Get.back() which internally calls
-    // closeCurrentSnackbar() — that crashes when a snackbar is enqueued but
-    // its AnimationController (a late field) hasn't been initialised yet.
+    // Use Navigator directly to avoid Get.back() calling closeCurrentSnackbar()
+    // which crashes when a snackbar is enqueued but not yet initialised.
     final ctx = Get.context;
     if (ctx != null && ctx.mounted) {
       Navigator.of(ctx).pop();
@@ -859,7 +865,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
+  /// Opens the edit sheet for [item].
+  ///
+  /// [loadingForItemName] is set to [item.name] immediately (before any async
+  /// work) so the card can show a spinner on exactly the right row from the
+  /// first frame — without waiting for [currentItemCode] to be updated inside
+  /// [initBottomSheet] which only runs after the fetch completes.
   Future<void> editItem(DeliveryNoteItem item) async {
+    loadingForItemName.value = item.name; // ← set BEFORE any await
     isLoadingItemEdit.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
@@ -898,6 +911,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       isLoadingBatchBalance.value = false;
       isLoadingRackBalance.value = false;
       isLoadingItemEdit.value = false;
+      loadingForItemName.value = null; // ← clear after fetch completes
     }
 
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty,

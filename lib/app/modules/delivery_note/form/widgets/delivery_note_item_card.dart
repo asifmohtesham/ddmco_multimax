@@ -21,11 +21,16 @@ class DeliveryNoteItemCard extends StatelessWidget {
               (controller.recentlyAddedSerial.value ==
                       (item.customInvoiceSerialNumber ?? '0') ||
                   controller.recentlyAddedSerial.value.isEmpty);
-      // Show loading spinner on this card's edit button while fetching.
+
+      // Show a loading spinner on this card's edit button while the controller
+      // is fetching batch/rack data specifically for THIS item.
+      // We use loadingForItemName (set before the async fetch begins) rather
+      // than currentItemCode (set only after the fetch completes inside
+      // initBottomSheet) so the spinner appears immediately on tap and never
+      // leaks onto a previously-edited card.
       final isThisItemLoading =
-          controller.isLoadingItemEdit.value &&
-          controller.editingItemName.value == null &&
-          controller.currentItemCode == item.itemCode;
+          controller.loadingForItemName.value != null &&
+          controller.loadingForItemName.value == item.name;
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 500),
@@ -106,7 +111,9 @@ class DeliveryNoteItemCard extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Edit button — shows spinner while loading
+                  // Edit button — shows spinner while loading batch data for
+                  // this specific item. Disabled during loading to prevent
+                  // double-taps.
                   SizedBox(
                     width: 40,
                     height: 40,
@@ -117,7 +124,9 @@ class DeliveryNoteItemCard extends StatelessWidget {
                           )
                         : IconButton(
                             icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => controller.editItem(item),
+                            onPressed: controller.isLoadingItemEdit.value
+                                ? null  // disable all edit buttons while any load is in progress
+                                : () => controller.editItem(item),
                           ),
                   ),
                   AnimatedExpandIcon(isExpanded: isExpanded),
