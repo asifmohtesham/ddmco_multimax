@@ -3,6 +3,10 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
+/// Generic scaffold for simple list screens that do NOT need the full
+/// [DocTypeListHeader] (i.e. screens without a local SearchBar or filter
+/// chips).  Screens that need those features should compose
+/// [DocTypeListHeader] directly inside their own [CustomScrollView].
 class GenericListPage extends StatelessWidget {
   final String title;
   final RxBool isLoading;
@@ -34,7 +38,7 @@ class GenericListPage extends StatelessWidget {
   final Widget? tabBarView;
 
   // Layout overrides
-  final Widget? sliverBody; // Pass custom sliver (e.g. for GridView)
+  final Widget? sliverBody;
 
   const GenericListPage({
     super.key,
@@ -66,7 +70,8 @@ class GenericListPage extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Construct Actions: Append Global Search Icon if configuration is present
+    // Build the actions list, prepending the Global Search icon when
+    // searchDoctype + searchRoute are both provided.
     final List<Widget> pageActions = [
       if (searchDoctype != null && searchRoute != null)
         IconButton(
@@ -206,7 +211,6 @@ class GenericListPage extends StatelessWidget {
                 );
               }
 
-              // Use custom sliver body (e.g. Grid) or default List
               if (sliverBody != null) return sliverBody!;
 
               return SliverList(
@@ -217,7 +221,6 @@ class GenericListPage extends StatelessWidget {
               );
             }),
 
-            // Bottom Padding for FAB
             const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),

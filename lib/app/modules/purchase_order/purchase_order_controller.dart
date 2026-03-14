@@ -22,6 +22,9 @@ class PurchaseOrderController extends GetxController {
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
+  /// Local text-search query — mirrors the pattern in StockEntryController.
+  var searchQuery = ''.obs;
+
   PurchaseOrder? get detailedPo => _detailedPoCache[expandedPoName.value];
 
   @override
@@ -30,6 +33,8 @@ class PurchaseOrderController extends GetxController {
     fetchPurchaseOrders();
   }
 
+  // ── Filter / sort ─────────────────────────────────────────────────────────
+
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
     fetchPurchaseOrders(isLoadMore: false, clear: true);
@@ -37,15 +42,34 @@ class PurchaseOrderController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    searchQuery.value = '';
     fetchPurchaseOrders(isLoadMore: false, clear: true);
   }
 
-  // Added missing method
+  void removeFilter(String key) {
+    activeFilters.remove(key);
+    fetchPurchaseOrders(isLoadMore: false, clear: true);
+  }
+
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
     fetchPurchaseOrders(isLoadMore: false, clear: true);
   }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  /// Debounced handler wired to the SearchBar's [onChanged].
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (searchQuery.value == val) {
+        fetchPurchaseOrders(clear: true);
+      }
+    });
+  }
+
+  // ── Data ──────────────────────────────────────────────────────────────────
 
   Future<void> fetchPurchaseOrders({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
@@ -60,10 +84,16 @@ class PurchaseOrderController extends GetxController {
     }
 
     try {
+      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (searchQuery.value.isNotEmpty) {
+        // Search by PO name or supplier name
+        queryFilters['name'] = ['like', '%${searchQuery.value}%'];
+      }
+
       final response = await _provider.getPurchaseOrders(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
@@ -71,9 +101,7 @@ class PurchaseOrderController extends GetxController {
         final List<dynamic> data = response.data['data'];
         final newOrders = data.map((json) => PurchaseOrder.fromJson(json)).toList();
 
-        if (newOrders.length < _limit) {
-          hasMore.value = false;
-        }
+        if (newOrders.length < _limit) hasMore.value = false;
 
         if (isLoadMore) {
           purchaseOrders.addAll(newOrders);
@@ -97,7 +125,6 @@ class PurchaseOrderController extends GetxController {
 
   Future<void> _fetchAndCachePoDetails(String name) async {
     if (_detailedPoCache.containsKey(name)) return;
-
     isLoadingDetails.value = true;
     try {
       final response = await _provider.getPurchaseOrder(name);
