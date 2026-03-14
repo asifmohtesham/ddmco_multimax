@@ -1,15 +1,22 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
-class QuantityInputWidget extends StatefulWidget {
+/// A quantity input row with press-and-hold increment / decrement buttons.
+///
+/// Implemented as a pure [GetView]-style [StatelessWidget].  All mutable
+/// state (the repeat [Timer]) lives inside [QuantityInputController], which
+/// is scoped per button via a unique tag and deleted automatically when the
+/// widget leaves the tree.
+class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final String label;
   final bool isReadOnly;
 
-  /// Additional context like "Available: 50" or "Ordered: 10"
+  /// Additional context shown as a badge, e.g. "Available: 50".
   final String? infoText;
   final Color color;
   final Function(String)? onChanged;
@@ -27,33 +34,6 @@ class QuantityInputWidget extends StatefulWidget {
   });
 
   @override
-  State<QuantityInputWidget> createState() => _QuantityInputWidgetState();
-}
-
-class _QuantityInputWidgetState extends State<QuantityInputWidget> {
-  Timer? _repeatTimer;
-
-  void _startRepeat(VoidCallback action) {
-    action(); // immediate feedback on first press
-    _repeatTimer?.cancel();
-    _repeatTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
-      (_) => action(),
-    );
-  }
-
-  void _stopRepeat() {
-    _repeatTimer?.cancel();
-    _repeatTimer = null;
-  }
-
-  @override
-  void dispose() {
-    _repeatTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final borderColor = Colors.grey.shade300;
@@ -61,32 +41,31 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header Row: Label + Info Badge
-        if (widget.label.isNotEmpty ||
-            (widget.infoText != null && widget.infoText!.isNotEmpty))
+        // ── Header: label + info badge ──────────────────────────────────
+        if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.label,
+                  label,
                   style: TextStyle(
-                    color: widget.color,
+                    color: color,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                if (widget.infoText != null && widget.infoText!.isNotEmpty)
+                if (infoText != null && infoText!.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      widget.infoText!,
+                      infoText!,
                       style: TextStyle(
                         fontSize: 11,
                         color: primaryColor,
@@ -98,14 +77,14 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
             ),
           ),
 
-        // Input Control Container
+        // ── Input row ─────────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: widget.isReadOnly ? Colors.grey.shade50 : Colors.white,
+            color: isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: widget.isReadOnly
+            boxShadow: isReadOnly
                 ? []
                 : [
                     BoxShadow(
@@ -117,24 +96,24 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
           ),
           child: Row(
             children: [
-              // Text Field (Left Side)
+              // ── Text field ──────────────────────────────────────────
               Expanded(
                 child: TextFormField(
-                  controller: widget.controller,
-                  readOnly: widget.isReadOnly,
+                  controller: controller,
+                  readOnly: isReadOnly,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   textAlign: TextAlign.start,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: widget.isReadOnly
-                        ? Colors.grey.shade600
-                        : Colors.black87,
+                    color:
+                        isReadOnly ? Colors.grey.shade600 : Colors.black87,
                   ),
-                  onChanged: widget.onChanged,
+                  onChanged: onChanged,
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d*')),
                   ],
                   decoration: const InputDecoration(
                     border: InputBorder.none,
@@ -152,24 +131,25 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
                 ),
               ),
 
-              // Buttons Group (Right Side)
-              if (!widget.isReadOnly) ...[
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-                _buildActionButton(
+              // ── Decrement / Increment buttons ────────────────────
+              if (!isReadOnly) ...[
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
+                _QtyActionButton(
+                  tag: '${hashCode}_dec',
                   icon: Icons.remove,
-                  onPressed: widget.onDecrement,
+                  action: onDecrement,
                   color: Colors.grey.shade700,
                 ),
-
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-                _buildActionButton(
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
+                _QtyActionButton(
+                  tag: '${hashCode}_inc',
                   icon: Icons.add,
-                  onPressed: widget.onIncrement,
+                  action: onIncrement,
                   color: primaryColor,
-                  borderRadius: const BorderRadius.horizontal(
-                      right: Radius.circular(11)),
+                  borderRadius:
+                      const BorderRadius.horizontal(right: Radius.circular(11)),
                 ),
               ],
             ],
@@ -178,30 +158,49 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
       ],
     );
   }
+}
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required Color color,
-    BorderRadius? borderRadius,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: borderRadius ?? BorderRadius.zero,
-        onTapDown: (_) {
-          HapticFeedback.lightImpact();
-          _startRepeat(onPressed);
-        },
-        onTapUp: (_) => _stopRepeat(),
-        onTapCancel: _stopRepeat,
-        child: SizedBox(
-          width: 56,
-          height: double.infinity,
-          child: Icon(
-            icon,
-            color: color,
-            size: 22,
+// ──────────────────────────────────────────────────────────────────────────────
+// Private press-and-hold button — no StatefulWidget
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _QtyActionButton extends StatelessWidget {
+  final String tag;
+  final IconData icon;
+  final VoidCallback action;
+  final Color color;
+  final BorderRadius? borderRadius;
+
+  const _QtyActionButton({
+    required this.tag,
+    required this.icon,
+    required this.action,
+    required this.color,
+    this.borderRadius,
+  });
+
+  QuantityInputController get _ctrl =>
+      Get.put(QuantityInputController(), tag: tag, permanent: false);
+
+  @override
+  Widget build(BuildContext context) {
+    // GetBuilder with autoRemove:true ensures the controller is deleted
+    // and its timer cancelled as soon as the button leaves the tree.
+    return GetBuilder<QuantityInputController>(
+      tag: tag,
+      init: QuantityInputController(),
+      autoRemove: true,
+      builder: (ctrl) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: borderRadius ?? BorderRadius.zero,
+          onTapDown: (_) => ctrl.startRepeat(action),
+          onTapUp: (_) => ctrl.stopRepeat(),
+          onTapCancel: ctrl.stopRepeat,
+          child: SizedBox(
+            width: 56,
+            height: double.infinity,
+            child: Icon(icon, color: color, size: 22),
           ),
         ),
       ),
