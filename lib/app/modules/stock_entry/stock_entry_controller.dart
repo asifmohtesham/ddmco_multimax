@@ -110,6 +110,13 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
+  /// Removes a single filter key and re-fetches.
+  /// Used by the individual dismissible chips on the list screen.
+  void removeFilter(String key) {
+    activeFilters.remove(key);
+    fetchStockEntries(isLoadMore: false, clear: true);
+  }
+
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
@@ -582,7 +589,7 @@ class StockEntryController extends GetxController {
                                   'item_code': i.itemCode,
                                   'qty': i.qty,
                                   'material_request': mr.name,
-                                  'material_request_item': i.name, // Correctly linking the child item ID
+                                  'material_request_item': i.name,
                                 }).toList();
 
                                 Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
