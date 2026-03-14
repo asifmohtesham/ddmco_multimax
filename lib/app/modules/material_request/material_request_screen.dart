@@ -70,29 +70,35 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar ──────────────────────────────────────────────────────
-            SliverAppBar.large(
-              title: const Text('Material Requests'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: () => _showFilterSheet(context),
-                ),
-              ],
+            // ── AppBar (no actions — identical to Stock Entry) ────────────────
+            const SliverAppBar.large(
+              title: Text('Material Requests'),
             ),
 
-            // ── Search Bar ──────────────────────────────────────────────────
+            // ── Search Bar + Filter suffix ────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
+                // Identical padding to Stock Entry
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: TextField(
                   onChanged: controller.onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'Search ID, Type, Warehouse...',
+                    // Identical to Stock Entry
                     prefixIcon: Icon(
                       Icons.search,
                       color: colorScheme.onSurfaceVariant,
                     ),
+                    // Filter button as suffixIcon inside the pill field
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        Icons.filter_list,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      tooltip: 'Sort & Filter',
+                      onPressed: () => _showFilterSheet(context),
+                    ),
+                    // Identical styling to Stock Entry
                     filled: true,
                     fillColor: colorScheme.surfaceContainerHighest,
                     border: OutlineInputBorder(
@@ -106,7 +112,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               ),
             ),
 
-            // ── Active filter / search chips ────────────────────────────────
+            // ── Active filter / search chips ───────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 final hasFilters = controller.activeFilters.isNotEmpty;
@@ -142,7 +148,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               }),
             ),
 
-            // ── List body ───────────────────────────────────────────────────
+            // ── List body ─────────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.materialRequests.isEmpty) {
@@ -302,7 +308,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     );
   }
 
-  // ── Expanded card detail ───────────────────────────────────────────────
+  // ── Expanded card detail ──────────────────────────────────────────────
   Widget _buildExpandedContent(BuildContext context, String reqName) {
     return Obx(() {
       final detailed = controller.detailedRequest;
