@@ -149,6 +149,10 @@ class GlobalItemFormSheet extends StatelessWidget {
                   try {
                     final result = onSubmit();
                     if (result is Future) await result;
+                    // The parent DocType controller (e.g. addItem()) owns the
+                    // sheet close via Navigator — it must call
+                    // Navigator.of(context).pop() or Get.back() from a context
+                    // that is not inside the sheet's snackbar-race window.
                   } catch (e) {
                     debugPrint('GlobalItemFormSheet submit error: $e');
                   } finally {

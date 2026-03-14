@@ -72,6 +72,15 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
       // Custom Actions injected by the screen
       ...(actions ?? []),
 
+      // Reload Action — only shown when onReload is provided
+      if (onReload != null)
+        IconButton(
+          tooltip: 'Reload document',
+          icon: const Icon(Icons.refresh),
+          // Disable while a save is in progress to avoid concurrent requests
+          onPressed: isSaving ? null : onReload,
+        ),
+
       // Global Save Action
       if (onSave != null)
         SaveIconButton(
@@ -82,19 +91,24 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     ];
 
     return AppBar(
-      leading: leading ?? (showBack && Navigator.canPop(context)
-          ? IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Get.back(),
-      )
-          : null),
+      // Fix: use Navigator.maybePop so PopScope.canPop / onPopInvokedWithResult
+      // is respected. Get.back() bypasses the PopScope guard entirely.
+      leading: leading ??
+          (showBack && Navigator.canPop(context)
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.maybePop(context),
+                )
+              : null),
       title: Column(
-        crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+            title,
+            style:
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           if (displayStatus != null) ...[
             const SizedBox(height: 4),

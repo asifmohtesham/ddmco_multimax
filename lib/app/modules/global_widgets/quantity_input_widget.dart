@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -34,6 +35,31 @@ class QuantityInputWidget extends StatelessWidget {
   });
 
   @override
+  State<QuantityInputWidget> createState() => _QuantityInputWidgetState();
+}
+
+class _QuantityInputWidgetState extends State<QuantityInputWidget> {
+  Timer? _repeatTimer;
+
+  void _startRepeat(VoidCallback action) {
+    // Immediate feedback on press
+    action();
+    _repeatTimer?.cancel();
+    _repeatTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => action());
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _repeatTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final borderColor = Colors.grey.shade300;
@@ -41,22 +67,22 @@ class QuantityInputWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header: label + info badge ──────────────────────────────────
-        if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
+        // Header Row: Label + Info Badge
+        if (widget.label.isNotEmpty || (widget.infoText != null && widget.infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  label,
+                  widget.label,
                   style: TextStyle(
-                    color: color,
+                    color: widget.color,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                if (infoText != null && infoText!.isNotEmpty)
+                if (widget.infoText != null && widget.infoText!.isNotEmpty)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -65,7 +91,7 @@ class QuantityInputWidget extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      infoText!,
+                      widget.infoText!,
                       style: TextStyle(
                         fontSize: 11,
                         color: primaryColor,
@@ -81,10 +107,10 @@ class QuantityInputWidget extends StatelessWidget {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: isReadOnly ? Colors.grey.shade50 : Colors.white,
+            color: widget.isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: isReadOnly
+            boxShadow: widget.isReadOnly
                 ? []
                 : [
                     BoxShadow(
@@ -99,18 +125,16 @@ class QuantityInputWidget extends StatelessWidget {
               // ── Text field ──────────────────────────────────────────
               Expanded(
                 child: TextFormField(
-                  controller: controller,
-                  readOnly: isReadOnly,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  controller: widget.controller,
+                  readOnly: widget.isReadOnly,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   textAlign: TextAlign.start,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color:
-                        isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                    color: widget.isReadOnly ? Colors.grey.shade600 : Colors.black87,
                   ),
-                  onChanged: onChanged,
+                  onChanged: widget.onChanged,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(
                         RegExp(r'^\d*\.?\d*')),
@@ -131,14 +155,15 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
               ),
 
-              // ── Decrement / Increment buttons ────────────────────
-              if (!isReadOnly) ...[
-                Container(
-                    width: 1, height: 32, color: Colors.grey.shade200),
-                _QtyActionButton(
-                  tag: '${hashCode}_dec',
+              // Buttons Group (Right Side)
+              if (!widget.isReadOnly) ...[
+                // Vertical Divider
+                Container(width: 1, height: 32, color: Colors.grey.shade200),
+
+                // Decrement Button
+                _buildActionButton(
                   icon: Icons.remove,
-                  action: onDecrement,
+                  onPressed: widget.onDecrement,
                   color: Colors.grey.shade700,
                 ),
                 Container(
@@ -146,7 +171,7 @@ class QuantityInputWidget extends StatelessWidget {
                 _QtyActionButton(
                   tag: '${hashCode}_inc',
                   icon: Icons.add,
-                  action: onIncrement,
+                  onPressed: widget.onIncrement,
                   color: primaryColor,
                   borderRadius:
                       const BorderRadius.horizontal(right: Radius.circular(11)),
@@ -160,47 +185,29 @@ class QuantityInputWidget extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Private press-and-hold button — no StatefulWidget
-// ──────────────────────────────────────────────────────────────────────────────
-
-class _QtyActionButton extends StatelessWidget {
-  final String tag;
-  final IconData icon;
-  final VoidCallback action;
-  final Color color;
-  final BorderRadius? borderRadius;
-
-  const _QtyActionButton({
-    required this.tag,
-    required this.icon,
-    required this.action,
-    required this.color,
-    this.borderRadius,
-  });
-
-  QuantityInputController get _ctrl =>
-      Get.put(QuantityInputController(), tag: tag, permanent: false);
-
-  @override
-  Widget build(BuildContext context) {
-    // GetBuilder with autoRemove:true ensures the controller is deleted
-    // and its timer cancelled as soon as the button leaves the tree.
-    return GetBuilder<QuantityInputController>(
-      tag: tag,
-      init: QuantityInputController(),
-      autoRemove: true,
-      builder: (ctrl) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: borderRadius ?? BorderRadius.zero,
-          onTapDown: (_) => ctrl.startRepeat(action),
-          onTapUp: (_) => ctrl.stopRepeat(),
-          onTapCancel: ctrl.stopRepeat,
-          child: SizedBox(
-            width: 56,
-            height: double.infinity,
-            child: Icon(icon, color: color, size: 22),
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required Color color,
+    BorderRadius? borderRadius,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: borderRadius ?? BorderRadius.zero,
+        onTapDown: (_) {
+          HapticFeedback.lightImpact();
+          _startRepeat(onPressed);
+        },
+        onTapUp: (_) => _stopRepeat(),
+        onTapCancel: _stopRepeat,
+        child: SizedBox(
+          width: 56,
+          height: double.infinity,
+          child: Icon(
+            icon,
+            color: color,
+            size: 22,
           ),
         ),
       ),
