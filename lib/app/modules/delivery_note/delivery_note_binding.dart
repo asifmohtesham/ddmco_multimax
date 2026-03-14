@@ -4,6 +4,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/providers/customer_provider.dart';
 
 class DeliveryNoteBinding extends Bindings {
   @override
@@ -12,6 +13,7 @@ class DeliveryNoteBinding extends Bindings {
     Get.lazyPut<PosUploadProvider>(() => PosUploadProvider());
     Get.lazyPut<UserProvider>(() => UserProvider());
     Get.lazyPut<WarehouseProvider>(() => WarehouseProvider());
+    Get.lazyPut<CustomerProvider>(() => CustomerProvider());
     Get.lazyPut<DeliveryNoteController>(() => DeliveryNoteController());
   }
 }

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/app/modules/global_widgets/info_block.dart';
-import 'package:intl/intl.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -19,7 +18,6 @@ class DeliveryNoteScreen extends StatefulWidget {
 class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   final DeliveryNoteController controller = Get.find();
   final _scrollController = ScrollController();
-
   final _isFarFromTop = false.obs;
 
   @override
@@ -85,9 +83,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           onDeleted: () => controller.removeFilter('status')));
     }
 
-    if (f.containsKey('customer')) {
-      final val = f['customer'];
-      final display = val is List ? val[1].toString().replaceAll('%', '') : val.toString();
+    if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
+      // customer is an exact name — resolve display label from loaded list
+      final match = controller.customers
+          .firstWhereOrNull((c) => c.name == f['customer']);
+      final display = match != null ? match.customerName : f['customer'].toString();
       chips.add(_chip(context,
           icon: Icons.business_outlined,
           label: 'Customer: $display',
@@ -96,7 +96,9 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
 
     if (f.containsKey('po_no')) {
       final val = f['po_no'];
-      final display = val is List ? val[1].toString().replaceAll('%', '') : val.toString();
+      final display = val is List
+          ? val[1].toString().replaceAll('%', '')
+          : val.toString();
       chips.add(_chip(context,
           icon: Icons.tag,
           label: 'PO: $display',
@@ -174,8 +176,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final theme       = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final theme        = Theme.of(context);
+    final colorScheme  = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -189,20 +191,20 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar (no actions — filter lives in SearchBar trailing) ──
+            // ── AppBar ─────────────────────────────────────────────────────
             const SliverAppBar.large(
               title: Text('Delivery Notes'),
             ),
 
-            // ── Result count pill ────────────────────────────────────────
+            // ── Result count pill ──────────────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 if (controller.isLoading.value &&
                     controller.deliveryNotes.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count   = controller.deliveryNotes.length;
-                final hasMore = controller.hasMore.value;
+                final count      = controller.deliveryNotes.length;
+                final hasMore    = controller.hasMore.value;
                 final hasFilters = controller.activeFilters.isNotEmpty ||
                     controller.searchQuery.value.isNotEmpty;
                 return Padding(
@@ -248,7 +250,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
               }),
             ),
 
-            // ── Search bar + filter button in trailing ──────────────────
+            // ── Search bar + filter button in trailing ─────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -332,7 +334,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
               ),
             ),
 
-            // ── Active filter chips ───────────────────────────────────────
+            // ── Active filter chips ────────────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 final hasFilters = controller.activeFilters.isNotEmpty;
@@ -352,7 +354,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           style: TextButton.styleFrom(
                             foregroundColor: colorScheme.error,
                             visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 8),
                           ),
                           onPressed: controller.clearFilters,
                           icon: const Icon(Icons.clear_all, size: 16),
@@ -364,7 +367,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
               }),
             ),
 
-            // ── List content ─────────────────────────────────────────────
+            // ── List content ───────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.deliveryNotes.isEmpty) {
@@ -385,8 +388,12 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                   if (af.containsKey('status'))
                     parts.add('Status: ${af['status']}');
                   if (af.containsKey('customer')) {
-                    final v = af['customer'];
-                    parts.add('Customer: ${v is List ? v[1].toString().replaceAll('%', '') : v}');
+                    final match = controller.customers
+                        .firstWhereOrNull((c) => c.name == af['customer']);
+                    final label = match != null
+                        ? match.customerName
+                        : af['customer'].toString();
+                    parts.add('Customer: $label');
                   }
                   if (controller.searchQuery.value.isNotEmpty)
                     parts.add('Search: "${controller.searchQuery.value}"');
@@ -465,12 +472,9 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           ),
                         );
                       }
-                      // End-of-results footer — clears system nav bar.
                       return Padding(
                         padding: EdgeInsets.only(
-                          top: 16,
-                          bottom: 16 + navBarHeight,
-                        ),
+                            top: 16, bottom: 16 + navBarHeight),
                         child: Center(
                           child: Text(
                             'End of results',
@@ -490,6 +494,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           controller.isLoadingDetails.value &&
                               controller.detailedNote?.name != note.name;
 
+                      // ── Card layout — mirrors SE card exactly ──────────
+                      // title:    PO number if present, else doc name
+                      // subtitle: doc name • customer (mono font via GenericDocumentCard)
+                      // stats row 1 (primary): qty | warehouse | posting date
+                      // stats row 2 (audit):   owner | modifiedBy (if different)
                       final bool hasPo =
                           note.poNo != null && note.poNo!.isNotEmpty;
                       final String title =
@@ -498,33 +507,57 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           ? '${note.name} • ${note.customer}'
                           : note.customer;
 
+                      final showModified = note.modifiedBy != null &&
+                          note.modifiedBy!.isNotEmpty &&
+                          note.modifiedBy != note.owner &&
+                          note.creation != note.modified;
+
                       return GenericDocumentCard(
                         title: title,
                         subtitle: subtitle,
                         status: note.status,
-                        isExpanded: isExpanded,
-                        isLoadingDetails: isLoadingDetails && isExpanded,
-                        onTap: () => controller.toggleExpand(note.name),
                         stats: [
                           GenericDocumentCard.buildIconStat(
                             context,
                             Icons.inventory_2_outlined,
                             '${note.totalQty.toStringAsFixed(0)} Items',
                           ),
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.access_time,
-                            FormattingHelper.getRelativeTime(note.creation),
-                          ),
-                          if (note.docstatus == 1)
+                          if (note.setWarehouse != null &&
+                              note.setWarehouse!.isNotEmpty)
                             GenericDocumentCard.buildIconStat(
                               context,
-                              Icons.timer_outlined,
-                              FormattingHelper.getTimeTaken(
-                                  note.creation, note.modified),
+                              Icons.warehouse_outlined,
+                              note.setWarehouse!,
+                            ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.calendar_today_outlined,
+                            note.postingDate.isNotEmpty
+                                ? note.postingDate
+                                : FormattingHelper.getRelativeTime(
+                                    note.creation),
+                          ),
+                        ],
+                        auditStats: [
+                          if (note.owner != null && note.owner!.isNotEmpty)
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.person_add_alt_1_outlined,
+                              note.owner!,
+                            ),
+                          if (showModified)
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.edit_outlined,
+                              note.modifiedBy!,
                             ),
                         ],
-                        expandedContent: _buildExpandedContent(context, note.name),
+                        isExpanded: isExpanded,
+                        isLoadingDetails: isLoadingDetails && isExpanded,
+                        onTap: () => controller.toggleExpand(note.name),
+                        expandedContent: isExpanded
+                            ? _buildExpandedContent(context, note.name)
+                            : null,
                       );
                     });
                   },
@@ -556,7 +589,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Expanded card content
+  // Expanded card content — mirrors SE _buildDetailedContent exactly
   // ---------------------------------------------------------------------------
   Widget _buildExpandedContent(BuildContext context, String noteName) {
     return Obx(() {
@@ -565,52 +598,71 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         return const SizedBox.shrink();
       }
 
-      final theme        = Theme.of(context);
-      final colorScheme  = theme.colorScheme;
+      final theme       = Theme.of(context);
+      final colorScheme = theme.colorScheme;
       final currencySymbol =
           FormattingHelper.getCurrencySymbol(detailed.currency);
-      final grandTotal   = NumberFormat('#,##0.00').format(detailed.grandTotal);
+      final grandTotal =
+          NumberFormat.decimalPatternDigits(decimalDigits: 2)
+              .format(detailed.grandTotal);
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Source warehouse full-width cell (only when set)
           if (detailed.setWarehouse != null &&
               detailed.setWarehouse!.isNotEmpty) ...[
-            InfoBlock(
-              label: 'Source Warehouse',
+            _infoCell(
+              context,
+              label: 'SOURCE WAREHOUSE',
               value: detailed.setWarehouse!,
-              icon: Icons.store_outlined,
+              icon: Icons.warehouse_outlined,
             ),
+            const SizedBox(height: 12),
+            Divider(height: 1, color: colorScheme.outlineVariant),
             const SizedBox(height: 12),
           ],
 
+          // Grand total
+          if (detailed.grandTotal > 0) ...[
+            _infoCell(
+              context,
+              label: 'GRAND TOTAL',
+              value: '$currencySymbol $grandTotal',
+              icon: Icons.payments_outlined,
+              valueColor: colorScheme.primary,
+            ),
+            const SizedBox(height: 12),
+            Divider(height: 1, color: colorScheme.outlineVariant),
+            const SizedBox(height: 12),
+          ],
+
+          // Posting date + total qty side-by-side
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: InfoBlock(
-                  label: 'Posting Date',
+                child: _infoCell(
+                  context,
+                  label: 'POSTING DATE',
                   value: detailed.postingDate,
                   icon: Icons.calendar_today_outlined,
-                  backgroundColor: colorScheme.surfaceContainer,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: InfoBlock(
-                  label: 'Grand Total',
-                  value: '$currencySymbol $grandTotal',
-                  icon: Icons.attach_money,
-                  valueColor: colorScheme.primary,
-                  backgroundColor:
-                      colorScheme.primaryContainer.withValues(alpha: 0.3),
+                child: _infoCell(
+                  context,
+                  label: 'TOTAL QTY',
+                  value: detailed.totalQty.toStringAsFixed(0),
+                  icon: Icons.inventory_2_outlined,
+                  alignRight: true,
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 24),
 
+          // Action button
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -620,7 +672,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                     AppRoutes.DELIVERY_NOTE_FORM,
                     arguments: {'name': detailed.name, 'mode': 'edit'},
                   ),
-                  icon: const Icon(Icons.edit, size: 18),
+                  icon: const Icon(Icons.edit, size: 16),
                   label: const Text('Edit'),
                 )
               else
@@ -629,7 +681,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                     AppRoutes.DELIVERY_NOTE_FORM,
                     arguments: {'name': detailed.name, 'mode': 'view'},
                   ),
-                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
                   label: const Text('View Details'),
                 ),
             ],
@@ -637,5 +689,57 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         ],
       );
     });
+  }
+
+  // Mirrors SE _infoCell exactly.
+  Widget _infoCell(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+    Color? valueColor,
+    bool alignRight = false,
+  }) {
+    final theme       = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment:
+          alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment:
+              alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (!alignRight) ...[
+              Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.4,
+              ),
+            ),
+            if (alignRight) ...[
+              const SizedBox(width: 4),
+              Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: valueColor ?? colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: alignRight ? TextAlign.end : TextAlign.start,
+        ),
+      ],
+    );
   }
 }

@@ -22,30 +22,43 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   late TextEditingController setWarehouseController;
   late TextEditingController dateRangeController;
 
-  final selectedStatus  = RxnString();
-  final startDate       = Rxn<DateTime>();
-  final endDate         = Rxn<DateTime>();
-  final poNo            = ''.obs;
-  final customer        = ''.obs;
-  final owner           = ''.obs;
-  final modifiedBy      = ''.obs;
-  final setWarehouse    = ''.obs;
+  final selectedStatus   = RxnString();
+  final startDate        = Rxn<DateTime>();
+  final endDate          = Rxn<DateTime>();
+  final poNo             = ''.obs;
+  // customer stores the DocType `name` (primary key)
+  final customerName     = ''.obs; // display label
+  final customer         = ''.obs; // filter value (exact name)
+  final owner            = ''.obs;
+  final modifiedBy       = ''.obs;
+  final setWarehouse     = ''.obs;
 
   @override
   void initState() {
     super.initState();
 
-    poNoController        = TextEditingController(text: _extractLike('po_no'));
-    customerController    = TextEditingController(text: _extractLike('customer'));
-    ownerController       = TextEditingController();
-    modifiedByController  = TextEditingController();
+    poNoController         = TextEditingController(text: _extractLike('po_no'));
+    customerController     = TextEditingController();
+    ownerController        = TextEditingController();
+    modifiedByController   = TextEditingController();
     setWarehouseController = TextEditingController();
-    dateRangeController   = TextEditingController();
+    dateRangeController    = TextEditingController();
 
-    poNo.value     = poNoController.text;
-    customer.value = customerController.text;
+    poNo.value = poNoController.text;
 
     selectedStatus.value = controller.activeFilters['status'];
+
+    // Restore customer — stored as exact name
+    final savedCustomer = controller.activeFilters['customer'];
+    if (savedCustomer is String && savedCustomer.isNotEmpty) {
+      customer.value = savedCustomer;
+      // Try to find display label from loaded customers
+      final match = controller.customers
+          .firstWhereOrNull((c) => c.name == savedCustomer);
+      final label = match != null ? match.customerName : savedCustomer;
+      customerName.value        = label;
+      customerController.text   = label;
+    }
 
     // Restore owner
     final savedOwner = controller.activeFilters['owner'];
@@ -64,13 +77,15 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       final match = controller.users.firstWhereOrNull(
           (u) => u.email == savedModifiedBy || u.id == savedModifiedBy);
       modifiedByController.text =
-          (match != null && match.name.isNotEmpty) ? match.name : savedModifiedBy;
+          (match != null && match.name.isNotEmpty)
+              ? match.name
+              : savedModifiedBy;
     }
 
     // Restore set_warehouse
     final savedWarehouse = controller.activeFilters['set_warehouse'];
     if (savedWarehouse is String && savedWarehouse.isNotEmpty) {
-      setWarehouse.value       = savedWarehouse;
+      setWarehouse.value          = savedWarehouse;
       setWarehouseController.text = savedWarehouse;
     }
 
@@ -113,12 +128,12 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
 
   int get _activeCount {
     int count = 0;
-    if (selectedStatus.value != null)                    count++;
-    if (customer.value.isNotEmpty)                       count++;
-    if (poNo.value.isNotEmpty)                           count++;
-    if (owner.value.isNotEmpty)                          count++;
-    if (modifiedBy.value.isNotEmpty)                     count++;
-    if (setWarehouse.value.isNotEmpty)                   count++;
+    if (selectedStatus.value != null)                     count++;
+    if (customer.value.isNotEmpty)                        count++;
+    if (poNo.value.isNotEmpty)                            count++;
+    if (owner.value.isNotEmpty)                           count++;
+    if (modifiedBy.value.isNotEmpty)                      count++;
+    if (setWarehouse.value.isNotEmpty)                    count++;
     if (startDate.value != null && endDate.value != null) count++;
     return count;
   }
@@ -143,14 +158,149 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   }
 
   // ---------------------------------------------------------------------------
-  // Generic user picker
+  // Customer picker
+  // ---------------------------------------------------------------------------
+  void _showCustomerPicker() {
+    final searchCtrl = TextEditingController();
+    final filtered   = RxList<CustomerEntry>(controller.customers);
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (ctx, scrollCtrl) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Customer',
+                          style: Theme.of(ctx).textTheme.titleLarge),
+                      IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: Get.back),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search customers...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      final term = val.toLowerCase();
+                      filtered.assignAll(val.isEmpty
+                          ? controller.customers
+                          : controller.customers.where((c) =>
+                              c.name.toLowerCase().contains(term) ||
+                              c.customerName.toLowerCase().contains(term)));
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (controller.isFetchingCustomers.value) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
+                      if (filtered.isEmpty) {
+                        return const Center(
+                            child: Text('No customers found'));
+                      }
+                      return ListView.separated(
+                        controller: scrollCtrl,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final c          = filtered[i];
+                          final isSelected = customer.value == c.name;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: isSelected
+                                  ? colorScheme.primaryContainer
+                                  : colorScheme.secondaryContainer,
+                              child: Text(
+                                c.customerName.isNotEmpty
+                                    ? c.customerName[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? colorScheme.onPrimaryContainer
+                                      : colorScheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              c.customerName,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                            subtitle: c.name != c.customerName
+                                ? Text(c.name,
+                                    style: Theme.of(ctx)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                            color: colorScheme
+                                                .onSurfaceVariant))
+                                : null,
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                    color: colorScheme.primary, size: 18)
+                                : null,
+                            onTap: () {
+                              Get.back();
+                              customer.value        = c.name;
+                              customerName.value    = c.customerName;
+                              customerController.text = c.customerName;
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // User picker
   // ---------------------------------------------------------------------------
   void _showUserPicker({
     required String title,
     required void Function(String userId, String displayName) onSelected,
   }) {
-    final searchCtrl   = TextEditingController();
-    final RxList<User> filtered = RxList<User>(controller.users);
+    final searchCtrl = TextEditingController();
+    final filtered   = RxList<User>(controller.users);
 
     Get.bottomSheet(
       SafeArea(
@@ -215,20 +365,17 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         separatorBuilder: (_, __) =>
                             const Divider(height: 1),
                         itemBuilder: (_, i) {
-                          final u = filtered[i];
-                          final userId =
-                              u.email.isNotEmpty ? u.email : u.id;
+                          final u          = filtered[i];
+                          final userId     = u.email.isNotEmpty ? u.email : u.id;
                           final displayName =
                               u.name.isNotEmpty ? u.name : userId;
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor:
-                                  colorScheme.secondaryContainer,
+                              backgroundColor: colorScheme.secondaryContainer,
                               child: Text(
                                 displayName[0].toUpperCase(),
                                 style: TextStyle(
-                                    color:
-                                        colorScheme.onSecondaryContainer),
+                                    color: colorScheme.onSecondaryContainer),
                               ),
                             ),
                             title: Text(displayName,
@@ -259,7 +406,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   // ---------------------------------------------------------------------------
   void _showWarehousePicker() {
     final searchCtrl = TextEditingController();
-    final RxList<String> filtered = RxList<String>(controller.warehouses);
+    final filtered   = RxList<String>(controller.warehouses);
 
     Get.bottomSheet(
       SafeArea(
@@ -376,8 +523,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
 
     if (selectedStatus.value != null)
       filters['status'] = selectedStatus.value;
-    if (customerController.text.isNotEmpty)
-      filters['customer'] = ['like', '%${customerController.text}%'];
+    if (customer.value.isNotEmpty)
+      filters['customer'] = customer.value; // exact match
     if (poNoController.text.isNotEmpty)
       filters['po_no'] = ['like', '%${poNoController.text}%'];
     if (owner.value.isNotEmpty)
@@ -419,6 +566,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
           onApply: _applyFilters,
           onClear: () {
             selectedStatus.value = null;
+            customer.value       = '';
+            customerName.value   = '';
             customerController.clear();
             poNoController.clear();
             ownerController.clear();
@@ -427,7 +576,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             dateRangeController.clear();
             startDate.value    = null;
             endDate.value      = null;
-            customer.value     = '';
             poNo.value         = '';
             owner.value        = '';
             modifiedBy.value   = '';
@@ -435,7 +583,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             controller.clearFilters();
           },
           filterWidgets: [
-            // ── Status chips ───────────────────────────────────────────────
+            // ── Status chips ──────────────────────────────────────────────
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             SingleChildScrollView(
@@ -447,7 +595,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         'Submitted',
                         'Return',
                         'Completed',
-                        'Cancelled'
+                        'Cancelled',
                       ])
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
@@ -478,20 +626,33 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             ),
             const SizedBox(height: 16),
 
-            // ── Customer ─────────────────────────────────────────────────
-            TextFormField(
-              controller: customerController,
-              decoration: const InputDecoration(
-                labelText: 'Customer',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.business_outlined),
-                isDense: true,
-              ),
-              onChanged: (val) => customer.value = val,
-            ),
+            // ── Customer picker ───────────────────────────────────────────
+            Obx(() => TextFormField(
+                  controller: customerController,
+                  readOnly: true,
+                  onTap: _showCustomerPicker,
+                  decoration: InputDecoration(
+                    labelText: 'Customer',
+                    hintText: 'Tap to select',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.business_outlined),
+                    suffixIcon: customer.value.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: 'Clear',
+                            onPressed: () {
+                              customer.value     = '';
+                              customerName.value = '';
+                              customerController.clear();
+                            },
+                          )
+                        : const Icon(Icons.arrow_drop_down),
+                    isDense: true,
+                  ),
+                )),
             const SizedBox(height: 16),
 
-            // ── PO Number ───────────────────────────────────────────────
+            // ── PO Number ────────────────────────────────────────────────
             TextFormField(
               controller: poNoController,
               decoration: const InputDecoration(
@@ -504,7 +665,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             ),
             const SizedBox(height: 16),
 
-            // ── Source Warehouse (Warehouse DocType picker) ───────────────
+            // ── Source Warehouse ──────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: setWarehouseController,
                   readOnly: true,
@@ -529,7 +690,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 )),
             const SizedBox(height: 16),
 
-            // ── Created By (user picker) ───────────────────────────────
+            // ── Created By ────────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: ownerController,
                   readOnly: true,
@@ -559,7 +720,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 )),
             const SizedBox(height: 16),
 
-            // ── Modified By (user picker) ────────────────────────────
+            // ── Modified By ───────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: modifiedByController,
                   readOnly: true,

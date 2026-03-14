@@ -6,14 +6,29 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+
+/// Minimal model for Customer DocType list entries.
+class CustomerEntry {
+  final String name;
+  final String customerName;
+
+  const CustomerEntry({required this.name, required this.customerName});
+
+  factory CustomerEntry.fromJson(Map<String, dynamic> json) => CustomerEntry(
+        name: json['name'] ?? '',
+        customerName: json['customer_name'] ?? json['name'] ?? '',
+      );
+}
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
+  final CustomerProvider _customerProvider = Get.find<CustomerProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -47,6 +62,10 @@ class DeliveryNoteController extends GetxController {
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
+  // Customers for filter
+  var customers = <CustomerEntry>[].obs;
+  var isFetchingCustomers = false.obs;
+
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
   @override
@@ -55,6 +74,7 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes();
     fetchUsers();
     fetchWarehouses();
+    fetchCustomers();
   }
 
   @override
@@ -187,6 +207,23 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
+  Future<void> fetchCustomers() async {
+    if (customers.isNotEmpty) return;
+    isFetchingCustomers.value = true;
+    try {
+      final response = await _customerProvider.getCustomers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        customers.value =
+            data.map((json) => CustomerEntry.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print('Error fetching customers: $e');
+    } finally {
+      isFetchingCustomers.value = false;
+    }
+  }
+
   Future<void> _fetchAndCacheNoteDetails(String name) async {
     if (_detailedNotesCache.containsKey(name)) return;
     isLoadingDetails.value = true;
@@ -225,7 +262,8 @@ class DeliveryNoteController extends GetxController {
       final List<PosUpload> fetchedUploads = [];
       if (response.statusCode == 200 && response.data['data'] != null) {
         fetchedUploads.addAll(
-            (response.data['data'] as List).map((json) => PosUpload.fromJson(json)));
+            (response.data['data'] as List)
+                .map((json) => PosUpload.fromJson(json)));
       }
       _allFetchedPosUploads = fetchedUploads
           .where((u) => u.status == 'Pending' || u.status == 'In Progress')
