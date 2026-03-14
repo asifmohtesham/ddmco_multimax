@@ -22,14 +22,10 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-// 1. Define the Enum used by the screen
-enum StockEntrySource {
-  manual,
-  materialRequest,
-  posUpload
-}
+enum StockEntrySource { manual, materialRequest, posUpload }
 
-class StockEntryFormController extends GetxController with OptimisticLockingMixin {
+class StockEntryFormController extends GetxController
+    with OptimisticLockingMixin {
   // --- Dependencies ---
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -53,11 +49,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   var stockEntry = Rx<StockEntry?>(null);
 
-  // 2. Define the source variable accessed by the screen
   var entrySource = StockEntrySource.manual;
 
   // --- Context Data ---
-  // 3. Define the reference items list accessed by the screen
   var mrReferenceItems = <Map<String, dynamic>>[];
 
   var posUpload = Rx<PosUpload?>(null);
@@ -68,6 +62,11 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var selectedFromWarehouse = RxnString();
   var selectedToWarehouse = RxnString();
   final customReferenceNoController = TextEditingController();
+
+  // Snapshot of the Reference No value as loaded from the server.
+  // _markDirty() is only called when the current text differs from this,
+  // preventing a read-only tap or programmatic population from dirtying the doc.
+  String _initialReferenceNo = '';
 
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
@@ -83,12 +82,13 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   final bsTargetRackController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
 
-  // New Item Level Warehouse Fields
   var bsItemSourceWarehouse = RxnString();
   var bsItemTargetWarehouse = RxnString();
 
   var bsMaxQty = 0.0.obs;
   var bsValidationMaxQty = 0.0.obs;
+  var bsBatchBalance = 0.0.obs;
+  var bsRackBalance = 0.0.obs;
 
   var isItemSheetOpen = false.obs;
   var isSheetValid = false.obs;
@@ -101,6 +101,13 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   var isTargetRackValid = false.obs;
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
+
+  // Dedicated loading flags for the balance chips so they show a spinner in
+  // both add-mode (scan flow) and edit-mode (editItem) independently of the
+  // field-level validation spinners (isValidatingBatch / isValidatingSourceRack)
+  // which are never toggled in editItem().
+  var isLoadingBatchBalance = false.obs;
+  var isLoadingRackBalance = false.obs;
 
   var rackError = RxnString();
   var batchError = RxnString();
@@ -134,11 +141,14 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   Timer? _autoSubmitTimer;
   Worker? _scanWorker;
 
+  // Navigator context captured from the sheet builder — used by addItem() to
+  // pop the sheet via Navigator instead of Get.back() (avoids snackbar race).
+  BuildContext? _sheetContext;
+
   @override
   void onInit() {
     super.onInit();
     _initDependencies();
-
     if (mode == 'new') {
       _initNewStockEntry();
     } else {
@@ -157,18 +167,21 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
-
-    // Watch item warehouse changes to update stock balance
     ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
+    // Only mark dirty when the text actually changes from the server-loaded
+    // snapshot. This prevents a mere tap (focus) or programmatic setText from
+    // flipping isDirty, and makes the field safe to render as readOnly.
     customReferenceNoController.addListener(() {
-      _markDirty();
+      final current = customReferenceNoController.text;
+      if (current != _initialReferenceNo) {
+        _markDirty();
+      }
       if (entrySource == StockEntrySource.manual &&
           selectedStockEntryType.value == 'Material Issue' &&
-          customReferenceNoController.text.isNotEmpty) {
-        final ref = customReferenceNoController.text;
-        if (ref.startsWith('KX') || ref.startsWith('MX')) {
-          _fetchPosUploadDetails(ref);
+          current.isNotEmpty) {
+        if (current.startsWith('KX') || current.startsWith('MX')) {
+          _fetchPosUploadDetails(current);
         }
       }
     });
@@ -196,7 +209,6 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
               await Future.delayed(const Duration(milliseconds: 500));
               await addItem();
               isAddingItem.value = false;
-              if (Get.isBottomSheetOpen == true) Get.back();
             }
           });
         }
@@ -225,6 +237,9 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
     selectedStockEntryType.value = type;
     customReferenceNoController.text = ref;
+    // Snapshot so the listener does not mark a brand-new entry as dirty
+    // simply because the controller was populated programmatically.
+    _initialReferenceNo = ref;
 
     _determineSource(type, ref);
 
@@ -258,10 +273,10 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   void _determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {
       entrySource = StockEntrySource.materialRequest;
-    } else if (type == 'Material Issue' && (ref.startsWith('KX') || ref.startsWith('MX'))) {
+    } else if (type == 'Material Issue' &&
+        (ref.startsWith('KX') || ref.startsWith('MX'))) {
       entrySource = StockEntrySource.posUpload;
     } else if (ref.isNotEmpty) {
-      // If items are not passed but a reference exists (and not POS), treat as Material Request fetch
       entrySource = StockEntrySource.materialRequest;
     } else {
       entrySource = StockEntrySource.manual;
@@ -269,27 +284,33 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   Future<void> _initMaterialRequestFlow(String ref) async {
-    if (Get.arguments?['items'] is List && Get.arguments?['items'].isNotEmpty) {
+    if (Get.arguments?['items'] is List &&
+        Get.arguments?['items'].isNotEmpty) {
       final rawItems = Get.arguments['items'] as List;
-      mrReferenceItems = rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      mrReferenceItems =
+          rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } else {
-      // Fetch MR Items if not passed in arguments
       try {
-        final response = await _apiProvider.getDocument('Material Request', ref);
+        final response =
+            await _apiProvider.getDocument('Material Request', ref);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'];
           final items = data['items'] as List? ?? [];
-          mrReferenceItems = items.map((i) => {
-            'item_code': i['item_code'],
-            'qty': i['qty'],
-            'material_request': ref,
-            'material_request_item': i['name']
-          }).toList();
+          mrReferenceItems = items
+              .map((i) => {
+                    'item_code': i['item_code'],
+                    'qty': i['qty'],
+                    'material_request': ref,
+                    'material_request_item': i['name']
+                  })
+              .toList();
         } else {
-          GlobalSnackbar.error(message: 'Failed to fetch Material Request details');
+          GlobalSnackbar.error(
+              message: 'Failed to fetch Material Request details');
         }
       } catch (e) {
-        GlobalSnackbar.error(message: 'Error fetching Material Request: $e');
+        GlobalSnackbar.error(
+            message: 'Error fetching Material Request: $e');
       }
     }
   }
@@ -306,22 +327,31 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         final entry = StockEntry.fromJson(response.data['data']);
         stockEntry.value = entry;
 
-        selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
+        selectedStockEntryType.value =
+            entry.stockEntryType ?? 'Material Transfer';
         selectedFromWarehouse.value = entry.fromWarehouse;
         selectedToWarehouse.value = entry.toWarehouse;
-        customReferenceNoController.text = entry.customReferenceNo ?? '';
 
-        if (entry.stockEntryType == 'Material Issue' && entry.customReferenceNo != null) {
-          final ref = entry.customReferenceNo!;
-          if (ref.startsWith('KX') || ref.startsWith('MX')) {
+        // Populate the controller and snapshot in one step so the listener
+        // sees current == _initialReferenceNo and does NOT call _markDirty().
+        final ref = entry.customReferenceNo ?? '';
+        _initialReferenceNo = ref;
+        customReferenceNoController.text = ref;
+
+        if (entry.stockEntryType == 'Material Issue' &&
+            entry.customReferenceNo != null) {
+          final refNo = entry.customReferenceNo!;
+          if (refNo.startsWith('KX') || refNo.startsWith('MX')) {
             entrySource = StockEntrySource.posUpload;
-            await _fetchPosUploadDetails(ref);
+            await _fetchPosUploadDetails(refNo);
           } else if (entry.items.any((i) => i.materialRequest != null)) {
             entrySource = StockEntrySource.materialRequest;
-            // If items are linked to a Material Request, fetch its details to restore context (like max qty)
-            final firstLinkedItem = entry.items.firstWhereOrNull((i) => i.materialRequest != null);
-            if (firstLinkedItem != null && firstLinkedItem.materialRequest!.isNotEmpty) {
-              await _initMaterialRequestFlow(firstLinkedItem.materialRequest!);
+            final firstLinkedItem = entry.items
+                .firstWhereOrNull((i) => i.materialRequest != null);
+            if (firstLinkedItem != null &&
+                firstLinkedItem.materialRequest!.isNotEmpty) {
+              await _initMaterialRequestFlow(
+                  firstLinkedItem.materialRequest!);
             }
           } else {
             entrySource = StockEntrySource.manual;
@@ -348,88 +378,58 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         final pos = PosUpload.fromJson(response.data['data']);
         posUpload.value = pos;
         final count = pos.items.length;
-        posUploadSerialOptions.value = List.generate(count, (index) => (index + 1).toString());
+        posUploadSerialOptions.value =
+            List.generate(count, (index) => (index + 1).toString());
       }
     } catch (e) {
-      print('Error fetching POS Upload: $e');
+      debugPrint('Error fetching POS Upload: $e');
     }
   }
 
   bool _validateScanContext(ScanResult result) {
     if (entrySource == StockEntrySource.materialRequest) {
       if (mrReferenceItems.isEmpty) return true;
-
       final scannedItemCode = result.itemData?.itemCode ?? '';
       bool found = false;
-
       for (var item in mrReferenceItems) {
-        if (item['item_code'].toString().trim().toLowerCase() == scannedItemCode.trim().toLowerCase()) {
+        if (item['item_code']
+                .toString()
+                .trim()
+                .toLowerCase() ==
+            scannedItemCode.trim().toLowerCase()) {
           found = true;
           break;
         }
       }
-
       if (!found) {
-        GlobalSnackbar.error(message: 'Item $scannedItemCode not found in Material Request');
+        GlobalSnackbar.error(
+            message:
+                'Item $scannedItemCode not found in Material Request');
         return false;
       }
     }
     return true;
   }
 
-  /// Checks if the entered quantity exceeds the remaining quantity in the Material Request.
   bool _checkMrConstraints() {
-    // If we have no reference items loaded, we cannot validate, so we assume true (or handle as error depending on strictness).
-    if (mrReferenceItems.isEmpty) {
-      print('Warning: mrReferenceItems is empty, skipping constraint check.');
-      return true;
-    }
-
-    // Step 1: Find the item in the Reference List (loaded from the MR document)
+    if (mrReferenceItems.isEmpty) return true;
     final ref = mrReferenceItems.firstWhereOrNull((r) =>
-    r['item_code'].toString().trim().toLowerCase() == currentItemCode.trim().toLowerCase());
-
-    // Step 2: If item exists in MR, validate quantity
+        r['item_code'].toString().trim().toLowerCase() ==
+        currentItemCode.trim().toLowerCase());
     if (ref != null) {
       final double allowed = (ref['qty'] as num).toDouble();
-      bsValidationMaxQty.value = allowed; // Update UI hint
-
+      bsValidationMaxQty.value = allowed;
       final current = double.tryParse(bsQtyController.text) ?? 0;
-
-      print('MR Constraint Check: Item $currentItemCode | Current: $current | Allowed: $allowed');
-
-      // Failure: User is trying to return/transfer more than the MR allowed.
-      if (current > allowed) {
-        print('[Context Failure] MR Qty Exceeded');
-        return false;
-      }
-    } else {
-      // Failure Check (Optional): If strict, you might want to return false here if the item isn't in the MR at all.
-      // Currently, it allows items not in the MR (returns true).
-      print('Info: Item $currentItemCode not found in MR reference list.');
+      if (current > allowed) return false;
     }
-
     return true;
   }
 
-  /// Validates POS Upload specific logic.
   bool _checkPosConstraints() {
-    // Only applies to 'Material Issue' types (Selling logic)
     if (selectedStockEntryType.value != 'Material Issue') return true;
-
-    // Step 1: Check if Serial is missing
     if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
-
-      // Step 2: Bypass for 'MAT-STE-' references (Legacy/Manual overrides)
       if (!customReferenceNoController.text.startsWith('MAT-STE-')) {
-
-        // Step 3: Failure Condition
-        // If we have Serial Options available (fetched from API) but none is selected, FAIL.
-        // This forces the user to select which Invoice/Serial this item belongs to.
-        if (posUploadSerialOptions.isNotEmpty) {
-          print('[Context Failure] POS Upload: Serial Options available (${posUploadSerialOptions.length}) but none selected.');
-          return false;
-        }
+        if (posUploadSerialOptions.isNotEmpty) return false;
       }
     }
     return true;
@@ -440,14 +440,15 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     String? matReqItem = item.materialRequestItem;
     String? serial = item.customInvoiceSerialNumber;
 
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
+    if (entrySource == StockEntrySource.materialRequest &&
+        mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull((r) =>
-      r['item_code'].toString().trim().toLowerCase() == item.itemCode.trim().toLowerCase());
-
+          r['item_code'].toString().trim().toLowerCase() ==
+          item.itemCode.trim().toLowerCase());
       if (ref != null) {
         matReq = ref['material_request'];
         matReqItem = ref['material_request_item'];
-        serial = "0";
+        serial = '0';
       }
     } else if (entrySource == StockEntrySource.posUpload) {
       serial = selectedSerial.value;
@@ -477,6 +478,10 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   Future<void> addItem() async {
+    // Cancel any pending auto-submit timer so a concurrent call triggered
+    // by the timer cannot race with a manual submit that is already running.
+    _autoSubmitTimer?.cancel();
+
     final double qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return;
 
@@ -484,13 +489,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     final sourceRack = bsSourceRackController.text;
     final targetRack = bsTargetRackController.text;
 
-    // Updated Logic: Prefer Item Level Warehouse, fallback to Derived (scan), fallback to Header
-    final sWh = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
-    final tWh = bsItemTargetWarehouse.value ?? derivedTargetWarehouse.value ?? selectedToWarehouse.value;
+    final sWh = bsItemSourceWarehouse.value ??
+        derivedSourceWarehouse.value ??
+        selectedFromWarehouse.value;
+    final tWh = bsItemTargetWarehouse.value ??
+        derivedTargetWarehouse.value ??
+        selectedToWarehouse.value;
 
-    final String uniqueId = currentItemNameKey.value ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final String uniqueId = currentItemNameKey.value ??
+        'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentItems = stockEntry.value?.items.toList() ?? [];
-    final existingIndex = currentItems.indexWhere((i) => i.name == uniqueId);
+    final existingIndex =
+        currentItems.indexWhere((i) => i.name == uniqueId);
 
     var newItem = StockEntryItem(
       name: uniqueId,
@@ -548,21 +558,31 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     barcodeController.clear();
     triggerHighlight(uniqueId);
 
+    // Close the sheet via the Flutter Navigator on the captured sheet context.
+    // Using Get.back() here would call closeCurrentSnackbar() as a side-effect,
+    // which crashes when a snackbar is queued but not yet initialised (GetX bug).
+    // Falling back to Get.back() only when the context is unavailable.
+    final ctx = _sheetContext;
+    if (ctx != null && ctx.mounted) {
+      Navigator.of(ctx).pop();
+    } else if (Get.isBottomSheetOpen == true) {
+      Get.back();
+    }
+
     if (mode == 'new') {
       saveStockEntry();
     } else {
       isDirty.value = true;
       saveStockEntry().then((_) {
-        GlobalSnackbar.success(message: existingIndex != -1 ? 'Item updated' : 'Item added');
+        GlobalSnackbar.success(
+            message: existingIndex != -1 ? 'Item updated' : 'Item added');
       }).catchError((e) {
-        print("Background save error: $e");
+        debugPrint('Background save error: $e');
       });
     }
   }
 
   void validateSheet() {
-    // Aggregates validation results from isolated helpers
-    // rackError is managed internally by _isValidRacks to preserve async stock errors
     log(name: 'Sheet', 'Validating sheet...');
     log(name: 'Sheet Qty', _isValidQty().toString());
     log(name: 'Sheet Batch', _isValidBatch().toString());
@@ -582,103 +602,61 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     return true;
   }
 
+  // Batch is always required and must pass server validation before the sheet
+  // is considered valid, regardless of entrySource or entry type.
   bool _isValidBatch() {
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) return false;
-    // MR Requirement: Batch cannot be empty if context is Material Request
-    if (entrySource == StockEntrySource.materialRequest && bsBatchController.text.isEmpty) return false;
+    if (bsBatchController.text.isEmpty) return false;
+    if (!bsIsBatchValid.value) return false;
     return true;
   }
 
-  /// Validates the context-specific rules for Material Requests or POS Uploads.
-  /// If this returns false, the [Sheet] validation fails.
   bool _isValidContext() {
-    print('--- Checking Context Validity ---');
-    print('Current Entry Source: $entrySource');
-
-    // SCENARIO 1: Material Request
-    // Rules: Must have a valid Serial (Invoice/Ref), Item Code, and Qty within limits.
     if (entrySource == StockEntrySource.materialRequest) {
-
-      // Step 1: Check Serial Number
-      // Why it fails: The UI dropdown for 'Invoice Serial No' is empty or unselected.
-      // Note: For MRs, we often default this to '0'. If it's null/empty, we block it.
-      if (selectedSerial.value == null || selectedSerial.value!.isEmpty) {
-        print('[Context Failure] Material Request: selectedSerial is empty/null');
+      if (selectedSerial.value == null || selectedSerial.value!.isEmpty)
         return false;
-      }
-
-      // Step 2: Check Item Code
-      // Why it fails: The scan result didn't populate currentItemCode correctly.
-      if (currentItemCode.isEmpty) {
-        print('[Context Failure] Material Request: currentItemCode is empty');
-        return false;
-      }
-
-      // Step 3: Check Limits vs Material Request Reference
-      // See _checkMrConstraints below for details.
-      bool mrValid = _checkMrConstraints();
-      if (!mrValid) {
-        print('[Context Failure] Material Request: _checkMrConstraints returned false');
-      }
-      return mrValid;
+      if (currentItemCode.isEmpty) return false;
+      return _checkMrConstraints();
+    } else if (entrySource == StockEntrySource.posUpload) {
+      return _checkPosConstraints();
     }
-
-    // SCENARIO 2: POS Upload (Point of Sale)
-    // Rules: Must link to a specific invoice serial if available.
-    else if (entrySource == StockEntrySource.posUpload) {
-      bool posValid = _checkPosConstraints();
-      if (!posValid) {
-        print('[Context Failure] POS Upload: _checkPosConstraints returned false');
-      }
-      return posValid;
-    }
-
-    // SCENARIO 3: Manual Entry
-    // No special context rules apply.
-    print('--- Context Valid (Manual) ---');
     return true;
   }
 
   bool _isValidRacks() {
     final type = selectedStockEntryType.value;
-    final requiresSource = ['Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
-    final requiresTarget = ['Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'].contains(type);
+    final requiresSource = [
+      'Material Issue',
+      'Material Transfer',
+      'Material Transfer for Manufacture'
+    ].contains(type);
+    final requiresTarget = [
+      'Material Receipt',
+      'Material Transfer',
+      'Material Transfer for Manufacture'
+    ].contains(type);
 
-    // 1. Source Rack Validation
     if (requiresSource) {
-      if (bsSourceRackController.text.isNotEmpty) {
-        // If rack entered, it must be valid (async check sets isSourceRackValid)
-        if (!isSourceRackValid.value) return false;
-      } else {
-        // Updated: Check Item Level Warehouse as valid fallback
-        final effectiveSWh = bsItemSourceWarehouse.value ?? selectedFromWarehouse.value;
-        if (effectiveSWh == null || effectiveSWh.isEmpty) {
-          rackError.value = 'Source Warehouse or Rack required';
-          return false;
-        } else if (rackError.value == 'Source Warehouse or Rack required' || rackError.value == 'No Warehouse Selected') {
-          // Clear specific errors if resolved by warehouse selection
-          rackError.value = null;
-        }
-      }
-    }
-
-    // 2. Target Rack Validation
-    if (requiresTarget) {
-      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) return false;
-    }
-
-    // 3. Cross-Check (Source != Target)
-    if (requiresSource && requiresTarget) {
-      final source = bsSourceRackController.text.trim();
-      final target = bsTargetRackController.text.trim();
-      if (source.isNotEmpty && source == target) {
-        rackError.value = "Source and Target Racks cannot be the same";
+      if (bsSourceRackController.text.isEmpty || !isSourceRackValid.value) {
         return false;
       }
     }
 
-    // Clear cross-check error if valid
-    if (rackError.value == "Source and Target Racks cannot be the same") {
+    if (requiresTarget) {
+      if (bsTargetRackController.text.isEmpty || !isTargetRackValid.value) {
+        return false;
+      }
+    }
+
+    if (requiresSource && requiresTarget) {
+      final source = bsSourceRackController.text.trim();
+      final target = bsTargetRackController.text.trim();
+      if (source.isNotEmpty && source == target) {
+        rackError.value = 'Source and Target Racks cannot be the same';
+        return false;
+      }
+    }
+
+    if (rackError.value == 'Source and Target Racks cannot be the same') {
       rackError.value = null;
     }
 
@@ -686,18 +664,17 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   bool _hasChanges() {
-    // New items are always considered "changed" / valid for submission
     if (currentItemNameKey.value == null) return true;
-
-    if (bsQtyController.text != _initialQty) return true;
+    final currentQty = double.tryParse(bsQtyController.text) ?? 0;
+    final initialQty = double.tryParse(_initialQty) ?? 0;
+    if (currentQty != initialQty) return true;
     if (bsBatchController.text != _initialBatch) return true;
     if (bsSourceRackController.text != _initialSourceRack) return true;
     if (bsTargetRackController.text != _initialTargetRack) return true;
-
     return false;
   }
 
-  void _openQtySheet({String? scannedBatch}) {
+  void _resetSheetState() {
     itemFormKey = GlobalKey<FormState>();
     bsQtyController.clear();
     bsBatchController.clear();
@@ -707,24 +684,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     derivedTargetWarehouse.value = null;
     bsMaxQty.value = 0.0;
     bsValidationMaxQty.value = 0.0;
-
-    // Reset Item Warehouses
+    bsBatchBalance.value = 0.0;
+    bsRackBalance.value = 0.0;
     bsItemSourceWarehouse.value = null;
     bsItemTargetWarehouse.value = null;
-
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == currentItemCode);
-      if (ref != null) {
-        bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
-      }
-    }
-
     bsIsBatchReadOnly.value = false;
     bsIsBatchValid.value = false;
     isValidatingBatch.value = false;
     isSourceRackValid.value = false;
     isTargetRackValid.value = false;
     isSheetValid.value = false;
+    isLoadingBatchBalance.value = false;
+    isLoadingRackBalance.value = false;
     rackError.value = null;
     batchError.value = null;
     selectedSerial.value = null;
@@ -737,6 +708,47 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     _initialBatch = '';
     _initialSourceRack = '';
     _initialTargetRack = '';
+    _sheetContext = null;
+  }
+
+  void _openSheet() {
+    isItemSheetOpen.value = true;
+    Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          _sheetContext = context;
+          return StockEntryItemFormSheet(
+            controller: this,
+            scrollController: scrollController,
+          );
+        },
+      ),
+      isScrollControlled: true,
+    ).whenComplete(() {
+      isItemSheetOpen.value = false;
+      currentItemNameKey.value = null;
+      rackError.value = null;
+      batchError.value = null;
+      _sheetContext = null;
+    });
+  }
+
+  void _openQtySheet({String? scannedBatch}) {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
+
+    _resetSheetState();
+
+    if (entrySource == StockEntrySource.materialRequest &&
+        mrReferenceItems.isNotEmpty) {
+      final ref = mrReferenceItems
+          .firstWhereOrNull((r) => r['item_code'] == currentItemCode);
+      if (ref != null) {
+        bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
+      }
+    }
 
     if (scannedBatch != null) {
       bsBatchController.text = scannedBatch;
@@ -747,28 +759,11 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       selectedSerial.value = '0';
     }
 
-    isItemSheetOpen.value = true;
-    Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return StockEntryItemFormSheet(
-            controller: this,
-            scrollController: scrollController,
-            // formKey: itemFormKey,
-          );
-        },
-      ),
-      isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-    });
+    _openSheet();
   }
 
-  void editItem(StockEntryItem item) {
-    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) return;
+  Future<void> editItem(StockEntryItem item) async {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = item.itemCode;
@@ -779,20 +774,18 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     bsItemCreation.value = item.creation;
     bsItemModified.value = item.modified;
     bsItemModifiedBy.value = item.modifiedBy;
+
     String qtyStr = item.qty.toString();
     if (item.qty % 1 == 0) qtyStr = item.qty.toInt().toString();
     bsQtyController.text = qtyStr;
+
     bsBatchController.text = item.batchNo ?? '';
     bsSourceRackController.text = item.rack ?? '';
     bsTargetRackController.text = item.toRack ?? '';
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    // Populate Item Warehouses
-    bsItemSourceWarehouse.value = item.sWarehouse;
-    bsItemTargetWarehouse.value = item.tWarehouse;
-
-    // Ensure serial is '0' if null when editing MR items (handling legacy/uninitialised items)
-    if (entrySource == StockEntrySource.materialRequest && (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
+    if (entrySource == StockEntrySource.materialRequest &&
+        (selectedSerial.value == null || selectedSerial.value!.isEmpty)) {
       selectedSerial.value = '0';
     }
 
@@ -804,8 +797,12 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     derivedTargetWarehouse.value = item.tWarehouse;
 
     bsValidationMaxQty.value = 0.0;
-    if (entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-      final ref = mrReferenceItems.firstWhereOrNull((r) => r['item_code'] == item.itemCode);
+    bsBatchBalance.value = 0.0;
+    bsRackBalance.value = 0.0;
+    if (entrySource == StockEntrySource.materialRequest &&
+        mrReferenceItems.isNotEmpty) {
+      final ref = mrReferenceItems
+          .firstWhereOrNull((r) => r['item_code'] == item.itemCode);
       if (ref != null) {
         bsValidationMaxQty.value = (ref['qty'] as num).toDouble();
       }
@@ -813,46 +810,35 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
     bsIsBatchValid.value = true;
     bsIsBatchReadOnly.value = true;
-    if (item.rack != null && item.rack!.isNotEmpty) isSourceRackValid.value = true;
-    if (item.toRack != null && item.toRack!.isNotEmpty) isTargetRackValid.value = true;
-    _updateAvailableStock();
-    validateSheet();
-
-    isItemSheetOpen.value = true;
+    if (item.rack != null && item.rack!.isNotEmpty)
+      isSourceRackValid.value = true;
+    if (item.toRack != null && item.toRack!.isNotEmpty)
+      isTargetRackValid.value = true;
     rackError.value = null;
     batchError.value = null;
 
-    Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return StockEntryItemFormSheet(
-            controller: this,
-            scrollController: scrollController,
-            // formKey: itemFormKey,
-          );
-        },
-      ),
-      isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-      currentItemNameKey.value = null;
-      rackError.value = null;
-      batchError.value = null;
-    });
+    if (item.batchNo != null && item.batchNo!.isNotEmpty) {
+      isLoadingBatchBalance.value = true;
+    }
+    isLoadingRackBalance.value = true;
+
+    bsItemSourceWarehouse.value = item.sWarehouse;
+    bsItemTargetWarehouse.value = item.tWarehouse;
+
+    validateSheet();
+    _openSheet();
+
+    unawaited(Future.wait([
+      if (item.batchNo != null && item.batchNo!.isNotEmpty)
+        _updateBatchBalance(),
+      _updateAvailableStock(),
+    ]));
   }
 
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
-
-    // 2. USE MIXIN GUARD
     if (checkStaleAndBlock()) return;
-
     if (barcode.isEmpty) return;
-
-    // Prevent double processing if scan is already in progress
     if (isScanning.value) return;
 
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
@@ -868,8 +854,8 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
           isScanning.value = false;
           return;
         }
-
-        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
+        if (result.rawCode.contains('-') &&
+            !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
           currentScannedEan = result.rawCode;
@@ -891,45 +877,41 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     }
   }
 
-  // 3. IMPLEMENT THE MIXIN METHOD (CORRECTLY OVERRIDDEN)
   @override
   Future<void> reloadDocument() async {
-    await fetchStockEntry(); // This pulls the latest data
-    isStale.value = false;   // Reset the flag from the mixin
-
-    // Optional: If you had a pending item in the buffer (recentlyAddedItemName),
-    // you might want to clear it or try to re-apply it here,
-    // though safer to just clear.
+    await fetchStockEntry();
+    isStale.value = false;
     isScanning.value = false;
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   void _handleSheetScan(String barcode) async {
     barcodeController.clear();
-    final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-    final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
+    final String? contextItem =
+        currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+    final result =
+        await _scanService.processScan(barcode, contextItemCode: contextItem);
 
     if (result.type == ScanType.rack && result.rackId != null) {
       _handleSheetRackScan(result.rackId!);
-    }
-    else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
+    } else if ((result.type == ScanType.batch ||
+            result.type == ScanType.item) &&
+        result.batchNo != null) {
       bsBatchController.text = result.batchNo!;
       validateBatch(result.batchNo!);
-    }
-    else {
+    } else {
       _tryApplyAsRackFallback(barcode);
     }
   }
 
   void _handleSheetRackScan(String code) {
     final type = selectedStockEntryType.value;
-
-    if (type == 'Material Transfer' || type == 'Material Transfer for Manufacture') {
+    if (type == 'Material Transfer' ||
+        type == 'Material Transfer for Manufacture') {
       if (bsSourceRackController.text.isEmpty) {
         bsSourceRackController.text = code;
         validateRack(code, true);
-      }
-      else {
+      } else {
         if (code == bsSourceRackController.text) {
           rackError.value = 'Source and Target Racks cannot be the same';
           return;
@@ -949,12 +931,14 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   void _tryApplyAsRackFallback(String code) {
     final type = selectedStockEntryType.value;
     bool needed = false;
-
-    if (type == 'Material Issue' && bsSourceRackController.text.isEmpty) needed = true;
-    if (type == 'Material Receipt' && bsTargetRackController.text.isEmpty) needed = true;
-    if ((type == 'Material Transfer' || type == 'Material Transfer for Manufacture') &&
-        (bsSourceRackController.text.isEmpty || bsTargetRackController.text.isEmpty)) needed = true;
-
+    if (type == 'Material Issue' && bsSourceRackController.text.isEmpty)
+      needed = true;
+    if (type == 'Material Receipt' && bsTargetRackController.text.isEmpty)
+      needed = true;
+    if ((type == 'Material Transfer' ||
+            type == 'Material Transfer for Manufacture') &&
+        (bsSourceRackController.text.isEmpty ||
+            bsTargetRackController.text.isEmpty)) needed = true;
     if (needed) {
       _handleSheetRackScan(code);
     } else {
@@ -965,12 +949,15 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      final response = await _apiProvider
+          .getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        warehouses.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      debugPrint('Error fetching warehouses: $e');
     } finally {
       isFetchingWarehouses.value = false;
     }
@@ -981,11 +968,19 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
     try {
       final response = await _provider.getStockEntryTypes();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        stockEntryTypes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        stockEntryTypes.value =
+            (response.data['data'] as List)
+                .map((e) => e['name'] as String)
+                .toList();
       }
     } catch (e) {
       if (stockEntryTypes.isEmpty) {
-        stockEntryTypes.assignAll(['Material Issue', 'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture']);
+        stockEntryTypes.assignAll([
+          'Material Issue',
+          'Material Receipt',
+          'Material Transfer',
+          'Material Transfer for Manufacture'
+        ]);
       }
     } finally {
       isFetchingTypes.value = false;
@@ -994,80 +989,156 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   Future<void> _updateAvailableStock() async {
     final type = selectedStockEntryType.value;
-    final isSourceOp = type == 'Material Issue' || type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final isSourceOp = type == 'Material Issue' ||
+        type == 'Material Transfer' ||
+        type == 'Material Transfer for Manufacture';
 
-    // If not a source operation, we don't need to validate stock balance against a warehouse
     if (!isSourceOp) {
       bsMaxQty.value = 999999.0;
+      bsRackBalance.value = 0.0;
+      isLoadingRackBalance.value = false;
       return;
     }
 
-    // 1. Determine the effective warehouse
-    // Default to the 'From Warehouse' selected in the Details tab
-    // Prioritise Item Level Warehouse -> Derived -> Header
-    String? effectiveWarehouse = bsItemSourceWarehouse.value ?? derivedSourceWarehouse.value ?? selectedFromWarehouse.value;
+    String? effectiveWarehouse = bsItemSourceWarehouse.value ??
+        derivedSourceWarehouse.value ??
+        selectedFromWarehouse.value;
 
-    // If a specific warehouse is derived from the scanned rack, use it
-    if (derivedSourceWarehouse.value != null && derivedSourceWarehouse.value!.isNotEmpty) {
+    if (derivedSourceWarehouse.value != null &&
+        derivedSourceWarehouse.value!.isNotEmpty) {
       effectiveWarehouse = derivedSourceWarehouse.value;
     }
 
-    // 2. Validate Warehouse Existence
-    // If no warehouse is determined (neither globally selected nor derived), we cannot fetch stock.
-    // This prevents the "Failed to fetch Stock Balance report" error.
     if (effectiveWarehouse == null || effectiveWarehouse.isEmpty) {
       bsMaxQty.value = 0.0;
-      // Optional: You might want to set a warning string here if needed,
-      // but for now we just silently prevent the crash and 0 out the qty.
+      bsRackBalance.value = 0.0;
+      isLoadingRackBalance.value = false;
       rackError.value = 'No Warehouse Selected';
       return;
     }
 
-    String batch = bsBatchController.text.trim();
-    String rack = bsSourceRackController.text.trim();
+    isLoadingRackBalance.value = true;
+    final batch = bsBatchController.text.trim();
+    final rack = bsSourceRackController.text.trim();
 
     try {
       final response = await _apiProvider.getStockBalance(
-          itemCode: currentItemCode,
-          warehouse: effectiveWarehouse,
-          batchNo: batch.isNotEmpty ? batch : null
+        itemCode: currentItemCode,
+        warehouse: effectiveWarehouse,
+        batchNo: batch.isNotEmpty ? batch : null,
       );
 
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+      if (response.statusCode == 200 &&
+          response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
         double totalBalance = 0.0;
+        double rackBalance = 0.0;
         for (var row in result) {
           if (row is! Map) continue;
-          // Filter by rack if specified in the Stock Balance row results
-          if (rack.isNotEmpty && row['rack'] != null && row['rack'] != rack) continue;
-          totalBalance += (row['bal_qty'] ?? 0 as num?)?.toDouble() ?? 0.0;
+          final rowQty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+          totalBalance += rowQty;
+          if (rack.isNotEmpty &&
+              row['rack'] != null &&
+              row['rack'] == rack) {
+            rackBalance += rowQty;
+          }
         }
         bsMaxQty.value = totalBalance;
+        bsRackBalance.value = rack.isNotEmpty ? rackBalance : 0.0;
 
-        // Validation: If rack was specified but result is 0/neg
-        if (rack.isNotEmpty && totalBalance <= 0) {
-          rackError.value = 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)';
-          GlobalSnackbar.error(message: 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)');
+        if (rack.isNotEmpty && rackBalance <= 0) {
+          rackError.value =
+              'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)';
+          GlobalSnackbar.error(
+              message:
+                  'Insufficient stock in Rack: $rack (Warehouse: $effectiveWarehouse)');
           isSourceRackValid.value = false;
         }
       }
     } catch (e) {
-      print('Failed to fetch stock balance: $e');
-      GlobalSnackbar.error(message: e.toString().contains('Session Defaults')
-          ? 'Please set Session Defaults in Dashboard'
-          : 'Failed to fetch stock for $effectiveWarehouse');
+      debugPrint('Failed to fetch stock balance: $e');
+      GlobalSnackbar.error(
+          message: e.toString().contains('Session Defaults')
+              ? 'Please set Session Defaults in Dashboard'
+              : 'Failed to fetch stock for $effectiveWarehouse');
+    } finally {
+      isLoadingRackBalance.value = false;
+    }
+  }
+
+  Future<void> _updateBatchBalance() async {
+    final batch = bsBatchController.text.trim();
+    if (batch.isEmpty || currentItemCode.isEmpty) {
+      bsBatchBalance.value = 0.0;
+      isLoadingBatchBalance.value = false;
+      return;
+    }
+    isLoadingBatchBalance.value = true;
+    final String? warehouse = bsItemSourceWarehouse.value ??
+        derivedSourceWarehouse.value ??
+        selectedFromWarehouse.value;
+    try {
+      final response = await _apiProvider.getBatchWiseBalance(
+          currentItemCode, batch,
+          warehouse: warehouse);
+      if (response.statusCode == 200 &&
+          response.data['message']?['result'] != null) {
+        final message = response.data['message'];
+        final List<dynamic> result = message['result'] ?? [];
+        double total = 0.0;
+        for (final row in result) {
+          if (row is Map) {
+            final dynamic val = row['balance_qty'] ??
+                row['bal_qty'] ??
+                row['qty_after_transaction'] ??
+                row['qty'];
+            total += (val as num?)?.toDouble() ?? 0.0;
+          } else if (row is List) {
+            final cols = message['columns'];
+            if (cols is List) {
+              int idx = -1;
+              for (int i = 0; i < cols.length; i++) {
+                final col = cols[i];
+                if (col is Map) {
+                  final label =
+                      (col['label'] ?? '').toString().toLowerCase();
+                  final fieldname =
+                      (col['fieldname'] ?? '').toString().toLowerCase();
+                  if (label.contains('balance qty') ||
+                      (fieldname.contains('balance') &&
+                          fieldname.contains('qty'))) {
+                    idx = i;
+                    break;
+                  }
+                }
+              }
+              if (idx >= 0 && idx < row.length) {
+                total += (row[idx] as num?)?.toDouble() ?? 0.0;
+              }
+            }
+          }
+        }
+        bsBatchBalance.value = total;
+      } else {
+        bsBatchBalance.value = 0.0;
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch batch-wise balance: $e');
+      bsBatchBalance.value = 0.0;
+    } finally {
+      isLoadingBatchBalance.value = false;
     }
   }
 
   Future<void> validateBatch(String batch) async {
-    batchError.value = null; // Reset Error
+    batchError.value = null;
     if (batch.isEmpty) return;
 
     if (batch.contains('-')) {
       final parts = batch.split('-');
       if (parts.length >= 2 && parts[0] == parts[1]) {
         bsIsBatchValid.value = false;
-        batchError.value = "Invalid Batch: Batch ID cannot match EAN";
+        batchError.value = 'Invalid Batch: Batch ID cannot match EAN';
         validateSheet();
         return;
       }
@@ -1075,19 +1146,24 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
     isValidatingBatch.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Batch', filters: {
-        'item': currentItemCode,
-        'name': batch
-      }, fields: ['name', 'custom_packaging_qty']);
-      if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+      final response = await _apiProvider.getDocumentList('Batch',
+          filters: {'item': currentItemCode, 'name': batch},
+          fields: ['name', 'custom_packaging_qty']);
+      if (response.statusCode == 200 &&
+          response.data['data'] != null &&
+          (response.data['data'] as List).isNotEmpty) {
         final batchData = response.data['data'][0];
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
-        final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+        final double pkgQty =
+            (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
-          bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
+          bsQtyController.text = pkgQty % 1 == 0
+              ? pkgQty.toInt().toString()
+              : pkgQty.toString();
         }
         await _updateAvailableStock();
+        await _updateBatchBalance();
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -1114,51 +1190,54 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       return;
     }
 
-    // Reset derived warehouse before parsing
     if (isSource) derivedSourceWarehouse.value = null;
     else derivedTargetWarehouse.value = null;
 
-    // Parse Warehouse from Rack Code (Format: ZONE-WH-RACK or similar)
-    // Updates the specific s_warehouse / t_warehouse field values if derived
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        // Example logic: reconstructing warehouse name from rack parts
         final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
         if (isSource) {
           derivedSourceWarehouse.value = wh;
-          bsItemSourceWarehouse.value = wh; // Set s_warehouse field
+          bsItemSourceWarehouse.value = wh;
         } else {
           derivedTargetWarehouse.value = wh;
-          bsItemTargetWarehouse.value = wh; // Set t_warehouse field
+          bsItemTargetWarehouse.value = wh;
         }
       }
     }
 
-    if (isSource) isValidatingSourceRack.value = true;
-    else isValidatingTargetRack.value = true;
+    if (isSource)
+      isValidatingSourceRack.value = true;
+    else
+      isValidatingTargetRack.value = true;
 
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          // Refetch stock availability now that we have a valid rack and potentially new warehouse
           await _updateAvailableStock();
         } else {
           isTargetRackValid.value = true;
         }
       } else {
-        if (isSource) isSourceRackValid.value = false;
-        else isTargetRackValid.value = false;
+        if (isSource)
+          isSourceRackValid.value = false;
+        else
+          isTargetRackValid.value = false;
         GlobalSnackbar.error(message: 'Rack not found');
       }
     } catch (e) {
-      if (isSource) isSourceRackValid.value = false;
-      else isTargetRackValid.value = false;
+      if (isSource)
+        isSourceRackValid.value = false;
+      else
+        isTargetRackValid.value = false;
     } finally {
-      if (isSource) isValidatingSourceRack.value = false;
-      else isValidatingTargetRack.value = false;
+      if (isSource)
+        isValidatingSourceRack.value = false;
+      else
+        isValidatingTargetRack.value = false;
       validateSheet();
     }
   }
@@ -1181,11 +1260,13 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   void deleteItem(String uniqueName) {
-    final item = stockEntry.value?.items.firstWhereOrNull((i) => i.name == uniqueName);
+    final item = stockEntry.value?.items
+        .firstWhereOrNull((i) => i.name == uniqueName);
     if (item == null) return;
     GlobalDialog.showConfirmation(
       title: 'Remove Item?',
-      message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
+      message:
+          'Are you sure you want to remove ${item.itemCode} from this entry?',
       onConfirm: () {
         final currentItems = stockEntry.value?.items.toList() ?? [];
         currentItems.removeWhere((i) => i.name == uniqueName);
@@ -1220,56 +1301,58 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta);
+    final newVal = current + delta;
 
     double limit = 999999.0;
     if (bsMaxQty.value > 0) limit = bsMaxQty.value;
-    if (bsValidationMaxQty.value > 0 && bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
+    if (bsValidationMaxQty.value > 0 &&
+        bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
 
     if (newVal >= 0 && newVal <= limit) {
-      bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+      bsQtyController.text =
+          newVal == 0 ? '' : newVal.toStringAsFixed(0);
       validateSheet();
     }
   }
 
   void toggleInvoiceExpand(String key) {
-    if (expandedInvoice.value == key) {
-      expandedInvoice.value = '';
-    } else {
-      expandedInvoice.value = key;
-    }
+    expandedInvoice.value =
+        expandedInvoice.value == key ? '' : key;
   }
 
   Map<String, List<StockEntryItem>> get groupedItems {
     if (stockEntry.value == null || stockEntry.value!.items.isEmpty) {
       return {};
     }
-    return groupBy(stockEntry.value!.items, (StockEntryItem item) {
-      return item.customInvoiceSerialNumber ?? '0';
-    });
+    return groupBy(stockEntry.value!.items,
+        (StockEntryItem item) => item.customInvoiceSerialNumber ?? '0');
   }
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
-
-    // 3. USE MIXIN GUARD
     if (checkStaleAndBlock()) return;
 
-    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
+    if (stockEntry.value != null &&
+        stockEntry.value!.items.isNotEmpty) {
       final firstItem = stockEntry.value!.items.first;
-      if (selectedFromWarehouse.value == null && firstItem.sWarehouse != null) {
+      if (selectedFromWarehouse.value == null &&
+          firstItem.sWarehouse != null) {
         selectedFromWarehouse.value = firstItem.sWarehouse;
       }
-      if (selectedToWarehouse.value == null && firstItem.tWarehouse != null) {
+      if (selectedToWarehouse.value == null &&
+          firstItem.tWarehouse != null) {
         selectedToWarehouse.value = firstItem.tWarehouse;
       }
     }
     if (selectedStockEntryType.value == 'Material Transfer') {
-      if (selectedFromWarehouse.value == null || selectedToWarehouse.value == null) {
-        GlobalSnackbar.error(message: 'Source and Target Warehouses are required');
+      if (selectedFromWarehouse.value == null ||
+          selectedToWarehouse.value == null) {
+        GlobalSnackbar.error(
+            message: 'Source and Target Warehouses are required');
         return;
       }
     }
+
     isSaving.value = true;
     final Map<String, dynamic> data = {
       'stock_entry_type': selectedStockEntryType.value,
@@ -1278,40 +1361,38 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
       'from_warehouse': selectedFromWarehouse.value,
       'to_warehouse': selectedToWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
-      // 2. CRITICAL: Pass 'modified' timestamp for Optimistic Locking
       'modified': stockEntry.value?.modified,
     };
+
     final itemsJson = stockEntry.value?.items.map((i) {
-      final json = i.toJson();
-      if (json['name'] != null && json['name'].toString().startsWith('local_')) {
-        json.remove('name');
-      }
-      if (json['basic_rate'] == 0.0) {
-        json.remove('basic_rate');
-      }
-
-      // Safety Patch: If material request link is missing in the item but exists in context, try to resolve it now
-      if (json['material_request'] == null && entrySource == StockEntrySource.materialRequest && mrReferenceItems.isNotEmpty) {
-        final ref = mrReferenceItems.firstWhereOrNull((r) =>
-        r['item_code'].toString().trim().toLowerCase() == i.itemCode.trim().toLowerCase());
-        if (ref != null) {
-          json['material_request'] = ref['material_request'];
-          json['material_request_item'] = ref['material_request_item'];
-        }
-      }
-
-      // Explicitly preserve if present
-      if (i.materialRequest != null) {
-        json['material_request'] = i.materialRequest;
-      }
-      if (i.materialRequestItem != null) {
-        json['material_request_item'] = i.materialRequestItem;
-      }
-
-      json.removeWhere((key, value) => value == null);
-      return json;
-    }).toList() ?? [];
+          final json = i.toJson();
+          if (json['name'] != null &&
+              json['name'].toString().startsWith('local_')) {
+            json.remove('name');
+          }
+          if (json['basic_rate'] == 0.0) json.remove('basic_rate');
+          if (json['material_request'] == null &&
+              entrySource == StockEntrySource.materialRequest &&
+              mrReferenceItems.isNotEmpty) {
+            final ref = mrReferenceItems.firstWhereOrNull((r) =>
+                r['item_code'].toString().trim().toLowerCase() ==
+                i.itemCode.trim().toLowerCase());
+            if (ref != null) {
+              json['material_request'] = ref['material_request'];
+              json['material_request_item'] =
+                  ref['material_request_item'];
+            }
+          }
+          if (i.materialRequest != null)
+            json['material_request'] = i.materialRequest;
+          if (i.materialRequestItem != null)
+            json['material_request_item'] = i.materialRequestItem;
+          json.removeWhere((key, value) => value == null);
+          return json;
+        }).toList() ??
+        [];
     data['items'] = itemsJson;
+
     try {
       if (mode == 'new') {
         final response = await _provider.createStockEntry(data);
@@ -1320,44 +1401,42 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
           name = createdDoc['name'];
           mode = 'edit';
           await fetchStockEntry();
-          GlobalSnackbar.success(message: 'Stock Entry created: $name');
+          GlobalSnackbar.success(
+              message: 'Stock Entry created: $name');
         } else {
-          GlobalSnackbar.error(message: 'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
+          GlobalSnackbar.error(
+              message:
+                  'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
-        final response = await _provider.updateStockEntry(name, data);
+        final response =
+            await _provider.updateStockEntry(name, data);
         if (response.statusCode == 200) {
-          // 3. UPDATE LOCAL TIMESTAMP ON SUCCESS
-          // Frappe returns the updated document. We must update our local 'modified'
-          // timestamp to match the server, otherwise the NEXT save will fail.
           final updatedDoc = response.data['data'];
           if (updatedDoc != null) {
-            stockEntry.update((val) {
-              val?.items.assignAll((updatedDoc['items'] as List).map((i) => StockEntryItem.fromJson(i)).toList());
-              // Update the modified timestamp to the new valid one
-              // You might need to add a setter or copyWith to your Model,
-              // or just re-instantiate:
-              stockEntry.value = StockEntry.fromJson(updatedDoc);
-            });
+            stockEntry.value = StockEntry.fromJson(updatedDoc);
           }
-
           GlobalSnackbar.success(message: 'Stock Entry updated');
           await fetchStockEntry();
         } else {
-          GlobalSnackbar.error(message: 'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+          GlobalSnackbar.error(
+              message:
+                  'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
         }
       }
     } on DioException catch (e) {
-      String errorMessage = 'Save failed';
-      // 5. USE MIXIN HANDLER instead of manual parsing for TimestampMismatch
       if (handleVersionConflict(e)) {
-        // If it was a conflict, the mixin showed the dialog and set isStale=true.
-        // We just exit.
+        // conflict handled by mixin
       } else {
-        if (e.response != null && e.response!.data != null) {
-          if (e.response!.data is Map && e.response!.data['exception'] != null) {
-            errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-          } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
+        String errorMessage = 'Save failed';
+        if (e.response?.data is Map) {
+          if (e.response!.data['exception'] != null) {
+            errorMessage = e.response!.data['exception']
+                .toString()
+                .split(':')
+                .last
+                .trim();
+          } else if (e.response!.data['_server_messages'] != null) {
             errorMessage = 'Validation Error: Check form details';
           }
         }
@@ -1371,9 +1450,7 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
   }
 
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value) {
-      isDirty.value = true;
-    }
+    if (!isLoading.value && !isDirty.value) isDirty.value = true;
   }
 
   Future<void> confirmDiscard() async {
@@ -1383,5 +1460,58 @@ class StockEntryFormController extends GetxController with OptimisticLockingMixi
         Get.back();
       },
     );
+  }
+
+  Future<void> pickPostingDate(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+    DateTime initialDate;
+    try {
+      initialDate = current.postingDate != null &&
+              current.postingDate!.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(current.postingDate!)
+          : DateTime.now();
+    } catch (_) {
+      initialDate = DateTime.now();
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      stockEntry.update((val) {
+        val?.postingDate = DateFormat('yyyy-MM-dd').format(picked);
+      });
+      _markDirty();
+    }
+  }
+
+  Future<void> pickPostingTime(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+    TimeOfDay initialTime;
+    try {
+      if (current.postingTime != null &&
+          current.postingTime!.isNotEmpty) {
+        final parsed =
+            DateFormat('HH:mm:ss').parse(current.postingTime!);
+        initialTime = TimeOfDay.fromDateTime(parsed);
+      } else {
+        initialTime = TimeOfDay.now();
+      }
+    } catch (_) {
+      initialTime = TimeOfDay.now();
+    }
+    final picked =
+        await showTimePicker(context: context, initialTime: initialTime);
+    if (picked != null) {
+      final dt = DateTime(0, 1, 1, picked.hour, picked.minute);
+      stockEntry.update((val) {
+        val?.postingTime = DateFormat('HH:mm:ss').format(dt);
+      });
+      _markDirty();
+    }
   }
 }

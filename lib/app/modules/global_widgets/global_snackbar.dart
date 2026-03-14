@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
-  // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
       title: title,
@@ -49,7 +48,19 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    // Do NOT call Get.closeCurrentSnackbar() here.
+    //
+    // GetX's _SnackBarQueue already serialises entries: a new snackbar is
+    // held until the current one finishes.  Calling closeCurrentSnackbar()
+    // manually is therefore unnecessary, and it is actively harmful when a
+    // SnackbarController has been pushed onto the queue but its internal
+    // `late AnimationController _controller` has not yet been initialised
+    // (i.e. before the snackbar enters the Overlay).  Calling close() on
+    // such a controller throws LateInitializationError and aborts _show()
+    // before Get.snackbar() is ever reached, swallowing the message entirely.
+    //
+    // Removing the call means snackbars queue naturally and every message
+    // is guaranteed to be shown.
 
     if (shouldVibrate) HapticFeedback.lightImpact();
 
@@ -70,7 +81,7 @@ class GlobalSnackbar {
           color: Colors.black87,
           fontSize: 14,
         ),
-        maxLines: 4, // Prevents overflow
+        maxLines: 4,
         overflow: TextOverflow.ellipsis,
       ),
       backgroundColor: Colors.white,
