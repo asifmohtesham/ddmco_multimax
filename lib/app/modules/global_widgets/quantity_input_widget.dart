@@ -2,14 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
 /// A quantity input row with press-and-hold increment / decrement buttons.
 ///
-/// Implemented as a pure [GetView]-style [StatelessWidget].  All mutable
-/// state (the repeat [Timer]) lives inside [QuantityInputController], which
-/// is scoped per button via a unique tag and deleted automatically when the
-/// widget leaves the tree.
+/// Pure [StatelessWidget] – mutable repeat-timer state is kept in an
+/// auto-created / auto-deleted [_QtyRepeatController] scoped per widget
+/// instance via a unique GetX tag.
 class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
@@ -35,54 +33,32 @@ class QuantityInputWidget extends StatelessWidget {
   });
 
   @override
-  State<QuantityInputWidget> createState() => _QuantityInputWidgetState();
-}
-
-class _QuantityInputWidgetState extends State<QuantityInputWidget> {
-  Timer? _repeatTimer;
-
-  void _startRepeat(VoidCallback action) {
-    // Immediate feedback on press
-    action();
-    _repeatTimer?.cancel();
-    _repeatTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => action());
-  }
-
-  void _stopRepeat() {
-    _repeatTimer?.cancel();
-    _repeatTimer = null;
-  }
-
-  @override
-  void dispose() {
-    _repeatTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final borderColor = Colors.grey.shade300;
+    // Unique tag per widget instance so controllers don't clash.
+    final String decTag = '${hashCode}_dec';
+    final String incTag = '${hashCode}_inc';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header Row: Label + Info Badge
-        if (widget.label.isNotEmpty || (widget.infoText != null && widget.infoText!.isNotEmpty))
+        if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.label,
+                  label,
                   style: TextStyle(
-                    color: widget.color,
+                    color: color,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                if (widget.infoText != null && widget.infoText!.isNotEmpty)
+                if (infoText != null && infoText!.isNotEmpty)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -91,7 +67,7 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      widget.infoText!,
+                      infoText!,
                       style: TextStyle(
                         fontSize: 11,
                         color: primaryColor,
@@ -107,10 +83,10 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: widget.isReadOnly ? Colors.grey.shade50 : Colors.white,
+            color: isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: widget.isReadOnly
+            boxShadow: isReadOnly
                 ? []
                 : [
                     BoxShadow(
@@ -125,16 +101,18 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
               // ── Text field ──────────────────────────────────────────
               Expanded(
                 child: TextFormField(
-                  controller: widget.controller,
-                  readOnly: widget.isReadOnly,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  controller: controller,
+                  readOnly: isReadOnly,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   textAlign: TextAlign.start,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: widget.isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                    color:
+                        isReadOnly ? Colors.grey.shade600 : Colors.black87,
                   ),
-                  onChanged: widget.onChanged,
+                  onChanged: onChanged,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(
                         RegExp(r'^\d*\.?\d*')),
@@ -156,25 +134,28 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
               ),
 
               // Buttons Group (Right Side)
-              if (!widget.isReadOnly) ...[
+              if (!isReadOnly) ...[
                 // Vertical Divider
                 Container(width: 1, height: 32, color: Colors.grey.shade200),
 
                 // Decrement Button
-                _buildActionButton(
+                _QtyActionButton(
+                  tag: decTag,
                   icon: Icons.remove,
-                  onPressed: widget.onDecrement,
+                  onPressed: onDecrement,
                   color: Colors.grey.shade700,
                 ),
                 Container(
                     width: 1, height: 32, color: Colors.grey.shade200),
+
+                // Increment Button
                 _QtyActionButton(
-                  tag: '${hashCode}_inc',
+                  tag: incTag,
                   icon: Icons.add,
-                  onPressed: widget.onIncrement,
+                  onPressed: onIncrement,
                   color: primaryColor,
-                  borderRadius:
-                      const BorderRadius.horizontal(right: Radius.circular(11)),
+                  borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(11)),
                 ),
               ],
             ],
@@ -185,22 +166,64 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
   }
 }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required Color color,
-    BorderRadius? borderRadius,
-  }) {
+// ---------------------------------------------------------------------------
+// GetxController that owns the repeat Timer for a single button
+// ---------------------------------------------------------------------------
+class _QtyRepeatController extends GetxController {
+  Timer? _repeatTimer;
+
+  void startRepeat(VoidCallback action) {
+    action();
+    _repeatTimer?.cancel();
+    _repeatTimer =
+        Timer.periodic(const Duration(milliseconds: 150), (_) => action());
+  }
+
+  void stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  @override
+  void onClose() {
+    _repeatTimer?.cancel();
+    super.onClose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stateless press-and-hold action button backed by _QtyRepeatController
+// ---------------------------------------------------------------------------
+class _QtyActionButton extends StatelessWidget {
+  final String tag;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final Color color;
+  final BorderRadius? borderRadius;
+
+  const _QtyActionButton({
+    required this.tag,
+    required this.icon,
+    required this.onPressed,
+    required this.color,
+    this.borderRadius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // GetX creates and caches the controller for the lifetime of this widget.
+    final ctrl = Get.put(_QtyRepeatController(), tag: tag, permanent: false);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
         onTapDown: (_) {
           HapticFeedback.lightImpact();
-          _startRepeat(onPressed);
+          ctrl.startRepeat(onPressed);
         },
-        onTapUp: (_) => _stopRepeat(),
-        onTapCancel: _stopRepeat,
+        onTapUp: (_) => ctrl.stopRepeat(),
+        onTapCancel: () => ctrl.stopRepeat(),
         child: SizedBox(
           width: 56,
           height: double.infinity,

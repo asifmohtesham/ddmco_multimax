@@ -4,7 +4,7 @@ class StockEntry {
   final String name;
   final String purpose;
   final double totalAmount;
-  final String postingDate;
+  String postingDate;
   final String modified;
   final String creation;
   final String status;
@@ -12,7 +12,7 @@ class StockEntry {
   final String? owner;
   final String? modifiedBy;
   final String? stockEntryType;
-  final String? postingTime;
+  String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
   final double? customTotalQty;
@@ -43,7 +43,8 @@ class StockEntry {
 
   factory StockEntry.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<StockEntryItem> items = itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
+    List<StockEntryItem> items =
+        itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
 
     return StockEntry(
       name: json['name']?.toString() ?? 'No Name',
@@ -81,10 +82,14 @@ class StockEntry {
 
   static String _getStatusFromDocstatus(int docstatus) {
     switch (docstatus) {
-      case 0: return 'Draft';
-      case 1: return 'Submitted';
-      case 2: return 'Cancelled';
-      default: return 'Unknown';
+      case 0:
+        return 'Draft';
+      case 1:
+        return 'Submitted';
+      case 2:
+        return 'Cancelled';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -170,7 +175,8 @@ class StockEntryItem {
       toRack: json['to_rack']?.toString(),
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
-      customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      customInvoiceSerialNumber:
+          json['custom_invoice_serial_number']?.toString(),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
       owner: json['owner']?.toString(),
