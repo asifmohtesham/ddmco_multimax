@@ -61,25 +61,17 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
           },
         ),
 
-      // Reload Action
+      // Reload Action — only shown when onReload is provided;
+      // disabled while a save is in progress to avoid concurrent requests.
       if (onReload != null)
         IconButton(
           tooltip: 'Reload document',
           icon: const Icon(Icons.refresh),
-          onPressed: onReload,
+          onPressed: isSaving ? null : onReload,
         ),
 
       // Custom Actions injected by the screen
       ...(actions ?? []),
-
-      // Reload Action — only shown when onReload is provided
-      if (onReload != null)
-        IconButton(
-          tooltip: 'Reload document',
-          icon: const Icon(Icons.refresh),
-          // Disable while a save is in progress to avoid concurrent requests
-          onPressed: isSaving ? null : onReload,
-        ),
 
       // Global Save Action
       if (onSave != null)
