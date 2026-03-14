@@ -43,7 +43,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Reload] -> [Save]
+    // 2. Construct Actions List: [Search] -> [Reload] -> [Custom Actions] -> [Save]
     final List<Widget> appActions = [
       // Global Search Action
       if (searchDoctype != null && searchRoute != null)
@@ -59,6 +59,14 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             );
           },
+        ),
+
+      // Reload Action
+      if (onReload != null)
+        IconButton(
+          tooltip: 'Reload document',
+          icon: const Icon(Icons.refresh),
+          onPressed: onReload,
         ),
 
       // Custom Actions injected by the screen
@@ -119,6 +127,5 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 }

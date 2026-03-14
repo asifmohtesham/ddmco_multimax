@@ -104,6 +104,10 @@ class GlobalSnackbar {
       isDismissible: true,
       leftBarIndicatorColor: color,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      // Queue safely — do not force-init on the calling frame so GetX's
+      // SnackBarQueue can manage sequencing without touching a half-built
+      // SnackbarController.
+      instantInit: false,
     );
   }
 }

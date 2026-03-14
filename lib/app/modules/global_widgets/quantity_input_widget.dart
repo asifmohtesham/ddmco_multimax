@@ -1,14 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
-class QuantityInputWidget extends StatefulWidget {
+/// A quantity input row with press-and-hold increment / decrement buttons.
+///
+/// Implemented as a pure [GetView]-style [StatelessWidget].  All mutable
+/// state (the repeat [Timer]) lives inside [QuantityInputController], which
+/// is scoped per button via a unique tag and deleted automatically when the
+/// widget leaves the tree.
+class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final String label;
   final bool isReadOnly;
-  /// Additional context like "Available: 50" or "Ordered: 10"
+
+  /// Additional context shown as a badge, e.g. "Available: 50".
   final String? infoText;
   final Color color;
   final Function(String)? onChanged;
@@ -75,7 +84,8 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
                 ),
                 if (widget.infoText != null && widget.infoText!.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
@@ -93,7 +103,7 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
             ),
           ),
 
-        // Input Control Container
+        // ── Input row ─────────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
@@ -112,7 +122,7 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
           ),
           child: Row(
             children: [
-              // Text Field (Left Side)
+              // ── Text field ──────────────────────────────────────────
               Expanded(
                 child: TextFormField(
                   controller: widget.controller,
@@ -126,11 +136,13 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
                   ),
                   onChanged: widget.onChanged,
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d*')),
                   ],
                   decoration: const InputDecoration(
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16),
                     hintText: '0',
                     isDense: true,
                   ),
@@ -154,16 +166,15 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
                   onPressed: widget.onDecrement,
                   color: Colors.grey.shade700,
                 ),
-
-                // Vertical Divider between buttons
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-                // Increment Button
-                _buildActionButton(
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
+                _QtyActionButton(
+                  tag: '${hashCode}_inc',
                   icon: Icons.add,
                   onPressed: widget.onIncrement,
                   color: primaryColor,
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
+                  borderRadius:
+                      const BorderRadius.horizontal(right: Radius.circular(11)),
                 ),
               ],
             ],
@@ -172,6 +183,7 @@ class _QuantityInputWidgetState extends State<QuantityInputWidget> {
       ],
     );
   }
+}
 
   Widget _buildActionButton({
     required IconData icon,

@@ -1,10 +1,9 @@
-import 'dart:ui'; // Added
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class DeliveryNoteItemCard extends StatelessWidget {
   final DeliveryNoteItem item;
@@ -15,11 +14,18 @@ class DeliveryNoteItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final isExpanded = controller.expandedItemCode.value == item.itemCode;
+      final isRecentlyAdded =
+          controller.recentlyAddedItemCode.value == item.itemCode &&
+              (controller.recentlyAddedSerial.value ==
+                      (item.customInvoiceSerialNumber ?? '0') ||
+                  controller.recentlyAddedSerial.value.isEmpty);
 
-      final isRecentlyAdded = controller.recentlyAddedItemCode.value == item.itemCode &&
-          (controller.recentlyAddedSerial.value == (item.customInvoiceSerialNumber ?? '0') ||
-              controller.recentlyAddedSerial.value.isEmpty);
+      final isThisItemLoading =
+          controller.loadingForItemName.value != null &&
+          controller.loadingForItemName.value == item.name;
+
+      final hasBatch = item.batchNo != null && item.batchNo!.isNotEmpty;
+      final hasRack  = item.rack   != null && item.rack!.isNotEmpty;
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 500),
@@ -28,110 +34,192 @@ class DeliveryNoteItemCard extends StatelessWidget {
           color: isRecentlyAdded ? Colors.yellow.shade100 : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withValues(alpha: .2),
+              color: Colors.grey.withValues(alpha: .15),
               spreadRadius: 1,
               blurRadius: 2,
               offset: const Offset(0, 1),
             ),
           ],
         ),
-        child: Column(
-          children: [
-            ListTile(
-              title: RichText(
-                text: TextSpan(
-                  style: DefaultTextStyle.of(context).style,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── Left: item identity + metadata ──────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextSpan(
-                      text: item.itemCode,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'ShureTechMono',
-                        fontFeatures: [FontFeature.slashedZero()], // Added
+                    // Item code + name
+                    RichText(
+                      text: TextSpan(
+                        style: DefaultTextStyle.of(context).style,
+                        children: [
+                          TextSpan(
+                            text: item.itemCode,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              fontFamily: 'ShureTechMono',
+                              fontFeatures: [FontFeature.slashedZero()],
+                            ),
+                          ),
+                          if (item.itemName != null && item.itemName!.isNotEmpty)
+                            TextSpan(
+                              text: ': ${item.itemName}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                fontFamily: 'ShureTechMono',
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    TextSpan(
-                      text: ': ${item.itemName ?? ''}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'ShureTechMono'),
+
+                    // variant_of badge
+                    if (item.customVariantOf != null &&
+                        item.customVariantOf!.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: Colors.blueGrey.shade200, width: 0.5),
+                        ),
+                        child: Text(
+                          item.customVariantOf!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade700,
+                            fontFamily: 'ShureTechMono',
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 6),
+
+                    // ── Inline metadata row: qty · batch · rack ───────────
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        // Qty chip
+                        _MetaChip(
+                          icon: Icons.straighten,
+                          label: NumberFormat('#,##0.##').format(item.qty),
+                          color: Colors.indigo,
+                        ),
+
+                        // Batch chip
+                        if (hasBatch)
+                          _MetaChip(
+                            icon: Icons.label_outline,
+                            label: item.batchNo!,
+                            color: Colors.blue,
+                          ),
+
+                        // Rack chip
+                        if (hasRack)
+                          _MetaChip(
+                            icon: Icons.shelves,
+                            label: item.rack!,
+                            color: Colors.teal,
+                          ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              subtitle: Text(
-                item.batchNo ?? '',
-                style: const TextStyle(
-                  fontFamily: 'ShureTechMono',
-                  fontFeatures: [FontFeature.slashedZero()], // Added
-                ),
-              ),
-              trailing: Row(
+
+              const SizedBox(width: 8),
+
+              // ── Right: edit + delete ─────────────────────────────────────
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => controller.editItem(item),
+                  // Edit / loading spinner
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: isThisItemLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(7.0),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.edit,
+                                color: Colors.blue, size: 20),
+                            onPressed: controller.isLoadingItemEdit.value
+                                ? null
+                                : () => controller.editItem(item),
+                          ),
                   ),
-                  AnimatedExpandIcon(isExpanded: isExpanded),
+                  // Delete
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.red, size: 20),
+                      onPressed: () => controller.confirmAndDeleteItem(item),
+                    ),
+                  ),
                 ],
               ),
-              onTap: () => controller.toggleExpand(item.itemCode),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isExpanded
-                    ? const SizedBox.shrink()
-                    : Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                  child: Column(
-                    children: [
-                      const Divider(height: 1),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildInfoColumn('Rack', item.rack?.toString() ?? 'N/A'),
-                          _buildInfoColumn('Quantity', NumberFormat('#,##0.##').format(item.qty)),
-                          _buildInfoColumn('UOM', item.uom ?? 'N/A'),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => controller.confirmAndDeleteItem(item),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     });
   }
+}
 
-  Widget _buildInfoColumn(String title, String value) {
-    final bool isMono = title == 'Rack';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontFamily: isMono ? 'monospace' : null,
-            fontFeatures: isMono ? [const FontFeature.slashedZero()] : null, // Added
+/// Compact icon+label chip used for qty, batch and rack metadata.
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final MaterialColor color;
+
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.shade200, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color.shade700),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color.shade800,
+              fontFamily: 'ShureTechMono',
+              fontFeatures: const [FontFeature.slashedZero()],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
