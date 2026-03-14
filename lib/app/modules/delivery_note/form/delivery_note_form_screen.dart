@@ -27,26 +27,14 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           appBar: MainAppBar(
             title: controller.deliveryNote.value?.name ?? 'Loading...',
             status: controller.deliveryNote.value?.status,
-            isDirty: controller.isDirty.value, // Pass dirty state
-            actions: [
-              // Save Button Logic
-              Obx(() {
-                // Hide if document is submitted/cancelled
-                if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
-
-                return controller.isSaving.value
-                    ? const Center(
-                    child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0),
-                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    )
-                )
-                    : IconButton(
-                  icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
-                  onPressed: controller.isDirty.value ? controller.saveDeliveryNote : null,
-                );
-              }),
-            ],
+            isDirty: controller.isDirty.value,
+            isSaving: controller.isSaving.value,
+            onSave: controller.deliveryNote.value?.docstatus == 0
+                ? controller.saveDeliveryNote
+                : null,
+            onReload: controller.mode != 'new'
+                ? controller.reloadDocument
+                : null,
             bottom: const TabBar(
               tabs: [
                 Tab(text: 'Details'),
@@ -79,7 +67,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildDetailsView(DeliveryNote note) {
-    // Determine if editable based on docstatus
     final bool isEditable = note.docstatus == 0;
 
     return SingleChildScrollView(
@@ -104,9 +91,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                         ],
                       ),
                     ),
-                    // StatusPill is now handled in AppBar, but we keep the row layout for ID if needed,
-                    // or redundant StatusPill here can also use the isDirty check if you want it duplicated in the body.
-                    // Assuming centralised AppBar is primary, but if you kept this body widget:
                     StatusPill(status: controller.isDirty.value ? 'Not Saved' : note.status),
                   ],
                 ),
@@ -243,7 +227,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   }
 
   Widget _buildItemsView() {
-    // Strict Warehouse Check
     return Obx(() {
       if (controller.setWarehouse.value == null || controller.setWarehouse.value!.isEmpty) {
         return Center(
@@ -262,7 +245,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
       return Column(
         children: [
-          // 1. Filters (Moved to Top)
+          // 1. Filters
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -278,7 +261,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           ),
           const Divider(height: 1),
 
-          // 2. Item List (Middle - Expanded)
+          // 2. Item List
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value && controller.posUpload.value == null) {
@@ -366,10 +349,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }),
           ),
 
-          // 3. Scanner (Moved to Bottom)
-          // Only show if document is editable (Draft status)
+          // 3. Scanner — hidden while item form sheet is open
           Obx(() {
             if (controller.deliveryNote.value?.docstatus != 0) return const SizedBox.shrink();
+            if (controller.isItemSheetOpen.value) return const SizedBox.shrink();
 
             if (controller.isScanning.value || controller.isAddingItem.value) {
               return BarcodeInputWidget(

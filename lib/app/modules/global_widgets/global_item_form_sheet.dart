@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -23,25 +24,26 @@ class GlobalItemFormSheet extends StatelessWidget {
   final Function onSubmit;
   final VoidCallback? onDelete;
 
-  // State
+  // State driven by parent DocType controller
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isSaving;
-  final bool isLoading; // External loading state (for Auto-Submit)
+  final bool isLoading; // External loading state (e.g. auto-submit)
 
-  // Metadata Fields
+  // Metadata
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
-  // Scan Integration
+  // Scan integration
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
 
-  // Internal Loading State (for Manual Press)
-  final _isInternalLoading = false.obs;
+  /// Unique tag used to scope [ItemFormSheetController] to this sheet instance.
+  /// Derived from [key] when provided, otherwise a timestamp is used.
+  late final String _sheetTag;
 
   GlobalItemFormSheet({
     super.key,
@@ -70,64 +72,15 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
-  });
-
-  Widget _buildSaveButton(BuildContext context, bool enabled) {
-    return Obx(() {
-      // Combines external (Auto-Submit) and internal (Manual Click) loading states
-      final internalLoading = _isInternalLoading.value;
-      final showLoading = isSaving || isLoading || internalLoading;
-      final canPress = enabled && !showLoading;
-      final colorScheme = Theme.of(context).colorScheme;
-
-      return FilledButton(
-        onPressed: canPress
-            ? () async {
-          if (formKey.currentState!.validate()) {
-            // 1. Unfocus Keyboard
-            FocusScope.of(context).unfocus();
-
-            // 2. Set Internal Loading & Delay (Manual Feedback)
-            _isInternalLoading.value = true;
-            await Future.delayed(const Duration(milliseconds: 500));
-
-            // 3. Submit & Close
-            try {
-              var result = onSubmit();
-              if (result is Future) {
-                await result;
-              }
-              Get.back(); // Auto-close on manual success
-            } catch (e) {
-              print('Error submitting form: $e');
-            } finally {
-              _isInternalLoading.value = false;
-            }
-          }
-        }
-            : null,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: showLoading
-            ? SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            color: colorScheme.onPrimary,
-            strokeWidth: 2.5,
-          ),
-        )
-            : Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      );
-    });
+  }) {
+    _sheetTag = key != null
+        ? key.toString()
+        : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
   }
 
-  // ... [buildInputGroup, _buildMetadataHeader, build() logic remains identical to previous smart implementation] ...
+  // ---------------------------------------------------------------------------
+  // Static helper — accessible from DocType-specific customFields builders.
+  // ---------------------------------------------------------------------------
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -161,13 +114,89 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  ItemFormSheetController get _sheetCtrl =>
+      Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
+
+  /// Pops only the sheet route without touching GetX's snackbar queue.
+  ///
+  /// [Get.back()] internally calls [closeCurrentSnackbar()] first, which
+  /// crashes with a [LateInitializationError] when a snackbar exists in the
+  /// queue but its internal [AnimationController] has not been initialised yet
+  /// (i.e. the snackbar was enqueued but never displayed). Using the Flutter
+  /// [Navigator] directly bypasses that code path entirely.
+  static void _popSheet(BuildContext context) =>
+      Navigator.of(context).pop();
+
+  Widget _buildSaveButton(BuildContext context, bool enabled) {
+    final ctrl = _sheetCtrl;
+
+    return Obx(() {
+      final showLoading = isSaving || isLoading || ctrl.isSubmitting.value;
+      final canPress = enabled && !showLoading;
+      final colorScheme = Theme.of(context).colorScheme;
+
+      return FilledButton(
+        onPressed: canPress
+            ? () async {
+                if (formKey.currentState!.validate()) {
+                  FocusScope.of(context).unfocus();
+                  ctrl.isSubmitting.value = true;
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  try {
+                    final result = onSubmit();
+                    if (result is Future) await result;
+                  } catch (e) {
+                    debugPrint('GlobalItemFormSheet submit error: $e');
+                  } finally {
+                    if (Get.isRegistered<ItemFormSheetController>(
+                        tag: _sheetTag)) {
+                      ctrl.isSubmitting.value = false;
+                    }
+                  }
+                }
+              }
+            : null,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: showLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: colorScheme.onPrimary,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      );
+    });
+  }
+
   Widget _buildMetadataHeader(BuildContext context) {
-    if (owner == null && creation == null && modified == null && modifiedBy == null) {
+    if (owner == null &&
+        creation == null &&
+        modified == null &&
+        modifiedBy == null) {
       return const SizedBox.shrink();
     }
     final theme = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
     final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
+
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Column(
@@ -179,19 +208,21 @@ class GlobalItemFormSheet extends StatelessWidget {
                 if (owner != null) ...[
                   Icon(Icons.person_outline, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(owner!,
+                      style:
+                          style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (owner != null && creation != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (creation != null) ...[
+                if (creation != null)
                   Text(
                     'Created ${FormattingHelper.getRelativeTime(creation)}',
                     style: style,
                   ),
-                ],
               ],
             ),
           if ((modified != null || modifiedBy != null) &&
@@ -202,19 +233,21 @@ class GlobalItemFormSheet extends StatelessWidget {
                 if (modifiedBy != null) ...[
                   Icon(Icons.edit_outlined, size: 14, color: variantColor),
                   const SizedBox(width: 4),
-                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(modifiedBy!,
+                      style:
+                          style?.copyWith(fontWeight: FontWeight.w600)),
                 ],
                 if (modifiedBy != null && modified != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Text('•', style: style),
                   ),
-                if (modified != null) ...[
+                if (modified != null)
                   Text(
                     'Modified ${FormattingHelper.getRelativeTime(modified)}',
                     style: style,
                   ),
-                ],
               ],
             ),
           ],
@@ -225,6 +258,8 @@ class GlobalItemFormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    _sheetCtrl; // register on first build
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final mediaQuery = MediaQuery.of(context);
@@ -236,12 +271,14 @@ class GlobalItemFormSheet extends StatelessWidget {
       margin: EdgeInsets.only(top: topPadding + 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Drag handle ──────────────────────────────────────────────────
           Container(
             color: colorScheme.surface,
             width: double.infinity,
@@ -256,6 +293,8 @@ class GlobalItemFormSheet extends StatelessWidget {
               ),
             ),
           ),
+
+          // ── Scrollable form body ─────────────────────────────────────────
           Expanded(
             child: Form(
               key: formKey,
@@ -274,21 +313,26 @@ class GlobalItemFormSheet extends StatelessWidget {
                           children: [
                             Text(
                               title,
-                              style: theme.textTheme.headlineSmall?.copyWith(
+                              style: theme.textTheme.headlineSmall
+                                  ?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
+                                color:
+                                    colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: theme.textTheme.labelMedium?.copyWith(
+                                '$itemCode'
+                                '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                                style: theme.textTheme.labelMedium
+                                    ?.copyWith(
                                   fontFamily: 'ShureTechMono',
                                   fontSize: 16,
                                   color: colorScheme.onSurfaceVariant,
@@ -308,24 +352,31 @@ class GlobalItemFormSheet extends StatelessWidget {
                           ],
                         ),
                       ),
+                      // Close button — uses Navigator.pop, NOT Get.back()
                       IconButton(
-                        onPressed: () => Get.back(),
+                        onPressed: () => _popSheet(context),
                         icon: const Icon(Icons.close),
                         style: IconButton.styleFrom(
-                          backgroundColor: colorScheme.surfaceContainerHigh,
+                          backgroundColor:
+                              colorScheme.surfaceContainerHigh,
                           foregroundColor: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
+
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                     child: Divider(height: 1),
                   ),
-                  ...customFields.map((w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20.0),
-                    child: w,
-                  )),
+
+                  ...customFields.map(
+                    (w) => Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: w,
+                    ),
+                  ),
+
                   QuantityInputWidget(
                     controller: qtyController,
                     onIncrement: onIncrement,
@@ -334,57 +385,65 @@ class GlobalItemFormSheet extends StatelessWidget {
                     label: 'Quantity',
                     infoText: qtyInfoText,
                   ),
+
                   const SizedBox(height: 32),
+
                   SizedBox(
                     width: double.infinity,
                     child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
+                        ? Obx(() => _buildSaveButton(
+                            context, isSaveEnabledRx!.value))
                         : _buildSaveButton(context, isSaveEnabled),
                   ),
+
+                  // Delete button — uses Navigator.pop, NOT Get.back()
                   if (onDelete != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: TextButton.icon(
                         onPressed: () {
-                          Get.back();
+                          _popSheet(context);
                           onDelete!();
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: colorScheme.error,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Remove Item'),
                       ),
                     ),
                   ],
+
                   SizedBox(
-                      height: math.max(viewInsetsBottom, bottomPadding) + 20
+                    height:
+                        math.max(viewInsetsBottom, bottomPadding) + 20,
                   ),
                 ],
               ),
             ),
           ),
+
+          // ── Scan bar (optional) ──────────────────────────────────────────
           if (onScan != null)
             Container(
               decoration: BoxDecoration(
                 color: colorScheme.surface,
-                border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+                border: Border(
+                  top: BorderSide(color: colorScheme.outlineVariant),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 4,
                     offset: const Offset(0, -2),
-                  )
+                  ),
                 ],
               ),
-              padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  bottomPadding + 12
-              ),
+              padding:
+                  EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
               child: BarcodeInputWidget(
                 onScan: onScan!,
                 controller: scanController,

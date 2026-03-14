@@ -10,6 +10,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isDirty;
   final bool isSaving;
   final VoidCallback? onSave;
+  final VoidCallback? onReload;
   final List<Widget>? actions;
   final Widget? leading;
   final bool showBack;
@@ -26,6 +27,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.status,
     this.isSaving = false,
     this.onSave,
+    this.onReload,
     this.actions,
     this.leading,
     this.showBack = true,
@@ -41,7 +43,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Save]
+    // 2. Construct Actions List: [Search] -> [Reload] -> [Custom Actions] -> [Save]
     final List<Widget> appActions = [
       // Global Search Action
       if (searchDoctype != null && searchRoute != null)
@@ -57,6 +59,14 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             );
           },
+        ),
+
+      // Reload Action
+      if (onReload != null)
+        IconButton(
+          tooltip: 'Reload document',
+          icon: const Icon(Icons.refresh),
+          onPressed: onReload,
         ),
 
       // Custom Actions injected by the screen

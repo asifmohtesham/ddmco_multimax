@@ -71,7 +71,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var bsIsBatchValid = false.obs;
   var batchInfoTooltip = RxnString();
 
-  // Balance display state (backport from stock_entry)
+  // Balance display state
   var bsBatchBalance = 0.0.obs;
   var bsRackBalance = 0.0.obs;
   var isLoadingBatchBalance = false.obs;
@@ -313,7 +313,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     await saveDeliveryNote();
 
     if (editingItemName.value == null) {
-      GlobalSnackbar.success(message: 'Item added/updated.');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        GlobalSnackbar.success(message: 'Item added/updated.');
+      });
     }
   }
 
@@ -388,10 +390,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       val?.items.assignAll(currentItems);
     });
     _checkForChanges();
-    // Defer snackbar by one frame so it doesn't race against the confirmation
-    // sheet's pop animation — which leaves a partially-initialised
-    // SnackbarController in the GetX queue and causes a
-    // LateInitializationError in SnackbarController._removeEntry.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       GlobalSnackbar.success(message: 'Item removed');
     });
@@ -431,7 +429,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         deliveryNote.value = savedNote;
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
-        GlobalSnackbar.success(message: 'Delivery Note Saved');
+        // Defer to avoid racing against any in-flight snackbar animation
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          GlobalSnackbar.success(message: 'Delivery Note Saved');
+        });
       } else {
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
       }
@@ -588,7 +589,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     rackStockMap.clear();
     rackError.value = null;
 
-    // Reset balance chips
     bsBatchBalance.value = 0.0;
     bsRackBalance.value = 0.0;
     isLoadingBatchBalance.value = false;
@@ -681,7 +681,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           rackStockTooltip.value =
               tooltipLines.isNotEmpty ? tooltipLines.join('\n') : 'No stock in racks';
 
-          // Update rack balance chip if rack is already validated
           if (bsIsRackValid.value && bsRackController.text.isNotEmpty) {
             bsRackBalance.value = tempMap[bsRackController.text] ?? 0.0;
           }
