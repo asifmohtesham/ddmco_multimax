@@ -6,6 +6,10 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 class BatchController extends GetxController {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
+  /// Exposed so widgets (e.g. BatchFilterBottomSheet) can call provider
+  /// search helpers without a second Get.find registration.
+  BatchProvider get batchProvider => _provider;
+
   // ── List state ─────────────────────────────────────────────────────────────
   var batches = <Batch>[].obs;
   var isLoading = true.obs;
