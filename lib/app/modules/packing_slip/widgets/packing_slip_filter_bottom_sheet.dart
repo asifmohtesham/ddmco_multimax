@@ -8,49 +8,58 @@ class PackingSlipFilterBottomSheet extends StatefulWidget {
   const PackingSlipFilterBottomSheet({super.key});
 
   @override
-  State<PackingSlipFilterBottomSheet> createState() => _PackingSlipFilterBottomSheetState();
+  State<PackingSlipFilterBottomSheet> createState() =>
+      _PackingSlipFilterBottomSheetState();
 }
 
-class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSheet> {
-  final PackingSlipController controller = Get.find();
+class _PackingSlipFilterBottomSheetState
+    extends State<PackingSlipFilterBottomSheet> {
+  final PackingSlipController _ctrl = Get.find();
 
-  late TextEditingController deliveryNoteController;
-  late TextEditingController dateRangeController;
+  // Local reactive state — committed only on Apply
+  final _deliveryNote = ''.obs;
+  final _poNo = ''.obs;
+  final _status = RxnString();
+  final _startDate = Rxn<DateTime>();
+  final _endDate = Rxn<DateTime>();
 
-  // Reactive State
-  final selectedStatus = RxnString();
-  final startDate = Rxn<DateTime>();
-  final endDate = Rxn<DateTime>();
-  final deliveryNote = ''.obs;
+  late TextEditingController _dateRangeController;
 
   @override
   void initState() {
     super.initState();
-    deliveryNoteController = TextEditingController(text: _extractFilterValue('delivery_note'));
-    dateRangeController = TextEditingController();
+    _dateRangeController = TextEditingController();
 
-    deliveryNote.value = deliveryNoteController.text;
-    selectedStatus.value = controller.activeFilters['status'];
-    _initDateRange();
-  }
+    final af = _ctrl.activeFilters;
 
-  String _extractFilterValue(String key) {
-    final val = controller.activeFilters[key];
-    if (val is List && val.isNotEmpty && val[0] == 'like') {
-      return val[1].toString().replaceAll('%', '');
+    // Restore Delivery Note
+    final dn = af['delivery_note'];
+    if (dn is List && dn.length == 2 && dn[0] == 'like') {
+      _deliveryNote.value = dn[1].toString().replaceAll('%', '');
     }
-    return '';
-  }
 
-  void _initDateRange() {
-    if (controller.activeFilters.containsKey('creation') &&
-        controller.activeFilters['creation'] is List) {
-      final dates = controller.activeFilters['creation'][1] as List;
+    // Restore PO No
+    final po = af['custom_po_no'];
+    if (po is List && po.length == 2 && po[0] == 'like') {
+      _poNo.value = po[1].toString().replaceAll('%', '');
+    }
+
+    // Restore Status
+    _status.value = af['status'] as String?;
+
+    // Restore Date Range
+    final creation = af['creation'];
+    if (creation is List &&
+        creation.length == 2 &&
+        creation[0] == 'between' &&
+        creation[1] is List) {
+      final dates = creation[1] as List;
       if (dates.length >= 2) {
-        dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate.value = DateTime.parse(dates[0]);
-          endDate.value = DateTime.parse(dates[1]);
+          _startDate.value = DateTime.parse(dates[0].toString());
+          _endDate.value = DateTime.parse(dates[1].toString());
+          _dateRangeController.text =
+              '${dates[0]} - ${dates[1]}';
         } catch (_) {}
       }
     }
@@ -58,120 +67,377 @@ class _PackingSlipFilterBottomSheetState extends State<PackingSlipFilterBottomSh
 
   @override
   void dispose() {
-    deliveryNoteController.dispose();
-    dateRangeController.dispose();
+    _dateRangeController.dispose();
     super.dispose();
   }
 
-  int get _activeCount {
-    int count = 0;
-    if (selectedStatus.value != null) count++;
-    if (deliveryNote.value.isNotEmpty) count++;
-    if (startDate.value != null && endDate.value != null) count++;
-    return count;
+  // ── Generic searchable bottom-sheet picker ──────────────────────────────────
+
+  void _showSearchPicker({
+    required BuildContext context,
+    required String title,
+    required String hintText,
+    required Future<List<_PickerItem>> Function(String query) searcher,
+    required void Function(String value) onSelected,
+  }) {
+    final results = <_PickerItem>[].obs;
+    final isLoading = false.obs;
+
+    () async {
+      isLoading.value = true;
+      results.value = await searcher('');
+      isLoading.value = false;
+    }();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        builder: (ctx2, scrollCtrl) => Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextField(
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                onChanged: (val) async {
+                  isLoading.value = true;
+                  results.value = await searcher(val);
+                  isLoading.value = false;
+                },
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Obx(() {
+                  if (isLoading.value) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (results.isEmpty) {
+                    return const Center(child: Text('No results'));
+                  }
+                  return ListView.separated(
+                    controller: scrollCtrl,
+                    itemCount: results.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final item = results[i];
+                      return ListTile(
+                        title: Text(item.label),
+                        subtitle: item.subtitle != null
+                            ? Text(item.subtitle!,
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey))
+                            : null,
+                        onTap: () {
+                          onSelected(item.value);
+                          Navigator.of(ctx).pop();
+                        },
+                      );
+                    },
+                  );
+                }),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+
+  // ── Searcher helpers ────────────────────────────────────────────────────────────
+
+  Future<List<_PickerItem>> _searchDNs(String q) async {
+    try {
+      final res = await _ctrl.packingSlipProvider.searchDeliveryNotes(q);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return (res.data['data'] as List).map((e) {
+          final name = e['name'] as String? ?? '';
+          final customer = e['customer'] as String? ?? '';
+          final po = e['po_no'] as String? ?? '';
+          return _PickerItem(
+            value: name,
+            label: name,
+            subtitle: [customer, if (po.isNotEmpty) 'PO: $po']
+                .where((s) => s.isNotEmpty)
+                .join(' • '),
+          );
+        }).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<List<_PickerItem>> _searchPOs(String q) async {
+    try {
+      final res = await _ctrl.packingSlipProvider.searchPONumbers(q);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final seen = <String>{};
+        final items = <_PickerItem>[];
+        for (final e in res.data['data'] as List) {
+          final po = e['custom_po_no'] as String? ?? '';
+          if (po.isNotEmpty && seen.add(po)) {
+            items.add(_PickerItem(value: po, label: po));
+          }
+        }
+        return items;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  // ── Date range picker ─────────────────────────────────────────────────────────
 
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: startDate.value != null && endDate.value != null
-          ? DateTimeRange(start: startDate.value!, end: endDate.value!)
-          : null,
+      initialDateRange:
+          _startDate.value != null && _endDate.value != null
+              ? DateTimeRange(
+                  start: _startDate.value!, end: _endDate.value!)
+              : null,
     );
-
     if (picked != null) {
-      startDate.value = picked.start;
-      endDate.value = picked.end;
-      dateRangeController.text = '${DateFormat('yyyy-MM-dd').format(startDate.value!)} - ${DateFormat('yyyy-MM-dd').format(endDate.value!)}';
+      _startDate.value = picked.start;
+      _endDate.value = picked.end;
+      _dateRangeController.text =
+          '${DateFormat('yyyy-MM-dd').format(picked.start)} - '
+          '${DateFormat('yyyy-MM-dd').format(picked.end)}';
     }
   }
 
-  void _applyFilters() {
-    final filters = <String, dynamic>{};
-    if (selectedStatus.value != null) filters['status'] = selectedStatus.value;
-    if (deliveryNoteController.text.isNotEmpty) filters['delivery_note'] = ['like', '%${deliveryNoteController.text}%'];
+  // ── Apply / Clear ─────────────────────────────────────────────────────────
 
-    if (startDate.value != null && endDate.value != null) {
-      filters['creation'] = ['between', [
-        DateFormat('yyyy-MM-dd').format(startDate.value!),
-        DateFormat('yyyy-MM-dd').format(endDate.value!)
-      ]];
+  void _apply() {
+    final filters = <String, dynamic>{};
+
+    if (_deliveryNote.value.isNotEmpty) {
+      filters['delivery_note'] = ['like', '%${_deliveryNote.value}%'];
+    }
+    if (_poNo.value.isNotEmpty) {
+      filters['custom_po_no'] = ['like', '%${_poNo.value}%'];
+    }
+    if (_status.value != null) {
+      filters['status'] = _status.value;
+    }
+    if (_startDate.value != null && _endDate.value != null) {
+      filters['creation'] = [
+        'between',
+        [
+          DateFormat('yyyy-MM-dd').format(_startDate.value!),
+          DateFormat('yyyy-MM-dd').format(_endDate.value!),
+        ]
+      ];
     }
 
-    controller.applyFilters(filters);
+    _ctrl.applyFilters(filters);
     Get.back();
   }
+
+  void _clear() {
+    _deliveryNote.value = '';
+    _poNo.value = '';
+    _status.value = null;
+    _startDate.value = null;
+    _endDate.value = null;
+    _dateRangeController.clear();
+    _ctrl.clearFilters();
+    Get.back();
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  int get _localFilterCount {
+    int count = 0;
+    if (_deliveryNote.value.isNotEmpty) count++;
+    if (_poNo.value.isNotEmpty) count++;
+    if (_status.value != null) count++;
+    if (_startDate.value != null && _endDate.value != null) count++;
+    return count;
+  }
+
+  /// Shared picker-tile widget: InkWell + InputDecorator + clear button.
+  Widget _pickerTile({
+    required BuildContext context,
+    required String label,
+    required RxString value,
+    required String hint,
+    required IconData icon,
+    required Future<List<_PickerItem>> Function(String) searcher,
+  }) {
+    return Obx(() => InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _showSearchPicker(
+            context: context,
+            title: 'Select $label',
+            hintText: 'Search $label…',
+            searcher: searcher,
+            onSelected: (v) => value.value = v,
+          ),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              prefixIcon: Icon(icon),
+              suffixIcon: value.value.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => value.value = '',
+                    )
+                  : const Icon(Icons.arrow_drop_down),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            child: Text(
+              value.value.isNotEmpty ? value.value : hint,
+              style: TextStyle(
+                color: value.value.isNotEmpty
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                overflow: TextOverflow.ellipsis,
+              ),
+              maxLines: 1,
+            ),
+          ),
+        ));
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
-      title: 'Filter Packing Slips',
-      activeFilterCount: _activeCount,
-      sortOptions: const [
-        SortOption('Creation', 'creation'),
-        SortOption('Status', 'status'),
-        SortOption('Modified', 'modified'),
-      ],
-      currentSortField: controller.sortField.value,
-      currentSortOrder: controller.sortOrder.value,
-      onSortChanged: (field, order) => controller.setSort(field, order),
-      onApply: _applyFilters,
-      onClear: () {
-        selectedStatus.value = null;
-        deliveryNoteController.clear();
-        dateRangeController.clear();
-        startDate.value = null;
-        endDate.value = null;
-        deliveryNote.value = '';
-        controller.clearFilters();
-      },
-      filterWidgets: [
-        // Status Chips
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Status', style: Theme.of(context).textTheme.labelLarge),
+          title: 'Filter Packing Slips',
+          activeFilterCount: _localFilterCount,
+          sortOptions: const [
+            SortOption('Creation', 'creation'),
+            SortOption('Modified', 'modified'),
+            SortOption('Status', 'status'),
+            SortOption('Case No', 'from_case_no'),
+          ],
+          currentSortField: _ctrl.sortField.value,
+          currentSortOrder: _ctrl.sortOrder.value,
+          onSortChanged: _ctrl.setSort,
+          onApply: _apply,
+          onClear: _clear,
+          filterWidgets: [
+            const SizedBox(height: 16),
+
+            // ── Delivery Note ───────────────────────────────────────────
+            _pickerTile(
+              context: context,
+              label: 'Delivery Note',
+              value: _deliveryNote,
+              hint: 'All Delivery Notes',
+              icon: Icons.local_shipping_outlined,
+              searcher: _searchDNs,
+            ),
+            const SizedBox(height: 12),
+
+            // ── PO No ────────────────────────────────────────────────────
+            _pickerTile(
+              context: context,
+              label: 'PO No',
+              value: _poNo,
+              hint: 'All PO Numbers',
+              icon: Icons.receipt_long_outlined,
+              searcher: _searchPOs,
+            ),
+            const SizedBox(height: 16),
+
+            // ── Status ──────────────────────────────────────────────────────
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Status',
+                  style: Theme.of(context).textTheme.labelLarge),
+            ),
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: ['Draft', 'Submitted', 'Cancelled'].map((status) {
+                children: ['Draft', 'Submitted', 'Cancelled'].map((s) {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text(status),
-                      selected: selectedStatus.value == status,
-                      onSelected: (bool selected) {
-                        selectedStatus.value = selected ? status : null;
-                      },
-                    ),
+                    child: Obx(() => ChoiceChip(
+                          label: Text(s),
+                          selected: _status.value == s,
+                          onSelected: (selected) =>
+                              _status.value = selected ? s : null,
+                        )),
                   );
                 }).toList(),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-        TextFormField(
-          controller: dateRangeController,
-          readOnly: true,
-          decoration: const InputDecoration(
-            labelText: 'Creation Date Range',
-            border: OutlineInputBorder(),
-            suffixIcon: Icon(Icons.calendar_today),
-            isDense: true,
-          ),
-          onTap: _pickDateRange,
-        ),
-        TextFormField(
-          controller: deliveryNoteController,
-          decoration: const InputDecoration(labelText: 'Delivery Note', border: OutlineInputBorder(), isDense: true),
-          onChanged: (val) => deliveryNote.value = val,
-        ),
-      ],
-    ));
+            // ── Creation Date Range ─────────────────────────────────────────
+            TextFormField(
+              controller: _dateRangeController,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Creation Date Range',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                suffixIcon: _startDate.value != null
+                    ? IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          _startDate.value = null;
+                          _endDate.value = null;
+                          _dateRangeController.clear();
+                        },
+                      )
+                    : const Icon(Icons.calendar_today_outlined),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 14),
+              ),
+              onTap: _pickDateRange,
+            ),
+          ],
+        ));
   }
+}
+
+// ── Internal picker data model ──────────────────────────────────────────────────
+
+class _PickerItem {
+  final String value;
+  final String label;
+  final String? subtitle;
+  const _PickerItem(
+      {required this.value, required this.label, this.subtitle});
 }

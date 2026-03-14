@@ -15,6 +15,9 @@ class PackingSlipController extends GetxController {
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final HomeController _homeController = Get.find<HomeController>();
 
+  /// Exposed so filter widgets can call provider search helpers directly.
+  PackingSlipProvider get packingSlipProvider => _provider;
+
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
@@ -33,7 +36,6 @@ class PackingSlipController extends GetxController {
   var searchQuery = ''.obs;
 
   // Cache for POS Customer Names
-  // Observed by the UI to trigger rebuilds when customers are loaded
   var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
@@ -56,13 +58,22 @@ class PackingSlipController extends GetxController {
     }
   }
 
+  // ── Filter API ────────────────────────────────────────────────────────────
+
   void applyFilters(Map<String, dynamic> filters) {
-    activeFilters.value = filters;
+    activeFilters.value = Map.from(filters);
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
   void clearFilters() {
     activeFilters.clear();
+    sortField.value = 'creation';
+    sortOrder.value = 'desc';
+    fetchPackingSlips(isLoadMore: false, clear: true);
+  }
+
+  void removeFilter(String key) {
+    activeFilters.remove(key);
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
@@ -72,7 +83,10 @@ class PackingSlipController extends GetxController {
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
-  Future<void> fetchPackingSlips({bool isLoadMore = false, bool clear = false}) async {
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+
+  Future<void> fetchPackingSlips(
+      {bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
@@ -88,17 +102,16 @@ class PackingSlipController extends GetxController {
       final response = await _provider.getPackingSlips(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: Map<String, dynamic>.from(activeFilters),
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newSlips = data.map((json) => PackingSlip.fromJson(json)).toList();
+        final newSlips =
+            data.map((json) => PackingSlip.fromJson(json)).toList();
 
-        if (newSlips.length < _limit) {
-          hasMore.value = false;
-        }
+        if (newSlips.length < _limit) hasMore.value = false;
 
         if (isLoadMore) {
           packingSlips.addAll(newSlips);
@@ -107,7 +120,6 @@ class PackingSlipController extends GetxController {
         }
 
         _fetchAssociatedCustomers(newSlips);
-
         _currentPage++;
       } else {
         Get.snackbar('Error', 'Failed to fetch packing slips');
@@ -124,10 +136,21 @@ class PackingSlipController extends GetxController {
     }
   }
 
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+  }
+
+  // ── Grouping ─────────────────────────────────────────────────────────────
+
   Future<void> _fetchAssociatedCustomers(List<PackingSlip> slips) async {
     final poNumbers = slips
         .map((s) => s.customPoNo)
-        .where((po) => po != null && po.isNotEmpty && !posCustomerMap.containsKey(po))
+        .where((po) =>
+            po != null &&
+            po.isNotEmpty &&
+            !posCustomerMap.containsKey(po))
         .toSet()
         .toList();
 
@@ -136,7 +159,9 @@ class PackingSlipController extends GetxController {
     try {
       final response = await _posProvider.getPosUploads(
         limit: 100,
-        filters: {'name': ['in', poNumbers]},
+        filters: {
+          'name': ['in', poNumbers]
+        },
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -145,7 +170,6 @@ class PackingSlipController extends GetxController {
           final String customer = doc['customer'] ?? 'Unknown';
           posCustomerMap[name] = customer;
         }
-        // Force refresh to ensure all UI listeners update immediately after bulk load
         posCustomerMap.refresh();
       }
     } catch (e) {
@@ -159,19 +183,11 @@ class PackingSlipController extends GetxController {
   }
 
   void toggleExpand(String name) {
-    if (expandedSlipName.value == name) {
-      expandedSlipName.value = '';
-    } else {
-      expandedSlipName.value = name;
-    }
+    expandedSlipName.value = expandedSlipName.value == name ? '' : name;
   }
 
   void toggleGroup(String key) {
-    if (expandedGroup.value == key) {
-      expandedGroup.value = '';
-    } else {
-      expandedGroup.value = key;
-    }
+    expandedGroup.value = expandedGroup.value == key ? '' : key;
   }
 
   Map<String, List<PackingSlip>> get groupedPackingSlips {
@@ -179,7 +195,8 @@ class PackingSlipController extends GetxController {
     if (searchQuery.value.isNotEmpty) {
       final q = searchQuery.value.toLowerCase();
       list = list.where((slip) {
-        final customer = slip.customer ?? posCustomerMap[slip.customPoNo] ?? '';
+        final customer =
+            slip.customer ?? posCustomerMap[slip.customPoNo] ?? '';
         return slip.name.toLowerCase().contains(q) ||
             slip.deliveryNote.toLowerCase().contains(q) ||
             (slip.customPoNo ?? '').toLowerCase().contains(q) ||
@@ -191,37 +208,32 @@ class PackingSlipController extends GetxController {
       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
         return slip.customPoNo!;
       }
-      if (slip.deliveryNote.isNotEmpty) {
-        return slip.deliveryNote;
-      }
+      if (slip.deliveryNote.isNotEmpty) return slip.deliveryNote;
       return 'Other';
     });
 
-    grouped.forEach((key, list) {
-      list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
+    grouped.forEach((key, slips) {
+      slips.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
     });
 
     return grouped;
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-  }
-
-  // --- Creation Logic ---
+  // ── Creation ─────────────────────────────────────────────────────────────
 
   Future<void> fetchDeliveryNotesForSelection() async {
     isFetchingDNs.value = true;
     try {
       final response = await _dnProvider.getDeliveryNotes(
-          limit: 100,
-          orderBy: 'modified desc',
-          filters: {'docstatus': 0}
+        limit: 100,
+        orderBy: 'modified desc',
+        filters: {'docstatus': 0},
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        _allFetchedDNs = data.map((json) => DeliveryNote.fromJson(json)).toList();
+        _allFetchedDNs =
+            data.map((json) => DeliveryNote.fromJson(json)).toList();
         deliveryNotesForSelection.value = _allFetchedDNs;
       }
     } catch (e) {
@@ -249,9 +261,9 @@ class PackingSlipController extends GetxController {
     int nextCaseNo = 1;
     try {
       final response = await _provider.getPackingSlips(
-          limit: 1,
-          filters: {'delivery_note': dn.name},
-          orderBy: 'to_case_no desc'
+        limit: 1,
+        filters: {'delivery_note': dn.name},
+        orderBy: 'to_case_no desc',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -272,7 +284,7 @@ class PackingSlipController extends GetxController {
       'mode': 'new',
       'deliveryNote': dn.name,
       'customPoNo': dn.poNo,
-      'nextCaseNo': nextCaseNo
+      'nextCaseNo': nextCaseNo,
     });
   }
 
@@ -289,7 +301,8 @@ class PackingSlipController extends GetxController {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -321,28 +334,33 @@ class PackingSlipController extends GetxController {
                   Expanded(
                     child: Obx(() {
                       if (isFetchingDNs.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
-
                       if (deliveryNotesForSelection.isEmpty) {
-                        return const Center(child: Text('No Delivery Notes found.'));
+                        return const Center(
+                            child: Text('No Delivery Notes found.'));
                       }
-
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: deliveryNotesForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final dn = deliveryNotesForSelection[index];
-                          final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
+                          final hasPO =
+                              dn.poNo != null && dn.poNo!.isNotEmpty;
                           final title = hasPO ? dn.poNo! : dn.name;
-                          final subtitle = hasPO
-                              ? '${dn.name} • ${dn.customer}'
-                              : dn.customer;
-
+                          final subtitle =
+                              hasPO ? '${dn.name} • ${dn.customer}' : dn.customer;
                           return ListTile(
-                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
+                            title: Text(title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16)),
+                            subtitle: Text(subtitle,
+                                style:
+                                    const TextStyle(color: Colors.grey)),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();
