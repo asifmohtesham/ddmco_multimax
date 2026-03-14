@@ -8,9 +8,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
 
   const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
 
-  /// Compact chip showing available balance.
-  /// Shows a small spinner while [isLoading], the chip when [balance] > 0,
-  /// or nothing otherwise.
   Widget _balanceChip({
     required double balance,
     required bool isLoading,
@@ -69,6 +66,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         title: isEditing ? 'Update Item' : 'Add Item',
         itemCode: controller.currentItemCode,
         itemName: controller.currentItemName,
+        // Show variant_of under the item code chip in the sheet header
+        itemSubtext: controller.bsItemVariantOf.value,
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
@@ -99,14 +98,15 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               child: DropdownButtonFormField<String>(
                 value: controller.bsInvoiceSerialNo.value,
                 decoration: InputDecoration(
-                  border:
-                      OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   hintText: 'Select Serial',
                 ),
                 items: controller.bsAvailableInvoiceSerialNos.map((s) {
-                  return DropdownMenuItem(value: s, child: Text('Serial #\$s'));
+                  // Fixed: was 'Serial #\$s' (escaped dollar — literal text)
+                  return DropdownMenuItem(value: s, child: Text('Serial #$s'));
                 }).toList(),
                 onChanged: (value) {
                   controller.bsInvoiceSerialNo.value = value;
@@ -200,7 +200,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                         }
                       },
                     ),
-                    // Balance chip
                     Obx(() => _balanceChip(
                           balance: controller.bsBatchBalance.value,
                           isLoading: controller.isLoadingBatchBalance.value,
@@ -215,8 +214,9 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
-            bgColor:
-                controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
+            bgColor: controller.bsIsRackValid.value
+                ? Colors.orange.shade50
+                : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -256,8 +256,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                                 ? IconButton(
                                     icon: const Icon(Icons.edit,
                                         color: Colors.orange),
-                                    onPressed:
-                                        controller.resetRackValidation,
+                                    onPressed: controller.resetRackValidation,
                                     tooltip: 'Edit Rack',
                                   )
                                 : IconButton(
@@ -270,20 +269,19 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       ),
                       onFieldSubmitted: (val) => controller.validateRack(val),
                     )),
-                // Balance chip
                 Obx(() => _balanceChip(
                       balance: controller.bsRackBalance.value,
                       isLoading: controller.isLoadingRackBalance.value,
                       color: Colors.orange,
                       prefix: 'Rack Qty:',
                     )),
-                // Rack stock error
                 if (controller.rackError.value != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0, left: 4.0),
                     child: Text(
                       controller.rackError.value!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      style:
+                          const TextStyle(color: Colors.red, fontSize: 12),
                     ),
                   ),
               ],

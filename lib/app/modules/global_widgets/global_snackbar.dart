@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 class GlobalSnackbar {
-  // ... (success, warning, info methods same as before) ...
   static void success({String title = 'Success', required String message}) {
     _show(
       title: title,
@@ -49,7 +48,17 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    // Guard against a partially-initialised SnackbarController being in the
+    // queue (its AnimationController is late-init and crashes on close when
+    // the snackbar was enqueued but never actually displayed yet).
+    if (Get.isSnackbarOpen) {
+      try {
+        Get.closeCurrentSnackbar();
+      } catch (_) {
+        // Swallow LateInitializationError — the stale entry will be cleaned
+        // up by GetX automatically on the next frame.
+      }
+    }
 
     if (shouldVibrate) HapticFeedback.lightImpact();
 
@@ -70,7 +79,7 @@ class GlobalSnackbar {
           color: Colors.black87,
           fontSize: 14,
         ),
-        maxLines: 4, // Prevents overflow
+        maxLines: 4,
         overflow: TextOverflow.ellipsis,
       ),
       backgroundColor: Colors.white,

@@ -63,6 +63,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   final bsRackFocusNode = FocusNode();
 
   var isItemSheetOpen = false.obs;
+  /// True while [editItem] is fetching the batch balance before opening the sheet.
+  var isLoadingItemEdit = false.obs;
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
   var bsMaxQty = 0.0.obs;
@@ -88,6 +90,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   var editingItemName = RxnString();
   var isFormDirty = false.obs;
   var isSheetValid = false.obs;
+
+  // Current item being shown in the sheet (also used for variant_of display)
+  var bsItemVariantOf = RxnString();
 
   String _initialBatch = '';
   String _initialRack = '';
@@ -429,7 +434,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         deliveryNote.value = savedNote;
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
-        // Defer to avoid racing against any in-flight snackbar animation
         WidgetsBinding.instance.addPostFrameCallback((_) {
           GlobalSnackbar.success(message: 'Delivery Note Saved');
         });
@@ -584,6 +588,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     bsItemImage.value = null;
     bsItemPackedQty.value = null;
     bsItemCompanyTotalStock.value = null;
+    bsItemVariantOf.value = null;
     isFormDirty.value = false;
     rackStockTooltip.value = null;
     rackStockMap.clear();
@@ -599,6 +604,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsItemCreation.value = editingItem.creation;
       bsItemModified.value = editingItem.modified;
       bsItemModifiedBy.value = editingItem.modifiedBy;
+      bsItemVariantOf.value = editingItem.customVariantOf;
 
       editingItemName.value = editingItem.name;
       bsBatchController.text = editingItem.batchNo ?? '';
@@ -846,7 +852,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
+  /// Opens the edit sheet for [item].
+  ///
+  /// Shows a loading indicator on the edit button while the batch balance is
+  /// being fetched, then opens the sheet with a smooth fade+slide transition.
   Future<void> editItem(DeliveryNoteItem item) async {
+    isLoadingItemEdit.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
     isLoadingBatchBalance.value = true;
@@ -883,6 +894,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsIsLoadingBatch.value = false;
       isLoadingBatchBalance.value = false;
       isLoadingRackBalance.value = false;
+      isLoadingItemEdit.value = false;
     }
 
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty,
@@ -893,20 +905,28 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsRackBalance.value = rackStockMap[item.rack] ?? 0.0;
     }
 
-    Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-        },
+    // Use Get.bottomSheet for the sheet itself; isItemSheetOpen is already
+    // set inside initBottomSheet so the barcode bar hides immediately.
+    await Get.bottomSheet(
+      _FadeSlideSheet(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return DeliveryNoteItemBottomSheet(scrollController: scrollController);
+          },
+        ),
       ),
       isScrollControlled: true,
-    ).then((_) {
-      isItemSheetOpen.value = false;
-      editingItemName.value = null;
-    });
+      backgroundColor: Colors.transparent,
+      enterBottomSheetDuration: const Duration(milliseconds: 350),
+      exitBottomSheetDuration: const Duration(milliseconds: 250),
+    );
+
+    isItemSheetOpen.value = false;
+    editingItemName.value = null;
   }
 
   bool _validateHeaderBeforeScan() {
@@ -984,15 +1004,21 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
 
         await Get.bottomSheet(
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.4,
-            maxChildSize: 0.95,
-            builder: (context, scrollController) {
-              return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-            },
+          _FadeSlideSheet(
+            child: DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              minChildSize: 0.4,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return DeliveryNoteItemBottomSheet(scrollController: scrollController);
+              },
+            ),
           ),
           isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          enterBottomSheetDuration: const Duration(milliseconds: 350),
+          exitBottomSheetDuration: const Duration(milliseconds: 250),
         );
 
         isItemSheetOpen.value = false;
@@ -1007,5 +1033,33 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       isScanning.value = false;
       barcodeController.clear();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private fade+slide wrapper used for all bottom sheet opens in this module.
+// Placed here so it can be reused by both editItem() and scanBarcode().
+// ---------------------------------------------------------------------------
+class _FadeSlideSheet extends StatelessWidget {
+  final Widget child;
+  const _FadeSlideSheet({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 24 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
   }
 }
