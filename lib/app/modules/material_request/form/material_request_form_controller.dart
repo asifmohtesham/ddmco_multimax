@@ -364,10 +364,34 @@ class MaterialRequestFormController extends GetxController
     }
 
     isItemSheetOpen.value = true;
-    Get.bottomSheet(
-      MaterialRequestItemFormSheet(controller: this),
+    showModalBottomSheet(
+      context: Get.context!,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
+      builder: (context) {
+        // Cap the sheet at 90 % of screen height so it never covers the
+        // full screen. When content is shorter the sheet only covers what
+        // it needs. The SingleChildScrollView makes the content scrollable
+        // when the keyboard or many fields push past the cap.
+        final maxHeight = MediaQuery.of(context).size.height * 0.90;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(16)),
+            child: SingleChildScrollView(
+              // Shift content up when the soft keyboard appears so the
+              // focused field is never hidden behind it.
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: MaterialRequestItemFormSheet(controller: this),
+            ),
+          ),
+        );
+      },
     ).whenComplete(() {
       isItemSheetOpen.value = false;
     });
