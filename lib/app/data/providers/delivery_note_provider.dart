@@ -17,7 +17,22 @@ class DeliveryNoteProvider {
       limitStart: limitStart,
       filters: filters,
       orderBy: orderBy,
-      fields: ['name', 'customer', 'grand_total', 'posting_date', 'modified', 'status', 'currency', 'po_no', 'total_qty', 'creation', 'docstatus', 'set_warehouse'],
+      fields: [
+        'name',
+        'customer',
+        'grand_total',
+        'posting_date',
+        'modified',
+        'modified_by',
+        'owner',
+        'status',
+        'currency',
+        'po_no',
+        'total_qty',
+        'creation',
+        'docstatus',
+        'set_warehouse',
+      ],
     );
   }
 
@@ -25,8 +40,12 @@ class DeliveryNoteProvider {
     return _apiProvider.getDeliveryNote(name);
   }
 
-  Future<Response> getPosUploads({int limit = 100, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    return _apiProvider.getPosUploads(limit: limit, limitStart: limitStart, filters: filters);
+  Future<Response> getPosUploads(
+      {int limit = 100,
+      int limitStart = 0,
+      Map<String, dynamic>? filters}) async {
+    return _apiProvider.getPosUploads(
+        limit: limit, limitStart: limitStart, filters: filters);
   }
 
   Future<Response> getPosUpload(String name) async {
