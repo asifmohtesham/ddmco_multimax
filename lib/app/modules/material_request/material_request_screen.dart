@@ -46,8 +46,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   }
 
   void _showFilterSheet(BuildContext context) {
-    // Mirrors StockEntryScreen: isScrollControlled + transparent bg so
-    // GlobalFilterBottomSheet's own margin/radius shows correctly.
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -64,6 +62,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     return Obx(() {
       final hasSearch = controller.searchQuery.value.isNotEmpty;
       final hasFilters = controller.activeFilters.isNotEmpty;
+      // Plain int — always fresh inside the outer Obx which already tracks
+      // activeFilters and searchQuery. No inner Obx needed.
       final activeFilterCount = controller.activeFilters.length +
           (controller.searchQuery.value.isNotEmpty ? 1 : 0);
 
@@ -107,16 +107,19 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         searchHint: 'Search ID, Type, Warehouse...',
         filterHeader: filterHeader,
         actions: [
-          // Badge shows total active filter + search count
-          Obx(() => Badge(
-                isLabelVisible: activeFilterCount > 0,
-                label: Text('$activeFilterCount'),
-                child: IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  tooltip: 'Sort & Filter',
-                  onPressed: () => _showFilterSheet(context),
-                ),
-              )),
+          // No inner Obx — activeFilterCount is already reactive via the
+          // enclosing Obx. A nested Obx with no .obs reads throws:
+          // "improper use of GetX" and inserts a 100000px RenderErrorBox
+          // that overflows the SliverAppBar by ~99589px.
+          Badge(
+            isLabelVisible: activeFilterCount > 0,
+            label: Text('$activeFilterCount'),
+            child: IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Sort & Filter',
+              onPressed: () => _showFilterSheet(context),
+            ),
+          ),
         ],
         emptyIcon: hasFilters || hasSearch
             ? Icons.filter_alt_off_outlined
@@ -340,7 +343,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         AppRoutes.MATERIAL_REQUEST_FORM,
                         arguments: {
                           'name': detailed.name,
-                          'mode': 'view'
+                          'mode': 'view',
                         }),
                     icon: const Icon(Icons.visibility_outlined, size: 18),
                     label: const Text('View'),
@@ -350,7 +353,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         AppRoutes.MATERIAL_REQUEST_FORM,
                         arguments: {
                           'name': detailed.name,
-                          'mode': 'edit'
+                          'mode': 'edit',
                         }),
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Edit'),
@@ -362,7 +365,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                       AppRoutes.MATERIAL_REQUEST_FORM,
                       arguments: {
                         'name': detailed.name,
-                        'mode': 'view'
+                        'mode': 'view',
                       }),
                   icon: const Icon(Icons.visibility_outlined, size: 18),
                   label: const Text('View Details'),
