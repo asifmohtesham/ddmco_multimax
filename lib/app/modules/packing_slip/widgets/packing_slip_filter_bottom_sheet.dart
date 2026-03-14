@@ -58,8 +58,7 @@ class _PackingSlipFilterBottomSheetState
         try {
           _startDate.value = DateTime.parse(dates[0].toString());
           _endDate.value = DateTime.parse(dates[1].toString());
-          _dateRangeController.text =
-              '${dates[0]} - ${dates[1]}';
+          _dateRangeController.text = '${dates[0]} - ${dates[1]}';
         } catch (_) {}
       }
     }
@@ -71,7 +70,7 @@ class _PackingSlipFilterBottomSheetState
     super.dispose();
   }
 
-  // ── Generic searchable bottom-sheet picker ──────────────────────────────────
+  // ── Generic searchable bottom-sheet picker ─────────────────────────────────
 
   void _showSearchPicker({
     required BuildContext context,
@@ -175,7 +174,7 @@ class _PackingSlipFilterBottomSheetState
     );
   }
 
-  // ── Searcher helpers ────────────────────────────────────────────────────────────
+  // ── Searcher helpers ───────────────────────────────────────────────────────
 
   Future<List<_PickerItem>> _searchDNs(String q) async {
     try {
@@ -216,18 +215,16 @@ class _PackingSlipFilterBottomSheetState
     return [];
   }
 
-  // ── Date range picker ─────────────────────────────────────────────────────────
+  // ── Date range picker ──────────────────────────────────────────────────────
 
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange:
-          _startDate.value != null && _endDate.value != null
-              ? DateTimeRange(
-                  start: _startDate.value!, end: _endDate.value!)
-              : null,
+      initialDateRange: _startDate.value != null && _endDate.value != null
+          ? DateTimeRange(start: _startDate.value!, end: _endDate.value!)
+          : null,
     );
     if (picked != null) {
       _startDate.value = picked.start;
@@ -238,7 +235,7 @@ class _PackingSlipFilterBottomSheetState
     }
   }
 
-  // ── Apply / Clear ─────────────────────────────────────────────────────────
+  // ── Apply / Clear ──────────────────────────────────────────────────────────
 
   void _apply() {
     final filters = <String, dynamic>{};
@@ -249,8 +246,12 @@ class _PackingSlipFilterBottomSheetState
     if (_poNo.value.isNotEmpty) {
       filters['custom_po_no'] = ['like', '%${_poNo.value}%'];
     }
+    // Status is sent as docstatus filter since 'status' is virtual.
+    // Frappe Packing Slip: Draft=0, Submitted=1, Cancelled=2
     if (_status.value != null) {
-      filters['status'] = _status.value;
+      final docstatusMap = {'Draft': 0, 'Submitted': 1, 'Cancelled': 2};
+      final ds = docstatusMap[_status.value];
+      if (ds != null) filters['docstatus'] = ds;
     }
     if (_startDate.value != null && _endDate.value != null) {
       filters['creation'] = [
@@ -277,7 +278,7 @@ class _PackingSlipFilterBottomSheetState
     Get.back();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   int get _localFilterCount {
     int count = 0;
@@ -288,7 +289,6 @@ class _PackingSlipFilterBottomSheetState
     return count;
   }
 
-  /// Shared picker-tile widget: InkWell + InputDecorator + clear button.
   Widget _pickerTile({
     required BuildContext context,
     required String label,
@@ -336,17 +336,18 @@ class _PackingSlipFilterBottomSheetState
         ));
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
           title: 'Filter Packing Slips',
           activeFilterCount: _localFilterCount,
+          // 'status' and 'from_case_no' removed — not real DB columns on
+          // Packing Slip; using them in orderBy causes a Frappe FieldError.
           sortOptions: const [
             SortOption('Creation', 'creation'),
             SortOption('Modified', 'modified'),
-            SortOption('Status', 'status'),
             SortOption('Case No', 'from_case_no'),
           ],
           currentSortField: _ctrl.sortField.value,
@@ -357,7 +358,7 @@ class _PackingSlipFilterBottomSheetState
           filterWidgets: [
             const SizedBox(height: 16),
 
-            // ── Delivery Note ───────────────────────────────────────────
+            // ── Delivery Note ────────────────────────────────────────────
             _pickerTile(
               context: context,
               label: 'Delivery Note',
@@ -379,7 +380,7 @@ class _PackingSlipFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Status ──────────────────────────────────────────────────────
+            // ── Status ───────────────────────────────────────────────────
             Align(
               alignment: Alignment.centerLeft,
               child: Text('Status',
@@ -404,7 +405,7 @@ class _PackingSlipFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Creation Date Range ─────────────────────────────────────────
+            // ── Creation Date Range ──────────────────────────────────────
             TextFormField(
               controller: _dateRangeController,
               readOnly: true,
@@ -432,7 +433,7 @@ class _PackingSlipFilterBottomSheetState
   }
 }
 
-// ── Internal picker data model ──────────────────────────────────────────────────
+// ── Internal picker data model ─────────────────────────────────────────────
 
 class _PickerItem {
   final String value;

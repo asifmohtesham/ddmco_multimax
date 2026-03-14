@@ -6,13 +6,15 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class PackingSlipProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  // 'status' intentionally omitted — it is a virtual field on Packing Slip
+  // and causes a Frappe FieldError when requested via getDocumentList.
+  // The model derives status from docstatus in fromJson().
   static const List<String> _listFields = [
     'name',
     'delivery_note',
     'modified',
     'creation',
     'docstatus',
-    'status',
     'custom_po_no',
     'from_case_no',
     'to_case_no',
@@ -39,7 +41,7 @@ class PackingSlipProvider {
     return _apiProvider.getDocument('Packing Slip', name);
   }
 
-  // ── Search helpers for filter pickers ──────────────────────────────────────
+  // ── Search helpers for filter pickers ─────────────────────────────────────
 
   /// Delivery Notes for the DN picker (draft + submitted only).
   Future<Response> searchDeliveryNotes(String query) async {
