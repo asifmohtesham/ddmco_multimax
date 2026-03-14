@@ -70,29 +70,18 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar ─────────────────────────────────────────────────────────
-            Obx(() {
-              final activeFilterCount =
-                  controller.activeFilters.length +
-                  (controller.searchQuery.value.isNotEmpty ? 1 : 0);
-              return SliverAppBar.large(
-                title: const Text('Material Requests'),
-                actions: [
-                  Badge(
-                    isLabelVisible: activeFilterCount > 0,
-                    label: Text('$activeFilterCount'),
-                    child: IconButton(
-                      icon: const Icon(Icons.filter_list),
-                      tooltip: 'Sort & Filter',
-                      onPressed: () => _showFilterSheet(context),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              );
-            }),
+            // ── AppBar ──────────────────────────────────────────────────────
+            SliverAppBar.large(
+              title: const Text('Material Requests'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: () => _showFilterSheet(context),
+                ),
+              ],
+            ),
 
-            // ── Search Bar ────────────────────────────────────────────────────
+            // ── Search Bar ──────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -117,7 +106,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               ),
             ),
 
-            // ── Active filter / search chips ───────────────────────────────────
+            // ── Active filter / search chips ────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 final hasFilters = controller.activeFilters.isNotEmpty;
@@ -144,8 +133,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         Chip(
                           label: Text(
                               '${controller.activeFilters.length} filter${controller.activeFilters.length > 1 ? 's' : ''} applied'),
-                          avatar:
-                              const Icon(Icons.filter_alt, size: 18),
+                          avatar: const Icon(Icons.filter_alt, size: 18),
                           onDeleted: controller.clearFilters,
                         ),
                     ],
@@ -154,9 +142,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               }),
             ),
 
-            // ── List body ───────────────────────────────────────────────────────
+            // ── List body ───────────────────────────────────────────────────
             Obx(() {
-              // First-load spinner
               if (controller.isLoading.value &&
                   controller.materialRequests.isEmpty) {
                 return const SliverFillRemaining(
@@ -164,7 +151,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 );
               }
 
-              // Empty state
               if (controller.materialRequests.isEmpty) {
                 final hasFiltersOrSearch =
                     controller.activeFilters.isNotEmpty ||
@@ -316,7 +302,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     );
   }
 
-  // ── Expanded card detail ─────────────────────────────────────────────────
+  // ── Expanded card detail ───────────────────────────────────────────────
   Widget _buildExpandedContent(BuildContext context, String reqName) {
     return Obx(() {
       final detailed = controller.detailedRequest;
