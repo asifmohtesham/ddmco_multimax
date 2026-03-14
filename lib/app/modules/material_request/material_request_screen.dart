@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
@@ -9,15 +10,6 @@ import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
 import 'package:multimax/app/modules/material_request/widgets/material_request_filter_bottom_sheet.dart';
 
-/// M3-upgraded List View for Material Request.
-/// Mirrors StockEntryScreen / DeliveryNoteScreen UX:
-///   • SliverAppBar.large via GenericListPage
-///   • Pill search bar with debounce
-///   • Active filter + search chips
-///   • GenericDocumentCard with expand → cached detail fetch
-///   • InfoBlock detail grid (matches DeliveryNoteScreen)
-///   • Scroll-to-load-more with "End of results" footer
-///   • RoleGuard-protected FAB
 class MaterialRequestScreen extends StatefulWidget {
   const MaterialRequestScreen({super.key});
 
@@ -67,7 +59,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     final colorScheme = theme.colorScheme;
 
     return Obx(() {
-      // ── Active chip row (search + filters) ──────────────────────────────
       final hasSearch = controller.searchQuery.value.isNotEmpty;
       final hasFilters = controller.activeFilters.isNotEmpty;
 
@@ -106,12 +97,11 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         data: controller.materialRequests,
         onRefresh: () => controller.fetchMaterialRequests(clear: true),
         scrollController: _scrollController,
-        // ── Search bar ──────────────────────────────────────────────────
+        // Required by GenericListPage even when sliverBody overrides rendering
+        itemBuilder: (context, index) => const SizedBox.shrink(),
         onSearch: controller.onSearchChanged,
         searchHint: 'Search ID, Type, Warehouse...',
-        // ── Filter chips row ────────────────────────────────────────────
         filterHeader: filterHeader,
-        // ── Filter sheet trigger ────────────────────────────────────────
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
@@ -119,7 +109,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             onPressed: () => _showFilterSheet(context),
           ),
         ],
-        // ── Empty states ────────────────────────────────────────────────
         emptyIcon: hasFilters || hasSearch
             ? Icons.filter_alt_off_outlined
             : Icons.assignment_outlined,
@@ -130,7 +119,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             : 'Pull to refresh or create a new request.',
         onClearFilters:
             hasFilters || hasSearch ? controller.clearFilters : null,
-        // ── FAB ─────────────────────────────────────────────────────────
         fab: Obx(() => RoleGuard(
               roles: controller.writeRoles.toList(),
               child: FloatingActionButton.extended(
@@ -142,7 +130,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 elevation: 4,
               ),
             )),
-        // ── List items ──────────────────────────────────────────────────
         sliverBody: _buildSliverList(context, theme, colorScheme),
       );
     });
@@ -217,7 +204,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               );
             });
           },
-          childCount: baseCount + 1, // +1 for loader/footer slot
+          childCount: baseCount + 1,
         ),
       );
     });
@@ -247,7 +234,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
             const SizedBox(height: 12),
 
-          // ── Detail grid (Date / Total items) ────────────────────────────
+          // ── Detail grid ─────────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -323,7 +310,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.docstatus == 0) ...[
-                // Delete (Draft only)
                 RoleGuard(
                   roles: controller.writeRoles.toList(),
                   child: IconButton.filled(
@@ -338,7 +324,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Edit (Draft) – fallback to View if no write access
                 RoleGuard(
                   roles: controller.writeRoles.toList(),
                   fallback: FilledButton.tonalIcon(
@@ -372,12 +357,10 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     });
   }
 
-  Widget _buildItemsSummary(
-      BuildContext context, MaterialRequest detailed) {
+  Widget _buildItemsSummary(BuildContext context, MaterialRequest detailed) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final totalQty =
-        detailed.items.fold(0.0, (sum, i) => sum + i.qty);
+    final totalQty = detailed.items.fold(0.0, (sum, i) => sum + i.qty);
     final fulfilledCount =
         detailed.items.where((i) => i.orderedQty >= i.qty).length;
 
