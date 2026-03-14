@@ -6,16 +6,6 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 
-/// M3-upgraded Form View for Material Request.
-/// Design language matches StockEntryFormScreen and DeliveryNoteFormScreen:
-///   • Shared MainAppBar (title + StatusPill + save/reload actions)
-///   • PopScope dirty-state guard
-///   • DefaultTabController with Details / Items tabs
-///   • Section cards layout (same _buildSectionCard helper as DeliveryNote)
-///   • Warehouse banner (_buildWarehouseBanner, mirrors StockEntry FROM→TO)
-///   • _buildCompactField for read-only date/time chips
-///   • Summary card at bottom of Details tab
-///   • Obx-reactive BarcodeInputWidget at bottom of Items tab
 class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   const MaterialRequestFormScreen({super.key});
 
@@ -45,11 +35,9 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
               status: entry?.status,
               isDirty: controller.isDirty.value,
               isSaving: controller.isSaving.value,
-              // Save is available only on editable, dirty documents
               onSave: (isEditable && controller.isDirty.value)
                   ? controller.saveMaterialRequest
                   : null,
-              // Reload: only for persisted docs without unsaved changes
               onReload: (controller.mode != 'new' && !controller.isDirty.value)
                   ? controller.reloadDocument
                   : null,
@@ -65,13 +53,12 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (entry == null) {
-                return const Center(
-                    child: Text('Material request not found.'));
+                return const Center(child: Text('Material request not found.'));
               }
               return TabBarView(
                 children: [
-                  _buildDetailsTab(context, entry, isEditable),
-                  _buildItemsTab(context, entry, isEditable),
+                  _buildDetailsTab(context),
+                  _buildItemsTab(context, isEditable),
                 ],
               );
             }),
@@ -81,17 +68,21 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     });
   }
 
-  // ── Details Tab ─────────────────────────────────────────────────────────
+  // ── Details Tab ────────────────────────────────────────────────────────────
+  //
+  // NOTE: isEditable is NOT passed as a parameter here.
+  // Every interactive child reads `controller.materialRequest.value?.docstatus`
+  // directly inside its own Obx so the tap callbacks always reflect the live
+  // document state — even if the outer Obx hasn’t rebuilt yet.
 
-  Widget _buildDetailsTab(
-      BuildContext context, dynamic entry, bool isEditable) {
+  Widget _buildDetailsTab(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Type + Warehouse banner ────────────────────────────────────
-          _buildTypeBanner(context, isEditable),
+          _buildTypeBanner(context),
 
           const SizedBox(height: 16),
 
@@ -99,33 +90,38 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           _buildSectionCard(
             title: 'Schedule',
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildCompactField(
-                      label: 'Date',
-                      value: controller.transactionDateController.text,
-                      icon: Icons.calendar_today_outlined,
-                      onTap: isEditable
-                          ? () => controller
-                              .setDate(controller.transactionDateController)
-                          : null,
+              // Obx here so the date values AND tap callbacks are always live
+              Obx(() {
+                final isEditable =
+                    controller.materialRequest.value?.docstatus == 0;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _buildCompactField(
+                        label: 'Date',
+                        value: controller.transactionDateController.text,
+                        icon: Icons.calendar_today_outlined,
+                        onTap: isEditable
+                            ? () => controller
+                                .setDate(controller.transactionDateController)
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildCompactField(
-                      label: 'Required By',
-                      value: controller.scheduleDateController.text,
-                      icon: Icons.event_outlined,
-                      onTap: isEditable
-                          ? () => controller
-                              .setDate(controller.scheduleDateController)
-                          : null,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildCompactField(
+                        label: 'Required By',
+                        value: controller.scheduleDateController.text,
+                        icon: Icons.event_outlined,
+                        onTap: isEditable
+                            ? () => controller
+                                .setDate(controller.scheduleDateController)
+                            : null,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                );
+              }),
             ],
           ),
 
@@ -136,23 +132,21 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             title: 'Summary',
             children: [
               Obx(() {
-                final items =
-                    controller.materialRequest.value?.items ?? [];
-                final totalQty =
-                    items.fold(0.0, (sum, i) => sum + i.qty);
+                final items = controller.materialRequest.value?.items ?? [];
+                final totalQty = items.fold(0.0, (sum, i) => sum + i.qty);
                 final fulfilledCount =
                     items.where((i) => i.orderedQty >= i.qty).length;
                 return Column(
                   children: [
-                    _buildSummaryRow('Total Lines',
-                        '${items.length}'),
+                    _buildSummaryRow('Total Lines', '${items.length}'),
                     const Divider(),
-                    _buildSummaryRow('Total Qty',
-                        totalQty.toStringAsFixed(2)),
+                    _buildSummaryRow('Total Qty', totalQty.toStringAsFixed(2)),
                     const Divider(),
-                    _buildSummaryRow('Ordered Lines',
-                        '$fulfilledCount / ${items.length}',
-                        isBold: true),
+                    _buildSummaryRow(
+                      'Ordered Lines',
+                      '$fulfilledCount / ${items.length}',
+                      isBold: true,
+                    ),
                   ],
                 );
               }),
@@ -165,11 +159,19 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  /// Gradient banner: type row + warehouse picker.
-  /// Mirrors the FROM→TO card in StockEntryFormScreen.
-  Widget _buildTypeBanner(BuildContext context, bool isEditable) {
+  // ── Type + Warehouse Banner ───────────────────────────────────────────────
+  //
+  // isEditable is derived HERE inside the Obx so every rebuild of this widget
+  // (e.g. when selectedType changes) re-reads docstatus from the controller
+  // and always passes the correct live onTap callbacks to InkWell.
+
+  Widget _buildTypeBanner(BuildContext context) {
     return Obx(() {
+      // ⭐ Derive isEditable here, not from an outer parameter
+      final isEditable = controller.materialRequest.value?.docstatus == 0;
       final type = controller.selectedType.value;
+      final warehouseText = controller.setWarehouseController.text;
+
       return Container(
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.all(16),
@@ -184,52 +186,79 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         ),
         child: Column(
           children: [
-            // ── Type row ──────────────────────────────────────────────
+            // ── Request Type row ──────────────────────────────────────────
             InkWell(
+              // ⭐ onTap uses the live isEditable captured in this Obx frame
               onTap: isEditable ? () => _showTypePicker(context) : null,
               borderRadius: BorderRadius.circular(8),
-              child: Row(
-                children: [
-                  Icon(Icons.category_outlined,
-                      size: 20, color: Colors.deepPurple.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      type,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple.shade900,
-                          fontSize: 16),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Row(
+                  children: [
+                    Icon(Icons.category_outlined,
+                        size: 20, color: Colors.deepPurple.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'REQUEST TYPE',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              if (isEditable) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit,
+                                    size: 10, color: Colors.grey.shade500),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            type,
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepPurple.shade900,
+                                fontSize: 15),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (isEditable)
-                    const Icon(Icons.arrow_drop_down,
-                        color: Colors.blueGrey),
-                ],
+                    if (isEditable)
+                      Icon(Icons.arrow_drop_down, color: Colors.blueGrey.shade400),
+                  ],
+                ),
               ),
             ),
 
-            const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                _typeHelperText(type),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.blueGrey.shade700),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 28, top: 2, bottom: 4),
+                child: Text(
+                  _typeHelperText(type),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.blueGrey.shade700),
+                ),
               ),
             ),
 
-            const Divider(height: 24),
+            const Divider(height: 20),
 
-            // ── Target Warehouse ──────────────────────────────────────
+            // ── Target Warehouse row ──────────────────────────────────────
             InkWell(
+              // ⭐ onTap uses the live isEditable captured in this Obx frame
               onTap: isEditable
                   ? () => controller.showWarehousePicker(forItem: false)
                   : null,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    vertical: 4, horizontal: 2),
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
                 child: Row(
                   children: [
                     Icon(Icons.warehouse_outlined,
@@ -251,23 +280,19 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                               if (isEditable) ...[
                                 const SizedBox(width: 4),
                                 Icon(Icons.edit,
-                                    size: 10,
-                                    color: Colors.grey.shade500),
+                                    size: 10, color: Colors.grey.shade500),
                               ],
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            controller.setWarehouseController.text
-                                    .isNotEmpty
-                                ? controller.setWarehouseController.text
+                            warehouseText.isNotEmpty
+                                ? warehouseText
                                 : 'Select Warehouse',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: controller
-                                      .setWarehouseController.text
-                                      .isNotEmpty
+                              color: warehouseText.isNotEmpty
                                   ? Colors.black87
                                   : Colors.grey,
                             ),
@@ -277,6 +302,9 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                         ],
                       ),
                     ),
+                    if (isEditable)
+                      Icon(Icons.chevron_right,
+                          color: Colors.blueGrey.shade300),
                   ],
                 ),
               ),
@@ -289,24 +317,17 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
 
   // ── Items Tab ────────────────────────────────────────────────────────────
 
-  Widget _buildItemsTab(
-      BuildContext context, dynamic entry, bool isEditable) {
+  Widget _buildItemsTab(BuildContext context, bool isEditable) {
     return Stack(
       children: [
         Obx(() {
           final items = controller.materialRequest.value?.items ?? [];
-          if (items.isEmpty && !isEditable) {
-            return _buildEmptyState();
-          }
-          if (items.isEmpty) {
-            return _buildEmptyState();
-          }
+          if (items.isEmpty) return _buildEmptyState();
           return ListView.separated(
             controller: controller.scrollController,
-            padding:
-                const EdgeInsets.only(top: 8, bottom: 100),
+            padding: const EdgeInsets.only(top: 8, bottom: 100),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 0),
+            separatorBuilder: (_, __) => const SizedBox.shrink(),
             itemBuilder: (ctx, i) => MaterialRequestItemCard(
               item: items[i],
               onTap: isEditable
@@ -318,7 +339,6 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             ),
           );
         }),
-        // ── Barcode scan bar (editable documents only) ────────────────
         if (isEditable)
           Positioned(
             left: 0,
@@ -334,7 +354,6 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                       offset: Offset(0, -4))
                 ],
               ),
-              padding: const EdgeInsets.only(bottom: 0),
               child: Obx(() => BarcodeInputWidget(
                     onScan: controller.scanBarcode,
                     isLoading: controller.isScanning.value,
@@ -348,9 +367,8 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Shared helpers (DRY — identical contract to StockEntry / DeliveryNote) ─
+  // ── Shared helpers ───────────────────────────────────────────────────────────
 
-  /// Section card — same as DeliveryNoteFormScreen._buildSectionCard.
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
     return Card(
@@ -377,7 +395,6 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  /// Compact date/time field — same contract as StockEntryFormScreen._buildCompactField.
   Widget _buildCompactField({
     required String label,
     required String? value,
@@ -387,24 +404,39 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        color: onTap != null ? Colors.white : Colors.grey.shade50,
+        border: Border.all(
+            color: onTap != null
+                ? Colors.grey.shade300
+                : Colors.grey.shade200),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey),
+          Icon(icon,
+              size: 16,
+              color: onTap != null ? Colors.grey.shade600 : Colors.grey.shade400),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style:
-                      const TextStyle(fontSize: 10, color: Colors.grey)),
-              Text(value ?? '—',
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(
+                value ?? '—',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: onTap != null
+                        ? Colors.black87
+                        : Colors.grey.shade500),
+              ),
             ],
           ),
+          const Spacer(),
+          if (onTap != null)
+            Icon(Icons.edit_calendar_outlined,
+                size: 14, color: Colors.grey.shade400),
         ],
       ),
     );
@@ -413,9 +445,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         borderRadius: BorderRadius.circular(12), onTap: onTap, child: content);
   }
 
-  /// Summary row — same as StockEntryFormScreen._buildSummaryRow.
-  Widget _buildSummaryRow(String label, String value,
-      {bool isBold = false}) {
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
@@ -457,11 +487,10 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Type Picker (bottom-sheet) ────────────────────────────────────────────
+  // ── Type Picker bottom-sheet ───────────────────────────────────────────────
 
   void _showTypePicker(BuildContext context) {
-    final RxList<String> filtered =
-        RxList<String>(controller.requestTypes);
+    final RxList<String> filtered = RxList<String>(controller.requestTypes);
     final searchCtrl = TextEditingController();
 
     Get.bottomSheet(
@@ -498,8 +527,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                       labelText: 'Search Types',
                       prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(),
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 16),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
                       if (val.isEmpty) {
@@ -540,8 +568,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                               isThreeLine: true,
                               trailing: isSelected
                                   ? Icon(Icons.check_circle,
-                                      color:
-                                          Theme.of(context).primaryColor)
+                                      color: Theme.of(context).primaryColor)
                                   : null,
                               onTap: () {
                                 controller.onTypeChanged(t);
