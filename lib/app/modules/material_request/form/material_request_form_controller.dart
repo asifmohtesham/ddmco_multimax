@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:dio/dio.dart'; // Import Dio
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -11,8 +11,10 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class MaterialRequestFormController extends GetxController with OptimisticLockingMixin {
-  final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
+class MaterialRequestFormController extends GetxController
+    with OptimisticLockingMixin {
+  final MaterialRequestProvider _provider =
+      Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
 
@@ -37,25 +39,36 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     'Material Transfer',
     'Material Issue',
     'Manufacture',
-    'Customer Provided'
+    'Customer Provided',
   ];
 
   // Warehouse Data
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // Item Form State
-  final bsQtyController = TextEditingController();
-  final bsDateController = TextEditingController();
-  final bsWarehouseController = TextEditingController();
+  // ── Item Sheet State ──────────────────────────────────────────────────────
+  //
+  // itemFormKey  — required by GlobalItemFormSheet for Form.validate().
+  // bsMaxQty     — displayed as "Available" hint in qty field (set to 0 for MR
+  //                since there is no stock-balance concept here).
+  // The rest mirror StockEntryFormController / DeliveryNoteFormController exactly.
 
-  // Item Sheet State
+  final itemFormKey = GlobalKey<FormState>();
+
+  final bsQtyController = TextEditingController();
+  final bsWarehouseController = TextEditingController();
+  // kept for legacy compat (schedule date pre-fill in sheet)
+  final bsDateController = TextEditingController();
+
+  var bsMaxQty = 0.0.obs;
+
   var currentItemCode = '';
   var currentItemName = '';
   var currentUom = '';
   var currentItemNameKey = RxnString();
   var isItemSheetOpen = false.obs;
   var isSheetValid = false.obs;
+  var isAddingItem = false.obs;
 
   final TextEditingController barcodeController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -73,7 +86,6 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
-  // 1. IMPLEMENT MIXIN
   @override
   Future<void> reloadDocument() async {
     await fetchMaterialRequest();
@@ -93,19 +105,29 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     super.onClose();
   }
 
+  // ── Warehouse ─────────────────────────────────────────────────────────────
+
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      final response = await _apiProvider.getDocumentList(
+        'Warehouse',
+        filters: {'is_group': 0},
+        limit: 100,
+      );
       if (response.statusCode == 200 && response.data['data'] != null) {
-        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        warehouses.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      debugPrint('Error fetching warehouses: $e');
     } finally {
       isFetchingWarehouses.value = false;
     }
   }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   void _initNewRequest() {
     final now = DateTime.now();
@@ -154,7 +176,7 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
-  // --- Dirty Check & Navigation ---
+  // ── Dirty / Navigation ────────────────────────────────────────────────────
 
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
@@ -171,7 +193,7 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
-  // --- Form Interactions ---
+  // ── Header field interactions ─────────────────────────────────────────────
 
   void onTypeChanged(String? val) {
     if (val != null && val != selectedType.value) {
@@ -180,9 +202,7 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
-  void onWarehouseChanged(String val) {
-    _markDirty();
-  }
+  void onWarehouseChanged(String val) => _markDirty();
 
   void setDate(TextEditingController controller) async {
     if (materialRequest.value?.docstatus != 0) return;
@@ -199,6 +219,8 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
+  // ── Warehouse picker ──────────────────────────────────────────────────────
+
   void showWarehousePicker({bool forItem = false}) {
     final searchCtrl = TextEditingController();
     final filteredList = warehouses.toList().obs;
@@ -213,7 +235,9 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
         ),
         child: Column(
           children: [
-            const Text('Select Warehouse', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text('Select Warehouse',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
             TextField(
               controller: searchCtrl,
@@ -221,22 +245,27 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
                 hintText: 'Search...',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
               onChanged: (val) {
                 if (val.isEmpty) {
                   filteredList.assignAll(warehouses);
                 } else {
-                  filteredList.assignAll(warehouses.where((w) => w.toLowerCase().contains(val.toLowerCase())));
+                  filteredList.assignAll(warehouses.where((w) =>
+                      w.toLowerCase().contains(val.toLowerCase())));
                 }
               },
             ),
             const SizedBox(height: 12),
             Expanded(
               child: Obx(() {
-                if (isFetchingWarehouses.value) return const Center(child: CircularProgressIndicator());
-                if (filteredList.isEmpty) return const Center(child: Text("No warehouses found"));
-
+                if (isFetchingWarehouses.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (filteredList.isEmpty) {
+                  return const Center(child: Text('No warehouses found'));
+                }
                 return ListView.separated(
                   itemCount: filteredList.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
@@ -247,6 +276,7 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
                       onTap: () {
                         if (forItem) {
                           bsWarehouseController.text = wh;
+                          validateSheet();
                         } else {
                           setWarehouseController.text = wh;
                           onWarehouseChanged(wh);
@@ -265,27 +295,37 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     );
   }
 
-  // --- Item Management ---
+  // ── Item Sheet ────────────────────────────────────────────────────────────
 
-  void openItemSheet({MaterialRequestItem? item, String? newCode, String? newName}) {
+  void openItemSheet({
+    MaterialRequestItem? item,
+    String? newCode,
+    String? newName,
+  }) {
+    // Reset sheet state
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
     bsWarehouseController.clear();
+    bsMaxQty.value = 0;
     isSheetValid.value = false;
 
     if (item != null) {
+      // ── Edit mode ──────────────────────────────────────────────────────
       currentItemCode = item.itemCode;
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
-      bsQtyController.text = item.qty.toString();
+      bsQtyController.text =
+          item.qty % 1 == 0 ? item.qty.toInt().toString() : item.qty.toString();
       bsWarehouseController.text = item.warehouse ?? '';
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
+      // ── Add mode (from barcode scan) ───────────────────────────────────
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
       bsWarehouseController.text = setWarehouseController.text;
     } else {
+      // ── Add mode (manual) ──────────────────────────────────────────────
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
@@ -296,37 +336,56 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     Get.bottomSheet(
       MaterialRequestItemFormSheet(controller: this),
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     ).whenComplete(() {
       isItemSheetOpen.value = false;
     });
   }
+
+  // ── Sheet validation ──────────────────────────────────────────────────────
 
   void validateSheet() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     isSheetValid.value = qty > 0 && currentItemCode.isNotEmpty;
   }
 
-  void adjustSheetQty(double delta) {
+  /// Increment / decrement qty by [delta] steps (pass 1 or -1).
+  /// Mirrors StockEntryFormController.adjustSheetQty exactly:
+  ///   - integer display when value has no fractional part
+  ///   - minimum value is 0 (never goes negative)
+  ///   - calls validateSheet() after every change
+  void adjustSheetQty(int delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta);
-    if (newVal >= 0) {
-      bsQtyController.text = newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
-      validateSheet();
-    }
+    final newVal = current + delta;
+    if (newVal < 0) return;
+    bsQtyController.text =
+        newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
+    validateSheet();
   }
 
+  // ── Save / Delete item ────────────────────────────────────────────────────
+
+  /// Called by GlobalItemFormSheet.onSubmit.
+  /// IMPORTANT: _markDirty() is called BEFORE Navigator.pop() to avoid a
+  /// timing issue where the sheet route is gone before the reactive flag is set.
+  /// The sheet itself calls Navigator.of(context).pop() — NOT Get.back() —
+  /// to avoid the GetX snackbar crash (LateInitializationError on
+  /// AnimationController when a snackbar is queued but not yet displayed).
   Future<void> saveItem() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) return;
-    if (currentItemCode.isEmpty) return;
+    if (qty <= 0 || currentItemCode.isEmpty) return;
 
-    final currentItems = materialRequest.value?.items.toList() ?? [];
+    isAddingItem.value = true;
+    try {
+      final currentItems = materialRequest.value?.items.toList() ?? [];
 
-    if (currentItemNameKey.value != null) {
-      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey.value);
-      if (index != -1) {
-        final existing = currentItems[index];
-        currentItems[index] = MaterialRequestItem(
+      if (currentItemNameKey.value != null) {
+        // ── Update existing item ───────────────────────────────────────
+        final index = currentItems
+            .indexWhere((i) => i.name == currentItemNameKey.value);
+        if (index != -1) {
+          final existing = currentItems[index];
+          currentItems[index] = MaterialRequestItem(
             name: existing.name,
             itemCode: existing.itemCode,
             itemName: existing.itemName,
@@ -336,45 +395,53 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
             actualQty: existing.actualQty,
             warehouse: bsWarehouseController.text,
             uom: existing.uom,
-            description: existing.description
-        );
+            description: existing.description,
+          );
+        }
+      } else {
+        // ── Add new item ───────────────────────────────────────────────
+        currentItems.add(MaterialRequestItem(
+          name: 'local_${DateTime.now().millisecondsSinceEpoch}',
+          itemCode: currentItemCode,
+          itemName: currentItemName,
+          qty: qty,
+          warehouse: bsWarehouseController.text,
+          description: currentItemName,
+        ));
       }
-    } else {
-      currentItems.add(MaterialRequestItem(
-        name: 'local_${DateTime.now().millisecondsSinceEpoch}',
-        itemCode: currentItemCode,
-        itemName: currentItemName,
-        qty: qty,
-        warehouse: bsWarehouseController.text,
-        description: currentItemName,
-      ));
+
+      materialRequest.update((val) {
+        val?.items.assignAll(currentItems);
+      });
+
+      // Mark dirty BEFORE the sheet closes so the PopScope guard in the
+      // form screen immediately reflects the unsaved state.
+      _markDirty();
+
+      // Sheet is closed by GlobalItemFormSheet._popSheet (Navigator.pop)
+      // after onSubmit returns — no explicit Get.back() here.
+    } finally {
+      isAddingItem.value = false;
     }
-
-    materialRequest.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-
-    Get.back(); // Close sheet
-    _markDirty();
   }
 
   void deleteItem(MaterialRequestItem item) {
     GlobalDialog.showConfirmation(
-        title: 'Remove Item?',
-        message: 'Remove ${item.itemCode}?',
-        onConfirm: () {
-          final currentItems = materialRequest.value?.items.toList() ?? [];
-          currentItems.remove(item);
-          materialRequest.update((val) => val?.items.assignAll(currentItems));
-          _markDirty();
-        }
+      title: 'Remove Item?',
+      message: 'Remove ${item.itemCode}?',
+      onConfirm: () {
+        final currentItems = materialRequest.value?.items.toList() ?? [];
+        currentItems.remove(item);
+        materialRequest.update((val) => val?.items.assignAll(currentItems));
+        _markDirty();
+      },
     );
   }
 
+  // ── Barcode scan ──────────────────────────────────────────────────────────
+
   Future<void> scanBarcode(String code) async {
     if (code.isEmpty) return;
-
-    // 2. USE GUARD
     if (checkStaleAndBlock()) return;
 
     isScanning.value = true;
@@ -382,8 +449,8 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
       final result = await _scanService.processScan(code);
       if (result.isSuccess && result.itemData != null) {
         openItemSheet(
-            newCode: result.itemData!.itemCode,
-            newName: result.itemData!.itemName
+          newCode: result.itemData!.itemCode,
+          newName: result.itemData!.itemName,
         );
       } else {
         GlobalSnackbar.error(message: 'Item not found');
@@ -396,10 +463,10 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
     }
   }
 
+  // ── Save document ─────────────────────────────────────────────────────────
+
   Future<void> saveMaterialRequest() async {
     if (isSaving.value) return;
-
-    // 3. USE GUARD
     if (checkStaleAndBlock()) return;
 
     isSaving.value = true;
@@ -409,7 +476,6 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
       'transaction_date': transactionDateController.text,
       'schedule_date': scheduleDateController.text,
       'set_warehouse': setWarehouseController.text,
-      // 4. ADD MODIFIED TIMESTAMP
       'modified': materialRequest.value?.modified,
       'items': materialRequest.value?.items.map((i) {
         final Map<String, dynamic> map = {
@@ -436,7 +502,6 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
           await fetchMaterialRequest();
           GlobalSnackbar.success(message: 'Material Request Created');
         } else {
-          // Fallback if exception is not thrown but status is not 200 (unlikely with dio)
           GlobalSnackbar.error(message: 'Failed to create request');
         }
       } else {
@@ -449,15 +514,17 @@ class MaterialRequestFormController extends GetxController with OptimisticLockin
         }
       }
     } on DioException catch (e) {
-      // 5. HANDLE CONFLICT
       if (handleVersionConflict(e)) return;
 
       String errorMessage = 'Save failed';
-      if (e.response != null && e.response!.data != null) {
-        if (e.response!.data is Map && e.response!.data['exception'] != null) {
-          errorMessage = e.response!.data['exception'].toString().split(':').last.trim();
-        } else if (e.response!.data is Map && e.response!.data['_server_messages'] != null) {
-          // Provide a generic message if server messages are complex JSON
+      if (e.response?.data is Map) {
+        if (e.response!.data['exception'] != null) {
+          errorMessage = e.response!.data['exception']
+              .toString()
+              .split(':')
+              .last
+              .trim();
+        } else if (e.response!.data['_server_messages'] != null) {
           errorMessage = 'Validation Error: Check form details';
         }
       }
