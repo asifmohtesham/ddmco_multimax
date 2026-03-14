@@ -311,7 +311,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
-    Get.back();
+    // Use Navigator directly to avoid Get.back() which internally calls
+    // closeCurrentSnackbar() — that crashes when a snackbar is enqueued but
+    // its AnimationController (a late field) hasn't been initialised yet.
+    final ctx = Get.context;
+    if (ctx != null && ctx.mounted) {
+      Navigator.of(ctx).pop();
+    }
+
     barcodeController.clear();
     _checkForChanges();
 
@@ -852,10 +859,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
-  /// Opens the edit sheet for [item].
-  ///
-  /// Shows a loading indicator on the edit button while the batch balance is
-  /// being fetched, then opens the sheet with a smooth fade+slide transition.
   Future<void> editItem(DeliveryNoteItem item) async {
     isLoadingItemEdit.value = true;
     double fetchedQty = 0.0;
@@ -905,8 +908,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsRackBalance.value = rackStockMap[item.rack] ?? 0.0;
     }
 
-    // Use Get.bottomSheet for the sheet itself; isItemSheetOpen is already
-    // set inside initBottomSheet so the barcode bar hides immediately.
     await Get.bottomSheet(
       _FadeSlideSheet(
         child: DraggableScrollableSheet(
@@ -1037,8 +1038,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 }
 
 // ---------------------------------------------------------------------------
-// Private fade+slide wrapper used for all bottom sheet opens in this module.
-// Placed here so it can be reused by both editItem() and scanBarcode().
+// Private fade+slide wrapper — reused by editItem() and scanBarcode().
 // ---------------------------------------------------------------------------
 class _FadeSlideSheet extends StatelessWidget {
   final Widget child;
