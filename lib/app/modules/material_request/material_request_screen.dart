@@ -46,10 +46,13 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   }
 
   void _showFilterSheet(BuildContext context) {
-    Get.bottomSheet(
-      const MaterialRequestFilterBottomSheet(),
+    // Mirrors StockEntryScreen: isScrollControlled + transparent bg so
+    // GlobalFilterBottomSheet's own margin/radius shows correctly.
+    showModalBottomSheet(
+      context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      builder: (_) => const MaterialRequestFilterBottomSheet(),
     );
   }
 
@@ -61,6 +64,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     return Obx(() {
       final hasSearch = controller.searchQuery.value.isNotEmpty;
       final hasFilters = controller.activeFilters.isNotEmpty;
+      final activeFilterCount = controller.activeFilters.length +
+          (controller.searchQuery.value.isNotEmpty ? 1 : 0);
 
       Widget? filterHeader;
       if (hasSearch || hasFilters) {
@@ -97,23 +102,28 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         data: controller.materialRequests,
         onRefresh: () => controller.fetchMaterialRequests(clear: true),
         scrollController: _scrollController,
-        // Required by GenericListPage even when sliverBody overrides rendering
         itemBuilder: (context, index) => const SizedBox.shrink(),
         onSearch: controller.onSearchChanged,
         searchHint: 'Search ID, Type, Warehouse...',
         filterHeader: filterHeader,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            tooltip: 'Filter',
-            onPressed: () => _showFilterSheet(context),
-          ),
+          // Badge shows total active filter + search count
+          Obx(() => Badge(
+                isLabelVisible: activeFilterCount > 0,
+                label: Text('$activeFilterCount'),
+                child: IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  tooltip: 'Sort & Filter',
+                  onPressed: () => _showFilterSheet(context),
+                ),
+              )),
         ],
         emptyIcon: hasFilters || hasSearch
             ? Icons.filter_alt_off_outlined
             : Icons.assignment_outlined,
-        emptyTitle:
-            hasFilters || hasSearch ? 'No Matching Requests' : 'No Material Requests',
+        emptyTitle: hasFilters || hasSearch
+            ? 'No Matching Requests'
+            : 'No Material Requests',
         emptyMessage: hasFilters || hasSearch
             ? 'Try adjusting your filters or search query.'
             : 'Pull to refresh or create a new request.',
@@ -145,7 +155,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
       return SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            // Footer slot
             if (index >= baseCount) {
               if (showLoader) {
                 return const Center(
@@ -170,7 +179,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             final req = requests[index];
 
             return Obx(() {
-              final isExpanded = controller.expandedRequestId.value == req.name;
+              final isExpanded =
+                  controller.expandedRequestId.value == req.name;
               final isLoadingDetails = controller.isLoadingDetails.value &&
                   controller.detailedRequest?.name != req.name;
 
@@ -199,8 +209,9 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 isExpanded: isExpanded,
                 isLoadingDetails: isLoadingDetails && isExpanded,
                 onTap: () => controller.toggleExpand(req.name),
-                expandedContent:
-                    isExpanded ? _buildExpandedContent(context, req.name) : null,
+                expandedContent: isExpanded
+                    ? _buildExpandedContent(context, req.name)
+                    : null,
               );
             });
           },
@@ -223,18 +234,17 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Warehouse banner ────────────────────────────────────────────
-          if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
+          if (detailed.setWarehouse != null &&
+              detailed.setWarehouse!.isNotEmpty)
             InfoBlock(
               label: 'Target Warehouse',
               value: detailed.setWarehouse!,
               icon: Icons.warehouse_outlined,
             ),
-
-          if (detailed.setWarehouse != null && detailed.setWarehouse!.isNotEmpty)
+          if (detailed.setWarehouse != null &&
+              detailed.setWarehouse!.isNotEmpty)
             const SizedBox(height: 12),
 
-          // ── Detail grid ─────────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -264,7 +274,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
 
           const SizedBox(height: 12),
 
-          // ── Item count summary ──────────────────────────────────────────
           if (detailed.items.isNotEmpty)
             InfoBlock(
               label: 'Items',
@@ -274,11 +283,12 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
 
           const SizedBox(height: 16),
 
-          // ── Audit row ───────────────────────────────────────────────────
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              color: colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -289,8 +299,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 Expanded(
                   child: Text(
                     detailed.owner ?? '—',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: colorScheme.onSurfaceVariant),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -305,7 +315,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
 
           const SizedBox(height: 16),
 
-          // ── Actions ─────────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -329,14 +338,20 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                   fallback: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                         AppRoutes.MATERIAL_REQUEST_FORM,
-                        arguments: {'name': detailed.name, 'mode': 'view'}),
+                        arguments: {
+                          'name': detailed.name,
+                          'mode': 'view'
+                        }),
                     icon: const Icon(Icons.visibility_outlined, size: 18),
                     label: const Text('View'),
                   ),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                         AppRoutes.MATERIAL_REQUEST_FORM,
-                        arguments: {'name': detailed.name, 'mode': 'edit'}),
+                        arguments: {
+                          'name': detailed.name,
+                          'mode': 'edit'
+                        }),
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Edit'),
                   ),
@@ -345,7 +360,10 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 FilledButton.tonalIcon(
                   onPressed: () => Get.toNamed(
                       AppRoutes.MATERIAL_REQUEST_FORM,
-                      arguments: {'name': detailed.name, 'mode': 'view'}),
+                      arguments: {
+                        'name': detailed.name,
+                        'mode': 'view'
+                      }),
                   icon: const Icon(Icons.visibility_outlined, size: 18),
                   label: const Text('View Details'),
                 ),
@@ -357,7 +375,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     });
   }
 
-  Widget _buildItemsSummary(BuildContext context, MaterialRequest detailed) {
+  Widget _buildItemsSummary(
+      BuildContext context, MaterialRequest detailed) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final totalQty = detailed.items.fold(0.0, (sum, i) => sum + i.qty);
@@ -370,7 +389,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         children: [
           _buildMiniStat(context, '${detailed.items.length}', 'Lines'),
           const SizedBox(width: 16),
-          _buildMiniStat(context, totalQty.toStringAsFixed(0), 'Total Qty'),
+          _buildMiniStat(
+              context, totalQty.toStringAsFixed(0), 'Total Qty'),
           const SizedBox(width: 16),
           _buildMiniStat(context, '$fulfilledCount', 'Ordered',
               color: fulfilledCount == detailed.items.length
