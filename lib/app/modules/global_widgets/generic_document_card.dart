@@ -26,12 +26,7 @@ class GenericDocumentCard extends StatelessWidget {
   });
 
   // ---------------------------------------------------------------------------
-  // Frappe / ERPNext canonical status colours.
-  // Matches the colour system used in StatusPill:
-  //   Draft      → Red     (#E54D4D)
-  //   Submitted  → Green   (#36A564)
-  //   Cancelled  → Grey    (#5A6673)
-  //   default    → transparent (no accent)
+  // Frappe / ERPNext canonical status colours — matches StatusPill exactly.
   // ---------------------------------------------------------------------------
   static Color _statusAccentColor(String? status) {
     switch (status) {
@@ -39,17 +34,16 @@ class GenericDocumentCard extends StatelessWidget {
       case 'Active':
       case 'Completed':
       case 'Paid':
-        return const Color(0xFF36A564); // Frappe success green
+        return const Color(0xFF36A564);
       case 'Draft':
+        return const Color(0xFFE54D4D);
       case 'Cancelled':
       case 'Rejected':
-        return status == 'Draft'
-            ? const Color(0xFFE54D4D)  // Frappe danger red
-            : const Color(0xFF5A6673); // Frappe grey
+        return const Color(0xFF5A6673);
       case 'Pending':
       case 'In Progress':
       case 'Open':
-        return const Color(0xFFFFA00A); // Frappe warning orange
+        return const Color(0xFFFFA00A);
       default:
         return Colors.transparent;
     }
@@ -60,6 +54,7 @@ class GenericDocumentCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final accentColor = _statusAccentColor(status);
+    final hasAccent = accentColor != Colors.transparent;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
@@ -78,13 +73,8 @@ class GenericDocumentCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ----------------------------------------------------------------
-              // Left-edge Frappe status accent bar — 4px wide, full card height.
-              // Lets users scan document state while scrolling without reading
-              // the StatusPill text.
-              // Hidden (transparent) when status is unknown/default.
-              // ----------------------------------------------------------------
-              if (accentColor != Colors.transparent)
+              // Left-edge Frappe status accent bar
+              if (hasAccent)
                 Container(
                   width: 4,
                   decoration: BoxDecoration(
@@ -96,20 +86,23 @@ class GenericDocumentCard extends StatelessWidget {
                   ),
                 ),
 
-              // Main card content
+              // Card body
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  // Reduce left padding slightly when accent bar is present
+                  // so total leading space stays visually consistent.
+                  padding: EdgeInsets.fromLTRB(
+                      hasAccent ? 12 : 16, 14, 16, 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header Row
+                      // ── Header: title / subtitle / status pill ──────────
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (leading != null) ...[
                             leading!,
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 12),
                           ],
                           Expanded(
                             child: Column(
@@ -117,19 +110,21 @@ class GenericDocumentCard extends StatelessWidget {
                               children: [
                                 Text(
                                   title,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                                  style:
+                                      theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
                                     color: colorScheme.onSurface,
                                   ),
-                                  maxLines: 2,
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Text(
                                   subtitle,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: colorScheme.onSurfaceVariant,
                                     fontFamily: 'ShureTechMono',
+                                    fontSize: 11,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -144,70 +139,85 @@ class GenericDocumentCard extends StatelessWidget {
                         ],
                       ),
 
-                      if (stats.isNotEmpty || isExpanded)
-                        const SizedBox(height: 16),
-
-                      // Stats Row + Expand chevron
-                      if (stats.isNotEmpty)
+                      // ── Stats row + expand chevron ───────────────────────
+                      if (stats.isNotEmpty) ...[
+                        const SizedBox(height: 10),
                         Row(
                           children: [
-                            ...stats.expand(
-                                (widget) => [widget, const SizedBox(width: 16)]),
-                            const Spacer(),
+                            // Stats wrap so a 3-stat row doesn't overflow
+                            Expanded(
+                              child: Wrap(
+                                spacing: 12,
+                                runSpacing: 4,
+                                children: stats,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Tooltip(
-                              message: isExpanded ? 'Collapse' : 'Show details',
+                              message:
+                                  isExpanded ? 'Collapse' : 'Show details',
                               child: AnimatedRotation(
                                 turns: isExpanded ? 0.5 : 0.0,
-                                duration: const Duration(milliseconds: 300),
-                                child: Icon(Icons.expand_more,
-                                    color: colorScheme.onSurfaceVariant),
+                                duration:
+                                    const Duration(milliseconds: 300),
+                                child: Icon(
+                                  Icons.expand_more,
+                                  size: 20,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ],
-                        )
-                      else if (isExpanded)
+                        ),
+                      ] else if (isExpanded)
                         Align(
                           alignment: Alignment.centerRight,
                           child: Tooltip(
                             message: 'Collapse',
                             child: AnimatedRotation(
-                              turns: isExpanded ? 0.5 : 0.0,
+                              turns: 0.5,
                               duration: const Duration(milliseconds: 300),
                               child: Icon(Icons.expand_more,
+                                  size: 20,
                                   color: colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ),
 
-                      // Expanded Content
+                      // ── Expanded section ─────────────────────────────────
                       AnimatedSize(
-                        duration: const Duration(milliseconds: 300),
+                        duration: const Duration(milliseconds: 280),
                         curve: Curves.easeInOut,
                         alignment: Alignment.topCenter,
                         child: !isExpanded
                             ? const SizedBox.shrink()
                             : Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Divider(
-                                        color: colorScheme.outlineVariant,
-                                        height: 1),
-                                  ),
+                                  const SizedBox(height: 10),
+                                  Divider(
+                                      height: 1,
+                                      color: colorScheme.outlineVariant),
+                                  const SizedBox(height: 12),
                                   if (isLoadingDetails)
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                          vertical: 16.0),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12.0),
                                       child: Center(
-                                          child: SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2))),
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child:
+                                              CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: colorScheme
+                                                      .primary),
+                                        ),
+                                      ),
                                     )
                                   else if (expandedContent != null)
-                                    expandedContent!
+                                    expandedContent!,
                                 ],
                               ),
                       ),
@@ -222,20 +232,26 @@ class GenericDocumentCard extends StatelessWidget {
     );
   }
 
+  // Stats cells — now uses bodySmall consistently, weight w500
   static Widget buildIconStat(
       BuildContext context, IconData icon, String text) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w500,
-              ),
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
         ),
       ],
     );

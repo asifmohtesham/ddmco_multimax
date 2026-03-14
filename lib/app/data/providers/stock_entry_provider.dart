@@ -9,28 +9,40 @@ class StockEntryProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
-    String orderBy = 'modified desc', // Default
+    String orderBy = 'modified desc',
   }) async {
     return _apiProvider.getDocumentList(
-        'Stock Entry',
-        limit: limit,
-        limitStart: limitStart,
-        filters: filters,
-        orderBy: orderBy, // Pass dynamic sort
-        fields: ['name', 'purpose', 'total_amount', 'custom_total_qty', 'modified', 'docstatus', 'creation', 'stock_entry_type']
+      'Stock Entry',
+      limit: limit,
+      limitStart: limitStart,
+      filters: filters,
+      orderBy: orderBy,
+      // from_warehouse, to_warehouse and posting_date added so the list card
+      // can show warehouse and date without a separate detail fetch.
+      fields: [
+        'name',
+        'purpose',
+        'total_amount',
+        'custom_total_qty',
+        'modified',
+        'docstatus',
+        'creation',
+        'stock_entry_type',
+        'from_warehouse',
+        'to_warehouse',
+        'posting_date',
+      ],
     );
   }
 
-  // --- Added Method ---
   Future<Response> getStockEntryTypes() async {
     return _apiProvider.getDocumentList(
       'Stock Entry Type',
-      limit: 0, // Fetch all types
+      limit: 0,
       fields: ['name'],
       orderBy: 'name asc',
     );
   }
-  // --------------------
 
   Future<Response> getStockEntry(String name) async {
     return _apiProvider.getStockEntry(name);
@@ -40,7 +52,8 @@ class StockEntryProvider {
     return _apiProvider.createDocument('Stock Entry', data);
   }
 
-  Future<Response> updateStockEntry(String name, Map<String, dynamic> data) async {
+  Future<Response> updateStockEntry(
+      String name, Map<String, dynamic> data) async {
     return _apiProvider.updateDocument('Stock Entry', name, data);
   }
 }
