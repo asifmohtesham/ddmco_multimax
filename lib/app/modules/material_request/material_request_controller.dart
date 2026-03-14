@@ -81,6 +81,13 @@ class MaterialRequestController extends GetxController {
     fetchMaterialRequests(clear: true);
   }
 
+  /// Removes a single active filter by [key] and re-fetches the list.
+  /// Mirrors [StockEntryController.removeFilter].
+  void removeFilter(String key) {
+    activeFilters.remove(key);
+    fetchMaterialRequests(isLoadMore: false, clear: true);
+  }
+
   // ── Sort ───────────────────────────────────────────────────────────────────
   void setSort(String field, String order) {
     sortField.value = field;
