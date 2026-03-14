@@ -388,7 +388,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       val?.items.assignAll(currentItems);
     });
     _checkForChanges();
-    GlobalSnackbar.success(message: 'Item removed');
+    // Defer snackbar by one frame so it doesn't race against the confirmation
+    // sheet's pop animation — which leaves a partially-initialised
+    // SnackbarController in the GetX queue and causes a
+    // LateInitializationError in SnackbarController._removeEntry.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      GlobalSnackbar.success(message: 'Item removed');
+    });
   }
 
   Future<void> saveDeliveryNote() async {
@@ -809,7 +815,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         validateSheet();
         await _fetchAllRackStocks();
 
-        // Set rack balance chip value from rackStockMap after fetch
         bsRackBalance.value = rackStockMap[rack] ?? 0.0;
       } else {
         bsIsRackValid.value = false;
@@ -884,7 +889,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty,
         editingItem: item);
 
-    // Populate balance chips for edit mode
     bsBatchBalance.value = fetchedQty;
     if (item.rack != null && item.rack!.isNotEmpty) {
       bsRackBalance.value = rackStockMap[item.rack] ?? 0.0;
