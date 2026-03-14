@@ -28,7 +28,7 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isSaving;
-  final bool isLoading; // External loading state (e.g. auto-submit)
+  final bool isLoading;
 
   // Metadata
   final String? owner;
@@ -41,8 +41,6 @@ class GlobalItemFormSheet extends StatelessWidget {
   final TextEditingController? scanController;
   final bool isScanning;
 
-  /// Unique tag used to scope [ItemFormSheetController] to this sheet instance.
-  /// Derived from [key] when provided, otherwise a timestamp is used.
   late final String _sheetTag;
 
   GlobalItemFormSheet({
@@ -121,13 +119,6 @@ class GlobalItemFormSheet extends StatelessWidget {
   ItemFormSheetController get _sheetCtrl =>
       Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
-  /// Pops only the sheet route without touching GetX's snackbar queue.
-  ///
-  /// [Get.back()] internally calls [closeCurrentSnackbar()] first, which
-  /// crashes with a [LateInitializationError] when a snackbar exists in the
-  /// queue but its internal [AnimationController] has not been initialised yet
-  /// (i.e. the snackbar was enqueued but never displayed). Using the Flutter
-  /// [Navigator] directly bypasses that code path entirely.
   static void _popSheet(BuildContext context) =>
       Navigator.of(context).pop();
 
@@ -149,10 +140,6 @@ class GlobalItemFormSheet extends StatelessWidget {
                   try {
                     final result = onSubmit();
                     if (result is Future) await result;
-                    // The parent DocType controller (e.g. addItem()) owns the
-                    // sheet close via Navigator — it must call
-                    // Navigator.of(context).pop() or Get.back() from a context
-                    // that is not inside the sheet's snackbar-race window.
                   } catch (e) {
                     debugPrint('GlobalItemFormSheet submit error: $e');
                   } finally {
@@ -260,6 +247,130 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Form content — shared between both layout modes.
+  // ---------------------------------------------------------------------------
+  List<Widget> _formChildren(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomPadding = mediaQuery.viewPadding.bottom;
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
+
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$itemCode'
+                    '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontFamily: 'ShureTechMono',
+                      fontSize: 16,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  itemName,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colorScheme.onSurface,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                _buildMetadataHeader(context),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _popSheet(context),
+            icon: const Icon(Icons.close),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHigh,
+              foregroundColor: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+
+      const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16.0),
+        child: Divider(height: 1),
+      ),
+
+      ...customFields.map(
+        (w) => Padding(
+          padding: const EdgeInsets.only(bottom: 20.0),
+          child: w,
+        ),
+      ),
+
+      QuantityInputWidget(
+        controller: qtyController,
+        onIncrement: onIncrement,
+        onDecrement: onDecrement,
+        isReadOnly: isQtyReadOnly,
+        label: 'Quantity',
+        infoText: qtyInfoText,
+      ),
+
+      const SizedBox(height: 32),
+
+      SizedBox(
+        width: double.infinity,
+        child: isSaveEnabledRx != null
+            ? Obx(() =>
+                _buildSaveButton(context, isSaveEnabledRx!.value))
+            : _buildSaveButton(context, isSaveEnabled),
+      ),
+
+      if (onDelete != null) ...[
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: () {
+              _popSheet(context);
+              onDelete!();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: colorScheme.error,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Remove Item'),
+          ),
+        ),
+      ],
+
+      SizedBox(
+        height: math.max(viewInsetsBottom, bottomPadding) + 20,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     _sheetCtrl; // register on first build
@@ -269,195 +380,119 @@ class GlobalItemFormSheet extends StatelessWidget {
     final mediaQuery = MediaQuery.of(context);
     final topPadding = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
-    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
 
-    return Container(
-      margin: EdgeInsets.only(top: topPadding + 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(28.0)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Drag handle ──────────────────────────────────────────────────
-          Container(
-            color: colorScheme.surface,
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-            alignment: Alignment.center,
-            child: Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // ── Scrollable form body ─────────────────────────────────────────
-          Expanded(
-            child: Form(
-              key: formKey,
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                shrinkWrap: true,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: theme.textTheme.headlineSmall
-                                  ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color:
-                                    colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '$itemCode'
-                                '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: theme.textTheme.labelMedium
-                                    ?.copyWith(
-                                  fontFamily: 'ShureTechMono',
-                                  fontSize: 16,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              itemName,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurface,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            _buildMetadataHeader(context),
-                          ],
-                        ),
-                      ),
-                      // Close button — uses Navigator.pop, NOT Get.back()
-                      IconButton(
-                        onPressed: () => _popSheet(context),
-                        icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(
-                          backgroundColor:
-                              colorScheme.surfaceContainerHigh,
-                          foregroundColor: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.0),
-                    child: Divider(height: 1),
-                  ),
-
-                  ...customFields.map(
-                    (w) => Padding(
-                      padding: const EdgeInsets.only(bottom: 20.0),
-                      child: w,
-                    ),
-                  ),
-
-                  QuantityInputWidget(
-                    controller: qtyController,
-                    onIncrement: onIncrement,
-                    onDecrement: onDecrement,
-                    isReadOnly: isQtyReadOnly,
-                    label: 'Quantity',
-                    infoText: qtyInfoText,
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(
-                            context, isSaveEnabledRx!.value))
-                        : _buildSaveButton(context, isSaveEnabled),
-                  ),
-
-                  // Delete button — uses Navigator.pop, NOT Get.back()
-                  if (onDelete != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          _popSheet(context);
-                          onDelete!();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: colorScheme.error,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Remove Item'),
-                      ),
-                    ),
-                  ],
-
-                  SizedBox(
-                    height:
-                        math.max(viewInsetsBottom, bottomPadding) + 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Scan bar (optional) ──────────────────────────────────────────
-          if (onScan != null)
-            Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                border: Border(
-                  top: BorderSide(color: colorScheme.outlineVariant),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              padding:
-                  EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
-              child: BarcodeInputWidget(
-                onScan: onScan!,
-                controller: scanController,
-                isLoading: isScanning,
-                hintText: 'Scan Rack / Batch / Item',
-                isEmbedded: true,
-              ),
-            ),
-        ],
+    // ── Drag handle ───────────────────────────────────────────────────────────
+    final dragHandle = Container(
+      color: colorScheme.surface,
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      alignment: Alignment.center,
+      child: Container(
+        width: 32,
+        height: 4,
+        decoration: BoxDecoration(
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(2),
+        ),
       ),
     );
+
+    // ── Scan bar (optional, always below form) ──────────────────────────────
+    final scanBar = onScan != null
+        ? Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(
+                top: BorderSide(color: colorScheme.outlineVariant),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            padding: EdgeInsets.fromLTRB(
+                16, 12, 16, bottomPadding + 12),
+            child: BarcodeInputWidget(
+              onScan: onScan!,
+              controller: scanController,
+              isLoading: isScanning,
+              hintText: 'Scan Rack / Batch / Item',
+              isEmbedded: true,
+            ),
+          )
+        : null;
+
+    // ───────────────────────────────────────────────────────────────────
+    // LAYOUT SWITCH
+    //
+    // scrollController != null → DraggableScrollableSheet path
+    //   The parent provides a finite height (e.g. Stock Entry, Delivery Note).
+    //   Use Expanded + ListView so the form fills and scrolls within that
+    //   bounded space.
+    //
+    // scrollController == null → content-hugging SingleChildScrollView path
+    //   The parent (ConstrainedBox + SingleChildScrollView) provides unbounded
+    //   height to this widget so it can size itself to its content. Using
+    //   Expanded here would crash with "RenderFlex children have non-zero flex
+    //   but incoming height constraints are unbounded".
+    //   Use Column(mainAxisSize: min) + direct children instead.
+    // ───────────────────────────────────────────────────────────────────
+
+    if (scrollController != null) {
+      // ── Bounded-height path (Stock Entry, Delivery Note) ─────────────────
+      return Container(
+        margin: EdgeInsets.only(top: topPadding + 12),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(28.0)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            dragHandle,
+            Expanded(
+              child: Form(
+                key: formKey,
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  shrinkWrap: true,
+                  children: _formChildren(context),
+                ),
+              ),
+            ),
+            if (scanBar != null) scanBar,
+          ],
+        ),
+      );
+    } else {
+      // ── Unbounded / content-hugging path (Material Request) ─────────────
+      // No top margin or outer radius here — the parent Material widget in
+      // openItemSheet() already provides the surface colour and border radius.
+      return Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            dragHandle,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _formChildren(context),
+              ),
+            ),
+            if (scanBar != null) scanBar,
+          ],
+        ),
+      );
+    }
   }
 }
