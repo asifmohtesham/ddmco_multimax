@@ -3,8 +3,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
-import 'package:multimax/app/modules/global_widgets/generic_list_page.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
@@ -59,171 +59,264 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Obx(() {
-      final hasSearch = controller.searchQuery.value.isNotEmpty;
-      final hasFilters = controller.activeFilters.isNotEmpty;
-      // Plain int — always fresh inside the outer Obx which already tracks
-      // activeFilters and searchQuery. No inner Obx needed.
-      final activeFilterCount = controller.activeFilters.length +
-          (controller.searchQuery.value.isNotEmpty ? 1 : 0);
-
-      Widget? filterHeader;
-      if (hasSearch || hasFilters) {
-        filterHeader = Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              if (hasSearch)
-                Chip(
-                  label: Text('Search: ${controller.searchQuery.value}'),
-                  avatar: const Icon(Icons.search, size: 18),
-                  onDeleted: () {
-                    controller.searchQuery.value = '';
-                    controller.fetchMaterialRequests(clear: true);
-                  },
-                ),
-              if (hasFilters)
-                Chip(
-                  label: Text(
-                      '${controller.activeFilters.length} filter${controller.activeFilters.length > 1 ? 's' : ''} applied'),
-                  avatar: const Icon(Icons.filter_alt, size: 18),
-                  onDeleted: controller.clearFilters,
-                ),
-            ],
-          ),
-        );
-      }
-
-      return GenericListPage(
-        title: 'Material Requests',
-        isLoading: controller.isLoading,
-        data: controller.materialRequests,
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      drawer: const AppNavDrawer(),
+      body: RefreshIndicator(
         onRefresh: () => controller.fetchMaterialRequests(clear: true),
-        scrollController: _scrollController,
-        itemBuilder: (context, index) => const SizedBox.shrink(),
-        onSearch: controller.onSearchChanged,
-        searchHint: 'Search ID, Type, Warehouse...',
-        filterHeader: filterHeader,
-        actions: [
-          // No inner Obx — activeFilterCount is already reactive via the
-          // enclosing Obx. A nested Obx with no .obs reads throws:
-          // "improper use of GetX" and inserts a 100000px RenderErrorBox
-          // that overflows the SliverAppBar by ~99589px.
-          Badge(
-            isLabelVisible: activeFilterCount > 0,
-            label: Text('$activeFilterCount'),
-            child: IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Sort & Filter',
-              onPressed: () => _showFilterSheet(context),
-            ),
-          ),
-        ],
-        emptyIcon: hasFilters || hasSearch
-            ? Icons.filter_alt_off_outlined
-            : Icons.assignment_outlined,
-        emptyTitle: hasFilters || hasSearch
-            ? 'No Matching Requests'
-            : 'No Material Requests',
-        emptyMessage: hasFilters || hasSearch
-            ? 'Try adjusting your filters or search query.'
-            : 'Pull to refresh or create a new request.',
-        onClearFilters:
-            hasFilters || hasSearch ? controller.clearFilters : null,
-        fab: Obx(() => RoleGuard(
-              roles: controller.writeRoles.toList(),
-              child: FloatingActionButton.extended(
-                onPressed: controller.openCreateForm,
-                icon: const Icon(Icons.add),
-                label: const Text('Create'),
-                backgroundColor: colorScheme.primaryContainer,
-                foregroundColor: colorScheme.onPrimaryContainer,
-                elevation: 4,
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // ── AppBar ─────────────────────────────────────────────────────────
+            Obx(() {
+              final activeFilterCount =
+                  controller.activeFilters.length +
+                  (controller.searchQuery.value.isNotEmpty ? 1 : 0);
+              return SliverAppBar.large(
+                title: const Text('Material Requests'),
+                actions: [
+                  Badge(
+                    isLabelVisible: activeFilterCount > 0,
+                    label: Text('$activeFilterCount'),
+                    child: IconButton(
+                      icon: const Icon(Icons.filter_list),
+                      tooltip: 'Sort & Filter',
+                      onPressed: () => _showFilterSheet(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              );
+            }),
+
+            // ── Search Bar ────────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: TextField(
+                  onChanged: controller.onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search ID, Type, Warehouse...',
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                  ),
+                ),
               ),
-            )),
-        sliverBody: _buildSliverList(context, theme, colorScheme),
-      );
-    });
-  }
+            ),
 
-  Widget _buildSliverList(
-      BuildContext context, ThemeData theme, ColorScheme colorScheme) {
-    return Obx(() {
-      final requests = controller.materialRequests;
-      final showLoader = controller.hasMore.value;
-      final baseCount = requests.length;
+            // ── Active filter / search chips ───────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
+                final hasFilters = controller.activeFilters.isNotEmpty;
+                final hasSearch = controller.searchQuery.value.isNotEmpty;
+                if (!hasFilters && !hasSearch) return const SizedBox.shrink();
 
-      return SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= baseCount) {
-              if (showLoader) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(),
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (hasSearch)
+                        Chip(
+                          label: Text(
+                              'Search: ${controller.searchQuery.value}'),
+                          avatar: const Icon(Icons.search, size: 18),
+                          onDeleted: () {
+                            controller.searchQuery.value = '';
+                            controller.fetchMaterialRequests(clear: true);
+                          },
+                        ),
+                      if (hasFilters)
+                        Chip(
+                          label: Text(
+                              '${controller.activeFilters.length} filter${controller.activeFilters.length > 1 ? 's' : ''} applied'),
+                          avatar:
+                              const Icon(Icons.filter_alt, size: 18),
+                          onDeleted: controller.clearFilters,
+                        ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+
+            // ── List body ───────────────────────────────────────────────────────
+            Obx(() {
+              // First-load spinner
+              if (controller.isLoading.value &&
+                  controller.materialRequests.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              // Empty state
+              if (controller.materialRequests.isEmpty) {
+                final hasFiltersOrSearch =
+                    controller.activeFilters.isNotEmpty ||
+                    controller.searchQuery.value.isNotEmpty;
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasFiltersOrSearch
+                                ? Icons.filter_alt_off_outlined
+                                : Icons.assignment_outlined,
+                            size: 64,
+                            color: colorScheme.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasFiltersOrSearch
+                                ? 'No Matching Requests'
+                                : 'No Material Requests',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            hasFiltersOrSearch
+                                ? 'Try adjusting your filters or search query.'
+                                : 'Pull to refresh or create a new request.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 24),
+                          if (hasFiltersOrSearch)
+                            FilledButton.tonalIcon(
+                              onPressed: controller.clearFilters,
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Clear Filters'),
+                            )
+                          else
+                            FilledButton.tonalIcon(
+                              onPressed: () => controller
+                                  .fetchMaterialRequests(clear: true),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reload'),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Center(
-                  child: Text(
-                    'End of results',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colorScheme.onSurfaceVariant),
-                  ),
+
+              final requests = controller.materialRequests;
+              final showLoader = controller.hasMore.value;
+              final baseCount = requests.length;
+
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index >= baseCount) {
+                      if (showLoader) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      return Padding(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 16.0),
+                        child: Center(
+                          child: Text(
+                            'End of results',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final req = requests[index];
+
+                    return Obx(() {
+                      final isExpanded =
+                          controller.expandedRequestId.value == req.name;
+                      final isLoadingDetails =
+                          controller.isLoadingDetails.value &&
+                          controller.detailedRequest?.name != req.name;
+
+                      return GenericDocumentCard(
+                        title: req.materialRequestType,
+                        subtitle: req.name,
+                        status: req.status,
+                        stats: [
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.assignment_outlined,
+                            req.materialRequestType,
+                          ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.access_time,
+                            FormattingHelper.getRelativeTime(
+                                req.transactionDate),
+                          ),
+                          if (req.scheduleDate.isNotEmpty)
+                            GenericDocumentCard.buildIconStat(
+                              context,
+                              Icons.event_outlined,
+                              'Due ${FormattingHelper.getRelativeTime(req.scheduleDate)}',
+                            ),
+                        ],
+                        isExpanded: isExpanded,
+                        isLoadingDetails: isLoadingDetails && isExpanded,
+                        onTap: () => controller.toggleExpand(req.name),
+                        expandedContent: isExpanded
+                            ? _buildExpandedContent(context, req.name)
+                            : null,
+                      );
+                    });
+                  },
+                  childCount: baseCount + 1,
                 ),
               );
-            }
-
-            final req = requests[index];
-
-            return Obx(() {
-              final isExpanded =
-                  controller.expandedRequestId.value == req.name;
-              final isLoadingDetails = controller.isLoadingDetails.value &&
-                  controller.detailedRequest?.name != req.name;
-
-              return GenericDocumentCard(
-                title: req.materialRequestType,
-                subtitle: req.name,
-                status: req.status,
-                stats: [
-                  GenericDocumentCard.buildIconStat(
-                    context,
-                    Icons.assignment_outlined,
-                    req.materialRequestType,
-                  ),
-                  GenericDocumentCard.buildIconStat(
-                    context,
-                    Icons.access_time,
-                    FormattingHelper.getRelativeTime(req.transactionDate),
-                  ),
-                  if (req.scheduleDate.isNotEmpty)
-                    GenericDocumentCard.buildIconStat(
-                      context,
-                      Icons.event_outlined,
-                      'Due ${FormattingHelper.getRelativeTime(req.scheduleDate)}',
-                    ),
-                ],
-                isExpanded: isExpanded,
-                isLoadingDetails: isLoadingDetails && isExpanded,
-                onTap: () => controller.toggleExpand(req.name),
-                expandedContent: isExpanded
-                    ? _buildExpandedContent(context, req.name)
-                    : null,
-              );
-            });
-          },
-          childCount: baseCount + 1,
+            }),
+          ],
         ),
-      );
-    });
+      ),
+      floatingActionButton: Obx(() => RoleGuard(
+            roles: controller.writeRoles.toList(),
+            child: FloatingActionButton.extended(
+              onPressed: controller.openCreateForm,
+              icon: const Icon(Icons.add),
+              label: const Text('Create'),
+              backgroundColor: colorScheme.primaryContainer,
+              foregroundColor: colorScheme.onPrimaryContainer,
+              elevation: 4,
+            ),
+          )),
+    );
   }
 
+  // ── Expanded card detail ─────────────────────────────────────────────────
   Widget _buildExpandedContent(BuildContext context, String reqName) {
     return Obx(() {
       final detailed = controller.detailedRequest;
@@ -238,15 +331,14 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (detailed.setWarehouse != null &&
-              detailed.setWarehouse!.isNotEmpty)
+              detailed.setWarehouse!.isNotEmpty) ...[
             InfoBlock(
               label: 'Target Warehouse',
               value: detailed.setWarehouse!,
               icon: Icons.warehouse_outlined,
             ),
-          if (detailed.setWarehouse != null &&
-              detailed.setWarehouse!.isNotEmpty)
             const SizedBox(height: 12),
+          ],
 
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
