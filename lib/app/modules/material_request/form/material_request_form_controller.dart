@@ -28,7 +28,7 @@ class MaterialRequestFormController extends GetxController
 
   var materialRequest = Rx<MaterialRequest?>(null);
 
-  // Form Fields
+  // ── Header form fields ───────────────────────────────────────────────────
   final selectedType = 'Material Transfer'.obs;
   final scheduleDateController = TextEditingController();
   final transactionDateController = TextEditingController();
@@ -42,33 +42,43 @@ class MaterialRequestFormController extends GetxController
     'Customer Provided',
   ];
 
-  // Warehouse Data
+  // ── Warehouse data ───────────────────────────────────────────────────────
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── Item Sheet State ──────────────────────────────────────────────────────
+  // ── Item Sheet State ─────────────────────────────────────────────────────
   //
-  // itemFormKey  — required by GlobalItemFormSheet for Form.validate().
-  // bsMaxQty     — displayed as "Available" hint in qty field (set to 0 for MR
-  //                since there is no stock-balance concept here).
-  // The rest mirror StockEntryFormController / DeliveryNoteFormController exactly.
+  // Mirrors DeliveryNoteFormController exactly:
+  //   itemFormKey    — required by GlobalItemFormSheet for Form.validate()
+  //   isFormDirty    — true when any sheet field differs from its initial
+  //                    snapshot; gates the "Update" button in edit mode
+  //   _initialQty    — snapshot of qty when the sheet opened
+  //   _initialWh     — snapshot of warehouse when the sheet opened
+  //   bsItemVariantOf — variant_of of the item; shown as itemSubtext in header
+  //   bsMaxQty        — available qty hint (0 = no stock concept for MR)
+  //   isAddingItem    — loading spinner on save button
 
   final itemFormKey = GlobalKey<FormState>();
 
   final bsQtyController = TextEditingController();
   final bsWarehouseController = TextEditingController();
-  // kept for legacy compat (schedule date pre-fill in sheet)
-  final bsDateController = TextEditingController();
+  final bsDateController = TextEditingController(); // schedule date pre-fill
 
   var bsMaxQty = 0.0.obs;
+  var bsItemVariantOf = RxnString();
+
+  var isFormDirty = false.obs;
+  var isSheetValid = false.obs;
+  var isAddingItem = false.obs;
+
+  // Snapshots for dirty detection
+  String _initialQty = '';
+  String _initialWh = '';
 
   var currentItemCode = '';
   var currentItemName = '';
-  var currentUom = '';
   var currentItemNameKey = RxnString();
   var isItemSheetOpen = false.obs;
-  var isSheetValid = false.obs;
-  var isAddingItem = false.obs;
 
   final TextEditingController barcodeController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -77,6 +87,7 @@ class MaterialRequestFormController extends GetxController
   void onInit() {
     super.onInit();
     bsQtyController.addListener(validateSheet);
+    bsWarehouseController.addListener(validateSheet);
     fetchWarehouses();
 
     if (mode == 'new') {
@@ -127,7 +138,7 @@ class MaterialRequestFormController extends GetxController
     }
   }
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Document init ─────────────────────────────────────────────────────────
 
   void _initNewRequest() {
     final now = DateTime.now();
@@ -276,7 +287,7 @@ class MaterialRequestFormController extends GetxController
                       onTap: () {
                         if (forItem) {
                           bsWarehouseController.text = wh;
-                          validateSheet();
+                          // validateSheet is called via bsWarehouseController listener
                         } else {
                           setWarehouseController.text = wh;
                           onWarehouseChanged(wh);
@@ -301,35 +312,55 @@ class MaterialRequestFormController extends GetxController
     MaterialRequestItem? item,
     String? newCode,
     String? newName,
+    String? variantOf,
   }) {
-    // Reset sheet state
+    // ── Reset sheet state ───────────────────────────────────────────────────
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
     bsWarehouseController.clear();
     bsMaxQty.value = 0;
+    bsItemVariantOf.value = null;
+    isFormDirty.value = false;
     isSheetValid.value = false;
+    _initialQty = '';
+    _initialWh = '';
 
     if (item != null) {
-      // ── Edit mode ──────────────────────────────────────────────────────
+      // ── Edit mode ─────────────────────────────────────────────────────────
       currentItemCode = item.itemCode;
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
-      bsQtyController.text =
-          item.qty % 1 == 0 ? item.qty.toInt().toString() : item.qty.toString();
+      bsItemVariantOf.value = variantOf ?? item.variantOf;
+
+      final qtyStr = item.qty % 1 == 0
+          ? item.qty.toInt().toString()
+          : item.qty.toString();
+      bsQtyController.text = qtyStr;
       bsWarehouseController.text = item.warehouse ?? '';
+
+      // Snapshots for dirty detection
+      _initialQty = qtyStr;
+      _initialWh = item.warehouse ?? '';
+
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
-      // ── Add mode (from barcode scan) ───────────────────────────────────
+      // ── Add mode (barcode) ─────────────────────────────────────────────────
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
+      bsItemVariantOf.value = variantOf;
       bsWarehouseController.text = setWarehouseController.text;
+      _initialQty = '';
+      _initialWh = setWarehouseController.text;
     } else {
-      // ── Add mode (manual) ──────────────────────────────────────────────
+      // ── Add mode (manual) ──────────────────────────────────────────────────
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
+      bsItemVariantOf.value = null;
       bsWarehouseController.text = setWarehouseController.text;
+      _initialQty = '';
+      _initialWh = setWarehouseController.text;
     }
 
     isItemSheetOpen.value = true;
@@ -343,34 +374,49 @@ class MaterialRequestFormController extends GetxController
   }
 
   // ── Sheet validation ──────────────────────────────────────────────────────
+  //
+  // Mirrors DeliveryNoteFormController.validateSheet:
+  //   1. Basic validity  — qty > 0
+  //   2. Dirty detection — compares current values against _initial snapshots
+  //   3. Edit-mode gate  — Update button disabled if !isFormDirty
 
   void validateSheet() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-    isSheetValid.value = qty > 0 && currentItemCode.isNotEmpty;
+    bool valid = qty > 0 && currentItemCode.isNotEmpty;
+
+    // Dirty detection
+    bool dirty = false;
+    if (bsQtyController.text != _initialQty) dirty = true;
+    if (bsWarehouseController.text != _initialWh) dirty = true;
+    isFormDirty.value = dirty;
+
+    // In edit mode the button is only enabled when the form is actually dirty
+    if (currentItemNameKey.value != null && !dirty) valid = false;
+
+    isSheetValid.value = valid;
   }
 
-  /// Increment / decrement qty by [delta] steps (pass 1 or -1).
-  /// Mirrors StockEntryFormController.adjustSheetQty exactly:
-  ///   - integer display when value has no fractional part
-  ///   - minimum value is 0 (never goes negative)
-  ///   - calls validateSheet() after every change
+  /// Increment / decrement qty by [delta] (pass 1 or -1).
+  ///
+  /// Mirrors DeliveryNoteFormController / StockEntryFormController exactly:
+  ///   - Never goes below 0
+  ///   - Integer display when no fractional part
+  ///   - Calls validateSheet() → isFormDirty is updated automatically
+  ///     so increment/decrement on an existing item marks the sheet dirty
+  ///     and enables the Update button immediately.
   void adjustSheetQty(int delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = current + delta;
     if (newVal < 0) return;
     bsQtyController.text =
         newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
+    // validateSheet is triggered automatically via the bsQtyController listener
+    // registered in onInit(), but call explicitly here as belt-and-suspenders.
     validateSheet();
   }
 
   // ── Save / Delete item ────────────────────────────────────────────────────
 
-  /// Called by GlobalItemFormSheet.onSubmit.
-  /// IMPORTANT: _markDirty() is called BEFORE Navigator.pop() to avoid a
-  /// timing issue where the sheet route is gone before the reactive flag is set.
-  /// The sheet itself calls Navigator.of(context).pop() — NOT Get.back() —
-  /// to avoid the GetX snackbar crash (LateInitializationError on
-  /// AnimationController when a snackbar is queued but not yet displayed).
   Future<void> saveItem() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0 || currentItemCode.isEmpty) return;
@@ -380,7 +426,7 @@ class MaterialRequestFormController extends GetxController
       final currentItems = materialRequest.value?.items.toList() ?? [];
 
       if (currentItemNameKey.value != null) {
-        // ── Update existing item ───────────────────────────────────────
+        // Update existing
         final index = currentItems
             .indexWhere((i) => i.name == currentItemNameKey.value);
         if (index != -1) {
@@ -396,10 +442,11 @@ class MaterialRequestFormController extends GetxController
             warehouse: bsWarehouseController.text,
             uom: existing.uom,
             description: existing.description,
+            variantOf: existing.variantOf,
           );
         }
       } else {
-        // ── Add new item ───────────────────────────────────────────────
+        // Add new
         currentItems.add(MaterialRequestItem(
           name: 'local_${DateTime.now().millisecondsSinceEpoch}',
           itemCode: currentItemCode,
@@ -407,6 +454,7 @@ class MaterialRequestFormController extends GetxController
           qty: qty,
           warehouse: bsWarehouseController.text,
           description: currentItemName,
+          variantOf: bsItemVariantOf.value,
         ));
       }
 
@@ -414,12 +462,12 @@ class MaterialRequestFormController extends GetxController
         val?.items.assignAll(currentItems);
       });
 
-      // Mark dirty BEFORE the sheet closes so the PopScope guard in the
-      // form screen immediately reflects the unsaved state.
+      // Mark document dirty BEFORE Navigator.pop so PopScope evaluates
+      // the correct state immediately.
       _markDirty();
 
-      // Sheet is closed by GlobalItemFormSheet._popSheet (Navigator.pop)
-      // after onSubmit returns — no explicit Get.back() here.
+      // Sheet close is handled by GlobalItemFormSheet._popSheet
+      // (Navigator.of(context).pop) — no Get.back() here.
     } finally {
       isAddingItem.value = false;
     }
