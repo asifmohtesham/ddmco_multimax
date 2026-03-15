@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/mr_item_filter_bar.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -344,7 +345,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
             Expanded(
               child: Builder(builder: (context) {
                 if (entry.items.isEmpty &&
-                    controller.entrySource != StockEntrySource.posUpload) {
+                    controller.entrySource != StockEntrySource.posUpload &&
+                    controller.entrySource != StockEntrySource.materialRequest) {
                   return _buildEmptyState();
                 }
 
@@ -393,35 +395,94 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
+  /// Builds the MR-linked items view.
+  ///
+  /// The list is driven by [StockEntryFormController.mrFilteredItems] so that
+  /// every MR line is always visible — including items that have not been
+  /// scanned yet ("ghost" cards with scannedQty = 0).
   Widget _buildMaterialRequestItemsView(StockEntry entry) {
-    return ListView.separated(
-      controller: controller.scrollController,
-      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
-      itemCount: entry.items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 0),
-      itemBuilder: (context, index) {
-        final item = entry.items[index];
-        _ensureItemKey(item);
+    return Obx(() {
+      final rows = controller.mrFilteredItems;
 
-        double? maxQty;
-        final refItem = controller.mrReferenceItems
-            .firstWhereOrNull((r) => r['item_code'] == item.itemCode);
-        if (refItem != null) {
-          maxQty = (refItem['qty'] as num).toDouble();
-        }
+      if (rows.isEmpty && controller.mrReferenceItems.isEmpty) {
+        return _buildEmptyState();
+      }
 
-        return StockEntryItemCard(
-          item: item,
-          maxQty: maxQty,
-          onTap: controller.stockEntry.value?.docstatus == 0
-              ? () => controller.editItem(item)
-              : null,
-          onDelete: controller.stockEntry.value?.docstatus == 0
-              ? () => controller.deleteItem(item.name!)
-              : null,
-        );
-      },
-    );
+      return Column(
+        children: [
+          // ── Filter bar — only shown for proper MAT-MR- entries ──
+          if (controller.isMaterialRequestEntry) const MrItemFilterBar(),
+
+          // ── Items list ──
+          Expanded(
+            child: rows.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Text(
+                        'No ${controller.mrItemFilter.value.toLowerCase()} items.',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    controller: controller.scrollController,
+                    padding: const EdgeInsets.only(top: 4.0, bottom: 100.0),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 0),
+                    itemBuilder: (context, index) {
+                      final row = rows[index];
+
+                      // Find the first real entry.items row for this itemCode
+                      // so we can pass it to StockEntryItemCard for editing.
+                      // If nothing has been scanned yet we synthesise a ghost
+                      // StockEntryItem so the card can still be rendered.
+                      final realItem = entry.items.firstWhereOrNull(
+                        (i) =>
+                            i.itemCode.trim().toLowerCase() ==
+                            row.itemCode.trim().toLowerCase(),
+                      );
+
+                      final displayItem = realItem ??
+                          StockEntryItem(
+                            name: null,
+                            itemCode: row.itemCode,
+                            qty: 0,
+                            basicRate: 0.0,
+                            itemGroup: null,
+                            customVariantOf: null,
+                            batchNo: null,
+                            itemName: row.itemCode,
+                            rack: null,
+                            toRack: null,
+                            sWarehouse: null,
+                            tWarehouse: null,
+                            customInvoiceSerialNumber: null,
+                            materialRequest: row.materialRequest,
+                            materialRequestItem: row.materialRequestItem,
+                          );
+
+                      if (realItem != null) _ensureItemKey(realItem);
+
+                      return StockEntryItemCard(
+                        item: displayItem,
+                        maxQty: row.requestedQty,
+                        onTap: realItem != null &&
+                                controller.stockEntry.value?.docstatus == 0
+                            ? () => controller.editItem(realItem)
+                            : null,
+                        onDelete: realItem != null &&
+                                realItem.name != null &&
+                                controller.stockEntry.value?.docstatus == 0
+                            ? () => controller.deleteItem(realItem.name!)
+                            : null,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      );
+    });
   }
 
   Widget _buildPosUploadItemsView(StockEntry entry) {

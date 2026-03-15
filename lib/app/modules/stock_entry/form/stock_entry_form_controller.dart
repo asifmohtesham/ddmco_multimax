@@ -24,6 +24,27 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
 enum StockEntrySource { manual, materialRequest, posUpload }
 
+/// Lightweight view-model that merges one MR line with the summed scanned qty
+/// for the same item_code across all entry.items rows.
+class MrItemRow {
+  final String itemCode;
+  final double requestedQty;
+  final double scannedQty;
+  final String materialRequest;
+  final String materialRequestItem;
+
+  const MrItemRow({
+    required this.itemCode,
+    required this.requestedQty,
+    required this.scannedQty,
+    required this.materialRequest,
+    required this.materialRequestItem,
+  });
+
+  bool get isCompleted => scannedQty >= requestedQty;
+  bool get isPending => scannedQty < requestedQty;
+}
+
 class StockEntryFormController extends GetxController
     with OptimisticLockingMixin {
   // --- Dependencies ---
@@ -57,6 +78,11 @@ class StockEntryFormController extends GetxController
   var posUpload = Rx<PosUpload?>(null);
   var posUploadSerialOptions = <String>[].obs;
   var expandedInvoice = ''.obs;
+
+  // --- MR Filter ---
+  /// Active filter chip for Material Request items view.
+  /// Values: 'All' | 'Pending' | 'Completed'
+  var mrItemFilter = 'All'.obs;
 
   // --- Form Fields ---
   var selectedFromWarehouse = RxnString();
@@ -144,6 +170,54 @@ class StockEntryFormController extends GetxController
   // Navigator context captured from the sheet builder — used by addItem() to
   // pop the sheet via Navigator instead of Get.back() (avoids snackbar race).
   BuildContext? _sheetContext;
+
+  // ---------------------------------------------------------------------------
+  // MR helpers
+  // ---------------------------------------------------------------------------
+
+  /// True when the current entry was created from a Material Request
+  /// (customReferenceNo starts with 'MAT-MR-').
+  bool get isMaterialRequestEntry =>
+      customReferenceNoController.text.startsWith('MAT-MR-');
+
+  /// Merges mrReferenceItems with entry.items grouped by itemCode, then
+  /// applies the active [mrItemFilter].
+  List<MrItemRow> get mrFilteredItems {
+    final entry = stockEntry.value;
+    final allRows = mrReferenceItems.map((ref) {
+      final itemCode = ref['item_code'] as String? ?? '';
+      final requestedQty = (ref['qty'] as num?)?.toDouble() ?? 0.0;
+      final matReq = ref['material_request'] as String? ?? '';
+      final matReqItem = ref['material_request_item'] as String? ?? '';
+
+      // Sum all entry.items rows that share the same itemCode.
+      final scannedQty = entry?.items
+              .where((i) =>
+                  i.itemCode.trim().toLowerCase() ==
+                  itemCode.trim().toLowerCase())
+              .fold(0.0, (sum, i) => sum + i.qty) ??
+          0.0;
+
+      return MrItemRow(
+        itemCode: itemCode,
+        requestedQty: requestedQty,
+        scannedQty: scannedQty,
+        materialRequest: matReq,
+        materialRequestItem: matReqItem,
+      );
+    }).toList();
+
+    switch (mrItemFilter.value) {
+      case 'Pending':
+        return allRows.where((r) => r.isPending).toList();
+      case 'Completed':
+        return allRows.where((r) => r.isCompleted).toList();
+      default:
+        return allRows;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
 
   @override
   void onInit() {
