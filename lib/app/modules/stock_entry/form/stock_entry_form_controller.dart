@@ -180,24 +180,22 @@ class StockEntryFormController extends GetxController
   bool get isMaterialRequestEntry =>
       customReferenceNoController.text.startsWith('MAT-MR-');
 
-  /// Merges mrReferenceItems with entry.items grouped by itemCode, then
-  /// applies the active [mrItemFilter].
-  List<MrItemRow> get mrFilteredItems {
+  /// All MR rows merged with current scanned quantities — NO filter applied.
+  /// Used by [MrItemFilterBar] to compute per-category counts without
+  /// re-running the merge a second time.
+  List<MrItemRow> get mrAllItems {
     final entry = stockEntry.value;
-    final allRows = mrReferenceItems.map((ref) {
+    return mrReferenceItems.map((ref) {
       final itemCode = ref['item_code'] as String? ?? '';
       final requestedQty = (ref['qty'] as num?)?.toDouble() ?? 0.0;
       final matReq = ref['material_request'] as String? ?? '';
       final matReqItem = ref['material_request_item'] as String? ?? '';
-
-      // Sum all entry.items rows that share the same itemCode.
       final scannedQty = entry?.items
               .where((i) =>
                   i.itemCode.trim().toLowerCase() ==
                   itemCode.trim().toLowerCase())
               .fold(0.0, (sum, i) => sum + i.qty) ??
           0.0;
-
       return MrItemRow(
         itemCode: itemCode,
         requestedQty: requestedQty,
@@ -206,7 +204,12 @@ class StockEntryFormController extends GetxController
         materialRequestItem: matReqItem,
       );
     }).toList();
+  }
 
+  /// Merges mrReferenceItems with entry.items grouped by itemCode, then
+  /// applies the active [mrItemFilter].
+  List<MrItemRow> get mrFilteredItems {
+    final allRows = mrAllItems;
     switch (mrItemFilter.value) {
       case 'Pending':
         return allRows.where((r) => r.isPending).toList();
