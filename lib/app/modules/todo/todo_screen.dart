@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/todo/todo_controller.dart';
-import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/todo/widgets/todo_list_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart'; // Added
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});
@@ -32,135 +32,136 @@ class _ToDoScreenState extends State<ToDoScreen> {
   }
 
   void _onScroll() {
-    if (_isBottom && controller.hasMore.value && !controller.isFetchingMore.value) {
+    if (controller.searchQuery.value.isEmpty &&
+        _isBottom &&
+        controller.hasMore.value &&
+        !controller.isFetchingMore.value) {
       controller.fetchTodos(isLoadMore: true);
     }
   }
 
   bool get _isBottom {
     if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.offset;
-    return currentScroll >= (maxScroll * 0.9);
-  }
-
-  void _showFilterDialog(BuildContext context) {
-    final nameController = TextEditingController(text: controller.activeFilters['name']);
-    String? selectedStatus = controller.activeFilters['status'];
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filter ToDos'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Name/ID'),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: ['Open', 'Closed', 'Cancelled']
-                  .map((status) => DropdownMenuItem(value: status, child: Text(status)))
-                  .toList(),
-              onChanged: (value) => selectedStatus = value,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              controller.clearFilters();
-              Get.back();
-            },
-            child: const Text('Clear'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final filters = {
-                if (nameController.text.isNotEmpty) 'name': nameController.text,
-                if (selectedStatus != null) 'status': selectedStatus,
-              };
-              controller.applyFilters(filters);
-              Get.back();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
-    );
+    return _scrollController.offset >=
+        (_scrollController.position.maxScrollExtent * 0.9);
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ToDos'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _showFilterDialog(context),
-          ),
-        ],
-      ),
-      drawer: const AppNavDrawer(), // Added
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              onChanged: controller.onSearchChanged,
-              decoration: const InputDecoration(
-                labelText: 'Search ToDos',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value && controller.todos.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+      backgroundColor: colorScheme.surface,
+      drawer: const AppNavDrawer(),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await controller.fetchTodos(clear: true);
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // ── Header: AppBar + SearchBar + filter chips ───────────────
+            const ToDoListAppBar(),
+
+            // ── List content ───────────────────────────────────────
+            Obx(() {
+              if (controller.isLoading.value &&
+                  controller.todos.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
               }
 
               if (controller.filteredTodos.isEmpty) {
-                return const Center(child: Text('No ToDos found.'));
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_outline,
+                              size: 64, color: colorScheme.outlineVariant),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No ToDos Found',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Pull to refresh or create a new one.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton.tonalIcon(
+                            onPressed: () =>
+                                controller.fetchTodos(clear: true),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reload'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
               }
 
-              return Scrollbar(
-                child: ListView.builder(
-                  controller: _scrollController,
-                  itemCount: controller.filteredTodos.length + (controller.hasMore.value ? 1 : 0),
-                  itemBuilder: (context, index) {
+              final bool showLoader = controller.searchQuery.value.isEmpty &&
+                  controller.hasMore.value;
+
+              return SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
                     if (index >= controller.filteredTodos.length) {
                       return const Center(
                         child: Padding(
-                          padding: EdgeInsets.all(8.0),
+                          padding: EdgeInsets.all(16.0),
                           child: CircularProgressIndicator(),
                         ),
                       );
                     }
                     final todo = controller.filteredTodos[index];
-                    return ToDoCard(todo: todo);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 4.0),
+                      child: ToDoCard(todo: todo),
+                    );
                   },
+                  childCount:
+                      controller.filteredTodos.length + (showLoader ? 1 : 0),
                 ),
               );
             }),
-          ),
-        ],
+
+            // Bottom padding for FAB
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Get.toNamed(AppRoutes.TODO_FORM, arguments: {'name': '', 'mode': 'new'});
-          Get.snackbar('TODO', 'Create new ToDo');
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Get.toNamed(
+          AppRoutes.TODO_FORM,
+          arguments: {'name': '', 'mode': 'new'},
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Create'),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
       ),
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// ToDoCard
+// ---------------------------------------------------------------------------
 
 class ToDoCard extends StatelessWidget {
   final dynamic todo;
@@ -168,88 +169,243 @@ class ToDoCard extends StatelessWidget {
 
   ToDoCard({super.key, required this.todo});
 
+  // Priority colour
+  static Color _priorityColor(String priority, ColorScheme cs) {
+    switch (priority.toLowerCase()) {
+      case 'urgent':
+        return Colors.red.shade600;
+      case 'high':
+        return Colors.orange.shade600;
+      case 'low':
+        return cs.outline;
+      default: // medium
+        return cs.primary;
+    }
+  }
+
+  static IconData _priorityIcon(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'urgent':
+        return Icons.priority_high;
+      case 'high':
+        return Icons.keyboard_double_arrow_up;
+      case 'low':
+        return Icons.keyboard_double_arrow_down;
+      default:
+        return Icons.drag_handle;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final priorityColor = _priorityColor(todo.priority, colorScheme);
+
     return Card(
-      margin: const EdgeInsets.all(8.0),
+      elevation: 0,
+      color: colorScheme.surfaceContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Obx(() {
-        final isCurrentlyExpanded = controller.expandedTodoName.value == todo.name;
+        final isExpanded =
+            controller.expandedTodoName.value == todo.name;
+
         return Column(
           children: [
-            ListTile(
-              title: todo.description.isNotEmpty ? Html(data: todo.description.split('\n')[0]) : Text(todo.name),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Priority: ${todo.priority}'),
-                  const SizedBox(height: 4),
-                  StatusPill(status: todo.status),
-                ],
-              ),
-              trailing: AnimatedRotation(
-                turns: isCurrentlyExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.expand_more),
-              ),
+            // ── Summary row ───────────────────────────────────────
+            InkWell(
               onTap: () => controller.toggleExpand(todo.name),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Container(
-                child: !isCurrentlyExpanded
-                    ? const SizedBox.shrink()
-                    : Obx(() {
-                  final detailed = controller.detailedTodo;
-                  if (controller.isLoadingDetails.value && detailed?.name != todo.name) {
-                    return const LinearProgressIndicator();
-                  }
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 12.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Priority indicator dot
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2.0, right: 12.0),
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: priorityColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
 
-                  if (detailed != null && detailed.name == todo.name) {
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Divider(height: 1),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                            child: Text('Modified: ${detailed.modified}'),
-                          ),
-                          if (detailed.description.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Html(data: 'Description: ${detailed.description}'),
-                            ),
+                          // Description first line or name fallback
+                          todo.description.isNotEmpty
+                              ? Html(
+                                  data: todo.description.split('\n')[0],
+                                  style: {
+                                    'body': Style(
+                                      margin: Margins.zero,
+                                      padding: HtmlPaddings.zero,
+                                      fontSize: FontSize(
+                                          theme.textTheme.bodyMedium
+                                              ?.fontSize ??
+                                              14),
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  },
+                                )
+                              : Text(
+                                  todo.name,
+                                  style:
+                                      theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                          const SizedBox(height: 6),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              if (detailed.status == 'Open') ...[
-                                TextButton(
-                                  onPressed: () => Get.snackbar('TODO', 'Close ToDo'),
-                                  child: const Text('Close'),
+                              Icon(_priorityIcon(todo.priority),
+                                  size: 14, color: priorityColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                todo.priority,
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: priorityColor),
+                              ),
+                              if (todo.date.isNotEmpty) ...[
+                                const SizedBox(width: 12),
+                                Icon(Icons.calendar_today_outlined,
+                                    size: 13,
+                                    color: colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text(
+                                  todo.date,
+                                  style: theme.textTheme.labelSmall
+                                      ?.copyWith(
+                                          color:
+                                              colorScheme.onSurfaceVariant),
                                 ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  onPressed: () => Get.snackbar('TODO', 'Navigate to form for editing'),
-                                  child: const Text('Edit'),
-                                ),
-                              ] else ...[
-                                ElevatedButton(
-                                  onPressed: () => Get.snackbar('TODO', 'Navigate to form view in read-only mode'),
-                                  child: const Text('View'),
-                                ),
-                              ]
+                              ],
                             ],
                           ),
                         ],
                       ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                }),
+                    ),
+
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        StatusPill(status: todo.status),
+                        const SizedBox(height: 4),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0.0,
+                          duration: const Duration(milliseconds: 250),
+                          child: Icon(Icons.expand_more,
+                              color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            ),
+
+            // ── Expanded detail ───────────────────────────────────
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOut,
+              child: !isExpanded
+                  ? const SizedBox.shrink()
+                  : Obx(() {
+                      final detailed = controller.detailedTodo;
+                      if (controller.isLoadingDetails.value &&
+                          detailed?.name != todo.name) {
+                        return const LinearProgressIndicator();
+                      }
+                      if (detailed == null ||
+                          detailed.name != todo.name) {
+                        return const SizedBox.shrink();
+                      }
+                      return Container(
+                        decoration: BoxDecoration(
+                          border: Border(
+                              top: BorderSide(
+                                  color: colorScheme.outlineVariant
+                                      .withValues(alpha: 0.5))),
+                          color: colorScheme.surfaceContainerHigh,
+                        ),
+                        padding: const EdgeInsets.fromLTRB(
+                            16.0, 12.0, 16.0, 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (detailed.description.isNotEmpty)
+                              Html(
+                                data: detailed.description,
+                                style: {
+                                  'body': Style(
+                                    margin: Margins.zero,
+                                    padding: HtmlPaddings.zero,
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: FontSize(
+                                        theme.textTheme.bodySmall
+                                            ?.fontSize ??
+                                            12),
+                                  ),
+                                },
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Modified: ${detailed.modified}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                  color: colorScheme.outline),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (detailed.status == 'Open') ...[
+                                  OutlinedButton(
+                                    onPressed: () => Get.snackbar(
+                                        'ToDo', 'Close ToDo — TODO'),
+                                    child: const Text('Close'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton.tonal(
+                                    onPressed: () => Get.toNamed(
+                                      AppRoutes.TODO_FORM,
+                                      arguments: {
+                                        'name': detailed.name,
+                                        'mode': 'edit',
+                                      },
+                                    ),
+                                    child: const Text('Edit'),
+                                  ),
+                                ] else
+                                  FilledButton.tonal(
+                                    onPressed: () => Get.toNamed(
+                                      AppRoutes.TODO_FORM,
+                                      arguments: {
+                                        'name': detailed.name,
+                                        'mode': 'view',
+                                      },
+                                    ),
+                                    child: const Text('View'),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
             ),
           ],
         );

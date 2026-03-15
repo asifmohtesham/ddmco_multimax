@@ -5,11 +5,32 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class ToDoProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
-    return _apiProvider.getTodos(limit: limit, limitStart: limitStart, filters: filters);
+  static const List<String> _listFields = [
+    'name',
+    'status',
+    'description',
+    'modified',
+    'priority',
+    'date',
+  ];
+
+  Future<Response> getTodos({
+    int limit = 20,
+    int limitStart = 0,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+  }) async {
+    return _apiProvider.getDocumentList(
+      'ToDo',
+      limit: limit,
+      limitStart: limitStart,
+      filters: filters,
+      orderBy: orderBy,
+      fields: _listFields,
+    );
   }
 
   Future<Response> getTodo(String name) async {
-    return _apiProvider.getTodo(name);
+    return _apiProvider.getDocument('ToDo', name);
   }
 }
