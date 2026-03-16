@@ -20,9 +20,10 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
       },
       child: Obx(() {
         final wo = controller.workOrder.value;
-        final title = (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
-            ? 'New Work Order'
-            : wo!.name;
+        final title =
+            (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
+                ? 'New Work Order'
+                : wo!.name;
         return Scaffold(
           appBar: MainAppBar(
             title: title,
@@ -43,7 +44,8 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
                 return Obx(() => IconButton(
                       icon: const Icon(Icons.save_outlined),
                       tooltip: 'Save',
-                      onPressed: controller.canSave ? controller.save : null,
+                      onPressed:
+                          controller.canSave ? controller.save : null,
                     ));
               }),
             ],
@@ -57,9 +59,9 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // Main form
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 class _WorkOrderForm extends StatelessWidget {
   final WorkOrderFormController controller;
@@ -78,9 +80,10 @@ class _WorkOrderForm extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // ── Section: Production ───────────────────────────────────────
-            _SectionHeader(label: 'Production Details', icon: Icons.precision_manufacturing_outlined),
+            // ── Section: Production ──────────────────────────────────────────
+            _SectionHeader(
+                label: 'Production Details',
+                icon: Icons.precision_manufacturing_outlined),
             const SizedBox(height: 12),
 
             // Item search typeahead
@@ -98,7 +101,8 @@ class _WorkOrderForm extends StatelessWidget {
                       hintText: 'Search item code…',
                       border: const OutlineInputBorder(),
                       filled: !canEdit,
-                      fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                      fillColor:
+                          !canEdit ? cs.surfaceContainerHighest : null,
                       prefixIcon: const Icon(Icons.inventory_2_outlined),
                       suffixIcon: controller.isFetchingItems.value
                           ? const Padding(
@@ -109,13 +113,15 @@ class _WorkOrderForm extends StatelessWidget {
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2)),
                             )
-                          : (controller.itemController.text.isNotEmpty && canEdit
+                          : (controller.itemController.text.isNotEmpty &&
+                                  canEdit
                               ? IconButton(
                                   icon: const Icon(Icons.clear, size: 18),
                                   onPressed: () {
                                     controller.itemController.clear();
                                     controller.selectedItem.value = null;
-                                    controller.selectedItemName.value = null;
+                                    controller.selectedItemName.value =
+                                        null;
                                     controller.bomController.clear();
                                     controller.selectedBom.value = null;
                                     controller.bomOptions.clear();
@@ -170,7 +176,9 @@ class _WorkOrderForm extends StatelessWidget {
                 controller: controller.bomController,
                 readOnly: true,
                 decoration: InputDecoration(
-                  hintText: loadingBom ? 'Fetching BOM…' : 'Auto-filled or tap to choose',
+                  hintText: loadingBom
+                      ? 'Fetching BOM…'
+                      : 'Auto-filled or tap to choose',
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: cs.surfaceContainerHighest,
@@ -213,8 +221,8 @@ class _WorkOrderForm extends StatelessWidget {
                   child: TextField(
                     controller: controller.qtyController,
                     readOnly: !canEdit,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
                     textAlign: TextAlign.center,
                     decoration: InputDecoration(
                       border: const OutlineInputBorder(),
@@ -235,8 +243,9 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Dates ────────────────────────────────────────────
-            _SectionHeader(label: 'Dates', icon: Icons.date_range_outlined),
+            // ── Section: Dates ───────────────────────────────────────────────
+            _SectionHeader(
+                label: 'Dates', icon: Icons.date_range_outlined),
             const SizedBox(height: 12),
 
             Row(
@@ -246,9 +255,10 @@ class _WorkOrderForm extends StatelessWidget {
                     label: 'Planned Start *',
                     controller: controller.plannedStartController,
                     readOnly: !canEdit,
-                    onTap: () =>
-                        controller.pickDate(controller.plannedStartController),
-                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                    onTap: () => controller
+                        .pickDate(controller.plannedStartController),
+                    fillColor:
+                        !canEdit ? cs.surfaceContainerHighest : null,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -259,14 +269,15 @@ class _WorkOrderForm extends StatelessWidget {
                     readOnly: !canEdit,
                     onTap: () => controller
                         .pickDate(controller.expectedEndController),
-                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                    fillColor:
+                        !canEdit ? cs.surfaceContainerHighest : null,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Warehouses ───────────────────────────────────────
+            // ── Section: Warehouses ──────────────────────────────────────────
             _SectionHeader(
                 label: 'Warehouses', icon: Icons.warehouse_outlined),
             const SizedBox(height: 12),
@@ -291,7 +302,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Notes ────────────────────────────────────────────
+            // ── Section: Notes ───────────────────────────────────────────────
             _SectionHeader(
                 label: 'Notes', icon: Icons.notes_outlined),
             const SizedBox(height: 12),
@@ -308,16 +319,18 @@ class _WorkOrderForm extends StatelessWidget {
                     !canEdit ? cs.surfaceContainerHighest : null,
                 alignLabelWithHint: true,
               ),
-              onChanged: (_) => controller._markDirty(),
+              // Use the public markDirty() instead of the private _markDirty()
+              onChanged: (_) => controller.markDirty(),
             ),
             const SizedBox(height: 32),
 
-            // ── Save button ───────────────────────────────────────────────
+            // ── Save button ──────────────────────────────────────────────────
             if (canEdit)
               Obx(() => SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: controller.canSave ? controller.save : null,
+                      onPressed:
+                          controller.canSave ? controller.save : null,
                       icon: controller.isSaving.value
                           ? const SizedBox(
                               width: 18,
@@ -345,9 +358,9 @@ class _WorkOrderForm extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // Small widgets
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String label;

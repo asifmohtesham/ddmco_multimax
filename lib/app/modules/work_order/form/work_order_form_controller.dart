@@ -29,7 +29,7 @@ class WorkOrderFormController extends GetxController {
   // ── Dropdown / picker data ────────────────────────────────────────────────
   final warehouses = <String>[].obs;
   final bomOptions = <String>[].obs;
-  final itemOptions = <String>[].obs; // for item search
+  final itemOptions = <String>[].obs;
 
   // ── Form controllers ──────────────────────────────────────────────────────
   final itemController = TextEditingController();
@@ -138,7 +138,8 @@ class WorkOrderFormController extends GetxController {
     _validateForm();
   }
 
-  void _markDirty() {
+  /// Public so the form screen's onChanged callbacks can call it directly.
+  void markDirty() {
     if (!isLoading.value) isDirty.value = true;
   }
 
@@ -164,8 +165,7 @@ class WorkOrderFormController extends GetxController {
             .map((e) => e['name'] as String)
             .toList();
       }
-    } catch (_) {}
-    finally {
+    } catch (_) {} finally {
       isFetchingWarehouses.value = false;
     }
   }
@@ -193,8 +193,7 @@ class WorkOrderFormController extends GetxController {
             .map((e) => e['name'] as String)
             .toList();
       }
-    } catch (_) {}
-    finally {
+    } catch (_) {} finally {
       isFetchingItems.value = false;
     }
   }
@@ -204,7 +203,6 @@ class WorkOrderFormController extends GetxController {
     itemController.text = itemCode;
     itemOptions.clear();
 
-    // Fetch item name
     try {
       final res = await _apiProvider.getDocument('Item', itemCode);
       if (res.statusCode == 200 && res.data['data'] != null) {
@@ -212,12 +210,11 @@ class WorkOrderFormController extends GetxController {
       }
     } catch (_) {}
 
-    // Auto-fetch the default active BOM for this item
     bomController.clear();
     selectedBom.value = null;
     isBomValid.value = false;
     bomOptions.clear();
-    _markDirty();
+    markDirty();
     _validateForm();
     await _autoLoadBom(itemCode);
   }
@@ -225,7 +222,6 @@ class WorkOrderFormController extends GetxController {
   Future<void> _autoLoadBom(String itemCode) async {
     isFetchingBom.value = true;
     try {
-      // Try default BOM first
       final res = await _provider.searchBoms(itemCode);
       if (res.statusCode == 200 && res.data['data'] != null) {
         final list = res.data['data'] as List;
@@ -234,21 +230,17 @@ class WorkOrderFormController extends GetxController {
           return;
         }
       }
-      // Fall back to any active BOM
       final res2 = await _provider.getBomsForItem(itemCode);
       if (res2.statusCode == 200 && res2.data['data'] != null) {
         final list2 = res2.data['data'] as List;
         if (list2.isNotEmpty) {
-          bomOptions.value =
-              list2.map((e) => e['name'] as String).toList();
+          bomOptions.value = list2.map((e) => e['name'] as String).toList();
           if (list2.length == 1) {
             await _applyBom(list2.first['name'] as String);
           }
-          // If multiple BOMs, let user pick from bomOptions
         }
       }
-    } catch (_) {}
-    finally {
+    } catch (_) {} finally {
       isFetchingBom.value = false;
     }
   }
@@ -264,10 +256,9 @@ class WorkOrderFormController extends GetxController {
           wipWarehouseController.text = bom['wip_warehouse'] ?? '';
         }
         if (fgWarehouseController.text.isEmpty) {
-          fgWarehouseController.text =
-              bom['fg_warehouse'] ?? bom['fg_warehouse'] ?? '';
+          fgWarehouseController.text = bom['fg_warehouse'] ?? '';
         }
-        _markDirty();
+        markDirty();
         _validateForm();
       }
     } catch (_) {}
@@ -297,7 +288,7 @@ class WorkOrderFormController extends GetxController {
     );
     if (picked != null) {
       ctrl.text = DateFormat('yyyy-MM-dd').format(picked);
-      _markDirty();
+      markDirty();
     }
   }
 
@@ -326,8 +317,7 @@ class WorkOrderFormController extends GetxController {
                   borderRadius: BorderRadius.circular(2)),
             ),
             const Text('Select Warehouse',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
             TextField(
               controller: search,
@@ -341,8 +331,7 @@ class WorkOrderFormController extends GetxController {
               ),
               onChanged: (v) {
                 filtered.value = warehouses
-                    .where((w) =>
-                        w.toLowerCase().contains(v.toLowerCase()))
+                    .where((w) => w.toLowerCase().contains(v.toLowerCase()))
                     .toList();
               },
             ),
@@ -350,22 +339,19 @@ class WorkOrderFormController extends GetxController {
             Expanded(
               child: Obx(() {
                 if (isFetchingWarehouses.value) {
-                  return const Center(
-                      child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (filtered.isEmpty) {
-                  return const Center(
-                      child: Text('No warehouses found'));
+                  return const Center(child: Text('No warehouses found'));
                 }
                 return ListView.separated(
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1),
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) => ListTile(
                     title: Text(filtered[i]),
                     onTap: () {
                       ctrl.text = filtered[i];
-                      _markDirty();
+                      markDirty();
                       Get.back();
                     },
                   ),
@@ -388,8 +374,7 @@ class WorkOrderFormController extends GetxController {
     }
     Get.bottomSheet(
       Container(
-        constraints:
-            BoxConstraints(maxHeight: Get.height * 0.55),
+        constraints: BoxConstraints(maxHeight: Get.height * 0.55),
         padding: const EdgeInsets.all(16),
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -407,8 +392,7 @@ class WorkOrderFormController extends GetxController {
                   borderRadius: BorderRadius.circular(2)),
             ),
             const Text('Select BOM',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
             Flexible(
               child: ListView.separated(
@@ -416,8 +400,7 @@ class WorkOrderFormController extends GetxController {
                 itemCount: bomOptions.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (_, i) => ListTile(
-                  leading: const Icon(
-                      Icons.account_tree_outlined),
+                  leading: const Icon(Icons.account_tree_outlined),
                   title: Text(bomOptions[i]),
                   onTap: () {
                     Get.back();
@@ -438,10 +421,9 @@ class WorkOrderFormController extends GetxController {
     if (!canEdit) return;
     final current = double.tryParse(qtyController.text) ?? 0;
     final newVal = (current + delta).clamp(1, double.infinity);
-    qtyController.text = newVal % 1 == 0
-        ? newVal.toInt().toString()
-        : newVal.toString();
-    _markDirty();
+    qtyController.text =
+        newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
+    markDirty();
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -473,8 +455,7 @@ class WorkOrderFormController extends GetxController {
           name = res.data['data']['name'];
           mode = 'view';
           await _fetchDocument();
-          GlobalSnackbar.success(
-              message: 'Work Order ${name} created');
+          GlobalSnackbar.success(message: 'Work Order $name created');
           isDirty.value = false;
         } else {
           GlobalSnackbar.error(message: 'Failed to create Work Order');
