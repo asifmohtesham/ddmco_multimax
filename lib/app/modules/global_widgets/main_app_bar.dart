@@ -6,6 +6,12 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
+
+  /// Optional widget to replace the [title] text. When provided, [title] is
+  /// still required (used as a fallback / accessibility label) but the
+  /// visual title column renders [titleWidget] instead of a [Text].
+  final Widget? titleWidget;
+
   final String? status;
   final bool isDirty;
   final bool isSaving;
@@ -24,6 +30,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   const MainAppBar({
     super.key,
     required this.title,
+    this.titleWidget,
     this.status,
     this.isSaving = false,
     this.onSave,
@@ -40,12 +47,9 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // 2. Construct Actions List: [Search] -> [Reload] -> [Custom Actions] -> [Save]
     final List<Widget> appActions = [
-      // Global Search Action
       if (searchDoctype != null && searchRoute != null)
         IconButton(
           tooltip: 'Search $searchDoctype',
@@ -60,20 +64,13 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             );
           },
         ),
-
-      // Reload Action — only shown when onReload is provided;
-      // disabled while a save is in progress to avoid concurrent requests.
       if (onReload != null)
         IconButton(
           tooltip: 'Reload document',
           icon: const Icon(Icons.refresh),
           onPressed: isSaving ? null : onReload,
         ),
-
-      // Custom Actions injected by the screen
       ...(actions ?? []),
-
-      // Global Save Action
       if (onSave != null)
         SaveIconButton(
           onPressed: onSave,
@@ -83,8 +80,6 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     ];
 
     return AppBar(
-      // Fix: use Navigator.maybePop so PopScope.canPop / onPopInvokedWithResult
-      // is respected. Get.back() bypasses the PopScope guard entirely.
       leading: leading ??
           (showBack && Navigator.canPop(context)
               ? IconButton(
@@ -97,15 +92,17 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            title,
-            style:
-                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
+          // Use titleWidget when provided, otherwise fall back to Text(title).
+          titleWidget ??
+              Text(
+                title,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold),
+              ),
           if (displayStatus != null) ...[
             const SizedBox(height: 4),
             StatusPill(status: displayStatus),
-          ]
+          ],
         ],
       ),
       actions: appActions,
@@ -119,5 +116,6 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 }
