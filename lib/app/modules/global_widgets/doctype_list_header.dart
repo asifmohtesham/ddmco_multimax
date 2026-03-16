@@ -10,73 +10,34 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///      two action icons: a **filter** [IconButton] (badged) and a **search**
 ///      [IconButton], both always reachable with a single tap.
 ///
-///      Previously the filter icon lived inside the [DocTypeSearchDelegate]
-///      overlay, requiring two taps to reach (search icon → filter icon).
-///      It is now promoted to the AppBar row itself for immediate access.
-///
 ///   2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
-///      the caller via [filterChipsBuilder].  This stays in the list body
-///      so active filters remain visible while scrolling.
+///      the caller via [filterChipsBuilder].
 ///
-/// All reactive state (search query, filter count) is read from the caller’s
-/// GetX controller through plain [RxString] / [RxMap] getters wrapped in
-/// [Obx].  No [StatefulWidget], no local [ValueNotifier], no [setState].
-///
-/// ### Action icon layout (left → right in AppBar)
-/// ```
-/// [ extraActions... ]  [ filter ]  [ search ]
-/// ```
-/// • **filter** — idle: outlined [Icons.filter_list] icon button.
-///               active: filled [Icons.filter_alt] button (primary bg,
-///               onPrimary icon) with the active count in the tooltip.
-///               Hidden when [onFilterTap] is null.
-/// • **search** — standard icon button with an 8 px error dot when a
-///               query is active. Hidden when search is not wired up.
+/// ### Filter icon states
+/// • **Idle**   : plain [Icons.filter_list] icon button, default colour.
+/// • **Active** : [IconButton.filled] ([Icons.filter_alt]) — solid primary
+///               background guarantees visibility against any AppBar surface.
+///               A [Badge] overlays the count in the top-right corner using
+///               onError-on-error colours, which contrast against both the
+///               primary pill and the AppBar background.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ──────────────────────────────────────────────────────────────
-
-  /// Page title shown in the large / collapsed app bar.
   final String title;
-
-  /// Extra action widgets prepended before the filter and search icons.
   final List<Widget>? extraActions;
 
   // ── Search ──────────────────────────────────────────────────────────────
-
-  /// ERPNext DocType name passed to [DocTypeSearchDelegate] for API search.
-  /// When empty or null only local-search mode is used.
   final String? searchDoctype;
-
-  /// Named route for [DocTypeSearchDelegate] result navigation (API mode).
   final String? searchRoute;
-
-  /// The controller’s [RxString] that holds the current query.
-  /// Pass `null` to hide the search icon entirely.
   final RxString? searchQuery;
-
-  /// Called on every keystroke (debounce is handled by the controller).
   final ValueChanged<String>? onSearchChanged;
-
-  /// Called when the user taps the × clear button inside the search delegate.
   final VoidCallback? onSearchClear;
 
-  // ── Filter button (AppBar action — one tap) ──────────────────────────────
-
-  /// Map of currently active filters — drives the filled state and tooltip
-  /// count on the filter icon.
+  // ── Filter ──────────────────────────────────────────────────────────────
   final RxMap<String, dynamic>? activeFilters;
-
-  /// Callback that opens the DocType-specific filter bottom sheet.
-  /// When null the filter icon is hidden entirely.
   final VoidCallback? onFilterTap;
 
-  // ── Active filter chips ──────────────────────────────────────────────────
-
-  /// Returns the list of [Chip] widgets for currently active filters.
-  /// The entire row is hidden when the list is empty.
+  // ── Chip row ──────────────────────────────────────────────────────────────
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
-
-  /// Callback for the “Clear all” button shown when chips.length > 1.
   final VoidCallback? onClearAllFilters;
 
   const DocTypeListHeader({
@@ -112,12 +73,12 @@ class DocTypeListHeader extends StatelessWidget {
 
       // ── Filter icon ─────────────────────────────────────────────────────
       //
-      // Idle  : plain IconButton, Icons.filter_list, default icon colour.
-      // Active: IconButton.filled, Icons.filter_alt.
-      //         Filled renders onPrimary icon on a solid primary background
-      //         — always legible against colorScheme.surface in any M3 theme.
-      //         The count is surfaced in the tooltip; no badge overlay needed
-      //         because the filled pill itself communicates “active” clearly.
+      // Idle  — plain IconButton with filter_list, inherits AppBar icon colour.
+      // Active — IconButton.filled (primary bg / onPrimary icon) wrapped in a
+      //          Badge that shows the count in onError-on-error colours.
+      //          The Badge widget positions itself in the top-right corner of
+      //          its child and is guaranteed to contrast against both the
+      //          primary pill and any AppBar background.
       if (onFilterTap != null)
         Builder(
           builder: (ctx) {
@@ -129,32 +90,33 @@ class DocTypeListHeader extends StatelessWidget {
                   ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
                   : 'Filter';
 
+              final button = isActive
+                  ? IconButton.filled(
+                      icon: const Icon(Icons.filter_alt),
+                      onPressed: onFilterTap,
+                      tooltip: tooltip,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.filter_list),
+                      onPressed: onFilterTap,
+                      tooltip: tooltip,
+                    );
+
+              // Wrap the active button with Badge to show count.
+              // Badge uses colorScheme.error / onError by default, which
+              // always contrasts against the primary-coloured filled pill.
               if (isActive) {
-                // Filled button: solid primary circle, onPrimary icon.
-                // Always visible regardless of AppBar background colour.
-                return Tooltip(
-                  message: tooltip,
-                  child: IconButton.filled(
-                    icon: const Icon(Icons.filter_alt),
-                    onPressed: onFilterTap,
-                    // Constrain size to match a regular IconButton so the
-                    // AppBar action row doesn’t reflow when toggling.
-                    constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
-                    ),
-                  ),
+                return Badge(
+                  label: Text('$count'),
+                  child: button,
                 );
               }
 
-              // Idle: plain icon button
-              return Tooltip(
-                message: tooltip,
-                child: IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: onFilterTap,
-                ),
-              );
+              return button;
             });
           },
         ),
