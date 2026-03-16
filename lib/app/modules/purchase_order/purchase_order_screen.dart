@@ -134,10 +134,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header: AppBar + SearchBar + filter chips ──────────
+            // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
               title: 'Purchase Orders',
-              searchHint: 'Search Supplier or ID…',
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

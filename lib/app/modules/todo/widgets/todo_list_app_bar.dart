@@ -108,9 +108,8 @@ class ToDoListAppBar extends StatelessWidget {
       searchDoctype: 'ToDo',
       searchRoute: AppRoutes.TODO_FORM,
 
-      // Local SearchBar
+      // Search wiring
       searchQuery: ctrl.searchQuery,
-      searchHint: 'Search description, priority, status…',
       onSearchChanged: ctrl.onSearchChanged,
       onSearchClear: () {
         ctrl.searchQuery.value = '';

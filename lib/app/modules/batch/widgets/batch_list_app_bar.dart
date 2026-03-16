@@ -25,7 +25,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 /// |---|---|
 /// | Collapsing large title | `'Batch'` (static) |
 /// | Global ERPNext search | `Batch` doctype → [AppRoutes.BATCH_FORM] |
-/// | Local SearchBar | `controller.searchQuery` + `controller.onSearchChanged` |
+/// | Search & filter | `controller.searchQuery` + `controller.onSearchChanged` |
 /// | Filter badge | `controller.activeFilters.length` |
 /// | Filter sheet | [BatchFilterBottomSheet] via `Get.bottomSheet` |
 /// | Active filter chips | Built from `controller.activeFilters` |
@@ -140,9 +140,8 @@ class BatchListAppBar extends StatelessWidget {
       searchDoctype: 'Batch',
       searchRoute: AppRoutes.BATCH_FORM,
 
-      // Local SearchBar ──────────────────────────────────────────────────────
+      // Search & filter wiring ───────────────────────────────────────────────
       searchQuery: ctrl.searchQuery,
-      searchHint: 'Filter batches by name…',
       onSearchChanged: ctrl.onSearchChanged,
       onSearchClear: () {
         ctrl.searchQuery.value = '';

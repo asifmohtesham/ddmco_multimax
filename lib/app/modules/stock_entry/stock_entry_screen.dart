@@ -203,10 +203,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header: AppBar + SearchBar + filter chips ──────────
+            // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
               title: 'Stock Entries',
-              searchHint: 'Search ID, Purpose…',
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

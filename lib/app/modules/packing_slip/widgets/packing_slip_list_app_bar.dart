@@ -135,9 +135,8 @@ class PackingSlipListAppBar extends StatelessWidget {
       searchDoctype: 'Packing Slip',
       searchRoute: AppRoutes.PACKING_SLIP_FORM,
 
-      // Local SearchBar
+      // Search wiring
       searchQuery: ctrl.searchQuery,
-      searchHint: 'Search slips, DN, PO, customer…',
       onSearchChanged: ctrl.onSearchChanged,
       onSearchClear: () {
         ctrl.searchQuery.value = '';

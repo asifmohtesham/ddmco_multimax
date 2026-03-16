@@ -26,7 +26,7 @@ import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart'
 /// | Collapsing large title | `'Item Master'` (static) |
 /// | Global ERPNext search | `Item` doctype → [AppRoutes.ITEM_FORM] |
 /// | Grid / list toggle action | `controller.isGridView` / `controller.toggleLayout` |
-/// | Local SearchBar | `controller.searchQuery` + `controller.onSearchChanged` |
+/// | Search & filter | `controller.searchQuery` + `controller.onSearchChanged` |
 /// | Filter badge | `controller.filterCount` |
 /// | Filter sheet | [ItemFilterBottomSheet] via `Get.bottomSheet` |
 /// | Active filter chips | Built from `controller.activeFilters` |
@@ -129,9 +129,8 @@ class ItemListAppBar extends StatelessWidget {
             )),
       ],
 
-      // Local SearchBar ────────────────────────────────────────────────────
+      // Search & filter wiring ─────────────────────────────────────────────
       searchQuery: controller.searchQuery,
-      searchHint: 'Search Items (Name, Code, Desc...)',
       onSearchChanged: controller.onSearchChanged,
       onSearchClear: () {
         controller.searchQuery.value = '';
