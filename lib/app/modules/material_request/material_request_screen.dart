@@ -4,6 +4,7 @@ import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
@@ -26,7 +27,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   final _scrollController = ScrollController();
 
   /// Tracks whether the user has scrolled far enough to collapse the FAB.
-  /// Stored as an observable so the [Obx]-wrapped FAB reacts without setState.
   final _isFarFromTop = false.obs;
 
   // ---------------------------------------------------------------------------
@@ -55,14 +55,12 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final current   = _scrollController.offset;
 
-    // Infinite-scroll trigger at 90 % of list height.
     if (current >= maxScroll * 0.9 &&
         controller.hasMore.value &&
         !controller.isFetchingMore.value) {
       controller.fetchMaterialRequests(isLoadMore: true);
     }
 
-    // FAB collapse threshold.
     final far = current > 80;
     if (_isFarFromTop.value != far) _isFarFromTop.value = far;
   }
@@ -80,7 +78,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Active filter chips  (mirrors StockEntry pattern)
+  // Active filter chips
   // ---------------------------------------------------------------------------
 
   List<Widget> _buildActiveFilterChips(BuildContext context) {
@@ -188,8 +186,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme       = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final theme        = Theme.of(context);
+    final colorScheme  = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -203,9 +201,21 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar ──────────────────────────────────────────────────────
-            const SliverAppBar.large(
-              title: Text('Material Requests'),
+            // ── AppBar + search/filter icons + active-filter chip row ───────
+            // DocTypeListHeader owns all three concerns in one widget,
+            // consistent with Batch, StockEntry, and every other list screen.
+            DocTypeListHeader(
+              title: 'Material Requests',
+              searchQuery: controller.searchQuery,
+              onSearchChanged: controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchMaterialRequests(clear: true);
+              },
+              activeFilters: controller.activeFilters,
+              onFilterTap: () => _showFilterSheet(context),
+              filterChipsBuilder: _buildActiveFilterChips,
+              onClearAllFilters: controller.clearFilters,
             ),
 
             // ── Result count pill ───────────────────────────────────────────
@@ -256,123 +266,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                );
-              }),
-            ),
-
-            // ── SearchBar + filter badge (mirrors StockEntry) ───────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Obx(() {
-                  final filterCount = controller.activeFilters.length;
-                  return SearchBar(
-                    hintText: 'Search ID, Type, Warehouse...',
-                    leading: const Icon(Icons.search),
-                    onChanged: controller.onSearchChanged,
-                    trailing: [
-                      if (controller.searchQuery.value.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            controller.searchQuery.value = '';
-                            controller.fetchMaterialRequests(clear: true);
-                          },
-                        ),
-                      Tooltip(
-                        message: filterCount > 0
-                            ? '$filterCount filter${filterCount > 1 ? 's' : ''} active'
-                            : 'Filter requests',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => _showFilterSheet(context),
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.center,
-                              children: [
-                                Icon(
-                                  filterCount > 0
-                                      ? Icons.filter_alt
-                                      : Icons.filter_list,
-                                  color: filterCount > 0
-                                      ? colorScheme.primary
-                                      : colorScheme.onSurfaceVariant,
-                                ),
-                                if (filterCount > 0)
-                                  Positioned(
-                                    top: -4,
-                                    right: -6,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: colorScheme.error,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 16, minHeight: 16),
-                                      child: Text(
-                                        '$filterCount',
-                                        style: TextStyle(
-                                          color: colorScheme.onError,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    elevation: const WidgetStatePropertyAll(0),
-                    backgroundColor: WidgetStatePropertyAll(
-                        colorScheme.surfaceContainerHighest),
-                    shape: WidgetStatePropertyAll(
-                      RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(28)),
-                    ),
-                  );
-                }),
-              ),
-            ),
-
-            // ── Active filter chips ─────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Obx(() {
-                final hasFilters = controller.activeFilters.isNotEmpty;
-                final hasSearch  = controller.searchQuery.value.isNotEmpty;
-                if (!hasFilters && !hasSearch) return const SizedBox.shrink();
-                final chips = _buildActiveFilterChips(context);
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ...chips,
-                      if (chips.length > 1)
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: colorScheme.error,
-                            visualDensity: VisualDensity.compact,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          onPressed: controller.clearFilters,
-                          icon: const Icon(Icons.clear_all, size: 16),
-                          label: const Text('Clear all'),
-                        ),
                     ],
                   ),
                 );
@@ -447,7 +340,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 );
               }
 
-              final requests  = controller.materialRequests;
+              final requests   = controller.materialRequests;
               final showLoader = controller.hasMore.value;
               final baseCount  = requests.length;
 
@@ -618,7 +511,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           Divider(height: 1, color: colorScheme.outlineVariant),
           const SizedBox(height: 12),
 
-          // Audit row
           Row(
             children: [
               Icon(Icons.person_outline,
@@ -734,7 +626,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Shared helpers (identical API to StockEntry _infoCell / _miniStat)
+  // Shared helpers
   // ---------------------------------------------------------------------------
 
   Widget _infoCell(
