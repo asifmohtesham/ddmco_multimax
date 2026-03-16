@@ -1,19 +1,20 @@
 import 'dart:developer';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/utils/search_helper.dart';
 
-/// Model to represent a single row in the unified filter list
+/// Model to represent a single row in the unified filter list.
 class FilterRow {
-  String field;       // The db field name or '_attribute' for attribute filters
-  String label;       // Label shown to user
-  String operator;    // e.g., 'like', '='
-  String value;       // User entered value
-  String fieldType;   // 'Data', 'Link', 'Attribute'
-  String? doctype;    // For Link fields, e.g., 'Item Group'
-  String attributeName; // Only used if fieldType == 'Attribute' (e.g., 'Color')
+  String field;
+  String label;
+  String operator;
+  String value;
+  String fieldType;
+  String? doctype;
+  String attributeName;
 
   FilterRow({
     required this.field,
@@ -25,18 +26,15 @@ class FilterRow {
     this.attributeName = '',
   });
 
-  // Clone for local editing in the UI
-  FilterRow clone() {
-    return FilterRow(
-      field: field,
-      label: label,
-      operator: operator,
-      value: value,
-      fieldType: fieldType,
-      doctype: doctype,
-      attributeName: attributeName,
-    );
-  }
+  FilterRow clone() => FilterRow(
+        field: field,
+        label: label,
+        operator: operator,
+        value: value,
+        fieldType: fieldType,
+        doctype: doctype,
+        attributeName: attributeName,
+      );
 }
 
 class ItemController extends GetxController {
@@ -53,13 +51,17 @@ class ItemController extends GetxController {
   int _currentPage = 0;
 
   var expandedItemName = ''.obs;
-  var isLoadingStock = false.obs;
+
+  /// Per-item stock loading flag — null = never fetched, [] = fetched/empty.
+  /// Fix #8: use cache presence rather than a shared bool flag.
   final _stockLevelsCache = <String, List<WarehouseStock>>{}.obs;
 
-  // --- UNIFIED FILTER STATE ---
+  /// Whether a stock fetch is in-flight for a specific item code.
+  final _stockLoadingSet = <String>{}.obs;
+
+  // ── Filter state ─────────────────────────────────────────────────────────
   final activeFilters = <FilterRow>[].obs;
 
-  // Configuration for Available Fields
   final List<FilterRow> availableFields = [
     FilterRow(field: 'item_code', label: 'Item Code', operator: 'like'),
     FilterRow(field: 'item_name', label: 'Item Name', operator: 'like'),
@@ -68,7 +70,6 @@ class ItemController extends GetxController {
     FilterRow(field: 'variant_of', label: 'Variant Of', operator: '=', fieldType: 'Link', doctype: 'Item'),
     FilterRow(field: 'customer_name', label: 'Customer Name', operator: 'like'),
     FilterRow(field: 'ref_code', label: 'Customer Ref Code', operator: 'like'),
-    // Special Option to trigger Attribute UI
     FilterRow(field: '_attribute', label: 'Item Attribute', operator: '=', fieldType: 'Attribute'),
   ];
 
@@ -76,10 +77,10 @@ class ItemController extends GetxController {
 
   var sortField = '`tabItem`.`modified`'.obs;
   var sortOrder = 'desc'.obs;
-
   var searchQuery = ''.obs;
 
-  // Reference Data
+  // ── Reference data (lazy-loaded on first filter sheet open) ─────────────
+  // Fix #7: not fetched in onInit anymore.
   var itemGroups = <String>[].obs;
   var templateItems = <String>[].obs;
   var itemAttributes = <String>[].obs;
@@ -90,42 +91,33 @@ class ItemController extends GetxController {
   var isLoadingAttributes = false.obs;
   var isLoadingAttributeValues = false.obs;
 
+  /// True once reference data has been loaded at least once.
+  var referenceDataLoaded = false.obs;
+
   var showImagesOnly = true.obs;
   var isGridView = false.obs;
 
-  // Helper for Badge Count
-  int get filterCount => activeFilters.length + (showImagesOnly.value ? 1 : 0);
+  /// Fix #13: filterCount no longer includes showImagesOnly.
+  int get filterCount => activeFilters.length;
 
   @override
   void onInit() {
     super.onInit();
 
-    // --- ARGUMENT HANDLING LOGIC START ---
-    // Check if arguments were passed (e.g. from ScanService/HomeController)
     if (Get.arguments != null && Get.arguments is Map) {
       final args = Get.arguments as Map;
-
-      // Handle 'filters' argument: {'field_name': ['operator', 'value']}
       if (args.containsKey('filters') && args['filters'] is Map) {
         final filtersMap = args['filters'] as Map;
         final List<FilterRow> parsedFilters = [];
-
         filtersMap.forEach((key, valueList) {
           if (valueList is List && valueList.length >= 2) {
             final String op = valueList[0];
             String val = valueList[1].toString();
-
-            // Clean wildcards for UI consistency (fetchItems re-adds them if needed)
-            if (op == 'like') {
-              val = val.replaceAll('%', '');
-            }
-
-            // Find matching config to ensure correct label and type
+            if (op == 'like') val = val.replaceAll('%', '');
             final config = availableFields.firstWhereOrNull((f) => f.field == key);
-
             parsedFilters.add(FilterRow(
               field: key,
-              label: config?.label ?? key, // Fallback to key if not found in availableFields
+              label: config?.label ?? key,
               operator: op,
               value: val,
               fieldType: config?.fieldType ?? 'Data',
@@ -133,42 +125,36 @@ class ItemController extends GetxController {
             ));
           }
         });
-
         if (parsedFilters.isNotEmpty) {
           activeFilters.assignAll(parsedFilters);
-          // Disable "Show Images Only" if a specific filter is applied to broaden results
           showImagesOnly.value = false;
         }
       }
     }
-    // --- ARGUMENT HANDLING LOGIC END ---
 
     fetchItems();
-    fetchItemGroups();
-    fetchTemplateItems();
-    fetchItemAttributes();
 
-    ever(items, (_) => _applySearch());
-    ever(searchQuery, (_) => _applySearch());
+    // Fix #2: debounce searchQuery instead of ever(items); avoids re-running
+    // on every load-more addAll.
+    debounce(
+      searchQuery,
+      (_) => _applySearch(),
+      time: const Duration(milliseconds: 200),
+    );
   }
 
-  void toggleLayout() {
-    isGridView.value = !isGridView.value;
-  }
-
+  void toggleLayout() => isGridView.value = !isGridView.value;
   void setImagesOnly(bool value) {
     showImagesOnly.value = value;
+    fetchItems(clear: true);
   }
-
-  void onSearchChanged(String query) {
-    searchQuery.value = query;
-  }
+  void onSearchChanged(String query) => searchQuery.value = query;
 
   void _applySearch() {
     displayedItems.value = SearchHelper.search<Item>(
       items,
       searchQuery.value,
-          (item) => [
+      (item) => [
         item.itemName,
         item.itemCode,
         item.itemGroup,
@@ -185,21 +171,34 @@ class ItemController extends GetxController {
     fetchItems(clear: true);
   }
 
+  /// Fix #14: clearFilters no longer resets showImagesOnly.
   void clearFilters() {
     activeFilters.clear();
-    showImagesOnly.value = true;
     searchQuery.value = '';
     fetchItems(clear: true);
   }
 
   void setSort(String field, String order) {
-    if (!field.contains('`')) {
-      field = '`tabItem`.`$field`';
-    }
+    if (!field.contains('`')) field = '`tabItem`.`$field`';
     sortField.value = field;
     sortOrder.value = order;
     fetchItems(clear: true);
   }
+
+  // ── Lazy reference data loader (Fix #7) ──────────────────────────────
+
+  /// Called the first time the filter sheet is opened.
+  Future<void> ensureReferenceDataLoaded() async {
+    if (referenceDataLoaded.value) return;
+    await Future.wait([
+      fetchItemGroups(),
+      fetchTemplateItems(),
+      fetchItemAttributes(),
+    ]);
+    referenceDataLoaded.value = true;
+  }
+
+  // ── Fetch items ──────────────────────────────────────────────────────
 
   Future<void> fetchItems({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
@@ -217,24 +216,14 @@ class ItemController extends GetxController {
       final List<List<dynamic>> reportFilters = [];
       final List<FilterRow> attributeFiltersToProcess = [];
 
-      // 1. Separate Filters (Standard vs Attribute)
       for (var filter in activeFilters) {
         if (filter.value.isEmpty) continue;
-
         if (filter.fieldType == 'Attribute') {
-          if (filter.attributeName.isNotEmpty) {
-            attributeFiltersToProcess.add(filter);
-          }
+          if (filter.attributeName.isNotEmpty) attributeFiltersToProcess.add(filter);
           continue;
         }
-
-        // --- UPDATE: Apply % wildcards for 'like' operator to ALL fields ---
         String val = filter.value;
-        if (filter.operator == 'like' && !val.contains('%')) {
-          val = '%$val%';
-        }
-
-        // Apply filters to appropriate tables
+        if (filter.operator == 'like' && !val.contains('%')) val = '%$val%';
         if (filter.field == 'customer_name') {
           reportFilters.add(['Item Customer Detail', 'customer_name', filter.operator, val]);
         } else if (filter.field == 'ref_code') {
@@ -248,42 +237,39 @@ class ItemController extends GetxController {
         reportFilters.add(['Item', 'image', '!=', '']);
       }
 
-      // 2. Process Attribute Filters (Intersection Logic)
+      // Fix #4: attribute intersection — reset on exception to avoid mixing
+      // resolved codes with fallback description text.
       if (attributeFiltersToProcess.isNotEmpty) {
         Set<String>? commonItemCodes;
-        bool permissionErrorOccurred = false;
+        bool attributeResolutionFailed = false;
 
         for (var filter in attributeFiltersToProcess) {
           try {
             final response = await _provider.getItemVariantsByAttribute(
-                filter.attributeName,
-                filter.value
-            );
-
+                filter.attributeName, filter.value);
             if (response.statusCode == 200 && response.data['data'] != null) {
-              final List<String> fetchedCodes = (response.data['data'] as List)
+              final fetchedCodes = (response.data['data'] as List)
                   .map((e) => e['parent'].toString())
-                  .toList();
-
-              if (commonItemCodes == null) {
-                commonItemCodes = Set.from(fetchedCodes);
-              } else {
-                commonItemCodes = commonItemCodes.intersection(Set.from(fetchedCodes));
-              }
+                  .toSet();
+              commonItemCodes = commonItemCodes == null
+                  ? fetchedCodes
+                  : commonItemCodes.intersection(fetchedCodes);
               if (commonItemCodes.isEmpty) break;
             }
           } catch (e) {
-            permissionErrorOccurred = true;
-            // Fallback: simple text search in description if exact match fails
+            if (kDebugMode) log('Attribute filter failed for ${filter.attributeName}: $e');
+            // Abort the attribute path entirely; fall back to description search.
+            attributeResolutionFailed = true;
+            commonItemCodes = null;
             reportFilters.add(['Item', 'description', 'like', '%${filter.value}%']);
+            break;
           }
         }
 
-        if (!permissionErrorOccurred) {
+        if (!attributeResolutionFailed) {
           if (commonItemCodes != null && commonItemCodes.isNotEmpty) {
             reportFilters.add(['Item', 'name', 'in', commonItemCodes.toList()]);
           } else if (commonItemCodes != null && commonItemCodes.isEmpty) {
-            // No matches for attributes
             items.clear();
             isLoading.value = false;
             hasMore.value = false;
@@ -303,41 +289,41 @@ class ItemController extends GetxController {
       final List<dynamic> data = result['data'] ?? [];
       final newItems = data.map((json) => Item.fromJson(json)).toList();
 
-      if (newItems.length < _limit) {
-        hasMore.value = false;
-      }
+      if (newItems.length < _limit) hasMore.value = false;
 
       if (isLoadMore) {
         items.addAll(newItems);
+        // Fix #2: manually trigger search update after addAll without
+        // relying on ever(items) which fires per-mutation.
+        _applySearch();
       } else {
         items.value = newItems;
+        _applySearch();
       }
       _currentPage++;
-
     } catch (e) {
-      log('Error fetching items: $e');
+      if (kDebugMode) log('Error fetching items: $e');
       String msg = e.toString().replaceAll('Exception:', '').trim();
-      if (msg.length > 150) msg = "${msg.substring(0, 150)}... (Check logs)";
+      if (msg.length > 150) msg = '${msg.substring(0, 150)}... (Check logs)';
       GlobalSnackbar.error(message: msg);
     } finally {
-      if (isLoadMore) {
-        isFetchingMore.value = false;
-      } else {
-        isLoading.value = false;
-      }
+      isLoadMore ? isFetchingMore.value = false : isLoading.value = false;
     }
   }
 
-  // --- Reference Data Fetchers ---
+  // ── Reference data fetchers (Fix #3: log + kDebugMode) ────────────────
+
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
     try {
       final response = await _provider.getItemGroups();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        itemGroups.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        itemGroups.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching item groups: $e');
+      if (kDebugMode) log('Error fetching item groups: $e');
     } finally {
       isLoadingGroups.value = false;
     }
@@ -348,10 +334,12 @@ class ItemController extends GetxController {
     try {
       final response = await _provider.getTemplateItems();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        templateItems.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        templateItems.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching template items: $e');
+      if (kDebugMode) log('Error fetching template items: $e');
     } finally {
       isLoadingTemplates.value = false;
     }
@@ -362,10 +350,12 @@ class ItemController extends GetxController {
     try {
       final response = await _provider.getItemAttributes();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        itemAttributes.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        itemAttributes.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching item attributes: $e');
+      if (kDebugMode) log('Error fetching item attributes: $e');
     } finally {
       isLoadingAttributes.value = false;
     }
@@ -379,31 +369,50 @@ class ItemController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         if (data['item_attribute_values'] != null) {
-          currentAttributeValues.value = (data['item_attribute_values'] as List).map((e) => e['attribute_value'] as String).toList();
+          currentAttributeValues.value =
+              (data['item_attribute_values'] as List)
+                  .map((e) => e['attribute_value'] as String)
+                  .toList();
         }
       }
     } catch (e) {
-      print('Error fetching attribute values: $e');
+      if (kDebugMode) log('Error fetching attribute values: $e');
     } finally {
       isLoadingAttributeValues.value = false;
     }
   }
 
-  List<WarehouseStock>? getStockFor(String itemCode) => _stockLevelsCache[itemCode];
+  // ── Stock levels (Fix #8: per-item state) ────────────────────────────
+
+  List<WarehouseStock>? getStockFor(String itemCode) =>
+      _stockLevelsCache[itemCode];
+
+  /// Returns true while a fetch is in-flight for [itemCode].
+  bool isStockLoading(String itemCode) =>
+      _stockLoadingSet.contains(itemCode);
 
   Future<void> fetchStockLevels(String itemCode) async {
     if (_stockLevelsCache.containsKey(itemCode)) return;
-    isLoadingStock.value = true;
+    if (_stockLoadingSet.contains(itemCode)) return;
+    _stockLoadingSet.add(itemCode);
     try {
       final response = await _provider.getStockLevels(itemCode);
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
+      if (response.statusCode == 200 &&
+          response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
-        _stockLevelsCache[itemCode] = data.whereType<Map<String, dynamic>>().map((json) => WarehouseStock.fromJson(json)).toList();
+        _stockLevelsCache[itemCode] = data
+            .whereType<Map<String, dynamic>>()
+            .map((json) => WarehouseStock.fromJson(json))
+            .toList();
+      } else {
+        // Mark as fetched-but-empty so we don't retry.
+        _stockLevelsCache[itemCode] = [];
       }
     } catch (e) {
-      print('Failed to fetch stock levels: $e');
+      if (kDebugMode) log('Failed to fetch stock levels for $itemCode: $e');
+      _stockLevelsCache[itemCode] = [];
     } finally {
-      isLoadingStock.value = false;
+      _stockLoadingSet.remove(itemCode);
     }
   }
 

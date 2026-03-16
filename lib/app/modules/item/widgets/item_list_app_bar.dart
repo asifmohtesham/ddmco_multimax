@@ -5,51 +5,24 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
 
-/// DocTypeListAppBar for the **Item** DocType.
-///
-/// Wraps [DocTypeListHeader] and pre-wires all reactive state from
-/// [ItemController] so that [ItemScreen] only needs to drop this widget
-/// into its [CustomScrollView] slivers list:
-///
-/// ```dart
-/// CustomScrollView(
-///   slivers: [
-///     const ItemListAppBar(),
-///     // … list content slivers …
-///   ],
-/// )
-/// ```
-///
-/// ### What this widget owns
-/// | Concern | Wired to |
-/// |---|---|
-/// | Collapsing large title | `'Item Master'` (static) |
-/// | Global ERPNext search | `Item` doctype → [AppRoutes.ITEM_FORM] |
-/// | Grid / list toggle action | `controller.isGridView` / `controller.toggleLayout` |
-/// | Search & filter | `controller.searchQuery` + `controller.onSearchChanged` |
-/// | Filter badge | `controller.filterCount` |
-/// | Filter sheet | [ItemFilterBottomSheet] via `Get.bottomSheet` |
-/// | Active filter chips | Built from `controller.activeFilters` |
-/// | Clear-all chips button | `controller.clearFilters` |
 class ItemListAppBar extends StatelessWidget {
   const ItemListAppBar({super.key});
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-
-  static void _openFilterSheet() {
-    Get.bottomSheet(
-      const ItemFilterBottomSheet(),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-    );
+  // Fix #7: ensure reference data is loaded before opening the sheet.
+  static void _openFilterSheet(ItemController controller) {
+    controller.ensureReferenceDataLoaded().then((_) {
+      Get.bottomSheet(
+        const ItemFilterBottomSheet(),
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+      );
+    });
   }
-
-  // ── filter chips ─────────────────────────────────────────────────────────
 
   List<Widget> _buildFilterChips(
       BuildContext context, ItemController controller) {
     final chips = <Widget>[];
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
 
     Widget chip({
       required IconData icon,
@@ -57,16 +30,16 @@ class ItemListAppBar extends StatelessWidget {
       required VoidCallback onDeleted,
     }) {
       return Chip(
-        avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
+        avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
         label: Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSecondaryContainer,
+                color: cs.onSecondaryContainer,
                 fontWeight: FontWeight.w600,
               ),
         ),
-        backgroundColor: colorScheme.secondaryContainer,
-        deleteIconColor: colorScheme.onSecondaryContainer,
+        backgroundColor: cs.secondaryContainer,
+        deleteIconColor: cs.onSecondaryContainer,
         onDeleted: onDeleted,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
@@ -75,19 +48,9 @@ class ItemListAppBar extends StatelessWidget {
       );
     }
 
-    // "Show Images Only" pseudo-filter
-    if (controller.showImagesOnly.value) {
-      chips.add(chip(
-        icon: Icons.image_outlined,
-        label: 'Images Only',
-        onDeleted: () {
-          controller.showImagesOnly.value = false;
-          controller.fetchItems(clear: true);
-        },
-      ));
-    }
+    // Fix #13: showImagesOnly is NOT added to the filter badge chips.
+    // It has its own AppBar icon toggle (see extraActions below).
 
-    // One chip per active FilterRow
     for (final filter in controller.activeFilters) {
       if (filter.value.isEmpty) continue;
       chips.add(chip(
@@ -103,23 +66,37 @@ class ItemListAppBar extends StatelessWidget {
     return chips;
   }
 
-  // ── build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final ItemController controller = Get.find();
 
     return DocTypeListHeader(
       title: 'Item Master',
-
-      // Global ERPNext API search ──────────────────────────────────────────
       searchDoctype: 'Item',
       searchRoute: AppRoutes.ITEM_FORM,
 
-      // Grid / list toggle ─────────────────────────────────────────────────
       extraActions: [
+        // Fix #13: standalone image-toggle icon button in AppBar.
+        // Clearly separated from the filter badge so users always know
+        // the current state without opening the filter sheet.
         Obx(() => IconButton(
-              tooltip: controller.isGridView.value ? 'List view' : 'Grid view',
+              tooltip: controller.showImagesOnly.value
+                  ? 'Showing items with images only (tap to show all)'
+                  : 'Showing all items (tap to show images only)',
+              icon: Icon(
+                controller.showImagesOnly.value
+                    ? Icons.image
+                    : Icons.image_outlined,
+              ),
+              color: controller.showImagesOnly.value
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+              onPressed: () =>
+                  controller.setImagesOnly(!controller.showImagesOnly.value),
+            )),
+        Obx(() => IconButton(
+              tooltip:
+                  controller.isGridView.value ? 'List view' : 'Grid view',
               icon: Icon(
                 controller.isGridView.value
                     ? Icons.view_list_outlined
@@ -129,7 +106,6 @@ class ItemListAppBar extends StatelessWidget {
             )),
       ],
 
-      // Search & filter wiring ─────────────────────────────────────────────
       searchQuery: controller.searchQuery,
       onSearchChanged: controller.onSearchChanged,
       onSearchClear: () {
@@ -137,14 +113,10 @@ class ItemListAppBar extends StatelessWidget {
         controller.fetchItems(clear: true);
       },
 
-      // Filter button (badge driven by filterCount) ────────────────────────
-      // DocTypeListHeader expects RxMap for activeFilters; we proxy the
-      // RxList<FilterRow> count through a dedicated RxMap shim so the badge
-      // remains reactive without touching the controller's data model.
+      // Fix #13: shim now returns activeFilters.length only (no showImagesOnly).
       activeFilters: _ActiveFiltersShim(controller),
-      onFilterTap: _openFilterSheet,
+      onFilterTap: () => _openFilterSheet(controller),
 
-      // Active filter chips ────────────────────────────────────────────────
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, controller),
       onClearAllFilters: controller.clearFilters,
     );
@@ -154,10 +126,6 @@ class ItemListAppBar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // _ActiveFiltersShim
 // ---------------------------------------------------------------------------
-// [DocTypeListHeader] reads [activeFilters.length] and [activeFilters.isNotEmpty]
-// via an [RxMap<String, dynamic>].  ItemController uses an [RxList<FilterRow>]
-// and a scalar [filterCount] getter that also counts the "images only" pseudo-
-// filter.  This thin shim bridges the two without altering either class.
 
 class _ActiveFiltersShim extends RxMap<String, dynamic> {
   final ItemController _ctrl;
