@@ -1,23 +1,39 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
-/// Which linked document type was resolved for this POS Upload.
+/// Linked document type resolved from the POS Upload name prefix.
 enum LinkedDocType { deliveryNote, stockEntry, none }
+
+/// Packing Slip info associated with a single POS Upload item (by idx).
+class PackingSlipInfo {
+  final String psName;
+  final int? fromCaseNo;
+  final int? toCaseNo;
+
+  const PackingSlipInfo({
+    required this.psName,
+    this.fromCaseNo,
+    this.toCaseNo,
+  });
+}
 
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
+  final PackingSlipProvider _psProvider = Get.find<PackingSlipProvider>();
   final AuthenticationController _authController =
       Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -25,31 +41,34 @@ class PosUploadFormController extends GetxController
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
 
-  // ── Core state ────────────────────────────────────────────────────────────
+  // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
   var isSaving = false.obs;
   var posUpload = Rx<PosUpload?>(null);
 
-  // ── Search / filter ───────────────────────────────────────────────────────
+  // ── Search / filter ────────────────────────────────────────────────────────
   var searchQuery = ''.obs;
   var filteredItems = <PosUploadItem>[].obs;
 
-  // ── Linked document progress ──────────────────────────────────────────────
-  /// Type of linked document resolved (or none).
+  // ── Linked document (DN or SE) ─────────────────────────────────────────────
   var linkedDocType = LinkedDocType.none.obs;
-
-  /// Name of the linked Delivery Note or Stock Entry.
   var linkedDocName = ''.obs;
-
-  /// Loading state while fetching the linked document.
   var isLoadingLinked = false.obs;
 
-  /// Map of PosUploadItem.idx  →  custom_invoice_serial_number from the
-  /// matched DN/SE item.  Empty string means the row was found but has no
-  /// serial.  Null key means no match.
+  /// idx → custom_invoice_serial_number from DN/SE item (null = no match found)
   final resolvedSerials = <int, String?>{}.obs;
 
-  // ── Permissions ───────────────────────────────────────────────────────────
+  // ── Packing Slip layer (ML/KA only) ────────────────────────────────────────
+  var isLoadingPackingSlips = false.obs;
+
+  /// idx → PackingSlipInfo from the PS whose item has matching
+  /// custom_invoice_serial_number.  Null value = serial not found in any PS.
+  final resolvedPackingSlips = <int, PackingSlipInfo?>{}.obs;
+
+  /// All Packing Slips fetched for the linked DN (used for the summary count).
+  final packingSlips = <PackingSlip>[].obs;
+
+  // ── Permissions ────────────────────────────────────────────────────────────
   final Map<String, int> _fieldLevels = {};
   final Map<int, Set<String>> _levelWriteRoles = {};
   var permissionsLoaded = false.obs;
@@ -60,7 +79,7 @@ class PosUploadFormController extends GetxController
     _loadData();
   }
 
-  // ── Initialisation ────────────────────────────────────────────────────────
+  // ── Initialisation ─────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
     isLoading.value = true;
@@ -69,11 +88,11 @@ class PosUploadFormController extends GetxController
       fetchDocTypePermissions(),
     ]);
     isLoading.value = false;
-    // After core data is loaded, kick off linked-document fetch in background.
+    // Kick off linked-document fetch without blocking the screen render.
     fetchLinkedDocument();
   }
 
-  // ── POS Upload ────────────────────────────────────────────────────────────
+  // ── POS Upload ─────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUpload() async {
     try {
@@ -89,29 +108,27 @@ class PosUploadFormController extends GetxController
     }
   }
 
-  // ── Linked document (DN or SE) ────────────────────────────────────────────
+  // ── Linked document (DN or SE) ─────────────────────────────────────────────
 
-  /// Determines the linked doctype from the POS Upload name prefix and fetches
-  /// the referenced document, then builds the [resolvedSerials] map.
   Future<void> fetchLinkedDocument() async {
     final upload = posUpload.value;
     if (upload == null) return;
 
-    final prefix = name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
+    final prefix =
+        name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
 
     if (prefix == 'ML' || prefix == 'KA') {
       await _fetchDeliveryNote(upload);
     } else if (prefix == 'MX' || prefix == 'KX') {
       await _fetchStockEntry(upload);
+      // Packing Slip step is irrelevant for MX/KX — stop here.
     }
-    // Any other prefix → linkedDocType stays .none, no progress shown.
   }
 
   Future<void> _fetchDeliveryNote(PosUpload upload) async {
     isLoadingLinked.value = true;
     linkedDocType.value = LinkedDocType.deliveryNote;
     try {
-      // Find a DN whose po_no matches this POS Upload's name.
       final listResp = await _dnProvider.getDeliveryNotes(
         limit: 1,
         filters: {'po_no': name},
@@ -122,7 +139,6 @@ class PosUploadFormController extends GetxController
             (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = dnName;
 
-        // Fetch full document with items.
         final detailResp = await _dnProvider.getDeliveryNote(dnName);
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
@@ -134,13 +150,16 @@ class PosUploadFormController extends GetxController
                 ?.customInvoiceSerialNumber,
           );
         }
+        isLoadingLinked.value = false;
+        // Now fetch Packing Slips for this DN.
+        await _fetchPackingSlips(upload, dnName);
       } else {
         linkedDocName.value = '';
         linkedDocType.value = LinkedDocType.none;
+        isLoadingLinked.value = false;
       }
     } catch (_) {
       linkedDocType.value = LinkedDocType.none;
-    } finally {
       isLoadingLinked.value = false;
     }
   }
@@ -149,7 +168,6 @@ class PosUploadFormController extends GetxController
     isLoadingLinked.value = true;
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
-      // Find a SE whose custom_reference_no matches this POS Upload's name.
       final listResp = await _seProvider.getStockEntries(
         limit: 1,
         filters: {'custom_reference_no': name},
@@ -167,9 +185,7 @@ class PosUploadFormController extends GetxController
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => se.items
-                .firstWhereOrNull((i) =>
-                    // StockEntryItem.idx is not modelled; match by list position
-                    se.items.indexOf(i) + 1 == idx)
+                .firstWhereOrNull((i) => se.items.indexOf(i) + 1 == idx)
                 ?.customInvoiceSerialNumber,
           );
         }
@@ -184,9 +200,77 @@ class PosUploadFormController extends GetxController
     }
   }
 
-  /// Populates [resolvedSerials] by mapping each [PosUploadItem.idx] to the
-  /// `custom_invoice_serial_number` returned by [matchSerial].  A null return
-  /// from [matchSerial] means no matching row was found in the linked doc.
+  // ── Packing Slip layer ─────────────────────────────────────────────────────
+
+  /// Fetches all Packing Slips for [dnName], then for every POS Upload item
+  /// looks up the PS whose items contain a matching
+  /// `custom_invoice_serial_number` == the resolved serial for that idx.
+  Future<void> _fetchPackingSlips(
+      PosUpload upload, String dnName) async {
+    isLoadingPackingSlips.value = true;
+    try {
+      // Fetch all PS headers + items for this DN in parallel pages.
+      // Limit 0 = fetch all.
+      final listResp = await _psProvider.getPackingSlips(
+        limit: 0,
+        filters: {'delivery_note': dnName},
+        orderBy: 'from_case_no asc',
+      );
+
+      if (listResp.statusCode != 200) return;
+      final psList = listResp.data['data'] as List? ?? [];
+      if (psList.isEmpty) return;
+
+      // Fetch each PS detail (with items) in parallel.
+      final futures = psList
+          .map((ps) => _psProvider.getPackingSlip(ps['name'].toString()))
+          .toList();
+      final responses = await Future.wait(futures);
+
+      final slips = <PackingSlip>[];
+      for (final resp in responses) {
+        if (resp.statusCode == 200 && resp.data['data'] != null) {
+          slips.add(PackingSlip.fromJson(resp.data['data']));
+        }
+      }
+      packingSlips.assignAll(slips);
+
+      // Build idx → PackingSlipInfo by matching the resolved serial for each
+      // POS Upload item against each PS item's custom_invoice_serial_number.
+      final psMap = <int, PackingSlipInfo?>{};
+      for (final item in upload.items) {
+        final serial = resolvedSerials[item.idx];
+        // Only attempt a PS match when the DN serial is known.
+        if (serial == null || serial.isEmpty) {
+          psMap[item.idx] = null;
+          continue;
+        }
+        PackingSlipInfo? info;
+        outer:
+        for (final ps in slips) {
+          for (final psItem in ps.items) {
+            if (psItem.customInvoiceSerialNumber == serial) {
+              info = PackingSlipInfo(
+                psName: ps.name,
+                fromCaseNo: ps.fromCaseNo,
+                toCaseNo: ps.toCaseNo,
+              );
+              break outer;
+            }
+          }
+        }
+        psMap[item.idx] = info;
+      }
+      resolvedPackingSlips.value = psMap;
+    } catch (_) {
+      // Non-fatal; PS data is supplementary.
+    } finally {
+      isLoadingPackingSlips.value = false;
+    }
+  }
+
+  // ── Serial map helper ──────────────────────────────────────────────────────
+
   void _buildSerialMap({
     required List<PosUploadItem> posItems,
     required String? Function(int idx) matchSerial,
@@ -198,7 +282,7 @@ class PosUploadFormController extends GetxController
     resolvedSerials.value = map;
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────────────────
 
   void filterItems(String query) {
     searchQuery.value = query;
@@ -206,14 +290,15 @@ class PosUploadFormController extends GetxController
       filteredItems.assignAll(posUpload.value?.items ?? []);
     } else {
       filteredItems.value = posUpload.value?.items
-              .where((item) =>
-                  item.itemName.toLowerCase().contains(query.toLowerCase()))
+              .where((item) => item.itemName
+                  .toLowerCase()
+                  .contains(query.toLowerCase()))
               .toList() ??
           [];
     }
   }
 
-  // ── Permissions ───────────────────────────────────────────────────────────
+  // ── Permissions ────────────────────────────────────────────────────────────
 
   Future<void> fetchDocTypePermissions() async {
     try {
@@ -249,7 +334,7 @@ class PosUploadFormController extends GetxController
     return _authController.hasAnyRole(allowed.toList());
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
 
   @override
   Future<void> reloadDocument() async {

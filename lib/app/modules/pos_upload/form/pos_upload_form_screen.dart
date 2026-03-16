@@ -11,7 +11,6 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     return DefaultTabController(
       length: 2,
       child: Obx(() {
-        // Resolve title reactively so AppBar never hangs on 'Loading...'
         final title = controller.posUpload.value?.name.isNotEmpty == true
             ? controller.posUpload.value!.name
             : controller.name.isNotEmpty
@@ -98,10 +97,10 @@ class _DetailsTabState extends State<_DetailsTab> {
       final canEditQty = ctrl.canEdit('total_qty');
       final canSave = canEditStatus || canEditAmount || canEditQty;
 
-      // ── Linked-document banner ────────────────────────────────────────
+      // ── Linked-document banner ────────────────────────────────────────────
       Widget? linkedBanner;
       if (ctrl.isLoadingLinked.value) {
-        linkedBanner = _LinkedBanner(
+        linkedBanner = const _StatusBanner(
           icon: Icons.sync,
           color: Colors.orange,
           text: 'Fetching linked document…',
@@ -113,14 +112,37 @@ class _DetailsTabState extends State<_DetailsTab> {
             ctrl.linkedDocType.value == LinkedDocType.deliveryNote
                 ? 'Delivery Note'
                 : 'Stock Entry';
-        linkedBanner = _LinkedBanner(
+        linkedBanner = _StatusBanner(
           icon: ctrl.linkedDocType.value == LinkedDocType.deliveryNote
               ? Icons.local_shipping_outlined
               : Icons.inventory_2_outlined,
           color: Colors.green,
           text: '$docLabel: ${ctrl.linkedDocName.value}',
-          isSpinning: false,
         );
+      }
+
+      // ── Packing Slip banner (ML/KA only) ─────────────────────────────────
+      Widget? psBanner;
+      if (ctrl.linkedDocType.value == LinkedDocType.deliveryNote) {
+        if (ctrl.isLoadingPackingSlips.value) {
+          psBanner = const _StatusBanner(
+            icon: Icons.inventory_outlined,
+            color: Colors.blue,
+            text: 'Loading Packing Slips…',
+            isSpinning: true,
+          );
+        } else if (ctrl.packingSlips.isNotEmpty) {
+          final psCount = ctrl.packingSlips.length;
+          final psMatched = ctrl.resolvedPackingSlips.values
+              .where((v) => v != null)
+              .length;
+          psBanner = _StatusBanner(
+            icon: Icons.inventory_outlined,
+            color: Colors.indigo,
+            text:
+                '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched item${psMatched == 1 ? '' : 's'} matched',
+          );
+        }
       }
 
       return SingleChildScrollView(
@@ -128,12 +150,12 @@ class _DetailsTabState extends State<_DetailsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (linkedBanner != null) ...[linkedBanner, const SizedBox(height: 16)],
+            if (linkedBanner != null) ...[linkedBanner, const SizedBox(height: 8)],
+            if (psBanner != null) ...[psBanner, const SizedBox(height: 16)],
 
             _ReadOnlyField(label: 'Name', value: upload.name),
             const SizedBox(height: 16),
 
-            // Customer (read-only; real Link field shown as plain text)
             TextFormField(
               initialValue: upload.customer,
               readOnly: true,
@@ -157,7 +179,6 @@ class _DetailsTabState extends State<_DetailsTab> {
             ),
             const SizedBox(height: 16),
 
-            // Status
             DropdownButtonFormField<String>(
               value: upload.status,
               isExpanded: true,
@@ -171,10 +192,9 @@ class _DetailsTabState extends State<_DetailsTab> {
                 'In Progress',
                 'Cancelled',
                 'Draft',
-                'Submitted'
+                'Submitted',
               ]
-                  .map((s) =>
-                      DropdownMenuItem(value: s, child: Text(s)))
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                   .toList(),
               onChanged: canEditStatus ? (_) {} : null,
             ),
@@ -221,7 +241,8 @@ class _DetailsTabState extends State<_DetailsTab> {
                               final data = <String, dynamic>{};
                               if (canEditAmount) {
                                 data['total_amount'] =
-                                    double.tryParse(_amountCtrl.text) ?? 0.0;
+                                    double.tryParse(_amountCtrl.text) ??
+                                        0.0;
                               }
                               if (canEditQty) {
                                 data['total_qty'] =
@@ -238,8 +259,7 @@ class _DetailsTabState extends State<_DetailsTab> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white))
+                                  strokeWidth: 2, color: Colors.white))
                           : const Text('Update',
                               style: TextStyle(fontSize: 16)),
                     ),
@@ -276,42 +296,72 @@ class _ItemsTab extends StatelessWidget {
           ),
         ),
 
-        // Linked-doc loading strip
+        // ── Progress summary strip ──────────────────────────────────────────
         Obx(() {
-          if (controller.isLoadingLinked.value) {
+          final isLoadingLinked = controller.isLoadingLinked.value;
+          final isLoadingPS = controller.isLoadingPackingSlips.value;
+          final linkedType = controller.linkedDocType.value;
+          final hasLinkedDoc = controller.resolvedSerials.isNotEmpty;
+          final hasPS = controller.resolvedPackingSlips.isNotEmpty;
+
+          // Still loading something — show linear progress
+          if (isLoadingLinked || isLoadingPS) {
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: LinearProgressIndicator(
-                borderRadius: BorderRadius.circular(4),
-              ),
-            );
-          }
-          if (controller.linkedDocType.value != LinkedDocType.none &&
-              controller.linkedDocName.value.isNotEmpty) {
-            final matched = controller.resolvedSerials.values
-                .where((v) => v != null && v.isNotEmpty)
-                .length;
-            final total = controller.resolvedSerials.length;
-            final colorScheme = Theme.of(context).colorScheme;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle_outline,
-                      size: 16, color: colorScheme.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$matched / $total items matched',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  if (isLoadingLinked)
+                    Text(
+                      'Fetching ${linkedType == LinkedDocType.deliveryNote ? 'Delivery Note' : 'Stock Entry'}…',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  if (isLoadingPS)
+                    Text(
+                      'Fetching Packing Slips…',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ],
               ),
             );
           }
-          return const SizedBox.shrink();
+
+          if (!hasLinkedDoc) return const SizedBox.shrink();
+
+          final cs = Theme.of(context).colorScheme;
+          final dnMatched = controller.resolvedSerials.values
+              .where((v) => v != null && v.isNotEmpty)
+              .length;
+          final total = controller.resolvedSerials.length;
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 4,
+              children: [
+                _SummaryChip(
+                  icon: linkedType == LinkedDocType.deliveryNote
+                      ? Icons.local_shipping_outlined
+                      : Icons.inventory_2_outlined,
+                  label:
+                      '$dnMatched / $total ${linkedType == LinkedDocType.deliveryNote ? 'DN' : 'SE'} matched',
+                  color: cs.primary,
+                ),
+                if (hasPS)
+                  _SummaryChip(
+                    icon: Icons.inventory_outlined,
+                    label:
+                        '${controller.resolvedPackingSlips.values.where((v) => v != null).length} / $total PS matched',
+                    color: Colors.indigo,
+                  ),
+              ],
+            ),
+          );
         }),
 
         Expanded(
@@ -327,16 +377,21 @@ class _ItemsTab extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final item = items[index];
-                final originalIdx = controller.posUpload.value!.items
-                    .indexOf(item);
+                final originalIdx =
+                    controller.posUpload.value!.items.indexOf(item);
                 return Obx(() => _ItemCard(
                       item: item,
                       displayIndex: originalIdx + 1,
                       isLoadingLinked: controller.isLoadingLinked.value,
+                      isLoadingPS:
+                          controller.isLoadingPackingSlips.value,
                       linkedDocType: controller.linkedDocType.value,
                       resolvedSerial:
                           controller.resolvedSerials[item.idx],
-                      hasLinkedDoc: controller.resolvedSerials.isNotEmpty,
+                      packingSlipInfo:
+                          controller.resolvedPackingSlips[item.idx],
+                      hasLinkedDoc:
+                          controller.resolvedSerials.isNotEmpty,
                     ));
               },
             );
@@ -355,25 +410,29 @@ class _ItemCard extends StatelessWidget {
   final dynamic item; // PosUploadItem
   final int displayIndex;
   final bool isLoadingLinked;
+  final bool isLoadingPS;
   final LinkedDocType linkedDocType;
-  final String? resolvedSerial; // null = no match, '' = matched but no serial
+  final String? resolvedSerial;
+  final PackingSlipInfo? packingSlipInfo;
   final bool hasLinkedDoc;
 
   const _ItemCard({
     required this.item,
     required this.displayIndex,
     required this.isLoadingLinked,
+    required this.isLoadingPS,
     required this.linkedDocType,
     required this.resolvedSerial,
+    required this.packingSlipInfo,
     required this.hasLinkedDoc,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final cs = theme.colorScheme;
 
-    // ── Progress badge ────────────────────────────────────────────────────
+    // ── DN/SE progress badge (top-right of card header) ───────────────────
     Widget progressBadge;
     if (linkedDocType == LinkedDocType.none && !isLoadingLinked) {
       progressBadge = const SizedBox.shrink();
@@ -381,59 +440,102 @@ class _ItemCard extends StatelessWidget {
       progressBadge = SizedBox(
         width: 18,
         height: 18,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: colorScheme.outline,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2, color: cs.outline),
       );
     } else if (!hasLinkedDoc) {
       progressBadge = const SizedBox.shrink();
     } else if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
-      // Fully matched with a serial number
       progressBadge = Tooltip(
         message: resolvedSerial!,
-        child: Icon(Icons.check_circle,
-            color: colorScheme.primary, size: 20),
+        child: Icon(Icons.check_circle, color: cs.primary, size: 20),
       );
     } else if (resolvedSerial != null) {
-      // Row matched but serial is empty
       progressBadge = Tooltip(
         message: 'Matched — no serial assigned',
-        child: Icon(Icons.check_circle_outline,
-            color: colorScheme.tertiary, size: 20),
+        child:
+            Icon(Icons.check_circle_outline, color: cs.tertiary, size: 20),
       );
     } else {
-      // No matching row in linked doc
       progressBadge = Tooltip(
         message: 'Not found in linked document',
-        child:
-            Icon(Icons.cancel_outlined, color: colorScheme.error, size: 20),
+        child: Icon(Icons.cancel_outlined, color: cs.error, size: 20),
       );
+    }
+
+    // ── Chips row (serial + case range) ──────────────────────────────────
+    final chips = <Widget>[];
+
+    // Serial chip
+    if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
+      chips.add(_InfoChip(
+        icon: Icons.qr_code,
+        label: resolvedSerial!,
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
+      ));
+    }
+
+    // Packing Slip case-range chip
+    if (isLoadingPS && linkedDocType == LinkedDocType.deliveryNote) {
+      chips.add(_InfoChip(
+        icon: Icons.hourglass_top_rounded,
+        label: 'PS…',
+        backgroundColor: Colors.blue.withValues(alpha: 0.12),
+        foregroundColor: Colors.blue.shade700,
+        isSpinner: true,
+      ));
+    } else if (packingSlipInfo != null) {
+      final from = packingSlipInfo!.fromCaseNo;
+      final to = packingSlipInfo!.toCaseNo;
+      final caseLabel = (from != null && to != null)
+          ? 'Cases $from – $to'
+          : (from != null ? 'Case $from' : packingSlipInfo!.psName);
+      chips.add(_InfoChip(
+        icon: Icons.inventory_outlined,
+        label: caseLabel,
+        backgroundColor: Colors.indigo.withValues(alpha: 0.10),
+        foregroundColor: Colors.indigo.shade700,
+        tooltip: 'Packing Slip: ${packingSlipInfo!.psName}',
+      ));
+    } else if (!isLoadingPS &&
+        linkedDocType == LinkedDocType.deliveryNote &&
+        resolvedSerial != null &&
+        resolvedSerial!.isNotEmpty) {
+      // Serial found in DN but not in any PS
+      chips.add(_InfoChip(
+        icon: Icons.inventory_outlined,
+        label: 'No PS',
+        backgroundColor: cs.errorContainer,
+        foregroundColor: cs.onErrorContainer,
+        tooltip: 'No matching Packing Slip found',
+      ));
     }
 
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant),
+        side: BorderSide(color: cs.outlineVariant),
       ),
-      color: colorScheme.surfaceContainerLowest,
+      color: cs.surfaceContainerLowest,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header row ──────────────────────────────────────────────
             Row(
               children: [
                 CircleAvatar(
                   radius: 13,
-                  backgroundColor: colorScheme.secondaryContainer,
+                  backgroundColor: cs.secondaryContainer,
                   child: Text(
                     '$displayIndex',
                     style: TextStyle(
-                        fontSize: 10,
-                        color: colorScheme.onSecondaryContainer,
-                        fontWeight: FontWeight.bold),
+                      fontSize: 10,
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -450,6 +552,8 @@ class _ItemCard extends StatelessWidget {
             const SizedBox(height: 8),
             const Divider(height: 1),
             const SizedBox(height: 8),
+
+            // ── Stats row ───────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -458,30 +562,19 @@ class _ItemCard extends StatelessWidget {
                     label: 'Rate',
                     value: item.rate.toStringAsFixed(2)),
                 _Stat(
-                    label: 'Amount',
-                    value: item.amount.toStringAsFixed(2),
-                    highlight: true,
-                    colorScheme: colorScheme),
+                  label: 'Amount',
+                  value: item.amount.toStringAsFixed(2),
+                  highlight: true,
+                  colorScheme: cs,
+                ),
               ],
             ),
-            // Serial number chip (shown only when matched)
-            if (resolvedSerial != null && resolvedSerial!.isNotEmpty) ...
+
+            // ── Chips ────────────────────────────────────────────────────
+            if (chips.isNotEmpty) ...
               [
-                const SizedBox(height: 8),
-                Chip(
-                  avatar: Icon(Icons.qr_code,
-                      size: 14, color: colorScheme.onSecondaryContainer),
-                  label: Text(
-                    resolvedSerial!,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSecondaryContainer),
-                  ),
-                  backgroundColor: colorScheme.secondaryContainer,
-                  side: BorderSide.none,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                ),
+                const SizedBox(height: 10),
+                Wrap(spacing: 6, runSpacing: 6, children: chips),
               ],
           ],
         ),
@@ -491,15 +584,97 @@ class _ItemCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Small helpers
+// Small reusable widgets
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final String? tooltip;
+  final bool isSpinner;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    this.tooltip,
+    this.isSpinner = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget iconWidget = isSpinner
+        ? SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+                strokeWidth: 1.5, color: foregroundColor),
+          )
+        : Icon(icon, size: 13, color: foregroundColor);
+
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          iconWidget,
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: foregroundColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return tooltip != null
+        ? Tooltip(message: tooltip!, child: chip)
+        : chip;
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _SummaryChip(
+      {required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context)
+              .textTheme
+              .labelMedium
+              ?.copyWith(color: color, fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+}
 
 class _Stat extends StatelessWidget {
   final String label;
   final String value;
   final bool highlight;
   final ColorScheme? colorScheme;
-
   const _Stat({
     required this.label,
     required this.value,
@@ -544,28 +719,28 @@ class _ReadOnlyField extends StatelessWidget {
         labelText: label,
         border: const OutlineInputBorder(),
         filled: true,
-        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        fillColor:
+            Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
     );
   }
 }
 
-class _LinkedBanner extends StatelessWidget {
+class _StatusBanner extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String text;
   final bool isSpinning;
 
-  const _LinkedBanner({
+  const _StatusBanner({
     required this.icon,
     required this.color,
     required this.text,
-    required this.isSpinning,
+    this.isSpinning = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
