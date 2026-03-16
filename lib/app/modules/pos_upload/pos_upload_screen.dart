@@ -112,8 +112,8 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
                             const SizedBox(width: 6),
                             Text(
                               hasMore
-                                  ? '\$count+ uploads'
-                                  : '\$count upload\${count == 1 ? '' : 's'}',
+                                  ? '$count+ uploads'
+                                  : '$count upload${count == 1 ? '' : 's'}',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: colorScheme.onSecondaryContainer,
                                 fontWeight: FontWeight.w600,

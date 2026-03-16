@@ -232,8 +232,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                             const SizedBox(width: 6),
                             Text(
                               hasMore
-                                  ? '\$count+ notes'
-                                  : '\$count note\${count == 1 ? '' : 's'}',
+                                  ? '$count+ notes'
+                                  : '$count note${count == 1 ? '' : 's'}',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: colorScheme.onSecondaryContainer,
                                 fontWeight: FontWeight.w600,

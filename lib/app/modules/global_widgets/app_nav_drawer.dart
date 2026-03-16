@@ -22,7 +22,7 @@ List<String> _extractRoutes(List<Widget> widgets) {
       // DocTypeGuard exposes its child; recurse into it.
       routes.addAll(_extractRoutes([widget.child]));
     } else if (widget is Padding) {
-      routes.addAll(_extractRoutes([widget.child]));
+      routes.addAll(_extractRoutes([?widget.child]));
     } else if (widget is Column) {
       routes.addAll(_extractRoutes(widget.children));
     }
