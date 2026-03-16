@@ -7,13 +7,13 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
 
-  // ── List state ─────────────────────────────────────────────────────────────
+  // ── List state ──────────────────────────────────────────────────────────────
   var jobCards = <JobCard>[].obs;
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = false.obs;
 
-  // ── Search & filter ────────────────────────────────────────────────────────
+  // ── Search & filter ─────────────────────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
@@ -22,7 +22,7 @@ class JobCardController extends GetxController {
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -36,7 +36,7 @@ class JobCardController extends GetxController {
     super.onClose();
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search ───────────────────────────────────────────────────────────────────
 
   void onSearchChanged(String value) {
     _debounce?.cancel();
@@ -46,7 +46,7 @@ class JobCardController extends GetxController {
     });
   }
 
-  // ── Filter helpers ─────────────────────────────────────────────────────────
+  // ── Filter helpers ───────────────────────────────────────────────────────────
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -59,7 +59,7 @@ class JobCardController extends GetxController {
     fetchJobCards(clear: true);
   }
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────────────────────
 
   Future<void> fetchJobCards({
     bool clear = false,
@@ -77,11 +77,10 @@ class JobCardController extends GetxController {
     }
 
     try {
-      final filters = _buildFilters();
       final response = await _provider.getJobCards(
-        filters: filters,
-        start: _start,
+        filters: _buildFilterMap(),
         limit: _pageSize,
+        limitStart: _start,
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
@@ -98,29 +97,22 @@ class JobCardController extends GetxController {
     }
   }
 
-  // ── Filter builder ─────────────────────────────────────────────────────────
+  // ── Filter map builder ───────────────────────────────────────────────────────
 
-  List<List<dynamic>> _buildFilters() {
-    final f = <List<dynamic>>[];
+  Map<String, dynamic> _buildFilterMap() {
+    final f = <String, dynamic>{};
     if (searchQuery.value.isNotEmpty) {
-      f.add(['Job Card', 'name', 'like', '%${searchQuery.value}%']);
+      f['name'] = ['like', '%${searchQuery.value}%'];
     }
-    activeFilters.forEach((key, value) {
-      if (value is List) {
-        f.add(['Job Card', key, value[0], value[1]]);
-      } else {
-        f.add(['Job Card', key, '=', value]);
-      }
-    });
+    f.addAll(activeFilters);
     return f;
   }
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
+  // ── KPIs ─────────────────────────────────────────────────────────────────────
 
   int get totalCards => jobCards.length;
   int get openCards => jobCards
-      .where((c) =>
-          c.status == 'Open' || c.status == 'Work In Progress')
+      .where((c) => c.status == 'Open' || c.status == 'Work In Progress')
       .length;
   int get completedCards =>
       jobCards.where((c) => c.status == 'Completed').length;

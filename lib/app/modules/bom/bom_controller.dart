@@ -7,13 +7,13 @@ import 'package:multimax/app/data/providers/bom_provider.dart';
 class BomController extends GetxController {
   final BomProvider _provider = Get.find<BomProvider>();
 
-  // ── List state ─────────────────────────────────────────────────────────────
+  // ── List state ──────────────────────────────────────────────────────────────
   var boms = <BOM>[].obs;
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = false.obs;
 
-  // ── Search & filter ────────────────────────────────────────────────────────
+  // ── Search & filter ─────────────────────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
@@ -22,7 +22,7 @@ class BomController extends GetxController {
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -36,7 +36,7 @@ class BomController extends GetxController {
     super.onClose();
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search ───────────────────────────────────────────────────────────────────
 
   void onSearchChanged(String value) {
     _debounce?.cancel();
@@ -46,7 +46,7 @@ class BomController extends GetxController {
     });
   }
 
-  // ── Filter helpers ─────────────────────────────────────────────────────────
+  // ── Filter helpers ───────────────────────────────────────────────────────────
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -59,7 +59,7 @@ class BomController extends GetxController {
     fetchBOMs(clear: true);
   }
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────────────────────
 
   Future<void> fetchBOMs({
     bool clear = false,
@@ -77,11 +77,10 @@ class BomController extends GetxController {
     }
 
     try {
-      final filters = _buildFilters();
       final response = await _provider.getBOMs(
-        filters: filters,
-        start: _start,
+        filters: _buildFilterMap(),
         limit: _pageSize,
+        limitStart: _start,
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
@@ -98,24 +97,18 @@ class BomController extends GetxController {
     }
   }
 
-  // ── Filter builder ─────────────────────────────────────────────────────────
+  // ── Filter map builder ───────────────────────────────────────────────────────
 
-  List<List<dynamic>> _buildFilters() {
-    final f = <List<dynamic>>[];
+  Map<String, dynamic> _buildFilterMap() {
+    final f = <String, dynamic>{};
     if (searchQuery.value.isNotEmpty) {
-      f.add(['BOM', 'name', 'like', '%${searchQuery.value}%']);
+      f['name'] = ['like', '%${searchQuery.value}%'];
     }
-    activeFilters.forEach((key, value) {
-      if (value is List) {
-        f.add(['BOM', key, value[0], value[1]]);
-      } else {
-        f.add(['BOM', key, '=', value]);
-      }
-    });
+    f.addAll(activeFilters);
     return f;
   }
 
-  // ── KPI Getters ─────────────────────────────────────────────────────────────
+  // ── KPI Getters ──────────────────────────────────────────────────────────────
 
   int get totalBoms => boms.length;
 

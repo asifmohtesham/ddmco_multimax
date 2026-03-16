@@ -7,13 +7,13 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 class WorkOrderController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
 
-  // ── List state ─────────────────────────────────────────────────────────────
+  // ── List state ──────────────────────────────────────────────────────────────
   var workOrders = <WorkOrder>[].obs;
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = false.obs;
 
-  // ── Search & filter ────────────────────────────────────────────────────────
+  // ── Search & filter ─────────────────────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
@@ -22,7 +22,7 @@ class WorkOrderController extends GetxController {
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -36,7 +36,7 @@ class WorkOrderController extends GetxController {
     super.onClose();
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search ───────────────────────────────────────────────────────────────────
 
   void onSearchChanged(String value) {
     _debounce?.cancel();
@@ -46,7 +46,7 @@ class WorkOrderController extends GetxController {
     });
   }
 
-  // ── Filter helpers ─────────────────────────────────────────────────────────
+  // ── Filter helpers ───────────────────────────────────────────────────────────
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -59,7 +59,7 @@ class WorkOrderController extends GetxController {
     fetchWorkOrders(clear: true);
   }
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────────────────────
 
   Future<void> fetchWorkOrders({
     bool clear = false,
@@ -77,11 +77,10 @@ class WorkOrderController extends GetxController {
     }
 
     try {
-      final filters = _buildFilters();
       final response = await _provider.getWorkOrders(
-        filters: filters,
-        start: _start,
+        filters: _buildFilterMap(),
         limit: _pageSize,
+        limitStart: _start,
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
@@ -98,33 +97,28 @@ class WorkOrderController extends GetxController {
     }
   }
 
-  // ── Filter builder ─────────────────────────────────────────────────────────
+  // ── Filter map builder ───────────────────────────────────────────────────────
+  // Produces a flat Map<String,dynamic> compatible with the provider signature.
+  // A name search is injected as a 'like' operator tuple so the API layer can
+  // encode it as ["name","like","%query%"].
 
-  List<List<dynamic>> _buildFilters() {
-    final f = <List<dynamic>>[];
+  Map<String, dynamic> _buildFilterMap() {
+    final f = <String, dynamic>{};
     if (searchQuery.value.isNotEmpty) {
-      f.add(['Work Order', 'name', 'like', '%${searchQuery.value}%']);
+      f['name'] = ['like', '%${searchQuery.value}%'];
     }
-    activeFilters.forEach((key, value) {
-      if (value is List) {
-        f.add(['Work Order', key, value[0], value[1]]);
-      } else {
-        f.add(['Work Order', key, '=', value]);
-      }
-    });
+    f.addAll(activeFilters);
     return f;
   }
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
+  // ── KPIs ─────────────────────────────────────────────────────────────────────
 
   int get totalCount => workOrders.length;
 
   int get countDraft => workOrders.where((w) => w.status == 'Draft').length;
-  int get countConfirmed =>
-      workOrders
-          .where((w) =>
-              w.status == 'Submitted' || w.status == 'Not Started')
-          .length;
+  int get countConfirmed => workOrders
+      .where((w) => w.status == 'Submitted' || w.status == 'Not Started')
+      .length;
   int get countInProgress =>
       workOrders.where((w) => w.status == 'In Process').length;
   int get countCompleted =>
