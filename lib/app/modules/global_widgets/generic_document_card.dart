@@ -14,6 +14,11 @@ class GenericDocumentCard extends StatelessWidget {
   final bool isExpanded;
   final bool isLoadingDetails;
   final VoidCallback onTap;
+
+  /// Optional long-press handler. When provided, a long-press on the card
+  /// fires this callback instead of (or in addition to) [onTap].
+  final VoidCallback? onLongPress;
+
   final Widget? expandedContent;
   final Widget? leading;
 
@@ -26,6 +31,7 @@ class GenericDocumentCard extends StatelessWidget {
     this.auditStats = const [],
     required this.isExpanded,
     required this.onTap,
+    this.onLongPress,
     this.isLoadingDetails = false,
     this.expandedContent,
     this.leading,
@@ -38,16 +44,16 @@ class GenericDocumentCard extends StatelessWidget {
       case 'Active':
       case 'Completed':
       case 'Paid':
-        return const Color(0xFF36A564); // Frappe success green
+        return const Color(0xFF36A564);
       case 'Draft':
-        return const Color(0xFFE54D4D); // Frappe danger red
+        return const Color(0xFFE54D4D);
       case 'Cancelled':
       case 'Rejected':
-        return const Color(0xFF5A6673); // Frappe muted grey
+        return const Color(0xFF5A6673);
       case 'Pending':
       case 'In Progress':
       case 'Open':
-        return const Color(0xFFFFA00A); // Frappe warning orange
+        return const Color(0xFFFFA00A);
       default:
         return Colors.transparent;
     }
@@ -72,6 +78,7 @@ class GenericDocumentCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: IntrinsicHeight(
           child: Row(
@@ -184,7 +191,6 @@ class GenericDocumentCard extends StatelessWidget {
                         ),
 
                       // ── Row 2: audit stats (muted, smaller) ────────────
-                      // Shown when present. No chevron — it sits on row 1.
                       if (auditStats.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Wrap(
@@ -196,7 +202,7 @@ class GenericDocumentCard extends StatelessWidget {
                         ),
                       ],
 
-                      // ── Expanded section ────────────────────────────────
+                      // ── Expanded section ──────────────────────────────
                       AnimatedSize(
                         duration: const Duration(milliseconds: 280),
                         curve: Curves.easeInOut,
@@ -266,8 +272,7 @@ class GenericDocumentCard extends StatelessWidget {
   }
 }
 
-/// Wraps an audit stat widget with reduced opacity to signal lower hierarchy
-/// without changing the buildIconStat signature or adding a separate builder.
+/// Wraps an audit stat widget with reduced opacity to signal lower hierarchy.
 class _AuditStatWrapper extends StatelessWidget {
   final Widget child;
   const _AuditStatWrapper({required this.child});
