@@ -6,6 +6,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
@@ -62,38 +63,35 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   // ---------------------------------------------------------------------------
   List<Widget> _buildActiveFilterChips(BuildContext context) {
     final chips = <Widget>[];
-    final f     = controller.activeFilters;
+    final f = controller.activeFilters;
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(_chip(
         context,
         icon: Icons.search,
-        label: 'Search: ${controller.searchQuery.value}',
+        label: 'Search: \${controller.searchQuery.value}',
         onDeleted: () {
           controller.searchQuery.value = '';
           controller.fetchDeliveryNotes(clear: true);
         },
       ));
     }
-
     if (f.containsKey('status')) {
       chips.add(_chip(context,
           icon: Icons.flag_outlined,
-          label: 'Status: ${f['status']}',
+          label: 'Status: \${f[\'status\']}',
           onDeleted: () => controller.removeFilter('status')));
     }
-
     if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
-      // customer is an exact name — resolve display label from loaded list
-      final match = controller.customers
-          .firstWhereOrNull((c) => c.name == f['customer']);
-      final display = match != null ? match.customerName : f['customer'].toString();
+      final match =
+          controller.customers.firstWhereOrNull((c) => c.name == f['customer']);
+      final display =
+          match != null ? match.customerName : f['customer'].toString();
       chips.add(_chip(context,
           icon: Icons.business_outlined,
-          label: 'Customer: $display',
+          label: 'Customer: \$display',
           onDeleted: () => controller.removeFilter('customer')));
     }
-
     if (f.containsKey('po_no')) {
       final val = f['po_no'];
       final display = val is List
@@ -101,32 +99,28 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           : val.toString();
       chips.add(_chip(context,
           icon: Icons.tag,
-          label: 'PO: $display',
+          label: 'PO: \$display',
           onDeleted: () => controller.removeFilter('po_no')));
     }
-
     if (f.containsKey('set_warehouse')) {
       chips.add(_chip(context,
           icon: Icons.warehouse_outlined,
-          label: 'Warehouse: ${f['set_warehouse']}',
+          label: 'Warehouse: \${f[\'set_warehouse\']}',
           onDeleted: () => controller.removeFilter('set_warehouse')));
     }
-
     if (f.containsKey('owner') && f['owner'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.person_outline,
-          label: 'Created By: ${f['owner']}',
+          label: 'Created By: \${f[\'owner\']}',
           onDeleted: () => controller.removeFilter('owner')));
     }
-
     if (f.containsKey('modified_by') &&
         f['modified_by'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.edit_outlined,
-          label: 'Modified By: ${f['modified_by']}',
+          label: 'Modified By: \${f[\'modified_by\']}',
           onDeleted: () => controller.removeFilter('modified_by')));
     }
-
     if (f.containsKey('creation')) {
       final cr = f['creation'];
       if (cr is List &&
@@ -137,11 +131,10 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         final dates = cr[1] as List;
         chips.add(_chip(context,
             icon: Icons.date_range,
-            label: '${dates[0]}  →  ${dates[1]}',
+            label: '\${dates[0]}  →  \${dates[1]}',
             onDeleted: () => controller.removeFilter('creation')));
       }
     }
-
     return chips;
   }
 
@@ -176,8 +169,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final theme        = Theme.of(context);
-    final colorScheme  = theme.colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -191,9 +184,21 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar ─────────────────────────────────────────────────────
-            const SliverAppBar.large(
-              title: Text('Delivery Notes'),
+            // ── Unified header ─────────────────────────────────────────────
+            DocTypeListHeader(
+              title: 'Delivery Notes',
+              searchDoctype: 'Delivery Note',
+              searchRoute: AppRoutes.DELIVERY_NOTE_FORM,
+              searchQuery: controller.searchQuery,
+              onSearchChanged: controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchDeliveryNotes(clear: true);
+              },
+              activeFilters: controller.activeFilters,
+              onFilterTap: _showFilterBottomSheet,
+              filterChipsBuilder: _buildActiveFilterChips,
+              onClearAllFilters: controller.clearFilters,
             ),
 
             // ── Result count pill ──────────────────────────────────────────
@@ -203,8 +208,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                     controller.deliveryNotes.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count      = controller.deliveryNotes.length;
-                final hasMore    = controller.hasMore.value;
+                final count = controller.deliveryNotes.length;
+                final hasMore = controller.hasMore.value;
                 final hasFilters = controller.activeFilters.isNotEmpty ||
                     controller.searchQuery.value.isNotEmpty;
                 return Padding(
@@ -227,8 +232,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                             const SizedBox(width: 6),
                             Text(
                               hasMore
-                                  ? '$count+ notes'
-                                  : '$count note${count == 1 ? '' : 's'}',
+                                  ? '\$count+ notes'
+                                  : '\$count note\${count == 1 ? '' : 's'}',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: colorScheme.onSecondaryContainer,
                                 fontWeight: FontWeight.w600,
@@ -239,128 +244,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                               Icon(Icons.filter_alt,
                                   size: 12,
                                   color: colorScheme.onSecondaryContainer
-                                      .withOpacity(0.7)),
+                                      .withValues(alpha: 0.7)),
                             ],
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                );
-              }),
-            ),
-
-            // ── Search bar + filter button in trailing ─────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Obx(() {
-                  final filterCount = controller.activeFilters.length;
-                  return SearchBar(
-                    hintText: 'Search ID, Customer...',
-                    leading: const Icon(Icons.search),
-                    onChanged: controller.onSearchChanged,
-                    trailing: [
-                      if (controller.searchQuery.value.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            controller.searchQuery.value = '';
-                            controller.fetchDeliveryNotes(clear: true);
-                          },
-                        ),
-                      Tooltip(
-                        message: filterCount > 0
-                            ? '$filterCount filter${filterCount > 1 ? 's' : ''} active'
-                            : 'Filter notes',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: _showFilterBottomSheet,
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.center,
-                              children: [
-                                Icon(
-                                  filterCount > 0
-                                      ? Icons.filter_alt
-                                      : Icons.filter_list,
-                                  color: filterCount > 0
-                                      ? colorScheme.primary
-                                      : colorScheme.onSurfaceVariant,
-                                ),
-                                if (filterCount > 0)
-                                  Positioned(
-                                    top: -4,
-                                    right: -6,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: colorScheme.error,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 16, minHeight: 16),
-                                      child: Text(
-                                        '$filterCount',
-                                        style: TextStyle(
-                                          color: colorScheme.onError,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    elevation: const WidgetStatePropertyAll(0),
-                    backgroundColor: WidgetStatePropertyAll(
-                        colorScheme.surfaceContainerHighest),
-                    shape: WidgetStatePropertyAll(
-                      RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(28)),
-                    ),
-                  );
-                }),
-              ),
-            ),
-
-            // ── Active filter chips ────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Obx(() {
-                final hasFilters = controller.activeFilters.isNotEmpty;
-                final hasSearch  = controller.searchQuery.value.isNotEmpty;
-                if (!hasFilters && !hasSearch) return const SizedBox.shrink();
-                final chips = _buildActiveFilterChips(context);
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ...chips,
-                      if (chips.length > 1)
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: colorScheme.error,
-                            visualDensity: VisualDensity.compact,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          onPressed: controller.clearFilters,
-                          icon: const Icon(Icons.clear_all, size: 16),
-                          label: const Text('Clear all'),
-                        ),
                     ],
                   ),
                 );
@@ -384,21 +272,21 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                 String emptySubtitle;
                 if (hasFilters) {
                   final parts = <String>[];
-                  final af    = controller.activeFilters;
+                  final af = controller.activeFilters;
                   if (af.containsKey('status'))
-                    parts.add('Status: ${af['status']}');
+                    parts.add('Status: \${af[\'status\']}');
                   if (af.containsKey('customer')) {
                     final match = controller.customers
                         .firstWhereOrNull((c) => c.name == af['customer']);
                     final label = match != null
                         ? match.customerName
                         : af['customer'].toString();
-                    parts.add('Customer: $label');
+                    parts.add('Customer: \$label');
                   }
                   if (controller.searchQuery.value.isNotEmpty)
-                    parts.add('Search: "${controller.searchQuery.value}"');
+                    parts.add('Search: "\${controller.searchQuery.value}"');
                   emptySubtitle = parts.isNotEmpty
-                      ? 'No notes found for ${parts.join(' + ')}.'
+                      ? 'No notes found for \${parts.join(' + ')}.'
                       : 'Try adjusting your filters or search query.';
                 } else {
                   emptySubtitle = 'Pull to refresh or create a new one.';
@@ -458,7 +346,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
               }
 
               final showLoader = controller.hasMore.value;
-              final baseCount  = controller.deliveryNotes.length;
+              final baseCount = controller.deliveryNotes.length;
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -494,17 +382,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           controller.isLoadingDetails.value &&
                               controller.detailedNote?.name != note.name;
 
-                      // ── Card layout — mirrors SE card exactly ──────────
-                      // title:    PO number if present, else doc name
-                      // subtitle: doc name • customer (mono font via GenericDocumentCard)
-                      // stats row 1 (primary): qty | warehouse | posting date
-                      // stats row 2 (audit):   owner | modifiedBy (if different)
                       final bool hasPo =
                           note.poNo != null && note.poNo!.isNotEmpty;
-                      final String title =
-                          hasPo ? note.poNo! : note.name;
+                      final String title = hasPo ? note.poNo! : note.name;
                       final String subtitle = hasPo
-                          ? '${note.name} • ${note.customer}'
+                          ? '\${note.name} • \${note.customer}'
                           : note.customer;
 
                       final showModified = note.modifiedBy != null &&
@@ -520,7 +402,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           GenericDocumentCard.buildIconStat(
                             context,
                             Icons.inventory_2_outlined,
-                            '${note.totalQty.toStringAsFixed(0)} Items',
+                            '\${note.totalQty.toStringAsFixed(0)} Items',
                           ),
                           if (note.setWarehouse != null &&
                               note.setWarehouse!.isNotEmpty)
@@ -589,7 +471,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Expanded card content — mirrors SE _buildDetailedContent exactly
+  // Expanded card content
   // ---------------------------------------------------------------------------
   Widget _buildExpandedContent(BuildContext context, String noteName) {
     return Obx(() {
@@ -598,7 +480,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         return const SizedBox.shrink();
       }
 
-      final theme       = Theme.of(context);
+      final theme = Theme.of(context);
       final colorScheme = theme.colorScheme;
       final currencySymbol =
           FormattingHelper.getCurrencySymbol(detailed.currency);
@@ -609,7 +491,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Source warehouse full-width cell (only when set)
           if (detailed.setWarehouse != null &&
               detailed.setWarehouse!.isNotEmpty) ...[
             _infoCell(
@@ -622,13 +503,11 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             Divider(height: 1, color: colorScheme.outlineVariant),
             const SizedBox(height: 12),
           ],
-
-          // Grand total
           if (detailed.grandTotal > 0) ...[
             _infoCell(
               context,
               label: 'GRAND TOTAL',
-              value: '$currencySymbol $grandTotal',
+              value: '\$currencySymbol \$grandTotal',
               icon: Icons.payments_outlined,
               valueColor: colorScheme.primary,
             ),
@@ -636,8 +515,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             Divider(height: 1, color: colorScheme.outlineVariant),
             const SizedBox(height: 12),
           ],
-
-          // Posting date + total qty side-by-side
           Row(
             children: [
               Expanded(
@@ -661,8 +538,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             ],
           ),
           const SizedBox(height: 24),
-
-          // Action button
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -691,7 +566,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     });
   }
 
-  // Mirrors SE _infoCell exactly.
   Widget _infoCell(
     BuildContext context, {
     required String label,
@@ -700,7 +574,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     Color? valueColor,
     bool alignRight = false,
   }) {
-    final theme       = Theme.of(context);
+    final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Column(
       crossAxisAlignment:

@@ -1,126 +1,190 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 
 class JobCardScreen extends GetView<JobCardController> {
   const JobCardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
-      appBar: MainAppBar(title: 'My Tasks',),
+      backgroundColor: colorScheme.surface,
       drawer: const AppNavDrawer(),
       body: Obx(() {
-        if (controller.isLoading.value) return const Center(child: CircularProgressIndicator());
+        if (controller.isLoading.value) {
+          return CustomScrollView(
+            slivers: [
+              const DocTypeListHeader(title: 'Job Cards'),
+              const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator())),
+            ],
+          );
+        }
 
-        return Column(
-          children: [
-            _buildShopFloorStats(),
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(12),
-                itemCount: controller.jobCards.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final jc = controller.jobCards[index];
-                  final bool isOpen = jc.status == 'Open' || jc.status == 'Work In Progress';
-
-                  return Material(
-                    color: Colors.white,
-                    elevation: isOpen ? 2 : 0,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () {}, // Navigate to detail
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Container(
-                              height: 50, width: 50,
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(jc.status).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.build, color: _getStatusColor(jc.status)),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(jc.operation, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${jc.workstation ?? "Unassigned"} • ${jc.totalCompletedQty.toInt()}/${jc.forQuantity.toInt()} units',
-                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (isOpen)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade600,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Text('START', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+        return CustomScrollView(
+          slivers: [
+            const DocTypeListHeader(title: 'Job Cards'),
+            SliverToBoxAdapter(child: _buildShopFloorStats(context)),
+            _buildTaskList(context),
           ],
         );
       }),
     );
   }
 
-  Widget _buildShopFloorStats() {
+  Widget _buildShopFloorStats(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem('Pending', '${controller.openCards}', Colors.orange),
-          _buildStatItem('Completed', '${controller.completedCards}', Colors.green),
-          _buildStatItem('Total', '${controller.totalCards}', Colors.blueGrey),
+          _statItem(context, 'Pending', '\${controller.openCards}',
+              Colors.orange),
+          _statItem(context, 'Completed', '\${controller.completedCards}',
+              Colors.green),
+          _statItem(context, 'Total', '\${controller.totalCards}',
+              colorScheme.primary),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem(String label, String val, Color color) {
+  Widget _statItem(
+      BuildContext context, String label, String val, Color color) {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         children: [
-          Text(val, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
-          Text(label, style: TextStyle(fontSize: 11, color: color)),
+          Text(val,
+              style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold, color: color)),
+          Text(label,
+              style:
+                  theme.textTheme.labelSmall?.copyWith(color: color)),
         ],
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
+  Widget _buildTaskList(BuildContext context) {
+    if (controller.jobCards.isEmpty) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Text('No job cards found',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurfaceVariant)),
+        ),
+      );
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final jc = controller.jobCards[index];
+            final bool isOpen =
+                jc.status == 'Open' || jc.status == 'Work In Progress';
+            final color = _statusColor(jc.status, colorScheme);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: colorScheme.surfaceContainerLowest,
+                elevation: isOpen ? 1 : 0,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () {},
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 50,
+                          width: 50,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child:
+                              Icon(Icons.build, color: color),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(jc.operation,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
+                              const SizedBox(height: 4),
+                              Text(
+                                '\${jc.workstation ?? "Unassigned"} • \${jc.totalCompletedQty.toInt()}/\${jc.forQuantity.toInt()} units',
+                                style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isOpen)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text('START',
+                                style: TextStyle(
+                                    color: colorScheme.onPrimary,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: controller.jobCards.length,
+        ),
+      ),
+    );
+  }
+
+  Color _statusColor(String status, ColorScheme colorScheme) {
     switch (status) {
-      case 'Open': return Colors.orange;
-      case 'Work In Progress': return Colors.blue;
-      case 'Completed': return Colors.green;
-      default: return Colors.grey;
+      case 'Open':
+        return Colors.orange;
+      case 'Work In Progress':
+        return colorScheme.primary;
+      case 'Completed':
+        return Colors.green;
+      default:
+        return colorScheme.onSurfaceVariant;
     }
   }
 }
