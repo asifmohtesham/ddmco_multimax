@@ -466,7 +466,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ),
               ),
             ),
-            if (scanBar != null) scanBar,
+            // if (scanBar != null) scanBar,
           ],
         ),
       );
@@ -489,7 +489,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                 children: _formChildren(context),
               ),
             ),
-            if (scanBar != null) scanBar,
+            // if (scanBar != null) scanBar,
           ],
         ),
       );
