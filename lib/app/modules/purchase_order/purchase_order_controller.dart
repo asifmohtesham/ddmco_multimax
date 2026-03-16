@@ -1,10 +1,13 @@
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/supplier_model.dart';
+import 'package:multimax/app/data/providers/supplier_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PurchaseOrderController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
+  final SupplierProvider _supplierProvider = Get.find<SupplierProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -27,11 +30,34 @@ class PurchaseOrderController extends GetxController {
 
   PurchaseOrder? get detailedPo => _detailedPoCache[expandedPoName.value];
 
+  // Supplier list for filter picker
+  var suppliers = <SupplierEntry>[].obs;
+  var isFetchingSuppliers = false.obs;
+
   @override
   void onInit() {
     super.onInit();
     fetchPurchaseOrders();
+    fetchSuppliers();
   }
+
+  Future<void> fetchSuppliers() async {
+    if (isFetchingSuppliers.value) return;
+    isFetchingSuppliers.value = true;
+    try {
+      final response = await _supplierProvider.getSuppliers(limit: 0);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        suppliers.value =
+            data.map((json) => SupplierEntry.fromJson(json)).toList();
+      }
+    } catch (_) {
+      // non-fatal — picker shows empty list
+    } finally {
+      isFetchingSuppliers.value = false;
+    }
+  }
+
 
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
