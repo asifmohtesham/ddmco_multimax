@@ -58,6 +58,70 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
     );
   }
 
+  List<Widget> _buildActiveFilterChips(BuildContext context) {
+    final chips = <Widget>[];
+    final f = controller.activeFilters;
+
+    if (controller.searchQuery.value.isNotEmpty) {
+      chips.add(_chip(context,
+          icon: Icons.search,
+          label: 'Search: ${controller.searchQuery.value}',
+          onDeleted: () {
+            controller.searchQuery.value = '';
+            controller.fetchPosUploads(clear: true);
+          }));
+    }
+    if (f.containsKey('status')) {
+      chips.add(_chip(context,
+          icon: Icons.flag_outlined,
+          label: 'Status: ${f['status']}',
+          onDeleted: () => controller.removeFilter('status')));
+    }
+    if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
+      final match = controller.customers
+          .firstWhereOrNull((c) => c.name == f['customer']);
+      final display =
+      match != null ? match.customerName : f['customer'].toString();
+      chips.add(_chip(context,
+          icon: Icons.person_outline,
+          label: 'Customer: $display',
+          onDeleted: () => controller.removeFilter('customer')));
+    }
+    if (f.containsKey('date')) {
+      final dr = f['date'];
+      if (dr is List && dr[0] == 'between' && dr[1] is List) {
+        final dates = dr[1] as List;
+        chips.add(_chip(context,
+            icon: Icons.date_range,
+            label: '${dates[0]}  →  ${dates[1]}',
+            onDeleted: () => controller.removeFilter('date')));
+      }
+    }
+    return chips;
+  }
+
+  Widget _chip(BuildContext context,
+      {required IconData icon,
+        required String label,
+        required VoidCallback onDeleted}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Chip(
+      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
+      label: Text(label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSecondaryContainer,
+            fontWeight: FontWeight.w600,
+          )),
+      backgroundColor: colorScheme.secondaryContainer,
+      deleteIconColor: colorScheme.onSecondaryContainer,
+      onDeleted: onDeleted,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      side: BorderSide.none,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -75,11 +139,21 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ─────────────────────────────────────────────
+            // ── Unified header ──────────────────────────────────────────────────────
             DocTypeListHeader(
               title: 'POS Uploads',
+              searchDoctype: 'POS Invoice',
+              searchRoute: AppRoutes.POS_UPLOAD_FORM,
+              searchQuery: controller.searchQuery,
+              onSearchChanged: controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchPosUploads(clear: true);
+              },
               activeFilters: controller.activeFilters,
               onFilterTap: _showFilterSheet,
+              filterChipsBuilder: _buildActiveFilterChips,
+              onClearAllFilters: controller.clearFilters,
             ),
 
             // ── Result count pill ──────────────────────────────────────────
@@ -91,7 +165,8 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
                 }
                 final count = controller.posUploads.length;
                 final hasMore = controller.hasMore.value;
-                final hasFilters = controller.activeFilters.isNotEmpty;
+                final hasFilters = controller.activeFilters.isNotEmpty ||
+                    controller.searchQuery.value.isNotEmpty;
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Row(

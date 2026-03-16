@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';

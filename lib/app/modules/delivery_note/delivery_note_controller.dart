@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -9,19 +10,6 @@ import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-
-/// Minimal model for Customer DocType list entries.
-class CustomerEntry {
-  final String name;
-  final String customerName;
-
-  const CustomerEntry({required this.name, required this.customerName});
-
-  factory CustomerEntry.fromJson(Map<String, dynamic> json) => CustomerEntry(
-        name: json['name'] ?? '',
-        customerName: json['customer_name'] ?? json['name'] ?? '',
-      );
-}
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
