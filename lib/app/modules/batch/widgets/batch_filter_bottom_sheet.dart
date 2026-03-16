@@ -28,7 +28,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   final _itemCode = ''.obs;
   final _batchNo = ''.obs;
   final _purchaseOrder = ''.obs;
-  final _supplier = ''.obs;
+  final _supplierName = ''.obs;
   final _showDisabled = false.obs;
   late String _sortField;
   late String _sortOrder;
@@ -42,7 +42,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
         ? (af['name'] as List)[1].toString().replaceAll('%', '')
         : af['name'] as String? ?? '');
     _purchaseOrder.value = af['custom_purchase_order'] as String? ?? '';
-    _supplier.value = af['custom_supplier'] as String? ?? '';
+    _supplierName.value = af['custom_supplier_name'] as String? ?? '';
     _showDisabled.value = (af['disabled'] == 1);
     _sortField = _ctrl.sortField.value;
     _sortOrder = _ctrl.sortOrder.value;
@@ -236,8 +236,8 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     if (_purchaseOrder.value.isNotEmpty) {
       filters['custom_purchase_order'] = _purchaseOrder.value;
     }
-    if (_supplier.value.isNotEmpty) {
-      filters['custom_supplier'] = _supplier.value;
+    if (_supplierName.value.isNotEmpty) {
+      filters['custom_supplier_name'] = _supplierName.value;
     }
     if (_showDisabled.value) {
       filters['disabled'] = ['in', [0, 1]];
@@ -258,7 +258,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     _itemCode.value = '';
     _batchNo.value = '';
     _purchaseOrder.value = '';
-    _supplier.value = '';
+    _supplierName.value = '';
     _showDisabled.value = false;
     _sortField = 'modified';
     _sortOrder = 'desc';
@@ -269,7 +269,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   int get _localFilterCount =>
-      [_itemCode, _batchNo, _purchaseOrder, _supplier]
+      [_itemCode, _batchNo, _purchaseOrder, _supplierName]
           .where((rx) => rx.value.isNotEmpty)
           .length +
       (_showDisabled.value ? 1 : 0);
@@ -376,7 +376,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
             _pickerTile(
               context: context,
               label: 'Supplier Name',
-              value: _supplier,
+              value: _supplierName,
               hint: 'All Suppliers',
               icon: Icons.local_shipping_outlined,
               searcher: _searchSuppliers,

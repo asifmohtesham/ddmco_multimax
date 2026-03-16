@@ -39,7 +39,7 @@ class BatchController extends GetxController {
   ///   'item'                  → String (exact)
   ///   'name'                  → String (like)
   ///   'custom_purchase_order' → String (exact)
-  ///   'custom_supplier'       → String (exact)
+  ///   'custom_supplier_name'  → String (exact)
   ///   'disabled'              → int (0 = active, 1 = disabled)
   ///   'expiry_date'           → List ['between', [from, to]] (ISO dates)
   var activeFilters = <String, dynamic>{}.obs;

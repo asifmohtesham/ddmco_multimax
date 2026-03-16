@@ -14,7 +14,7 @@ class BatchProvider {
     'expiry_date',
     'custom_packaging_qty',
     'custom_purchase_order',
-    'custom_supplier',
+    'custom_supplier_name',
     'disabled',
     'modified',
     'creation',

@@ -88,12 +88,12 @@ class BatchListAppBar extends StatelessWidget {
       ));
     }
 
-    if (af.containsKey('custom_supplier') &&
-        (af['custom_supplier'] as String).isNotEmpty) {
+    if (af.containsKey('custom_supplier_name') &&
+        (af['custom_supplier_name'] as String).isNotEmpty) {
       chips.add(chip(
         icon: Icons.local_shipping_outlined,
-        label: 'Supplier: ${af['custom_supplier']}',
-        onDeleted: () => ctrl.removeFilter('custom_supplier'),
+        label: 'Supplier: ${af['custom_supplier_name']}',
+        onDeleted: () => ctrl.removeFilter('custom_supplier_name'),
       ));
     }
 
