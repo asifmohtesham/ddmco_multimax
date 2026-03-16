@@ -18,33 +18,20 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///      the caller via [filterChipsBuilder].  This stays in the list body
 ///      so active filters remain visible while scrolling.
 ///
-/// All reactive state (search query, filter count) is read from the caller's
+/// All reactive state (search query, filter count) is read from the caller’s
 /// GetX controller through plain [RxString] / [RxMap] getters wrapped in
 /// [Obx].  No [StatefulWidget], no local [ValueNotifier], no [setState].
 ///
-/// ### Action icon layout (right → left in AppBar)
+/// ### Action icon layout (left → right in AppBar)
 /// ```
-/// [ extraActions... ]  [ filter️ ]  [ 🔍 ]
+/// [ extraActions... ]  [ filter ]  [ search ]
 /// ```
-/// The filter icon is hidden when [onFilterTap] is null.
-/// The search icon is hidden when both [searchQuery] and
-/// [searchDoctype]/[searchRoute] are null.
-///
-/// ### Minimal usage
-/// ```dart
-/// DocTypeListHeader(
-///   title: 'Batch',
-///   searchQuery: controller.searchQuery,
-///   onSearchChanged: controller.onSearchChanged,
-///   onSearchClear: () {
-///     controller.searchQuery.value = '';
-///     controller.fetchBatches(clear: true);
-///   },
-///   activeFilters: controller.activeFilters,
-///   onFilterTap: () => _openFilterSheet(),
-///   filterChipsBuilder: (ctx) => _buildFilterChips(ctx),
-/// )
-/// ```
+/// • **filter** — idle: outlined [Icons.filter_list] icon button.
+///               active: filled [Icons.filter_alt] button (primary bg,
+///               onPrimary icon) with the active count in the tooltip.
+///               Hidden when [onFilterTap] is null.
+/// • **search** — standard icon button with an 8 px error dot when a
+///               query is active. Hidden when search is not wired up.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ──────────────────────────────────────────────────────────────
 
@@ -75,7 +62,8 @@ class DocTypeListHeader extends StatelessWidget {
 
   // ── Filter button (AppBar action — one tap) ──────────────────────────────
 
-  /// Map of currently active filters — drives the red badge count on the icon.
+  /// Map of currently active filters — drives the filled state and tooltip
+  /// count on the filter icon.
   final RxMap<String, dynamic>? activeFilters;
 
   /// Callback that opens the DocType-specific filter bottom sheet.
@@ -122,76 +110,61 @@ class DocTypeListHeader extends StatelessWidget {
     final List<Widget> actions = [
       ...(extraActions ?? []),
 
-      // ── Filter icon (one tap → bottom sheet) ──────────────────────────────
-      // Shown only when onFilterTap is provided.
-      // Sits to the LEFT of the search icon so the user sees:
-      //   [ filter ]  [ search ]
+      // ── Filter icon ─────────────────────────────────────────────────────
+      //
+      // Idle  : plain IconButton, Icons.filter_list, default icon colour.
+      // Active: IconButton.filled, Icons.filter_alt.
+      //         Filled renders onPrimary icon on a solid primary background
+      //         — always legible against colorScheme.surface in any M3 theme.
+      //         The count is surfaced in the tooltip; no badge overlay needed
+      //         because the filled pill itself communicates “active” clearly.
       if (onFilterTap != null)
         Builder(
-          builder: (context) {
-            final colorScheme = Theme.of(context).colorScheme;
+          builder: (ctx) {
             return Obx(() {
               final count = activeFilters?.length ?? 0;
-              return Tooltip(
-                message: count > 0
-                    ? '$count filter${count > 1 ? 's' : ''} active'
-                    : 'Filter',
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        count > 0
-                            ? Icons.filter_alt
-                            : Icons.filter_list,
-                        color: count > 0
-                            ? colorScheme.primary
-                            : null,
-                      ),
-                      onPressed: onFilterTap,
+              final isActive = count > 0;
+
+              final tooltip = isActive
+                  ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
+                  : 'Filter';
+
+              if (isActive) {
+                // Filled button: solid primary circle, onPrimary icon.
+                // Always visible regardless of AppBar background colour.
+                return Tooltip(
+                  message: tooltip,
+                  child: IconButton.filled(
+                    icon: const Icon(Icons.filter_alt),
+                    onPressed: onFilterTap,
+                    // Constrain size to match a regular IconButton so the
+                    // AppBar action row doesn’t reflow when toggling.
+                    constraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
                     ),
-                    if (count > 0)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: colorScheme.error,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                              minWidth: 16, minHeight: 16),
-                          child: Text(
-                            '$count',
-                            style: TextStyle(
-                              color: colorScheme.onError,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              height: 1.0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
+                );
+              }
+
+              // Idle: plain icon button
+              return Tooltip(
+                message: tooltip,
+                child: IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: onFilterTap,
                 ),
               );
             });
           },
         ),
 
-      // ── Search icon (one tap → search overlay) ───────────────────────────
-      // Shown when either local-search (searchQuery) or API-search
-      // (searchDoctype + searchRoute) is wired up.
-      // The search delegate no longer hosts the filter icon; it only
-      // owns the text field and the API result list.
+      // ── Search icon ─────────────────────────────────────────────────────
       if (searchQuery != null ||
           (searchDoctype != null && searchRoute != null))
         Builder(
-          builder: (context) {
-            final colorScheme = Theme.of(context).colorScheme;
+          builder: (ctx) {
+            final colorScheme = Theme.of(ctx).colorScheme;
             return Obx(() {
               final hasActiveSearch =
                   searchQuery?.value.isNotEmpty ?? false;
@@ -207,20 +180,18 @@ class DocTypeListHeader extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.search),
                       onPressed: () => showSearch(
-                        context: context,
+                        context: ctx,
                         delegate: DocTypeSearchDelegate(
                           doctype: searchDoctype ?? '',
                           targetRoute: searchRoute ?? '',
                           searchQuery: searchQuery,
                           onSearchChanged: onSearchChanged,
                           onSearchClear: onSearchClear,
-                          // Filter is now in the AppBar, not the delegate.
                           activeFilters: null,
                           onFilterTap: null,
                         ),
                       ),
                     ),
-                    // Search-active dot
                     if (hasActiveSearch)
                       Positioned(
                         top: 6,
