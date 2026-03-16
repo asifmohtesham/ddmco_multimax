@@ -80,6 +80,18 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final bool _canEditAmount;
   late final bool _canEditQty;
 
+  /// All possible status values a POS Upload can have.
+  /// Must be kept in sync with ERPNext so the DropdownButtonFormField
+  /// never receives a value that isn't in this list (prevents assertion crash).
+  static const _statusOptions = [
+    'Draft',
+    'Pending',
+    'In Progress',
+    'Completed',
+    'Cancelled',
+    'Submitted',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +136,14 @@ class _DetailsTabState extends State<_DetailsTab> {
       if (upload == null) return const SizedBox.shrink();
 
       final canSave = _canEditStatus || _canEditAmount || _canEditQty;
+
+      // Ensure the current status is always present in the list so the
+      // DropdownButtonFormField never throws an assertion error for an
+      // unexpected value coming from the server (e.g. "Completed").
+      final statusItems = {
+        ...?(_statusOptions.contains(upload.status) ? null : [upload.status]),
+        ..._statusOptions,
+      }.toList();
 
       // ── Linked-doc banner ─────────────────────────────────────────────────
       Widget? linkedBanner;
@@ -219,7 +239,7 @@ class _DetailsTabState extends State<_DetailsTab> {
               ),
               const SizedBox(height: 16),
 
-              // Fix #3 — status dropdown wired to updateStatus()
+              // Status dropdown — value is always guaranteed to be in statusItems
               DropdownButtonFormField<String>(
                 value: upload.status,
                 isExpanded: true,
@@ -229,13 +249,7 @@ class _DetailsTabState extends State<_DetailsTab> {
                   filled: !_canEditStatus,
                   fillColor: !_canEditStatus ? cs.surfaceContainerHighest : null,
                 ),
-                items: [
-                  'Pending',
-                  'In Progress',
-                  'Cancelled',
-                  'Draft',
-                  'Submitted',
-                ]
+                items: statusItems
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
                 onChanged: _canEditStatus
@@ -723,7 +737,7 @@ class _ItemCard extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       // Fix #10 — visible status label below item name
-                      if (matchStatus != null) ...[  
+                      if (matchStatus != null) ...[
                         const SizedBox(height: 2),
                         Row(
                           children: [
@@ -766,7 +780,7 @@ class _ItemCard extends StatelessWidget {
             ),
 
             // ── Chips ────────────────────────────────────────────────────
-            if (chips.isNotEmpty) ...[  
+            if (chips.isNotEmpty) ...[
               const SizedBox(height: 10),
               Wrap(spacing: 6, runSpacing: 6, children: chips),
             ],
@@ -853,7 +867,7 @@ class _EmptyState extends StatelessWidget {
                     .textTheme
                     .bodySmall
                     ?.copyWith(color: cs.onSurfaceVariant)),
-            if (actionLabel != null && onAction != null) ...[  
+            if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 16),
               OutlinedButton(
                 onPressed: onAction,
