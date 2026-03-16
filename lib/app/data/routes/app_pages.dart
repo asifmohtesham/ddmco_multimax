@@ -6,6 +6,8 @@ import 'package:multimax/app/modules/material_request/form/material_request_form
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
 import 'package:multimax/app/modules/work_order/work_order_screen.dart';
+import 'package:multimax/app/modules/work_order/form/work_order_form_binding.dart';
+import 'package:multimax/app/modules/work_order/form/work_order_form_screen.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/auth/login_screen.dart';
@@ -17,10 +19,10 @@ import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_binding.d
 import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_screen.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_binding.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
-import 'package:multimax/app/modules/purchase_order/purchase_order_binding.dart'; // Added
-import 'package:multimax/app/modules/purchase_order/purchase_order_screen.dart'; // Added
-import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart'; // Added
-import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart'; // Added
+import 'package:multimax/app/modules/purchase_order/purchase_order_binding.dart';
+import 'package:multimax/app/modules/purchase_order/purchase_order_screen.dart';
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart';
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_binding.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_screen.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_binding.dart';
@@ -49,8 +51,6 @@ import 'package:multimax/app/modules/batch/batch_binding.dart';
 import 'package:multimax/app/modules/batch/batch_screen.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_binding.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_screen.dart';
-import 'package:multimax/app/modules/material_request/material_request_binding.dart';
-import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/material_request/material_request_binding.dart';
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/about/about_binding.dart';
@@ -174,6 +174,12 @@ class AppPages {
       name: AppRoutes.WORK_ORDER,
       page: () => const WorkOrderScreen(),
       binding: WorkOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.WORK_ORDER_FORM,
+      page: () => const WorkOrderFormScreen(),
+      binding: WorkOrderFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.JOB_CARD,

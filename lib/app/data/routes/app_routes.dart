@@ -4,8 +4,8 @@ abstract class AppRoutes {
   static const PROFILE = _Paths.PROFILE;
   static const PURCHASE_RECEIPT = _Paths.PURCHASE_RECEIPT;
   static const PURCHASE_RECEIPT_FORM = _Paths.PURCHASE_RECEIPT_FORM;
-  static const PURCHASE_ORDER = _Paths.PURCHASE_ORDER; // Added
-  static const PURCHASE_ORDER_FORM = _Paths.PURCHASE_ORDER_FORM; // Added
+  static const PURCHASE_ORDER = _Paths.PURCHASE_ORDER;
+  static const PURCHASE_ORDER_FORM = _Paths.PURCHASE_ORDER_FORM;
   static const STOCK_ENTRY = _Paths.STOCK_ENTRY;
   static const STOCK_ENTRY_FORM = _Paths.STOCK_ENTRY_FORM;
   static const DELIVERY_NOTE = _Paths.DELIVERY_NOTE;
@@ -20,6 +20,7 @@ abstract class AppRoutes {
   static const ITEM_FORM = _Paths.ITEM_FORM;
   static const BOM = _Paths.BOM;
   static const WORK_ORDER = _Paths.WORK_ORDER;
+  static const WORK_ORDER_FORM = _Paths.WORK_ORDER_FORM;
   static const JOB_CARD = _Paths.JOB_CARD;
   static const BATCH = _Paths.BATCH;
   static const BATCH_FORM = _Paths.BATCH_FORM;
@@ -32,8 +33,8 @@ abstract class _Paths {
   static const PROFILE = '/profile';
   static const PURCHASE_RECEIPT = '/purchase-receipt';
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
-  static const PURCHASE_ORDER = '/purchase-order'; // Added
-  static const PURCHASE_ORDER_FORM = '/purchase-order/form'; // Added
+  static const PURCHASE_ORDER = '/purchase-order';
+  static const PURCHASE_ORDER_FORM = '/purchase-order/form';
   static const STOCK_ENTRY = '/stock-entry';
   static const STOCK_ENTRY_FORM = '/stock-entry/form';
   static const DELIVERY_NOTE = '/delivery-note';
@@ -48,6 +49,7 @@ abstract class _Paths {
   static const ITEM_FORM = '/item/form';
   static const BOM = '/bom';
   static const WORK_ORDER = '/work-order';
+  static const WORK_ORDER_FORM = '/work-order/form';
   static const JOB_CARD = '/job-card';
   static const BATCH = '/batch';
   static const BATCH_FORM = '/batch/form';
