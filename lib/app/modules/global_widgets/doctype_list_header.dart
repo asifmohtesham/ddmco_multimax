@@ -4,51 +4,57 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 
 /// A unified sliver header for every DocType list screen.
 ///
-/// Owns two sequential concerns that were previously three:
+/// Owns two sequential concerns:
 ///
 ///   1. [SliverAppBar.large] — collapsing title + optional extra actions +
-///      a single search [IconButton] that opens [DocTypeSearchDelegate].
-///      The delegate hosts both the **text query field** and the
-///      **badged filter icon** (previously the SearchBar trailing suffix),
-///      so the user reaches search AND filter from one AppBar entry point.
+///      two action icons: a **filter** [IconButton] (badged) and a **search**
+///      [IconButton], both always reachable with a single tap.
+///
+///      Previously the filter icon lived inside the [DocTypeSearchDelegate]
+///      overlay, requiring two taps to reach (search icon → filter icon).
+///      It is now promoted to the AppBar row itself for immediate access.
 ///
 ///   2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
 ///      the caller via [filterChipsBuilder].  This stays in the list body
 ///      so active filters remain visible while scrolling.
 ///
-/// The local [SearchBar] widget that previously sat between the AppBar and
-/// the chip row has been removed.  All its features live inside the
-/// [DocTypeSearchDelegate] overlay instead.
-///
 /// All reactive state (search query, filter count) is read from the caller's
 /// GetX controller through plain [RxString] / [RxMap] getters wrapped in
 /// [Obx].  No [StatefulWidget], no local [ValueNotifier], no [setState].
 ///
+/// ### Action icon layout (right → left in AppBar)
+/// ```
+/// [ extraActions... ]  [ filter️ ]  [ 🔍 ]
+/// ```
+/// The filter icon is hidden when [onFilterTap] is null.
+/// The search icon is hidden when both [searchQuery] and
+/// [searchDoctype]/[searchRoute] are null.
+///
 /// ### Minimal usage
 /// ```dart
 /// DocTypeListHeader(
-///   title: 'Stock Entries',
+///   title: 'Batch',
 ///   searchQuery: controller.searchQuery,
 ///   onSearchChanged: controller.onSearchChanged,
 ///   onSearchClear: () {
 ///     controller.searchQuery.value = '';
-///     controller.fetchStockEntries(clear: true);
+///     controller.fetchBatches(clear: true);
 ///   },
-///   activeFilterCount: controller.activeFilters.length,
-///   onFilterTap: () => _showFilterSheet(context),
+///   activeFilters: controller.activeFilters,
+///   onFilterTap: () => _openFilterSheet(),
 ///   filterChipsBuilder: (ctx) => _buildFilterChips(ctx),
 /// )
 /// ```
 class DocTypeListHeader extends StatelessWidget {
-  // ── AppBar ────────────────────────────────────────────────────────────────
+  // ── AppBar ──────────────────────────────────────────────────────────────
 
   /// Page title shown in the large / collapsed app bar.
   final String title;
 
-  /// Extra action widgets prepended before the search icon.
+  /// Extra action widgets prepended before the filter and search icons.
   final List<Widget>? extraActions;
 
-  // ── Search (AppBar delegate) ──────────────────────────────────────────────
+  // ── Search ──────────────────────────────────────────────────────────────
 
   /// ERPNext DocType name passed to [DocTypeSearchDelegate] for API search.
   /// When empty or null only local-search mode is used.
@@ -57,32 +63,32 @@ class DocTypeListHeader extends StatelessWidget {
   /// Named route for [DocTypeSearchDelegate] result navigation (API mode).
   final String? searchRoute;
 
-  /// The controller's [RxString] that holds the current query.
+  /// The controller’s [RxString] that holds the current query.
   /// Pass `null` to hide the search icon entirely.
   final RxString? searchQuery;
 
   /// Called on every keystroke (debounce is handled by the controller).
   final ValueChanged<String>? onSearchChanged;
 
-  /// Called when the user taps the × clear button inside the delegate.
+  /// Called when the user taps the × clear button inside the search delegate.
   final VoidCallback? onSearchClear;
 
-  // ── Filter button (lives inside the AppBar delegate) ──────────────────────
+  // ── Filter button (AppBar action — one tap) ──────────────────────────────
 
-  /// Map of currently active filters — drives the red badge on the icon.
+  /// Map of currently active filters — drives the red badge count on the icon.
   final RxMap<String, dynamic>? activeFilters;
 
   /// Callback that opens the DocType-specific filter bottom sheet.
-  /// Pass `null` to hide the filter icon in the delegate.
+  /// When null the filter icon is hidden entirely.
   final VoidCallback? onFilterTap;
 
-  // ── Active filter chips ───────────────────────────────────────────────────
+  // ── Active filter chips ──────────────────────────────────────────────────
 
   /// Returns the list of [Chip] widgets for currently active filters.
   /// The entire row is hidden when the list is empty.
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
 
-  /// Callback for the "Clear all" button shown when chips.length > 1.
+  /// Callback for the “Clear all” button shown when chips.length > 1.
   final VoidCallback? onClearAllFilters;
 
   const DocTypeListHeader({
@@ -104,34 +110,96 @@ class DocTypeListHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiSliver(
       children: [
-        _buildAppBar(),
+        _buildAppBar(context),
         if (filterChipsBuilder != null) _buildFilterChips(context),
       ],
     );
   }
 
-  // ── AppBar ────────────────────────────────────────────────────────────────
+  // ── AppBar ──────────────────────────────────────────────────────────────
 
-  Widget _buildAppBar() {
+  Widget _buildAppBar(BuildContext context) {
     final List<Widget> actions = [
       ...(extraActions ?? []),
 
-      // Search icon — shown when either API-search or local-search is wired up
-      if (searchQuery != null || (searchDoctype != null && searchRoute != null))
+      // ── Filter icon (one tap → bottom sheet) ──────────────────────────────
+      // Shown only when onFilterTap is provided.
+      // Sits to the LEFT of the search icon so the user sees:
+      //   [ filter ]  [ search ]
+      if (onFilterTap != null)
         Builder(
           builder: (context) {
             final colorScheme = Theme.of(context).colorScheme;
             return Obx(() {
-              final filterCount = activeFilters?.length ?? 0;
+              final count = activeFilters?.length ?? 0;
+              return Tooltip(
+                message: count > 0
+                    ? '$count filter${count > 1 ? 's' : ''} active'
+                    : 'Filter',
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        count > 0
+                            ? Icons.filter_alt
+                            : Icons.filter_list,
+                        color: count > 0
+                            ? colorScheme.primary
+                            : null,
+                      ),
+                      onPressed: onFilterTap,
+                    ),
+                    if (count > 0)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: colorScheme.error,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                              minWidth: 16, minHeight: 16),
+                          child: Text(
+                            '$count',
+                            style: TextStyle(
+                              color: colorScheme.onError,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              height: 1.0,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            });
+          },
+        ),
+
+      // ── Search icon (one tap → search overlay) ───────────────────────────
+      // Shown when either local-search (searchQuery) or API-search
+      // (searchDoctype + searchRoute) is wired up.
+      // The search delegate no longer hosts the filter icon; it only
+      // owns the text field and the API result list.
+      if (searchQuery != null ||
+          (searchDoctype != null && searchRoute != null))
+        Builder(
+          builder: (context) {
+            final colorScheme = Theme.of(context).colorScheme;
+            return Obx(() {
               final hasActiveSearch =
                   searchQuery?.value.isNotEmpty ?? false;
-              final badgeCount =
-                  filterCount + (hasActiveSearch ? 1 : 0);
 
               return Tooltip(
                 message: searchDoctype != null
-                    ? 'Search & Filter $searchDoctype'
-                    : 'Search & Filter',
+                    ? 'Search $searchDoctype'
+                    : 'Search',
                 child: Stack(
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
@@ -146,33 +214,23 @@ class DocTypeListHeader extends StatelessWidget {
                           searchQuery: searchQuery,
                           onSearchChanged: onSearchChanged,
                           onSearchClear: onSearchClear,
-                          activeFilters: activeFilters,
-                          onFilterTap: onFilterTap,
+                          // Filter is now in the AppBar, not the delegate.
+                          activeFilters: null,
+                          onFilterTap: null,
                         ),
                       ),
                     ),
-                    // Compound badge: filter count + search-active dot
-                    if (badgeCount > 0)
+                    // Search-active dot
+                    if (hasActiveSearch)
                       Positioned(
                         top: 6,
                         right: 6,
                         child: Container(
-                          padding: const EdgeInsets.all(3),
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
                             color: colorScheme.error,
                             shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                              minWidth: 16, minHeight: 16),
-                          child: Text(
-                            '$badgeCount',
-                            style: TextStyle(
-                              color: colorScheme.onError,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              height: 1.0,
-                            ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
@@ -235,10 +293,6 @@ class DocTypeListHeader extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Minimal MultiSliver shim
 // ---------------------------------------------------------------------------
-// Flutter's slivers API has no built-in "group of slivers" widget.  Rather
-// than pulling in the `sliver_tools` package for a single use-case, this thin
-// shim wraps multiple slivers so DocTypeListHeader can be used as a single
-// widget in a CustomScrollView's slivers list.
 
 class MultiSliver extends StatelessWidget {
   final List<Widget> children;
@@ -246,8 +300,6 @@ class MultiSliver extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // SliverMainAxisGroup clips and groups multiple slivers — available since
-    // Flutter 3.16.  It is sticky-header-aware and scroll-position-aware.
     return SliverMainAxisGroup(slivers: children);
   }
 }

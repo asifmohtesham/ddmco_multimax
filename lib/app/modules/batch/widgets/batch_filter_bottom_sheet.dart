@@ -9,7 +9,7 @@ import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.d
 // Each of the four key fields — Item Code, Batch No, Purchase Order, Supplier
 // Name — is presented as an InkWell tile that opens a searchable
 // DraggableScrollableSheet picker.  The picker fires a live API search on the
-// controller's provider so users always see up-to-date values without having
+// controller’s provider so users always see up-to-date values without having
 // to pre-load a potentially large list.
 // ---------------------------------------------------------------------------
 
@@ -24,12 +24,12 @@ class BatchFilterBottomSheet extends StatefulWidget {
 class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   final BatchController _ctrl = Get.find();
 
-  // Local copies — committed only on "Apply"
+  // Local copies — committed only on “Apply”
   final _itemCode = ''.obs;
   final _batchNo = ''.obs;
   final _purchaseOrder = ''.obs;
   final _supplier = ''.obs;
-  final _showDisabled = false.obs; // false = active only, true = include disabled
+  final _showDisabled = false.obs;
   late String _sortField;
   late String _sortOrder;
 
@@ -38,8 +38,9 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     super.initState();
     final af = _ctrl.activeFilters;
     _itemCode.value = af['item'] as String? ?? '';
-    _batchNo.value =
-        (af['name'] is List ? (af['name'] as List)[1].toString().replaceAll('%', '') : af['name'] as String? ?? '');
+    _batchNo.value = (af['name'] is List
+        ? (af['name'] as List)[1].toString().replaceAll('%', '')
+        : af['name'] as String? ?? '');
     _purchaseOrder.value = af['custom_purchase_order'] as String? ?? '';
     _supplier.value = af['custom_supplier'] as String? ?? '';
     _showDisabled.value = (af['disabled'] == 1);
@@ -60,7 +61,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     final results = <_PickerItem>[].obs;
     final isLoading = false.obs;
 
-    // Initial load
     () async {
       isLoading.value = true;
       results.value = await searcher('');
@@ -84,7 +84,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
           ),
           child: Column(
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 40,
@@ -100,7 +99,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              // Search field
               TextField(
                 controller: searchController,
                 decoration: InputDecoration(
@@ -118,7 +116,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
                 },
               ),
               const SizedBox(height: 12),
-              // Results
               Expanded(
                 child: Obx(() {
                   if (isLoading.value) {
@@ -130,8 +127,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
                   return ListView.separated(
                     controller: scrollController,
                     itemCount: results.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1),
+                    separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final item = results[i];
                       return ListTile(
@@ -157,7 +153,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     );
   }
 
-  // ── Searcher helpers (wrap provider calls) ────────────────────────────────
+  // ── Searcher helpers ──────────────────────────────────────────────────────────
 
   Future<List<_PickerItem>> _searchItems(String q) async {
     try {
@@ -184,7 +180,9 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
           final name = e['name'] as String? ?? '';
           final item = e['item'] as String? ?? '';
           return _PickerItem(
-              value: name, label: name, subtitle: item.isNotEmpty ? item : null);
+              value: name,
+              label: name,
+              subtitle: item.isNotEmpty ? item : null);
         }).toList();
       }
     } catch (_) {}
@@ -226,14 +224,12 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     return [];
   }
 
-  // ── Apply / Clear ─────────────────────────────────────────────────────────
+  // ── Apply / Clear ────────────────────────────────────────────────────────────
 
   void _apply() {
     final filters = <String, dynamic>{};
 
-    if (_itemCode.value.isNotEmpty) {
-      filters['item'] = _itemCode.value;
-    }
+    if (_itemCode.value.isNotEmpty) filters['item'] = _itemCode.value;
     if (_batchNo.value.isNotEmpty) {
       filters['name'] = ['like', '%${_batchNo.value}%'];
     }
@@ -250,7 +246,12 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     _ctrl.sortField.value = _sortField;
     _ctrl.sortOrder.value = _sortOrder;
     _ctrl.applyFilters(filters);
-    Get.back();
+
+    // Use Navigator.pop instead of Get.back().
+    // Get.back() unconditionally calls Get.closeCurrentSnackbar() before
+    // popping; when no snackbar is queued the late SnackbarController._controller
+    // field has not been initialised → LateInitializationError.
+    Navigator.of(context).pop();
   }
 
   void _clear() {
@@ -262,10 +263,10 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
     _sortField = 'modified';
     _sortOrder = 'desc';
     _ctrl.clearFilters();
-    Get.back();
+    Navigator.of(context).pop(); // same reason as _apply
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   int get _localFilterCount =>
       [_itemCode, _batchNo, _purchaseOrder, _supplier]
@@ -301,8 +302,8 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
                       onPressed: () => value.value = '',
                     )
                   : const Icon(Icons.arrow_drop_down),
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12)),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
@@ -345,8 +346,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
           onClear: _clear,
           filterWidgets: [
             const SizedBox(height: 16),
-
-            // ── Item Code ────────────────────────────────────────────────
             _pickerTile(
               context: context,
               label: 'Item Code',
@@ -356,8 +355,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               searcher: _searchItems,
             ),
             const SizedBox(height: 12),
-
-            // ── Batch No ─────────────────────────────────────────────────
             _pickerTile(
               context: context,
               label: 'Batch No',
@@ -367,8 +364,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               searcher: _searchBatches,
             ),
             const SizedBox(height: 12),
-
-            // ── Purchase Order ───────────────────────────────────────────
             _pickerTile(
               context: context,
               label: 'Purchase Order',
@@ -378,8 +373,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               searcher: _searchPOs,
             ),
             const SizedBox(height: 12),
-
-            // ── Supplier Name ────────────────────────────────────────────
             _pickerTile(
               context: context,
               label: 'Supplier Name',
@@ -389,8 +382,6 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               searcher: _searchSuppliers,
             ),
             const SizedBox(height: 16),
-
-            // ── Show Disabled ────────────────────────────────────────────
             SwitchListTile(
               title: const Text('Include Disabled Batches'),
               subtitle:
@@ -404,7 +395,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   }
 }
 
-// ── Internal data model for picker results ───────────────────────────────────
+// ── Internal data model for picker results ────────────────────────────────────────
 
 class _PickerItem {
   final String value;
