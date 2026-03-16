@@ -22,31 +22,18 @@ import 'package:multimax/app/data/services/global_search_service.dart';
 ///     when [onFilterTap] is provided.  Mirrors the old trailing filter icon
 ///     that lived inside the SearchBar widget.
 ///
-/// ### API mode (DocType with server-side search)
-/// ```dart
-/// DocTypeSearchDelegate(
-///   doctype: 'Stock Entry',
-///   targetRoute: AppRoutes.STOCK_ENTRY_FORM,
-///   searchQuery: controller.searchQuery,
-///   onSearchChanged: controller.onSearchChanged,
-///   onSearchClear: () { controller.searchQuery.value = ''; controller.fetch(clear: true); },
-///   activeFilters: controller.activeFilters,
-///   onFilterTap: _showFilterSheet,
-/// )
-/// ```
+/// ### IMPORTANT — build-phase safety
+/// [buildSuggestions] and [buildResults] are invoked by Flutter during its
+/// build phase.  Any synchronous write to a GetX [Rx] value from inside
+/// those methods will trigger [Obx] widgets to call `setState()` mid-build,
+/// causing the "setState() called during build" assertion.
 ///
-/// ### Local-only mode (no API results list)
-/// ```dart
-/// DocTypeSearchDelegate(
-///   doctype: '',
-///   targetRoute: '',
-///   searchQuery: controller.searchQuery,
-///   onSearchChanged: controller.onSearchChanged,
-///   onSearchClear: () { controller.searchQuery.value = ''; controller.fetch(clear: true); },
-///   activeFilters: controller.activeFilters,
-///   onFilterTap: _showFilterSheet,
-/// )
-/// ```
+/// All [onSearchChanged] calls that originate **inside a build method** are
+/// therefore wrapped in [WidgetsBinding.instance.addPostFrameCallback] so the
+/// Rx write is deferred until after the current frame.
+///
+/// Calls that originate from **user-gesture handlers** (button `onPressed`,
+/// `onTap`, etc.) are already outside the build phase and remain synchronous.
 class DocTypeSearchDelegate extends SearchDelegate<void> {
   // ── API search (optional) ──────────────────────────────────────────────
   final String doctype;
@@ -89,13 +76,26 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   String? get searchFieldLabel =>
       _isApiMode ? 'Search $doctype…' : 'Search…';
 
+  // ── Helper: post-frame safe notify ────────────────────────────────────
+  //
+  // Call this from inside build methods (buildSuggestions, buildResults).
+  // Defers the Rx write until after the current frame so that Obx widgets
+  // are not asked to mark themselves dirty while Flutter is still building.
+  void _notifySearchChanged(String value) {
+    if (onSearchChanged == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onSearchChanged!(value);
+    });
+  }
+
   // ── Actions: clear + filter badge ─────────────────────────────────────
 
   @override
   List<Widget>? buildActions(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return [
-      // Clear button — shown whenever there is text in the field
+      // Clear button — shown whenever there is text in the field.
+      // onPressed is a gesture handler, NOT a build method → synchronous call.
       if (query.isNotEmpty)
         IconButton(
           icon: const Icon(Icons.clear),
@@ -111,7 +111,8 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
           },
         ),
 
-      // Filter badge button — migrated from SearchBar trailing suffix
+      // Filter badge button — migrated from SearchBar trailing suffix.
+      // onTap is a gesture handler → synchronous call.
       if (onFilterTap != null)
         Obx(() {
           final count = activeFilters?.length ?? 0;
@@ -171,9 +172,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   Widget? buildLeading(BuildContext context) {
     return IconButton(
       icon: const Icon(Icons.arrow_back),
-      onPressed: () {
-        close(context, null);
-      },
+      onPressed: () => close(context, null),
     );
   }
 
@@ -181,20 +180,20 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
 
   @override
   Widget buildResults(BuildContext context) {
-    // Forward keystroke to controller in both modes
-    if (onSearchChanged != null) onSearchChanged!(query);
+    // Called during Flutter's build phase → use post-frame callback.
+    _notifySearchChanged(query);
 
     if (_isApiMode) return _buildApiResults(context);
 
-    // Local mode: close overlay so the filtered list is visible
+    // Local mode: close overlay so the filtered list is visible.
     WidgetsBinding.instance.addPostFrameCallback((_) => close(context, null));
     return const SizedBox.shrink();
   }
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    // Live-forward every keystroke to the controller's RxString
-    if (onSearchChanged != null) onSearchChanged!(query);
+    // Called during Flutter's build phase → use post-frame callback.
+    _notifySearchChanged(query);
 
     if (_isApiMode) {
       if (query.trim().length < 3) {
@@ -206,7 +205,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       return _buildApiResults(context);
     }
 
-    // Local mode: show a hint card — the list behind updates live
+    // Local mode: show a hint card — the list behind updates live.
     return _buildLocalHint(context);
   }
 
@@ -284,6 +283,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
             if (hasQuery) ...[
               const SizedBox(height: 24),
               FilledButton.tonalIcon(
+                // onPressed is a gesture handler → synchronous call is fine.
                 onPressed: () {
                   if (onSearchChanged != null) onSearchChanged!(query);
                   close(context, null);
@@ -312,6 +312,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
               maxLines: 1, overflow: TextOverflow.ellipsis)
           : null,
       trailing: const Icon(Icons.chevron_right),
+      // onTap is a gesture handler → synchronous call is fine.
       onTap: () {
         close(context, null);
         Get.toNamed(targetRoute, arguments: item.id);
