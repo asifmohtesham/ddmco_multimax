@@ -13,13 +13,18 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///   2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
 ///      the caller via [filterChipsBuilder].
 ///
+/// ### Search icon
+/// When [searchQuery] is non-null the icon is wrapped in [Obx] so the
+/// active-dot indicator reacts to query changes.  When [searchQuery] is
+/// null no [Obx] is created — GetX requires at least one observable inside
+/// every [Obx] closure and would throw otherwise.
+///
 /// ### Filter icon states
 /// • **Idle**   : plain [Icons.filter_list] icon button, default colour.
 /// • **Active** : [IconButton.filled] ([Icons.filter_alt]) — solid primary
 ///               background guarantees visibility against any AppBar surface.
 ///               A [Badge] overlays the count in the top-right corner using
-///               onError-on-error colours, which contrast against both the
-///               primary pill and the AppBar background.
+///               onError-on-error colours.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ──────────────────────────────────────────────────────────────
   final String title;
@@ -28,6 +33,9 @@ class DocTypeListHeader extends StatelessWidget {
   // ── Search ──────────────────────────────────────────────────────────────
   final String? searchDoctype;
   final String? searchRoute;
+
+  /// When non-null the search icon shows an active-dot indicator and the
+  /// [Obx] wrapper is applied.  When null no [Obx] is created.
   final RxString? searchQuery;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClear;
@@ -72,20 +80,12 @@ class DocTypeListHeader extends StatelessWidget {
       ...(extraActions ?? []),
 
       // ── Filter icon ─────────────────────────────────────────────────────
-      //
-      // Idle  — plain IconButton with filter_list, inherits AppBar icon colour.
-      // Active — IconButton.filled (primary bg / onPrimary icon) wrapped in a
-      //          Badge that shows the count in onError-on-error colours.
-      //          The Badge widget positions itself in the top-right corner of
-      //          its child and is guaranteed to contrast against both the
-      //          primary pill and any AppBar background.
       if (onFilterTap != null)
         Builder(
           builder: (ctx) {
             return Obx(() {
               final count = activeFilters?.length ?? 0;
               final isActive = count > 0;
-
               final tooltip = isActive
                   ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
                   : 'Filter';
@@ -96,9 +96,7 @@ class DocTypeListHeader extends StatelessWidget {
                       onPressed: onFilterTap,
                       tooltip: tooltip,
                       constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
+                          minWidth: 40, minHeight: 40),
                     )
                   : IconButton(
                       icon: const Icon(Icons.filter_list),
@@ -106,71 +104,103 @@ class DocTypeListHeader extends StatelessWidget {
                       tooltip: tooltip,
                     );
 
-              // Wrap the active button with Badge to show count.
-              // Badge uses colorScheme.error / onError by default, which
-              // always contrasts against the primary-coloured filled pill.
-              if (isActive) {
-                return Badge(
-                  label: Text('$count'),
-                  child: button,
-                );
-              }
-
-              return button;
+              return isActive
+                  ? Badge(label: Text('$count'), child: button)
+                  : button;
             });
           },
         ),
 
       // ── Search icon ─────────────────────────────────────────────────────
+      //
+      // Two distinct code paths to satisfy GetX’s requirement that every
+      // Obx closure subscribes to at least one observable:
+      //
+      //   searchQuery != null → Obx that reads searchQuery!.value for the
+      //                         active-dot indicator.  Observable guaranteed.
+      //   searchQuery == null → No dot needed, no Obx created at all.
       if (searchQuery != null ||
           (searchDoctype != null && searchRoute != null))
         Builder(
           builder: (ctx) {
-            final colorScheme = Theme.of(ctx).colorScheme;
-            return Obx(() {
-              final hasActiveSearch =
-                  searchQuery?.value.isNotEmpty ?? false;
+            // ─ path A: searchQuery is non-null — wrap in Obx ──────────────
+            if (searchQuery != null) {
+              final colorScheme = Theme.of(ctx).colorScheme;
+              return Obx(() {
+                // searchQuery!.value is the observable that drives Obx.
+                final hasActive = searchQuery!.value.isNotEmpty;
+                return SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Tooltip(
+                    message: searchDoctype != null
+                        ? 'Search $searchDoctype'
+                        : 'Search',
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: () => showSearch(
+                            context: ctx,
+                            delegate: DocTypeSearchDelegate(
+                              doctype: searchDoctype ?? '',
+                              targetRoute: searchRoute ?? '',
+                              searchQuery: searchQuery,
+                              onSearchChanged: onSearchChanged,
+                              onSearchClear: onSearchClear,
+                              activeFilters: null,
+                              onFilterTap: null,
+                            ),
+                          ),
+                        ),
+                        if (hasActive)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: colorScheme.error,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              });
+            }
 
-              return Tooltip(
+            // ─ path B: searchQuery is null — no Obx ────────────────────
+            // No dot indicator needed; no observable to subscribe to.
+            return SizedBox(
+              width: 48,
+              height: 48,
+              child: Tooltip(
                 message: searchDoctype != null
                     ? 'Search $searchDoctype'
                     : 'Search',
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.search),
-                      onPressed: () => showSearch(
-                        context: ctx,
-                        delegate: DocTypeSearchDelegate(
-                          doctype: searchDoctype ?? '',
-                          targetRoute: searchRoute ?? '',
-                          searchQuery: searchQuery,
-                          onSearchChanged: onSearchChanged,
-                          onSearchClear: onSearchClear,
-                          activeFilters: null,
-                          onFilterTap: null,
-                        ),
-                      ),
+                child: IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () => showSearch(
+                    context: ctx,
+                    delegate: DocTypeSearchDelegate(
+                      doctype: searchDoctype ?? '',
+                      targetRoute: searchRoute ?? '',
+                      searchQuery: null,
+                      onSearchChanged: onSearchChanged,
+                      onSearchClear: onSearchClear,
+                      activeFilters: null,
+                      onFilterTap: null,
                     ),
-                    if (hasActiveSearch)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: colorScheme.error,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              );
-            });
+              ),
+            );
           },
         ),
     ];
@@ -209,7 +239,8 @@ class DocTypeListHeader extends StatelessWidget {
                   style: TextButton.styleFrom(
                     foregroundColor: colorScheme.error,
                     visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8),
                   ),
                   onPressed: onClearAllFilters,
                   icon: const Icon(Icons.clear_all, size: 16),
