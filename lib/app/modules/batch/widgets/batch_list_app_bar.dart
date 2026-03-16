@@ -7,29 +7,10 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 
 /// DocTypeListAppBar for the **Batch** DocType.
 ///
-/// Wraps [DocTypeListHeader] and pre-wires all reactive state from
-/// [BatchController] so [BatchScreen] only needs to drop this widget
-/// into its [CustomScrollView] slivers list:
-///
-/// ```dart
-/// CustomScrollView(
-///   slivers: [
-///     const BatchListAppBar(),
-///     // … list content slivers …
-///   ],
-/// )
-/// ```
-///
-/// ### What this widget owns
-/// | Concern | Wired to |
-/// |---|---|
-/// | Collapsing large title | `'Batch'` (static) |
-/// | Global ERPNext search | `Batch` doctype → [AppRoutes.BATCH_FORM] |
-/// | Search & filter | `controller.searchQuery` + `controller.onSearchChanged` |
-/// | Filter badge | `controller.activeFilters.length` |
-/// | Filter sheet | [BatchFilterBottomSheet] via `Get.bottomSheet` |
-/// | Active filter chips | Built from `controller.activeFilters` |
-/// | Clear-all chips button | `controller.clearFilters` |
+/// Passes [BatchController.activeFilters] (which is already
+/// [RxMap<String,dynamic>]) directly to [DocTypeListHeader] — no shim
+/// required.  This lets the [DocTypeListHeader] [Obx] subscribe to the
+/// real reactive stream so badge counts and chip rows update correctly.
 class BatchListAppBar extends StatelessWidget {
   const BatchListAppBar({super.key});
 
@@ -136,11 +117,11 @@ class BatchListAppBar extends StatelessWidget {
     return DocTypeListHeader(
       title: 'Batch',
 
-      // Global ERPNext API search ────────────────────────────────────────────
+      // Global ERPNext API search ──────────────────────────────────────────
       searchDoctype: 'Batch',
       searchRoute: AppRoutes.BATCH_FORM,
 
-      // Search & filter wiring ───────────────────────────────────────────────
+      // Search & filter wiring ─────────────────────────────────────────────
       searchQuery: ctrl.searchQuery,
       onSearchChanged: ctrl.onSearchChanged,
       onSearchClear: () {
@@ -148,35 +129,14 @@ class BatchListAppBar extends StatelessWidget {
         ctrl.fetchBatches(clear: true);
       },
 
-      // Filter (badge + sheet) ───────────────────────────────────────────────
-      activeFilters: _ActiveFiltersShim(ctrl),
+      // activeFilters is already RxMap<String,dynamic> — pass directly.
+      // No shim needed; Obx in DocTypeListHeader subscribes to the real stream.
+      activeFilters: ctrl.activeFilters,
       onFilterTap: _openFilterSheet,
 
-      // Active filter chips ──────────────────────────────────────────────────
+      // Active filter chips ────────────────────────────────────────────────
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, ctrl),
       onClearAllFilters: ctrl.clearFilters,
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// _ActiveFiltersShim
-// ---------------------------------------------------------------------------
-// Bridges BatchController.activeFilters (RxMap<String,dynamic>) to the
-// RxMap<String,dynamic> contract expected by DocTypeListHeader.
-// We override length / isEmpty / isNotEmpty so the badge count reflects
-// the actual number of active filters stored in the controller.
-
-class _ActiveFiltersShim extends RxMap<String, dynamic> {
-  final BatchController _ctrl;
-  _ActiveFiltersShim(this._ctrl) : super({});
-
-  @override
-  int get length => _ctrl.activeFilters.length;
-
-  @override
-  bool get isEmpty => _ctrl.activeFilters.isEmpty;
-
-  @override
-  bool get isNotEmpty => _ctrl.activeFilters.isNotEmpty;
 }

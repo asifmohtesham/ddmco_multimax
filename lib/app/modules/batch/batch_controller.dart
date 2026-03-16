@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
@@ -10,25 +11,29 @@ class BatchController extends GetxController {
   /// search helpers without a second Get.find registration.
   BatchProvider get batchProvider => _provider;
 
-  // ── List state ─────────────────────────────────────────────────────────────
+  // ── Scroll ────────────────────────────────────────────────────────────
+  /// Owned by the controller so [BatchScreen] needs no [StatefulWidget].
+  final scrollController = ScrollController();
+
+  // ── List state ────────────────────────────────────────────────────────
   var batches = <Batch>[].obs;
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = true.obs;
 
-  // ── Expansion ──────────────────────────────────────────────────────────────
+  // ── Expansion ──────────────────────────────────────────────────────────
   var expandedBatchName = ''.obs;
   var isLoadingDetails = false.obs;
   var itemVariants = <String, String>{}.obs;
 
-  // ── Pagination ────────────────────────────────────────────────────────────
+  // ── Pagination ──────────────────────────────────────────────────────────
   final int _limit = 20;
   int _currentPage = 0;
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────
   var searchQuery = ''.obs;
 
-  // ── Filters ───────────────────────────────────────────────────────────────
+  // ── Filters ───────────────────────────────────────────────────────────
   /// Active filters keyed by Frappe field name.
   /// Supported keys:
   ///   'item'                  → String (exact)
@@ -39,21 +44,51 @@ class BatchController extends GetxController {
   ///   'expiry_date'           → List ['between', [from, to]] (ISO dates)
   var activeFilters = <String, dynamic>{}.obs;
 
-  // ── Sort ──────────────────────────────────────────────────────────────────
+  // ── Sort ──────────────────────────────────────────────────────────────
   var sortField = 'modified'.obs;
   var sortOrder = 'desc'.obs;
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────
   int get filterCount =>
       activeFilters.length + (searchQuery.value.isNotEmpty ? 1 : 0);
+
+  // ── Lifecycle ───────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+    scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    // onReady fires after the first frame, so the screen is fully mounted.
+    // Fetching here (rather than onInit) ensures the list always refreshes
+    // when the screen is navigated to, even if the controller is kept alive
+    // across navigations by lazyPut.
     fetchBatches();
   }
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  @override
+  void onClose() {
+    scrollController.removeListener(_onScroll);
+    scrollController.dispose();
+    super.onClose();
+  }
+
+  // ── Scroll handler ───────────────────────────────────────────────────────
+
+  void _onScroll() {
+    if (!scrollController.hasClients) return;
+    final atBottom = scrollController.offset >=
+        scrollController.position.maxScrollExtent * 0.9;
+    if (atBottom && hasMore.value && !isFetchingMore.value) {
+      fetchBatches(isLoadMore: true);
+    }
+  }
+
+  // ── Fetch ──────────────────────────────────────────────────────────────
 
   Future<void> fetchBatches(
       {bool isLoadMore = false, bool clear = false}) async {
@@ -61,12 +96,10 @@ class BatchController extends GetxController {
       isFetchingMore.value = true;
     } else {
       isLoading.value = true;
-      if (clear) {
-        batches.clear();
-        _currentPage = 0;
-        hasMore.value = true;
-        expandedBatchName.value = '';
-      }
+      batches.clear();
+      _currentPage = 0;
+      hasMore.value = true;
+      expandedBatchName.value = '';
     }
 
     try {
@@ -82,8 +115,7 @@ class BatchController extends GetxController {
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newBatches =
-            data.map((json) => Batch.fromJson(json)).toList();
+        final newBatches = data.map((json) => Batch.fromJson(json)).toList();
 
         if (newBatches.length < _limit) hasMore.value = false;
 
@@ -118,7 +150,7 @@ class BatchController extends GetxController {
     return filters;
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────
 
   void onSearchChanged(String val) {
     searchQuery.value = val;
@@ -127,7 +159,7 @@ class BatchController extends GetxController {
     });
   }
 
-  // ── Filter API ────────────────────────────────────────────────────────────
+  // ── Filter API ──────────────────────────────────────────────────────────
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = Map.from(filters);
@@ -136,6 +168,7 @@ class BatchController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    searchQuery.value = '';
     sortField.value = 'modified';
     sortOrder.value = 'desc';
     fetchBatches(clear: true);
@@ -152,7 +185,7 @@ class BatchController extends GetxController {
     fetchBatches(clear: true);
   }
 
-  // ── Navigation ────────────────────────────────────────────────────────────
+  // ── Navigation ───────────────────────────────────────────────────────────
 
   void openBatchForm([String? name]) {
     Get.toNamed(
@@ -164,7 +197,7 @@ class BatchController extends GetxController {
     )?.then((_) => fetchBatches(clear: true));
   }
 
-  // ── Expansion ─────────────────────────────────────────────────────────────
+  // ── Expansion ───────────────────────────────────────────────────────────
 
   void toggleExpand(String batchName) {
     if (expandedBatchName.value == batchName) {

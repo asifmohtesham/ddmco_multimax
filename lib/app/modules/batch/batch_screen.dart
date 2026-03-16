@@ -6,46 +6,14 @@ import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:intl/intl.dart';
 
-class BatchScreen extends StatefulWidget {
+/// Batch list screen — fully GetX, zero [StatefulWidget].
+///
+/// [ScrollController] is owned by [BatchController] (created in [onInit],
+/// disposed in [onClose]) so this screen needs no local state whatsoever.
+class BatchScreen extends GetView<BatchController> {
   const BatchScreen({super.key});
 
-  @override
-  State<BatchScreen> createState() => _BatchScreenState();
-}
-
-class _BatchScreenState extends State<BatchScreen> {
-  late final BatchController controller;
-  final _scrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    controller = Get.find<BatchController>();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_isBottom &&
-        controller.hasMore.value &&
-        !controller.isFetchingMore.value) {
-      controller.fetchBatches(isLoadMore: true);
-    }
-  }
-
-  bool get _isBottom {
-    if (!_scrollController.hasClients) return false;
-    return _scrollController.offset >=
-        _scrollController.position.maxScrollExtent * 0.9;
-  }
-
-  // ── build ──────────────────────────────────────────────────────────────────
+  // ── build ──────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -59,14 +27,15 @@ class _BatchScreenState extends State<BatchScreen> {
         onRefresh: () => controller.fetchBatches(clear: true),
         color: colorScheme.primary,
         child: CustomScrollView(
-          controller: _scrollController,
+          controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── DocTypeListAppBar (collapsing title + search) ─────────────────
+            // ── Collapsing header: AppBar + search + filter chips ──────────────
             const BatchListAppBar(),
 
-            // ── Content ──────────────────────────────────────────────────────
+            // ── List content ───────────────────────────────────────────────
             Obx(() {
+              // Loading spinner — only while the first page is in-flight
               if (controller.isLoading.value &&
                   controller.batches.isEmpty) {
                 return const SliverFillRemaining(
@@ -74,14 +43,21 @@ class _BatchScreenState extends State<BatchScreen> {
                 );
               }
 
+              // Empty state
               if (controller.batches.isEmpty) {
                 return _buildEmptyState(context, theme, colorScheme);
               }
 
+              // Capture reactive values inside Obx before passing to
+              // SliverChildBuilderDelegate (which is not itself reactive).
+              final batchCount = controller.batches.length;
+              final showLoader = controller.hasMore.value;
+
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    if (index >= controller.batches.length) {
+                    if (index >= batchCount) {
+                      // Pagination loader sentinel
                       return const Center(
                         child: Padding(
                           padding: EdgeInsets.all(16.0),
@@ -92,8 +68,7 @@ class _BatchScreenState extends State<BatchScreen> {
                     return _buildBatchCard(
                         context, controller.batches[index]);
                   },
-                  childCount: controller.batches.length +
-                      (controller.hasMore.value ? 1 : 0),
+                  childCount: batchCount + (showLoader ? 1 : 0),
                 ),
               );
             }),
@@ -112,14 +87,18 @@ class _BatchScreenState extends State<BatchScreen> {
     );
   }
 
-  // ── empty state ────────────────────────────────────────────────────────────
+  // ── Empty state ─────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(
     BuildContext context,
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
+    // searchQuery and activeFilters are already tracked by the parent Obx.
     final hasSearch = controller.searchQuery.value.isNotEmpty;
+    final hasFilters = controller.activeFilters.isNotEmpty;
+    final hasAnyFilter = hasSearch || hasFilters;
+
     return SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
@@ -129,15 +108,15 @@ class _BatchScreenState extends State<BatchScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                hasSearch
-                    ? Icons.search_off_outlined
+                hasAnyFilter
+                    ? Icons.filter_alt_off_outlined
                     : Icons.qr_code_scanner_outlined,
                 size: 64,
                 color: colorScheme.outlineVariant,
               ),
               const SizedBox(height: 16),
               Text(
-                hasSearch ? 'No Matching Batches' : 'No Batches Found',
+                hasAnyFilter ? 'No Matching Batches' : 'No Batches Found',
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
@@ -145,22 +124,19 @@ class _BatchScreenState extends State<BatchScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                hasSearch
-                    ? 'Try a different search term.'
+                hasAnyFilter
+                    ? 'Try adjusting your filters or search term.'
                     : 'Pull to refresh or create a new batch.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 24),
-              if (hasSearch)
+              if (hasAnyFilter)
                 FilledButton.tonalIcon(
-                  onPressed: () {
-                    controller.searchQuery.value = '';
-                    controller.fetchBatches(clear: true);
-                  },
-                  icon: const Icon(Icons.search_off),
-                  label: const Text('Clear Search'),
+                  onPressed: controller.clearFilters,
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('Clear Filters'),
                 )
               else
                 FilledButton.tonalIcon(
@@ -175,16 +151,17 @@ class _BatchScreenState extends State<BatchScreen> {
     );
   }
 
-  // ── batch card ──────────────────────────────────────────────────────────────
+  // ── Batch card ──────────────────────────────────────────────────────────
 
   Widget _buildBatchCard(BuildContext context, dynamic batch) {
-    // Derive status from expiry date
-    String status = 'Active';
+    final String status;
     if (batch.expiryDate != null) {
       final expiry = DateTime.tryParse(batch.expiryDate!);
-      if (expiry != null && expiry.isBefore(DateTime.now())) {
-        status = 'Expired';
-      }
+      status = (expiry != null && expiry.isBefore(DateTime.now()))
+          ? 'Expired'
+          : 'Active';
+    } else {
+      status = 'Active';
     }
 
     return Obx(() {
@@ -224,7 +201,7 @@ class _BatchScreenState extends State<BatchScreen> {
     });
   }
 
-  // ── expanded content ─────────────────────────────────────────────────────────
+  // ── Expanded content ─────────────────────────────────────────────────────
 
   Widget _buildExpandedContent(BuildContext context, dynamic batch) {
     final theme = Theme.of(context);
@@ -291,7 +268,7 @@ class _BatchScreenState extends State<BatchScreen> {
     );
   }
 
-  // ── info row helper ──────────────────────────────────────────────────────────
+  // ── Info row helper ──────────────────────────────────────────────────────
 
   Widget _buildInfoRow(
     BuildContext context,
