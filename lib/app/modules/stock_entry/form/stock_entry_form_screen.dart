@@ -310,7 +310,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                         '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
                     const Divider(),
                     _buildSummaryRow('Total Amount',
-                        '\$${entry.totalAmount.toStringAsFixed(2)}',
+                        '${entry.totalAmount.toStringAsFixed(2)}',
                         isBold: true),
                   ],
                 ),

@@ -48,11 +48,11 @@ class JobCardScreen extends GetView<JobCardController> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem(context, 'Pending', '\${controller.openCards}',
+          _statItem(context, 'Pending', '${controller.openCards}',
               Colors.orange),
-          _statItem(context, 'Completed', '\${controller.completedCards}',
+          _statItem(context, 'Completed', '${controller.completedCards}',
               Colors.green),
-          _statItem(context, 'Total', '\${controller.totalCards}',
+          _statItem(context, 'Total', '${controller.totalCards}',
               colorScheme.primary),
         ],
       ),
@@ -140,7 +140,7 @@ class JobCardScreen extends GetView<JobCardController> {
                                       fontSize: 16)),
                               const SizedBox(height: 4),
                               Text(
-                                '\${jc.workstation ?? "Unassigned"} • \${jc.totalCompletedQty.toInt()}/\${jc.forQuantity.toInt()} units',
+                                '${jc.workstation ?? "Unassigned"} • ${jc.totalCompletedQty.toInt()}/${jc.forQuantity.toInt()} units',
                                 style: TextStyle(
                                     color: colorScheme.onSurfaceVariant,
                                     fontSize: 13),

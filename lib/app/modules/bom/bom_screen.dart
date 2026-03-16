@@ -52,10 +52,10 @@ class BomScreen extends GetView<BomController> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _kpi(context, 'Total BOMs', '\${controller.totalBoms}',
+          _kpi(context, 'Total BOMs', '${controller.totalBoms}',
               colorScheme.primary),
           _kpi(context, 'Active',
-              '\${(controller.activeRate * 100).toInt()}%', Colors.green),
+              '${(controller.activeRate * 100).toInt()}%', Colors.green),
           _kpi(
               context,
               'Avg Cost',
@@ -147,7 +147,7 @@ class BomScreen extends GetView<BomController> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '\${FormattingHelper.getCurrencySymbol(bom.currency)} \${NumberFormat("#,##0").format(bom.totalCost)}',
+                            '${FormattingHelper.getCurrencySymbol(bom.currency)} ${NumberFormat("#,##0").format(bom.totalCost)}',
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 15),
                           ),

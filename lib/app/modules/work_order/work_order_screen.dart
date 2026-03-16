@@ -130,7 +130,7 @@ class WorkOrderScreen extends GetView<WorkOrderController> {
                                             children: [
                                               TextSpan(
                                                 text:
-                                                    '\${wo.producedQty.toInt()}',
+                                                    '${wo.producedQty.toInt()}',
                                                 style: TextStyle(
                                                     color:
                                                         colorScheme.primary,
@@ -140,7 +140,7 @@ class WorkOrderScreen extends GetView<WorkOrderController> {
                                               ),
                                               TextSpan(
                                                 text:
-                                                    ' / \${wo.qty.toInt()}',
+                                                    ' / ${wo.qty.toInt()}',
                                                 style: TextStyle(
                                                     color: colorScheme
                                                         .onSurfaceVariant,

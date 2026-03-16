@@ -69,7 +69,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       chips.add(_chip(
         context,
         icon: Icons.search,
-        label: 'Search: \${controller.searchQuery.value}',
+        label: 'Search: ${controller.searchQuery.value}',
         onDeleted: () {
           controller.searchQuery.value = '';
           controller.fetchDeliveryNotes(clear: true);
@@ -79,7 +79,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     if (f.containsKey('status')) {
       chips.add(_chip(context,
           icon: Icons.flag_outlined,
-          label: 'Status: \${f[\'status\']}',
+          label: 'Status: ${f['status']}',
           onDeleted: () => controller.removeFilter('status')));
     }
     if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
@@ -89,7 +89,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           match != null ? match.customerName : f['customer'].toString();
       chips.add(_chip(context,
           icon: Icons.business_outlined,
-          label: 'Customer: \$display',
+          label: 'Customer: $display',
           onDeleted: () => controller.removeFilter('customer')));
     }
     if (f.containsKey('po_no')) {
@@ -99,26 +99,26 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           : val.toString();
       chips.add(_chip(context,
           icon: Icons.tag,
-          label: 'PO: \$display',
+          label: 'PO: $display',
           onDeleted: () => controller.removeFilter('po_no')));
     }
     if (f.containsKey('set_warehouse')) {
       chips.add(_chip(context,
           icon: Icons.warehouse_outlined,
-          label: 'Warehouse: \${f[\'set_warehouse\']}',
+          label: 'Warehouse: ${f['set_warehouse']}',
           onDeleted: () => controller.removeFilter('set_warehouse')));
     }
     if (f.containsKey('owner') && f['owner'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.person_outline,
-          label: 'Created By: \${f[\'owner\']}',
+          label: 'Created By: ${f['owner']}',
           onDeleted: () => controller.removeFilter('owner')));
     }
     if (f.containsKey('modified_by') &&
         f['modified_by'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.edit_outlined,
-          label: 'Modified By: \${f[\'modified_by\']}',
+          label: 'Modified By: ${f['modified_by']}',
           onDeleted: () => controller.removeFilter('modified_by')));
     }
     if (f.containsKey('creation')) {
@@ -131,7 +131,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         final dates = cr[1] as List;
         chips.add(_chip(context,
             icon: Icons.date_range,
-            label: '\${dates[0]}  →  \${dates[1]}',
+            label: '${dates[0]}  →  ${dates[1]}',
             onDeleted: () => controller.removeFilter('creation')));
       }
     }
@@ -274,19 +274,19 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                   final parts = <String>[];
                   final af = controller.activeFilters;
                   if (af.containsKey('status'))
-                    parts.add('Status: \${af[\'status\']}');
+                    parts.add('Status: ${af['status']}');
                   if (af.containsKey('customer')) {
                     final match = controller.customers
                         .firstWhereOrNull((c) => c.name == af['customer']);
                     final label = match != null
                         ? match.customerName
                         : af['customer'].toString();
-                    parts.add('Customer: \$label');
+                    parts.add('Customer: $label');
                   }
                   if (controller.searchQuery.value.isNotEmpty)
-                    parts.add('Search: "\${controller.searchQuery.value}"');
+                    parts.add('Search: "${controller.searchQuery.value}"');
                   emptySubtitle = parts.isNotEmpty
-                      ? 'No notes found for \${parts.join(' + ')}.'
+                      ? 'No notes found for ${parts.join(' + ')}.'
                       : 'Try adjusting your filters or search query.';
                 } else {
                   emptySubtitle = 'Pull to refresh or create a new one.';
@@ -386,7 +386,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           note.poNo != null && note.poNo!.isNotEmpty;
                       final String title = hasPo ? note.poNo! : note.name;
                       final String subtitle = hasPo
-                          ? '\${note.name} • \${note.customer}'
+                          ? '${note.name} • ${note.customer}'
                           : note.customer;
 
                       final showModified = note.modifiedBy != null &&
@@ -402,7 +402,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                           GenericDocumentCard.buildIconStat(
                             context,
                             Icons.inventory_2_outlined,
-                            '\${note.totalQty.toStringAsFixed(0)} Items',
+                            '${note.totalQty.toStringAsFixed(0)} Items',
                           ),
                           if (note.setWarehouse != null &&
                               note.setWarehouse!.isNotEmpty)
@@ -507,7 +507,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             _infoCell(
               context,
               label: 'GRAND TOTAL',
-              value: '\$currencySymbol \$grandTotal',
+              value: '$currencySymbol $grandTotal',
               icon: Icons.payments_outlined,
               valueColor: colorScheme.primary,
             ),
