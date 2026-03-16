@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -12,20 +13,43 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
-/// Linked document type resolved from the POS Upload name prefix.
 enum LinkedDocType { deliveryNote, stockEntry, none }
 
-/// Packing Slip info associated with a single POS Upload item (by idx).
 class PackingSlipInfo {
   final String psName;
   final int? fromCaseNo;
   final int? toCaseNo;
-
   const PackingSlipInfo({
     required this.psName,
     this.fromCaseNo,
     this.toCaseNo,
   });
+}
+
+/// Represents a selectable case-range option in the case filter.
+class CaseOption {
+  final String psName;
+  final int? fromCaseNo;
+  final int? toCaseNo;
+
+  const CaseOption({
+    required this.psName,
+    this.fromCaseNo,
+    this.toCaseNo,
+  });
+
+  String get label {
+    if (fromCaseNo != null && toCaseNo != null) return 'Cases $fromCaseNo – $toCaseNo';
+    if (fromCaseNo != null) return 'Case $fromCaseNo';
+    return psName;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CaseOption && other.psName == psName;
+
+  @override
+  int get hashCode => psName.hashCode;
 }
 
 class PosUploadFormController extends GetxController
@@ -50,28 +74,47 @@ class PosUploadFormController extends GetxController
   var searchQuery = ''.obs;
   var filteredItems = <PosUploadItem>[].obs;
 
+  /// Active case filter; null = no filter applied.
+  var activeCaseFilter = Rxn<CaseOption>();
+
+  /// All distinct case options built from packingSlips (ML/KA only).
+  final caseOptions = <CaseOption>[].obs;
+
   // ── Linked document (DN or SE) ─────────────────────────────────────────────
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
   var isLoadingLinked = false.obs;
 
-  /// idx → custom_invoice_serial_number from DN/SE item (null = no match found)
+  /// idx → custom_invoice_serial_number (null = no match)
   final resolvedSerials = <int, String?>{}.obs;
 
   // ── Packing Slip layer (ML/KA only) ────────────────────────────────────────
   var isLoadingPackingSlips = false.obs;
 
-  /// idx → PackingSlipInfo from the PS whose item has matching
-  /// custom_invoice_serial_number.  Null value = serial not found in any PS.
+  /// idx → PackingSlipInfo (null = not found in any PS)
   final resolvedPackingSlips = <int, PackingSlipInfo?>{}.obs;
 
-  /// All Packing Slips fetched for the linked DN (used for the summary count).
+  /// All Packing Slips fetched for the linked DN.
   final packingSlips = <PackingSlip>[].obs;
 
-  // ── Permissions ────────────────────────────────────────────────────────────
+  // ── Permissions (cached after first load) ──────────────────────────────────
   final Map<String, int> _fieldLevels = {};
   final Map<int, Set<String>> _levelWriteRoles = {};
   var permissionsLoaded = false.obs;
+
+  // Cached per-field edit flags set once permissions are loaded.
+  bool _canEditStatus = false;
+  bool _canEditAmount = false;
+  bool _canEditQty = false;
+
+  // ── Number formatter ───────────────────────────────────────────────────────
+  static final _numFmt = NumberFormat('#,##0.00');
+
+  static String fmtAmount(double? v) =>
+      v == null ? '0.00' : _numFmt.format(v);
+
+  static String fmtQty(double? v) =>
+      v == null ? '0' : v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
 
   @override
   void onInit() {
@@ -83,12 +126,8 @@ class PosUploadFormController extends GetxController
 
   Future<void> _loadData() async {
     isLoading.value = true;
-    await Future.wait([
-      fetchPosUpload(),
-      fetchDocTypePermissions(),
-    ]);
+    await Future.wait([fetchPosUpload(), fetchDocTypePermissions()]);
     isLoading.value = false;
-    // Kick off linked-document fetch without blocking the screen render.
     fetchLinkedDocument();
   }
 
@@ -99,7 +138,7 @@ class PosUploadFormController extends GetxController
       final response = await _provider.getPosUpload(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         posUpload.value = PosUpload.fromJson(response.data['data']);
-        filteredItems.assignAll(posUpload.value!.items);
+        _applyFilters();
       } else {
         GlobalSnackbar.error(message: 'Failed to fetch POS upload');
       }
@@ -108,20 +147,17 @@ class PosUploadFormController extends GetxController
     }
   }
 
-  // ── Linked document (DN or SE) ─────────────────────────────────────────────
+  // ── Linked document ────────────────────────────────────────────────────────
 
   Future<void> fetchLinkedDocument() async {
     final upload = posUpload.value;
     if (upload == null) return;
-
     final prefix =
         name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
-
     if (prefix == 'ML' || prefix == 'KA') {
       await _fetchDeliveryNote(upload);
     } else if (prefix == 'MX' || prefix == 'KX') {
       await _fetchStockEntry(upload);
-      // Packing Slip step is irrelevant for MX/KX — stop here.
     }
   }
 
@@ -130,15 +166,12 @@ class PosUploadFormController extends GetxController
     linkedDocType.value = LinkedDocType.deliveryNote;
     try {
       final listResp = await _dnProvider.getDeliveryNotes(
-        limit: 1,
-        filters: {'po_no': name},
-      );
+          limit: 1, filters: {'po_no': name});
       if (listResp.statusCode == 200 &&
           (listResp.data['data'] as List?)?.isNotEmpty == true) {
         final dnName =
             (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = dnName;
-
         final detailResp = await _dnProvider.getDeliveryNote(dnName);
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
@@ -151,7 +184,6 @@ class PosUploadFormController extends GetxController
           );
         }
         isLoadingLinked.value = false;
-        // Now fetch Packing Slips for this DN.
         await _fetchPackingSlips(upload, dnName);
       } else {
         linkedDocName.value = '';
@@ -169,15 +201,12 @@ class PosUploadFormController extends GetxController
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
       final listResp = await _seProvider.getStockEntries(
-        limit: 1,
-        filters: {'custom_reference_no': name},
-      );
+          limit: 1, filters: {'custom_reference_no': name});
       if (listResp.statusCode == 200 &&
           (listResp.data['data'] as List?)?.isNotEmpty == true) {
         final seName =
             (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = seName;
-
         final detailResp = await _seProvider.getStockEntry(seName);
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
@@ -202,30 +231,21 @@ class PosUploadFormController extends GetxController
 
   // ── Packing Slip layer ─────────────────────────────────────────────────────
 
-  /// Fetches all Packing Slips for [dnName], then for every POS Upload item
-  /// looks up the PS whose items contain a matching
-  /// `custom_invoice_serial_number` == the resolved serial for that idx.
-  Future<void> _fetchPackingSlips(
-      PosUpload upload, String dnName) async {
+  Future<void> _fetchPackingSlips(PosUpload upload, String dnName) async {
     isLoadingPackingSlips.value = true;
     try {
-      // Fetch all PS headers + items for this DN in parallel pages.
-      // Limit 0 = fetch all.
       final listResp = await _psProvider.getPackingSlips(
         limit: 0,
         filters: {'delivery_note': dnName},
         orderBy: 'from_case_no asc',
       );
-
       if (listResp.statusCode != 200) return;
       final psList = listResp.data['data'] as List? ?? [];
       if (psList.isEmpty) return;
 
-      // Fetch each PS detail (with items) in parallel.
-      final futures = psList
-          .map((ps) => _psProvider.getPackingSlip(ps['name'].toString()))
-          .toList();
-      final responses = await Future.wait(futures);
+      final responses = await Future.wait(
+          psList.map((ps) =>
+              _psProvider.getPackingSlip(ps['name'].toString())));
 
       final slips = <PackingSlip>[];
       for (final resp in responses) {
@@ -235,12 +255,21 @@ class PosUploadFormController extends GetxController
       }
       packingSlips.assignAll(slips);
 
-      // Build idx → PackingSlipInfo by matching the resolved serial for each
-      // POS Upload item against each PS item's custom_invoice_serial_number.
+      // Build case options for the filter.
+      caseOptions.assignAll(
+        slips
+            .map((ps) => CaseOption(
+                  psName: ps.name,
+                  fromCaseNo: ps.fromCaseNo,
+                  toCaseNo: ps.toCaseNo,
+                ))
+            .toList(),
+      );
+
+      // Build idx → PackingSlipInfo.
       final psMap = <int, PackingSlipInfo?>{};
       for (final item in upload.items) {
         final serial = resolvedSerials[item.idx];
-        // Only attempt a PS match when the DN serial is known.
         if (serial == null || serial.isEmpty) {
           psMap[item.idx] = null;
           continue;
@@ -262,8 +291,10 @@ class PosUploadFormController extends GetxController
         psMap[item.idx] = info;
       }
       resolvedPackingSlips.value = psMap;
+
+      // Re-apply any active case filter now that PS data is available.
+      _applyFilters();
     } catch (_) {
-      // Non-fatal; PS data is supplementary.
     } finally {
       isLoadingPackingSlips.value = false;
     }
@@ -282,20 +313,55 @@ class PosUploadFormController extends GetxController
     resolvedSerials.value = map;
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search + Case filter ───────────────────────────────────────────────────
 
-  void filterItems(String query) {
+  void filterByText(String query) {
     searchQuery.value = query;
-    if (query.isEmpty) {
-      filteredItems.assignAll(posUpload.value?.items ?? []);
-    } else {
-      filteredItems.value = posUpload.value?.items
-              .where((item) => item.itemName
-                  .toLowerCase()
-                  .contains(query.toLowerCase()))
-              .toList() ??
-          [];
+    _applyFilters();
+  }
+
+  // Keep the old name as an alias so existing call-sites don't break.
+  void filterItems(String query) => filterByText(query);
+
+  void filterByCase(CaseOption? option) {
+    activeCaseFilter.value = option;
+    _applyFilters();
+  }
+
+  void clearFilters() {
+    searchQuery.value = '';
+    activeCaseFilter.value = null;
+    _applyFilters();
+  }
+
+  void _applyFilters() {
+    final allItems = posUpload.value?.items ?? [];
+    var result = allItems;
+
+    // Text filter
+    final q = searchQuery.value.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      result = result
+          .where((i) => i.itemName.toLowerCase().contains(q))
+          .toList();
     }
+
+    // Case filter (only meaningful after PS data is resolved)
+    final caseFilter = activeCaseFilter.value;
+    if (caseFilter != null && resolvedPackingSlips.isNotEmpty) {
+      result = result.where((i) {
+        final psInfo = resolvedPackingSlips[i.idx];
+        return psInfo?.psName == caseFilter.psName;
+      }).toList();
+    }
+
+    filteredItems.assignAll(result);
+  }
+
+  // ── Status update ──────────────────────────────────────────────────────────
+
+  Future<void> updateStatus(String newStatus) async {
+    await updatePosUpload({'status': newStatus});
   }
 
   // ── Permissions ────────────────────────────────────────────────────────────
@@ -322,17 +388,29 @@ class PosUploadFormController extends GetxController
             }
           }
         }
+        // Cache results once — permissions don't change during the session.
+        _canEditStatus = _canEdit('status');
+        _canEditAmount = _canEdit('total_amount');
+        _canEditQty = _canEdit('total_qty');
         permissionsLoaded.value = true;
       }
     } catch (_) {}
   }
 
-  bool canEdit(String fieldName) {
+  bool _canEdit(String fieldName) {
     if (_authController.hasRole('System Manager')) return true;
     final level = _fieldLevels[fieldName] ?? 0;
     final allowed = _levelWriteRoles[level] ?? {};
     return _authController.hasAnyRole(allowed.toList());
   }
+
+  // Public getters so the UI reads the cached values.
+  bool get canEditStatus => _canEditStatus;
+  bool get canEditAmount => _canEditAmount;
+  bool get canEditQty => _canEditQty;
+
+  // Keep old method name for any other callers.
+  bool canEdit(String fieldName) => _canEdit(fieldName);
 
   // ── Save ───────────────────────────────────────────────────────────────────
 
@@ -353,7 +431,7 @@ class PosUploadFormController extends GetxController
       final response = await _provider.updatePosUpload(name, data);
       if (response.statusCode == 200) {
         GlobalSnackbar.success(message: 'POS Upload updated successfully');
-        fetchPosUpload();
+        await fetchPosUpload();
       } else {
         GlobalSnackbar.error(message: 'Failed to update POS Upload');
       }
