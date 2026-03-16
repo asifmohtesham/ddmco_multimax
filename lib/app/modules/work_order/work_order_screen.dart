@@ -6,8 +6,130 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 
-class WorkOrderScreen extends GetView<WorkOrderController> {
+class WorkOrderScreen extends StatefulWidget {
   const WorkOrderScreen({super.key});
+
+  @override
+  State<WorkOrderScreen> createState() => _WorkOrderScreenState();
+}
+
+class _WorkOrderScreenState extends State<WorkOrderScreen> {
+  final WorkOrderController controller = Get.find();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final atBottom = _scrollController.offset >=
+        _scrollController.position.maxScrollExtent * 0.9;
+    if (atBottom &&
+        controller.hasMore.value &&
+        !controller.isFetchingMore.value) {
+      controller.fetchWorkOrders(isLoadMore: true);
+    }
+  }
+
+  void _showFilterSheet() {
+    // TODO: replace with WorkOrderFilterBottomSheet when created
+    Get.snackbar('Filters', 'Filter sheet coming soon',
+        duration: const Duration(seconds: 2));
+  }
+
+  // ── Per-key filter chips ────────────────────────────────────────────────────
+
+  List<Widget> _buildFilterChips(BuildContext context) {
+    final chips = <Widget>[];
+    final filters = controller.activeFilters;
+
+    if (controller.searchQuery.value.isNotEmpty) {
+      chips.add(_chip(
+        context,
+        icon: Icons.search,
+        label: 'Search: ${controller.searchQuery.value}',
+        onDeleted: () {
+          controller.searchQuery.value = '';
+          controller.fetchWorkOrders(clear: true);
+        },
+      ));
+    }
+
+    if (filters.containsKey('status')) {
+      chips.add(_chip(
+        context,
+        icon: Icons.flag_outlined,
+        label: 'Status: ${filters['status']}',
+        onDeleted: () => controller.removeFilter('status'),
+      ));
+    }
+
+    if (filters.containsKey('production_item')) {
+      chips.add(_chip(
+        context,
+        icon: Icons.inventory_2_outlined,
+        label: 'Item: ${filters['production_item']}',
+        onDeleted: () => controller.removeFilter('production_item'),
+      ));
+    }
+
+    if (filters.containsKey('planned_start_date')) {
+      final f = filters['planned_start_date'];
+      if (f is List &&
+          f.length >= 2 &&
+          f[0] == 'between' &&
+          f[1] is List &&
+          (f[1] as List).length >= 2) {
+        final dates = f[1] as List;
+        chips.add(_chip(
+          context,
+          icon: Icons.date_range,
+          label: '${dates[0]}  →  ${dates[1]}',
+          onDeleted: () => controller.removeFilter('planned_start_date'),
+        ));
+      }
+    }
+
+    return chips;
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onDeleted,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Chip(
+      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
+      label: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+      backgroundColor: colorScheme.secondaryContainer,
+      deleteIconColor: colorScheme.onSecondaryContainer,
+      onDeleted: onDeleted,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      side: BorderSide.none,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -21,176 +143,232 @@ class WorkOrderScreen extends GetView<WorkOrderController> {
         label: const Text('New Order'),
         icon: const Icon(Icons.add),
       ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return CustomScrollView(
-            slivers: [
-              const DocTypeListHeader(title: 'Work Orders'),
-              const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator())),
-            ],
-          );
-        }
-
-        if (controller.workOrders.isEmpty) {
-          return CustomScrollView(
-            slivers: [
-              const DocTypeListHeader(title: 'Work Orders'),
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.precision_manufacturing_outlined,
-                          size: 64, color: colorScheme.outlineVariant),
-                      const SizedBox(height: 16),
-                      Text('No Active Orders',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                  color: colorScheme.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        return CustomScrollView(
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchWorkOrders(clear: true),
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            const DocTypeListHeader(title: 'Work Orders'),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final wo = controller.workOrders[index];
-                    final double percent = (wo.qty > 0)
-                        ? (wo.producedQty / wo.qty).clamp(0.0, 1.0)
-                        : 0.0;
-                    final bool isCompleted = wo.status == 'Completed';
+            // ── Unified header: AppBar + search + filter chips ──────────
+            DocTypeListHeader(
+              title: 'Work Orders',
+              searchQuery: controller.searchQuery,
+              onSearchChanged: controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchWorkOrders(clear: true);
+              },
+              activeFilters: controller.activeFilters,
+              onFilterTap: _showFilterSheet,
+              filterChipsBuilder: _buildFilterChips,
+              onClearAllFilters: controller.clearFilters,
+            ),
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                              color: colorScheme.outlineVariant),
-                        ),
-                        color: colorScheme.surfaceContainerLowest,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  StatusPill(status: wo.status),
-                                  Text(wo.name,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelSmall
-                                          ?.copyWith(
-                                              color: colorScheme
-                                                  .onSurfaceVariant)),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                wo.itemName,
-                                style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Produced',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelSmall
-                                                ?.copyWith(
-                                                    color: colorScheme
-                                                        .onSurfaceVariant)),
-                                        const SizedBox(height: 4),
-                                        RichText(
-                                          text: TextSpan(
-                                            children: [
-                                              TextSpan(
-                                                text:
-                                                    '${wo.producedQty.toInt()}',
-                                                style: TextStyle(
-                                                    color:
-                                                        colorScheme.primary,
-                                                    fontWeight:
-                                                        FontWeight.bold,
-                                                    fontSize: 16),
-                                              ),
-                                              TextSpan(
-                                                text:
-                                                    ' / ${wo.qty.toInt()}',
-                                                style: TextStyle(
-                                                    color: colorScheme
-                                                        .onSurfaceVariant,
-                                                    fontSize: 14),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (!isCompleted)
-                                    CircularProgressIndicator(
-                                      value: percent,
-                                      backgroundColor:
-                                          colorScheme.surfaceContainerHighest,
-                                      color: colorScheme.primary,
-                                      strokeWidth: 4,
-                                    ),
-                                  if (isCompleted)
-                                    Icon(Icons.check_circle,
-                                        color: Colors.green, size: 32),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: percent,
-                                  minHeight: 6,
-                                  backgroundColor:
-                                      colorScheme.surfaceContainerHighest,
-                                  color: isCompleted
-                                      ? Colors.green
-                                      : colorScheme.primary,
+            // ── List content ────────────────────────────────────────────
+            Obx(() {
+              if (controller.isLoading.value &&
+                  controller.workOrders.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (controller.workOrders.isEmpty) {
+                final hasFilters =
+                    controller.activeFilters.isNotEmpty ||
+                    controller.searchQuery.value.isNotEmpty;
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasFilters
+                                ? Icons.filter_alt_off_outlined
+                                : Icons.precision_manufacturing_outlined,
+                            size: 64,
+                            color: colorScheme.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasFilters
+                                ? 'No Matching Work Orders'
+                                : 'No Active Orders',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              ),
-                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          if (hasFilters)
+                            FilledButton.tonalIcon(
+                              onPressed: controller.clearFilters,
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Clear Filters'),
+                            )
+                          else
+                            FilledButton.tonalIcon(
+                              onPressed: () =>
+                                  controller.fetchWorkOrders(clear: true),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reload'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final baseCount = controller.workOrders.length;
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (index >= baseCount) {
+                        return controller.hasMore.value
+                            ? const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            : const SizedBox(height: 80);
+                      }
+                      final wo = controller.workOrders[index];
+                      final double percent = (wo.qty > 0)
+                          ? (wo.producedQty / wo.qty).clamp(0.0, 1.0)
+                          : 0.0;
+                      final bool isCompleted = wo.status == 'Completed';
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                                color: colorScheme.outlineVariant),
+                          ),
+                          color: colorScheme.surfaceContainerLowest,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    StatusPill(status: wo.status),
+                                    Text(wo.name,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                                color: colorScheme
+                                                    .onSurfaceVariant)),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  wo.itemName,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Produced',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .labelSmall
+                                                  ?.copyWith(
+                                                      color: colorScheme
+                                                          .onSurfaceVariant)),
+                                          const SizedBox(height: 4),
+                                          RichText(
+                                            text: TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text:
+                                                      '${wo.producedQty.toInt()}',
+                                                  style: TextStyle(
+                                                      color:
+                                                          colorScheme.primary,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 16),
+                                                ),
+                                                TextSpan(
+                                                  text:
+                                                      ' / ${wo.qty.toInt()}',
+                                                  style: TextStyle(
+                                                      color: colorScheme
+                                                          .onSurfaceVariant,
+                                                      fontSize: 14),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (!isCompleted)
+                                      CircularProgressIndicator(
+                                        value: percent,
+                                        backgroundColor:
+                                            colorScheme.surfaceContainerHighest,
+                                        color: colorScheme.primary,
+                                        strokeWidth: 4,
+                                      ),
+                                    if (isCompleted)
+                                      const Icon(Icons.check_circle,
+                                          color: Colors.green, size: 32),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: percent,
+                                    minHeight: 6,
+                                    backgroundColor:
+                                        colorScheme.surfaceContainerHighest,
+                                    color: isCompleted
+                                        ? Colors.green
+                                        : colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                  childCount: controller.workOrders.length,
+                      );
+                    },
+                    childCount: baseCount + 1,
+                  ),
                 ),
-              ),
-            ),
+              );
+            }),
           ],
-        );
-      }),
+        ),
+      ),
     );
   }
 }
