@@ -185,7 +185,6 @@ class _StockEntryFilterBottomSheetState
                             style: Theme.of(ctx).textTheme.titleLarge),
                         IconButton(
                           icon: const Icon(Icons.close),
-                          // NavigatorUtils.popSheet — never Get.back()
                           onPressed: () => NavigatorUtils.popSheet(ctx),
                         ),
                       ],
@@ -410,7 +409,10 @@ class _StockEntryFilterBottomSheetState
     }
 
     controller.applyFilters(filters);
-    Get.back(); // dismisses the outer filter sheet — page nav, not a snackbar risk
+    // Use NavigatorUtils.popSheet — this widget lives inside a Get.bottomSheet
+    // so Get.back() would call closeCurrentSnackbar() and crash if a
+    // SnackbarController is in the queue but not yet initialised.
+    NavigatorUtils.popSheet(context);
   }
 
   Widget _statusChip({
