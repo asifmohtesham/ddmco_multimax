@@ -11,76 +11,73 @@ class GlobalDialog {
     IconData icon = Icons.delete_outline,
   }) {
     Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: confirmColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: confirmColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: confirmColor, size: 32),
                 ),
-                child: Icon(icon, color: confirmColor, size: 32),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Get.back(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        side: BorderSide(color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        // Use Navigator.pop() — never Get.back() — so the
+                        // GetX snackbar queue is never touched on dismiss.
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: Colors.black87)),
                       ),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.black87)),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // Dismiss the sheet BEFORE calling onConfirm so that
-                        // any snackbar queued inside onConfirm is enqueued
-                        // after Get.back() has already run. GetX's back()
-                        // internally calls closeCurrentSnackbar(), which
-                        // accesses a late-initialised animation controller —
-                        // if a snackbar was queued first that controller would
-                        // not yet exist, causing a LateInitializationError.
-                        Get.back();
-                        onConfirm();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: confirmColor,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          onConfirm();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: confirmColor,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(confirmText, style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      child: Text(confirmText, style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
