@@ -330,6 +330,24 @@ class StockEntryController extends GetxController {
     }
   }
 
+  /// Maps a Material Request type to the corresponding Stock Entry type.
+  /// ERPNext MR types: Material Transfer, Material Issue, Material Receipt, Manufacture.
+  /// Any unmapped value falls back to 'Material Transfer' and emits a debug warning.
+  String _mrTypeToStockEntryType(String mrType) {
+    const mapping = {
+      'Material Transfer': 'Material Transfer',
+      'Material Issue': 'Material Issue',
+      'Material Receipt': 'Material Receipt',
+      'Manufacture': 'Manufacture',
+      'Material Transfer for Manufacture': 'Material Transfer for Manufacture',
+    };
+    final seType = mapping[mrType];
+    if (seType == null) {
+      print('[StockEntry] Warning: Unknown MR type "$mrType", defaulting to Material Transfer');
+    }
+    return seType ?? 'Material Transfer';
+  }
+
   void openCreateDialog() {
     Get.bottomSheet(
       Container(
@@ -577,18 +595,21 @@ class StockEntryController extends GetxController {
                               onTap: () {
                                 Get.back();
 
+                                // Map MR type to the exact matching SE type
+                                final seType = _mrTypeToStockEntryType(mr.materialRequestType);
+
                                 // Map the items to include keys expected by StockEntryFormController
                                 final itemsList = mr.items.map((i) => {
                                   'item_code': i.itemCode,
                                   'qty': i.qty,
                                   'material_request': mr.name,
-                                  'material_request_item': i.name, // Correctly linking the child item ID
+                                  'material_request_item': i.name,
                                 }).toList();
 
                                 Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                                   'name': '',
                                   'mode': 'new',
-                                  'stockEntryType': mr.materialRequestType,
+                                  'stockEntryType': seType,
                                   'customReferenceNo': mr.name,
                                   'items': itemsList
                                 });
