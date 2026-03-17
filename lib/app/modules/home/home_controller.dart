@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
+import 'package:multimax/app/core/utils/navigator_utils.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
@@ -25,6 +26,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
+
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -122,7 +124,13 @@ class HomeController extends GetxController {
         final response = await _userProvider.getDirectReports(empId);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
-          final reports = data.map((e) => User(id: e['user_id'] ?? '', name: e['employee_name'] ?? 'Unknown', email: e['user_id'] ?? '', roles: [], employeeId: e['name'])).toList();
+          final reports = data.map((e) => User(
+            id: e['user_id'] ?? '',
+            name: e['employee_name'] ?? 'Unknown',
+            email: e['user_id'] ?? '',
+            roles: [],
+            employeeId: e['name'],
+          )).toList();
           if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
             reports.insert(0, currentUser);
           }
@@ -144,7 +152,10 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    Get.back();
+    // Use NavigatorUtils.popSheet — Get.back() crashes when a
+    // SnackbarController is queued but not yet initialised.
+    final ctx = Get.context;
+    if (ctx != null && ctx.mounted) NavigatorUtils.popSheet(ctx);
     fetchDashboardData();
     fetchPerformanceData();
   }
@@ -448,11 +459,8 @@ class HomeController extends GetxController {
   }
 
   Future<void> handleFulfillmentSelection(PosUpload posUpload) async {
-    // Use Navigator.pop() instead of Get.back() to avoid Get.back()'s
-    // unconditional closeCurrentSnackbar() call, which crashes when a
-    // snackbar is enqueued but its AnimationController is not yet init.
     final ctx = Get.context;
-    if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
+    if (ctx != null && ctx.mounted) NavigatorUtils.popSheet(ctx);
 
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
@@ -506,35 +514,39 @@ class HomeController extends GetxController {
 
   void _updateActiveScreenForRoute(String route) {
     switch (route) {
-      case AppRoutes.HOME: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 0; break;
-      case AppRoutes.STOCK_ENTRY: activeScreen.value = ActiveScreen.stockEntry; selectedDrawerIndex.value = 1; break;
-      case AppRoutes.DELIVERY_NOTE: activeScreen.value = ActiveScreen.deliveryNote; selectedDrawerIndex.value = 2; break;
-      case AppRoutes.PACKING_SLIP: activeScreen.value = ActiveScreen.packingSlip; selectedDrawerIndex.value = 3; break;
-      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4; break;
-      case AppRoutes.POS_UPLOAD: activeScreen.value = ActiveScreen.posUpload; selectedDrawerIndex.value = 5; break;
-      case AppRoutes.TODO: activeScreen.value = ActiveScreen.todo; selectedDrawerIndex.value = 6; break;
-      case AppRoutes.ITEM: activeScreen.value = ActiveScreen.item; selectedDrawerIndex.value = 7; break;
-      case AppRoutes.WORK_ORDER: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 8; break;
-      case AppRoutes.JOB_CARD: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 9; break;
-      case AppRoutes.BATCH: activeScreen.value = ActiveScreen.batch; selectedDrawerIndex.value = 10; break;
+      case AppRoutes.HOME:             activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 0;  break;
+      case AppRoutes.STOCK_ENTRY:      activeScreen.value = ActiveScreen.stockEntry;      selectedDrawerIndex.value = 1;  break;
+      case AppRoutes.DELIVERY_NOTE:    activeScreen.value = ActiveScreen.deliveryNote;    selectedDrawerIndex.value = 2;  break;
+      case AppRoutes.PACKING_SLIP:     activeScreen.value = ActiveScreen.packingSlip;     selectedDrawerIndex.value = 3;  break;
+      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4;  break;
+      case AppRoutes.POS_UPLOAD:       activeScreen.value = ActiveScreen.posUpload;       selectedDrawerIndex.value = 5;  break;
+      case AppRoutes.TODO:             activeScreen.value = ActiveScreen.todo;            selectedDrawerIndex.value = 6;  break;
+      case AppRoutes.ITEM:             activeScreen.value = ActiveScreen.item;            selectedDrawerIndex.value = 7;  break;
+      case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
+      case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
+      case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
     }
   }
 
+  /// Closes the drawer safely (no Get.back() snackbar crash) then
+  /// navigates to [route] only if it differs from the current route.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
-    Get.back();
+    final ctx = Get.context;
+    if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
     if (Get.currentRoute != route) Get.toNamed(route);
     _updateActiveScreenForRoute(route);
   }
-  void goToHome() => changeDrawerPage(0, AppRoutes.HOME);
-  void goToStockEntry() => changeDrawerPage(1, AppRoutes.STOCK_ENTRY);
-  void goToDeliveryNote() => changeDrawerPage(2, AppRoutes.DELIVERY_NOTE);
-  void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
-  void goToPurchaseReceipt() => changeDrawerPage(4, AppRoutes.PURCHASE_RECEIPT);
-  void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
-  void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
-  void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
-  void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER);
-  void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD);
-  void goToBatch() => changeDrawerPage(10, AppRoutes.BATCH);
+
+  void goToHome()            => changeDrawerPage(0,  AppRoutes.HOME);
+  void goToStockEntry()      => changeDrawerPage(1,  AppRoutes.STOCK_ENTRY);
+  void goToDeliveryNote()    => changeDrawerPage(2,  AppRoutes.DELIVERY_NOTE);
+  void goToPackingSlip()     => changeDrawerPage(3,  AppRoutes.PACKING_SLIP);
+  void goToPurchaseReceipt() => changeDrawerPage(4,  AppRoutes.PURCHASE_RECEIPT);
+  void goToPosUpload()       => changeDrawerPage(5,  AppRoutes.POS_UPLOAD);
+  void goToToDo()            => changeDrawerPage(6,  AppRoutes.TODO);
+  void goToItem()            => changeDrawerPage(7,  AppRoutes.ITEM);
+  void goToWorkOrder()       => changeDrawerPage(8,  AppRoutes.WORK_ORDER);
+  void goToJobCard()         => changeDrawerPage(9,  AppRoutes.JOB_CARD);
+  void goToBatch()           => changeDrawerPage(10, AppRoutes.BATCH);
 }
