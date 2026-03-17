@@ -711,7 +711,9 @@ class StockEntryController extends GetxController {
   }
 
   /// Maps a Frappe Material Request type to its corresponding Stock Entry type.
-  /// Public so it can be unit-tested directly.
+  ///
+  /// Exposed as package-visible (no leading underscore) so it can be unit-tested
+  /// directly in test/unit/stock_entry/mr_type_mapping_test.dart.
   String mapMrTypeToSeType(String mrType) {
     switch (mrType) {
       case 'Material Transfer':
@@ -720,6 +722,7 @@ class StockEntryController extends GetxController {
         return 'Material Issue';
       case 'Manufacture':
         return 'Material Transfer for Manufacture';
+      case 'Material Receipt':
       default:
         return mrType;
     }
