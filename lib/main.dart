@@ -3,58 +3,52 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
-import 'package:multimax/app/data/routes/app_routes.dart'; // Import AppRoutes
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform; // Required for platform checks
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 Future<void> main() async {
-  runApp(const MultimaxApp());
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up the database factory for desktop platforms.
+  if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
+  // Initialise services & global controllers.
+  await Get.putAsync<DatabaseService>(() => DatabaseService().init());
+  await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+
+  Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
+
+  final authController = Get.find<AuthenticationController>();
+  await authController.checkAuthenticationStatus();
+
+  runApp(MultimaxApp(initialRoute: authController.isAuthenticated.value
+      ? AppRoutes.HOME
+      : AppRoutes.LOGIN));
 }
 
 class MultimaxApp extends StatelessWidget {
-  const MultimaxApp({super.key});
+  final String initialRoute;
+
+  const MultimaxApp({super.key, required this.initialRoute});
 
   @override
-  Future<Widget> build(BuildContext context) async {
-    WidgetsFlutterBinding.ensureInitialized();
-
-    // Set up the database factory based on the platform
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
-      // Initialise FFI
-      sqfliteFfiInit();
-      // Change the default factory for sqflite
-      databaseFactory = databaseFactoryFfi;
-    }
-    // For Android and iOS, the default factory is usually sufficient (unless you are replacing the default sqlite_flutter_lib)
-
-    // --- Initialise Services & Global Controllers ---
-    // Initialise SQLite Database Service first
-    await Get.putAsync<DatabaseService>(() => DatabaseService().init());
-    // Initialise API Provider (which now depends on DatabaseService)
-    await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
-
-    await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
-    Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
-    // Removed explicit put of HomeController to avoid dependency issues.
-    // It will be initialised via HomeBinding when needed.
-
-    // --- Determine Initial Route ---
-    final authController = Get.find<AuthenticationController>();
-    await authController.checkAuthenticationStatus();
-
-    // --- Define Custom Colors ---
-    const Color primaryColour = Color(0xFF870E18); // Deep Red
-    const Color secondaryColour = Color(0xFF25286F); // Navy Blue
-    const Color greyColour = Color(0xFF6F6D6E); // Grey
-    const Color backgroundColour = Color(0xFFF5F5F5); // Light Grey Background
+  Widget build(BuildContext context) {
+    const Color primaryColour    = Color(0xFF870E18);
+    const Color secondaryColour  = Color(0xFF25286F);
+    const Color greyColour       = Color(0xFF6F6D6E);
+    const Color backgroundColour = Color(0xFFF5F5F5);
 
     return GetMaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'KA-ML Fulfillment',
-      initialRoute: authController.isAuthenticated.value ? AppRoutes.HOME : AppRoutes.LOGIN,
+      initialRoute: initialRoute,
       getPages: AppPages.routes,
       theme: ThemeData(
         useMaterial3: true,
@@ -75,9 +69,9 @@ class MultimaxApp extends StatelessWidget {
           elevation: 0,
         ),
         tabBarTheme: const TabBarThemeData(
-          labelColor: Colors.white, // Active tab text color (on Primary AppBar)
-          unselectedLabelColor: Colors.white70, // Inactive tab text color
-          indicatorColor: Colors.white, // Underline color
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
           labelStyle: TextStyle(fontWeight: FontWeight.bold),
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -87,17 +81,19 @@ class MultimaxApp extends StatelessWidget {
         snackBarTheme: const SnackBarThemeData(
           backgroundColor: secondaryColour,
           contentTextStyle: TextStyle(color: Colors.white),
-          actionTextColor: Colors.white, // Color for "Undo" or other actions
+          actionTextColor: Colors.white,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8))),
         ),
         cardTheme: CardThemeData(
           color: Colors.white,
           elevation: 1,
-          surfaceTintColor: Colors.white, // Removes the tint in M3
+          surfaceTintColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: greyColour.withValues(alpha: .2), width: 1),
+            side: BorderSide(
+                color: greyColour.withValues(alpha: .2), width: 1),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -109,7 +105,8 @@ class MultimaxApp extends StatelessWidget {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: greyColour.withValues(alpha: .5)),
+            borderSide:
+                BorderSide(color: greyColour.withValues(alpha: .5)),
           ),
           focusedBorder: const OutlineInputBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
@@ -121,30 +118,28 @@ class MultimaxApp extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: primaryColour,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(
+                vertical: 16, horizontal: 24),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: secondaryColour,
-          ),
+          style: TextButton.styleFrom(foregroundColor: secondaryColour),
         ),
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        // Ensure typography has good contrast
         textTheme: const TextTheme(
-          titleLarge: TextStyle(color: secondaryColour, fontWeight: FontWeight.bold),
+          titleLarge: TextStyle(
+              color: secondaryColour, fontWeight: FontWeight.bold),
           bodyMedium: TextStyle(color: Color(0xFF333333)),
         ),
       ),
       defaultTransition: Transition.fadeIn,
       routingCallback: (routing) {
-        if (routing?.current != null) {
-          // Safely access HomeController only if registered
-          if (Get.isRegistered<HomeController>()) {
-            final homeController = Get.find<HomeController>();
-            homeController.updateActiveScreen(routing!.current);
-          }
+        if (routing?.current != null &&
+            Get.isRegistered<HomeController>()) {
+          Get.find<HomeController>()
+              .updateActiveScreen(routing!.current);
         }
       },
     );
