@@ -31,7 +31,7 @@ class _PurchaseOrderFilterBottomSheetState
     if (saved is String && saved.isNotEmpty) {
       supplier.value = saved;
       final match =
-      controller.suppliers.firstWhereOrNull((s) => s.name == saved);
+          controller.suppliers.firstWhereOrNull((s) => s.name == saved);
       final label = match != null ? match.supplierName : saved;
       supplierName.value = label;
       supplierController.text = label;
@@ -65,7 +65,7 @@ class _PurchaseOrderFilterBottomSheetState
               decoration: BoxDecoration(
                 color: colorScheme.surface,
                 borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(16)),
+                    const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Column(
                 children: [
@@ -89,15 +89,15 @@ class _PurchaseOrderFilterBottomSheetState
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16),
+                          const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
                       final term = val.toLowerCase();
                       filtered.assignAll(val.isEmpty
                           ? controller.suppliers
                           : controller.suppliers.where((s) =>
-                      s.name.toLowerCase().contains(term) ||
-                          s.supplierName.toLowerCase().contains(term)));
+                              s.name.toLowerCase().contains(term) ||
+                              s.supplierName.toLowerCase().contains(term)));
                     },
                   ),
                   const SizedBox(height: 12),
@@ -115,7 +115,7 @@ class _PurchaseOrderFilterBottomSheetState
                         controller: scrollCtrl,
                         itemCount: filtered.length,
                         separatorBuilder: (_, __) =>
-                        const Divider(height: 1),
+                            const Divider(height: 1),
                         itemBuilder: (_, i) {
                           final s = filtered[i];
                           final isSelected = supplier.value == s.name;
@@ -149,16 +149,16 @@ class _PurchaseOrderFilterBottomSheetState
                             ),
                             subtitle: s.name != s.supplierName
                                 ? Text(s.name,
-                                style: Theme.of(ctx)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                    color: colorScheme
-                                        .onSurfaceVariant))
+                                    style: Theme.of(ctx)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                            color: colorScheme
+                                                .onSurfaceVariant))
                                 : null,
                             trailing: isSelected
                                 ? Icon(Icons.check_circle,
-                                color: colorScheme.primary, size: 18)
+                                    color: colorScheme.primary, size: 18)
                                 : null,
                             onTap: () {
                               Get.back();
@@ -182,61 +182,66 @@ class _PurchaseOrderFilterBottomSheetState
   }
 
   // ---------------------------------------------------------------------------
-  void _applyFilters() {
+  // Use Navigator.of(context).pop() instead of Get.back() to avoid the
+  // SnackbarController LateInitializationError: Get.back() unconditionally
+  // calls Get.closeCurrentSnackbar(), which accesses a late final field on
+  // an uninitialised SnackbarController when any snackbar is queued but has
+  // not yet started its animation.
+  void _applyFilters(BuildContext ctx) {
     final filters = <String, dynamic>{};
     if (supplier.value.isNotEmpty) {
-      filters['supplier'] = supplier.value; // exact match
+      filters['supplier'] = supplier.value;
     }
     controller.applyFilters(filters);
-    Get.back();
+    Navigator.of(ctx).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     return Obx(() => GlobalFilterBottomSheet(
-      title: 'Filter Purchase Orders',
-      activeFilterCount: _activeCount,
-      sortOptions: const [
-        SortOption('Date', 'transaction_date'),
-        SortOption('Modified', 'modified'),
-        SortOption('Supplier', 'supplier'),
-        SortOption('Total', 'grand_total'),
-      ],
-      currentSortField: controller.sortField.value,
-      currentSortOrder: controller.sortOrder.value,
-      onSortChanged: (field, order) => controller.setSort(field, order),
-      onApply: _applyFilters,
-      onClear: () {
-        supplier.value = '';
-        supplierName.value = '';
-        supplierController.clear();
-        controller.clearFilters();
-      },
-      filterWidgets: [
-        Obx(() => TextFormField(
-          controller: supplierController,
-          readOnly: true,
-          onTap: _showSupplierPicker,
-          decoration: InputDecoration(
-            labelText: 'Supplier',
-            hintText: 'Tap to select',
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.business_outlined),
-            suffixIcon: supplier.value.isNotEmpty
-                ? IconButton(
-              icon: const Icon(Icons.close, size: 18),
-              tooltip: 'Clear',
-              onPressed: () {
-                supplier.value = '';
-                supplierName.value = '';
-                supplierController.clear();
-              },
-            )
-                : const Icon(Icons.arrow_drop_down),
-            isDense: true,
-          ),
-        )),
-      ],
-    ));
+          title: 'Filter Purchase Orders',
+          activeFilterCount: _activeCount,
+          sortOptions: const [
+            SortOption('Date', 'transaction_date'),
+            SortOption('Modified', 'modified'),
+            SortOption('Supplier', 'supplier'),
+            SortOption('Total', 'grand_total'),
+          ],
+          currentSortField: controller.sortField.value,
+          currentSortOrder: controller.sortOrder.value,
+          onSortChanged: (field, order) => controller.setSort(field, order),
+          onApply: () => _applyFilters(context),
+          onClear: () {
+            supplier.value = '';
+            supplierName.value = '';
+            supplierController.clear();
+            controller.clearFilters();
+          },
+          filterWidgets: [
+            Obx(() => TextFormField(
+                  controller: supplierController,
+                  readOnly: true,
+                  onTap: _showSupplierPicker,
+                  decoration: InputDecoration(
+                    labelText: 'Supplier',
+                    hintText: 'Tap to select',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.business_outlined),
+                    suffixIcon: supplier.value.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: 'Clear',
+                            onPressed: () {
+                              supplier.value = '';
+                              supplierName.value = '';
+                              supplierController.clear();
+                            },
+                          )
+                        : const Icon(Icons.arrow_drop_down),
+                    isDense: true,
+                  ),
+                )),
+          ],
+        ));
   }
 }
