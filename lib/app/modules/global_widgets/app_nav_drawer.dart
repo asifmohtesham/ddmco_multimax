@@ -9,9 +9,8 @@ import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 // Route extraction helper
 // ---------------------------------------------------------------------------
 // Recursively walks a widget subtree and returns every _DrawerItem.route
-// found, regardless of nesting depth.  This means _ModuleGroup never needs
-// a manually maintained route list — it discovers its own children’s routes
-// at build time.
+// found, regardless of nesting depth.  _ModuleGroup never needs a manually
+// maintained route list — it discovers its children's routes at build time.
 
 List<String> _extractRoutes(List<Widget> widgets) {
   final routes = <String>[];
@@ -19,16 +18,26 @@ List<String> _extractRoutes(List<Widget> widgets) {
     if (widget is _DrawerItem) {
       routes.add(widget.route);
     } else if (widget is DocTypeGuard) {
-      // DocTypeGuard exposes its child; recurse into it.
       routes.addAll(_extractRoutes([widget.child]));
     } else if (widget is Padding) {
       routes.addAll(_extractRoutes([?widget.child]));
     } else if (widget is Column) {
       routes.addAll(_extractRoutes(widget.children));
     }
-    // Any future transparent wrapper just falls through silently.
   }
   return routes;
+}
+
+// ---------------------------------------------------------------------------
+// AppNavDrawerController  (drawer UI state only)
+// ---------------------------------------------------------------------------
+// Package-private (no leading _) so it can be registered in a Binding.
+// AppNavDrawer uses Get.find() with a fallback put() so it works whether
+// or not the host Binding pre-registers it.
+
+class AppNavDrawerController extends GetxController {
+  final isUserMenuOpen = false.obs;
+  void toggleUserMenu() => isUserMenuOpen.toggle();
 }
 
 // ---------------------------------------------------------------------------
@@ -40,15 +49,15 @@ class AppNavDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final HomeController homeController =
-        Get.find<HomeController>();
-    final AuthenticationController authController =
-        Get.find<AuthenticationController>();
-    final _AppNavDrawerController drawerController =
-        Get.put(_AppNavDrawerController());
+    final homeController   = Get.find<HomeController>();
+    final authController   = Get.find<AuthenticationController>();
+    // Register once; subsequent builds re-use the existing instance.
+    final drawerController = Get.isRegistered<AppNavDrawerController>()
+        ? Get.find<AppNavDrawerController>()
+        : Get.put(AppNavDrawerController());
 
-    // Read once at build time; the drawer is rebuilt from scratch each
-    // time it opens, so this is always current.
+    // Read once at build time.  The drawer is rebuilt from scratch each
+    // time it opens so this is always current.
     final String currentRoute = Get.currentRoute;
 
     const skeleton = _SkeletonDrawerItem();
@@ -59,7 +68,7 @@ class AppNavDrawer extends StatelessWidget {
         backgroundColor: Colors.white,
         child: Column(
           children: [
-            // ── User header ──────────────────────────────────────────────────
+            // ── User header ─────────────────────────────────────────────────
             Obx(() {
               final user = authController.currentUser.value;
               return UserAccountsDrawerHeader(
@@ -94,7 +103,7 @@ class AppNavDrawer extends StatelessWidget {
               );
             }),
 
-            // ── Scrollable menu (reactive switch) ─────────────────────────────
+            // ── Scrollable menu (reactive switch) ────────────────────────────
             Expanded(
               child: Obx(() {
                 if (drawerController.isUserMenuOpen.value) {
@@ -102,21 +111,21 @@ class AppNavDrawer extends StatelessWidget {
                   return ListView(
                     padding: const EdgeInsets.symmetric(vertical: 12.0),
                     children: [
+                      // onTap omitted — default tap closes drawer + navigates
                       _DrawerItem(
                         icon: Icons.person_outline_rounded,
                         title: 'My Profile',
                         route: AppRoutes.PROFILE,
-                        onTap: () {
-                          Get.back();
-                          Get.toNamed(AppRoutes.PROFILE);
-                        },
+                        currentRoute: currentRoute,
                       ),
+                      // Session Defaults has no route; needs a custom onTap
                       _DrawerItem(
                         icon: Icons.settings,
                         title: 'Session Defaults',
-                        route: '', // no route; never highlighted
-                        onTap: () {
-                          Get.back();
+                        route: '',
+                        currentRoute: currentRoute,
+                        onTap: (ctx) {
+                          Navigator.of(ctx).pop();
                           homeController.openSessionDefaults();
                         },
                       ),
@@ -124,30 +133,30 @@ class AppNavDrawer extends StatelessWidget {
                         icon: Icons.info_outline,
                         title: 'About',
                         route: AppRoutes.ABOUT,
-                        onTap: () {
-                          Get.back();
-                          Get.toNamed(AppRoutes.ABOUT);
-                        },
+                        currentRoute: currentRoute,
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
                         child: Divider(height: 1),
                       ),
-                      ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 8),
-                        leading: Icon(Icons.logout_rounded,
-                            color: Colors.red.shade400, size: 22),
-                        title: Text('Logout',
-                            style: TextStyle(
-                                color: Colors.red.shade600,
-                                fontWeight: FontWeight.w600)),
-                        onTap: () {
-                          Get.back();
-                          authController.logoutUser();
-                        },
-                      ),
+                      // Logout keeps a custom tile (destructive styling)
+                      Builder(builder: (ctx) {
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 8),
+                          leading: Icon(Icons.logout_rounded,
+                              color: Colors.red.shade400, size: 22),
+                          title: Text('Logout',
+                              style: TextStyle(
+                                  color: Colors.red.shade600,
+                                  fontWeight: FontWeight.w600)),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            authController.logoutUser();
+                          },
+                        );
+                      }),
                     ],
                   );
                 }
@@ -160,7 +169,11 @@ class AppNavDrawer extends StatelessWidget {
                       icon: Icons.dashboard_rounded,
                       title: 'Dashboard',
                       route: AppRoutes.HOME,
-                      onTap: homeController.goToHome,
+                      currentRoute: currentRoute,
+                      onTap: (ctx) {
+                        Navigator.of(ctx).pop();
+                        homeController.goToHome();
+                      },
                     ),
 
                     DocTypeGuard(
@@ -170,7 +183,7 @@ class AppNavDrawer extends StatelessWidget {
                         icon: Icons.check_circle_outline_rounded,
                         title: 'To Do',
                         route: AppRoutes.TODO,
-                        onTap: homeController.goToToDo,
+                        currentRoute: currentRoute,
                       ),
                     ),
 
@@ -194,7 +207,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Item Master',
                             icon: Icons.category_rounded,
                             route: AppRoutes.ITEM,
-                            onTap: homeController.goToItem,
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -204,7 +217,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Batch',
                             icon: Icons.qr_code_scanner_rounded,
                             route: AppRoutes.BATCH,
-                            onTap: homeController.goToBatch,
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -214,10 +227,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Material Request',
                             icon: Icons.playlist_add_check_rounded,
                             route: AppRoutes.MATERIAL_REQUEST,
-                            onTap: () {
-                              Get.back();
-                              Get.toNamed(AppRoutes.MATERIAL_REQUEST);
-                            },
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -227,7 +237,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Stock Entry',
                             icon: Icons.compare_arrows_rounded,
                             route: AppRoutes.STOCK_ENTRY,
-                            onTap: homeController.goToStockEntry,
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -237,7 +247,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Delivery Note',
                             icon: Icons.local_shipping_rounded,
                             route: AppRoutes.DELIVERY_NOTE,
-                            onTap: homeController.goToDeliveryNote,
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -247,7 +257,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Packing Slip',
                             icon: Icons.assignment_return_rounded,
                             route: AppRoutes.PACKING_SLIP,
-                            onTap: homeController.goToPackingSlip,
+                            currentRoute: currentRoute,
                           ),
                         ),
                       ],
@@ -266,10 +276,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Purchase Order',
                             icon: Icons.description_rounded,
                             route: AppRoutes.PURCHASE_ORDER,
-                            onTap: () {
-                              Get.back();
-                              Get.toNamed(AppRoutes.PURCHASE_ORDER);
-                            },
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -279,7 +286,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Purchase Receipt',
                             icon: Icons.receipt_long_rounded,
                             route: AppRoutes.PURCHASE_RECEIPT,
-                            onTap: homeController.goToPurchaseReceipt,
+                            currentRoute: currentRoute,
                           ),
                         ),
                       ],
@@ -298,10 +305,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Bill of Materials',
                             icon: Icons.account_tree_rounded,
                             route: AppRoutes.BOM,
-                            onTap: () {
-                              Get.back();
-                              Get.toNamed(AppRoutes.BOM);
-                            },
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -311,7 +315,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Work Order',
                             icon: Icons.assignment_rounded,
                             route: AppRoutes.WORK_ORDER,
-                            onTap: homeController.goToWorkOrder,
+                            currentRoute: currentRoute,
                           ),
                         ),
                         DocTypeGuard(
@@ -321,7 +325,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'Job Card',
                             icon: Icons.assignment_ind_rounded,
                             route: AppRoutes.JOB_CARD,
-                            onTap: homeController.goToJobCard,
+                            currentRoute: currentRoute,
                           ),
                         ),
                       ],
@@ -340,7 +344,7 @@ class AppNavDrawer extends StatelessWidget {
                             title: 'POS Upload',
                             icon: Icons.cloud_upload_rounded,
                             route: AppRoutes.POS_UPLOAD,
-                            onTap: homeController.goToPosUpload,
+                            currentRoute: currentRoute,
                           ),
                         ),
                       ],
@@ -354,15 +358,6 @@ class AppNavDrawer extends StatelessWidget {
       ),
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Internal GetX controller  (drawer UI state only)
-// ---------------------------------------------------------------------------
-
-class _AppNavDrawerController extends GetxController {
-  final isUserMenuOpen = false.obs;
-  void toggleUserMenu() => isUserMenuOpen.toggle();
 }
 
 // ---------------------------------------------------------------------------
@@ -412,8 +407,7 @@ class _SkeletonDrawerItem extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Automatically determines whether to expand by walking its children
 // subtree for _DrawerItem.route values and testing each against
-// currentRoute via startsWith.  No manual route list required — adding
-// a new _DrawerItem to a group is sufficient for it to participate.
+// currentRoute via startsWith.  No manual route list required.
 
 class _ModuleGroup extends StatelessWidget {
   final String title;
@@ -428,8 +422,6 @@ class _ModuleGroup extends StatelessWidget {
     required this.currentRoute,
   });
 
-  /// Returns true when [currentRoute] starts with any route registered
-  /// inside the children subtree.
   bool get _hasActiveChild {
     final routes = _extractRoutes(children);
     return routes.any(
@@ -443,8 +435,7 @@ class _ModuleGroup extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         initiallyExpanded: _hasActiveChild,
-        leading:
-            Icon(icon, color: Colors.grey.shade700, size: 22),
+        leading: Icon(icon, color: Colors.grey.shade700, size: 22),
         title: Text(
           title,
           style: const TextStyle(
@@ -465,47 +456,57 @@ class _ModuleGroup extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // _DrawerItem
 // ---------------------------------------------------------------------------
-// [route] is the canonical list-screen route for this item (e.g.
-// AppRoutes.DELIVERY_NOTE).  isSelected is derived via startsWith so
-// that both /delivery-note and /delivery-note/form highlight the item.
-// Pass route: '' for items that have no route (Session Defaults, etc.).
+// [route]        — canonical list-screen route. Pass '' for items with no
+//                  associated route (should never appear highlighted).
+// [currentRoute] — passed in from build() so selection is determined from
+//                  a single source of truth, not a silent non-reactive read.
+// [onTap]        — optional override. The default behaviour is:
+//                    Navigator.of(context).pop()  (closes drawer safely)
+//                    Get.toNamed(route)            (navigates)
+//                  Override only when additional side-effects are needed
+//                  (e.g. Session Defaults, Dashboard).
+//                  Signature is (BuildContext ctx) so callers can use
+//                  the widget's own safe context for Navigator.of().
 
 class _DrawerItem extends StatelessWidget {
   final String title;
   final IconData icon;
-
-  /// The canonical route prefix for this item.  Pass '' if the item
-  /// has no associated route and should never appear highlighted.
   final String route;
-  final VoidCallback onTap;
+  final String currentRoute;
+
+  /// Optional tap override.  Receives the widget's [BuildContext] so
+  /// Navigator.of(ctx).pop() is always available without Get.context.
+  final void Function(BuildContext ctx)? onTap;
 
   const _DrawerItem({
     required this.title,
     required this.icon,
     required this.route,
-    required this.onTap,
+    required this.currentRoute,
+    this.onTap,
   });
+
+  void _defaultTap(BuildContext ctx) {
+    Navigator.of(ctx).pop();
+    if (route.isNotEmpty) Get.toNamed(route);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Derive selection from the live route so form screens also
-    // highlight the parent list item.
-    final currentRoute = Get.currentRoute;
     final isSelected =
         route.isNotEmpty && currentRoute.startsWith(route);
 
-    final theme = Theme.of(context);
+    final theme        = Theme.of(context);
     final primaryColor = theme.primaryColor;
 
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () => (onTap ?? _defaultTap)(context),
           borderRadius: BorderRadius.circular(16),
-          splashColor: primaryColor.withValues(alpha: 0.1),
+          splashColor:    primaryColor.withValues(alpha: 0.1),
           highlightColor: primaryColor.withValues(alpha: 0.05),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 250),
@@ -515,12 +516,12 @@ class _DrawerItem extends StatelessWidget {
                   ? primaryColor.withValues(alpha: 0.1)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
-              border: isSelected
-                  ? Border.all(
-                      color: primaryColor.withValues(alpha: 0.15),
-                      width: 1)
-                  : Border.all(
-                      color: Colors.transparent, width: 1),
+              border: Border.all(
+                color: isSelected
+                    ? primaryColor.withValues(alpha: 0.15)
+                    : Colors.transparent,
+                width: 1,
+              ),
             ),
             child: ListTile(
               dense: true,
