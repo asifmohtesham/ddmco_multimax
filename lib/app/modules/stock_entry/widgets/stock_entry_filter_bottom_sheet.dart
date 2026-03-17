@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/core/utils/navigator_utils.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
@@ -82,7 +83,6 @@ class _StockEntryFilterBottomSheetState
       modifiedByDisplayName.value = display;
     }
 
-    // Restore warehouse filter display (stored as 'like' value)
     if (initialFromWarehouse.isNotEmpty) {
       fromWarehouseController.text = initialFromWarehouse;
     }
@@ -152,9 +152,6 @@ class _StockEntryFilterBottomSheetState
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Generic user picker — reused for Owner and Modified By.
-  // ---------------------------------------------------------------------------
   void _showUserPicker({
     required String title,
     required void Function(String userId, String displayName) onSelected,
@@ -163,214 +160,222 @@ class _StockEntryFilterBottomSheetState
     final RxList<User> filteredUsers = RxList<User>(controller.users);
 
     Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            final colorScheme = Theme.of(context).colorScheme;
-            return Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(title,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      IconButton(
+      Builder(
+        builder: (ctx) => SafeArea(
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (_, scrollController) {
+              final colorScheme = Theme.of(ctx).colorScheme;
+              return Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(16.0)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(title,
+                            style: Theme.of(ctx).textTheme.titleLarge),
+                        IconButton(
                           icon: const Icon(Icons.close),
-                          onPressed: Get.back),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search users...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                          // NavigatorUtils.popSheet — never Get.back()
+                          onPressed: () => NavigatorUtils.popSheet(ctx),
+                        ),
+                      ],
                     ),
-                    onChanged: (val) {
-                      final term = val.toLowerCase();
-                      filteredUsers.assignAll(val.isEmpty
-                          ? controller.users
-                          : controller.users.where((u) =>
-                              u.name.toLowerCase().contains(term) ||
-                              u.email.toLowerCase().contains(term)));
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: Obx(() {
-                      if (controller.isFetchingUsers.value) {
-                        return const Center(
-                            child: CircularProgressIndicator());
-                      }
-                      if (filteredUsers.isEmpty) {
-                        return const Center(child: Text('No users found'));
-                      }
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: filteredUsers.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final user = filteredUsers[index];
-                          final userId =
-                              user.email.isNotEmpty ? user.email : user.id;
-                          final displayName =
-                              user.name.isNotEmpty ? user.name : userId;
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor:
-                                  colorScheme.secondaryContainer,
-                              child: Text(
-                                displayName[0].toUpperCase(),
-                                style: TextStyle(
-                                    color: colorScheme.onSecondaryContainer),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search users...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      onChanged: (val) {
+                        final term = val.toLowerCase();
+                        filteredUsers.assignAll(val.isEmpty
+                            ? controller.users
+                            : controller.users.where((u) =>
+                                u.name.toLowerCase().contains(term) ||
+                                u.email.toLowerCase().contains(term)));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Obx(() {
+                        if (controller.isFetchingUsers.value) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (filteredUsers.isEmpty) {
+                          return const Center(
+                              child: Text('No users found'));
+                        }
+                        return ListView.separated(
+                          controller: scrollController,
+                          itemCount: filteredUsers.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (_, index) {
+                            final user = filteredUsers[index];
+                            final userId =
+                                user.email.isNotEmpty ? user.email : user.id;
+                            final displayName =
+                                user.name.isNotEmpty ? user.name : userId;
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor:
+                                    colorScheme.secondaryContainer,
+                                child: Text(
+                                  displayName[0].toUpperCase(),
+                                  style: TextStyle(
+                                      color:
+                                          colorScheme.onSecondaryContainer),
+                                ),
                               ),
-                            ),
-                            title: Text(displayName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Text(user.email),
-                            onTap: () {
-                              Get.back();
-                              onSelected(userId, displayName);
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
+                              title: Text(displayName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(user.email),
+                              onTap: () {
+                                NavigatorUtils.popSheet(ctx);
+                                onSelected(userId, displayName);
+                              },
+                            );
+                          },
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
       isScrollControlled: true,
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Warehouse picker — searchable list from Warehouse DocType.
-  // ---------------------------------------------------------------------------
   void _showWarehousePicker() {
     final searchController = TextEditingController();
     final RxList<String> filtered = RxList<String>(controller.warehouses);
 
     Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            final colorScheme = Theme.of(context).colorScheme;
-            return Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Select Source Warehouse',
-                          style: Theme.of(context).textTheme.titleLarge),
-                      IconButton(
+      Builder(
+        builder: (ctx) => SafeArea(
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            minChildSize: 0.4,
+            maxChildSize: 0.9,
+            expand: false,
+            builder: (_, scrollController) {
+              final colorScheme = Theme.of(ctx).colorScheme;
+              return Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(16.0)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Select Source Warehouse',
+                            style: Theme.of(ctx).textTheme.titleLarge),
+                        IconButton(
                           icon: const Icon(Icons.close),
-                          onPressed: Get.back),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search warehouses...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                          onPressed: () => NavigatorUtils.popSheet(ctx),
+                        ),
+                      ],
                     ),
-                    onChanged: (val) {
-                      final term = val.toLowerCase();
-                      filtered.assignAll(val.isEmpty
-                          ? controller.warehouses
-                          : controller.warehouses.where(
-                              (w) => w.toLowerCase().contains(term)));
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: Obx(() {
-                      if (controller.isFetchingWarehouses.value) {
-                        return const Center(
-                            child: CircularProgressIndicator());
-                      }
-                      if (filtered.isEmpty) {
-                        return const Center(
-                            child: Text('No warehouses found'));
-                      }
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final wh = filtered[index];
-                          final isSelected = fromWarehouse.value == wh;
-                          return ListTile(
-                            leading: Icon(
-                              Icons.warehouse_outlined,
-                              color: isSelected
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                            title: Text(
-                              wh,
-                              style: TextStyle(
-                                fontWeight: isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search warehouses...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      onChanged: (val) {
+                        final term = val.toLowerCase();
+                        filtered.assignAll(val.isEmpty
+                            ? controller.warehouses
+                            : controller.warehouses.where(
+                                (w) => w.toLowerCase().contains(term)));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Obx(() {
+                        if (controller.isFetchingWarehouses.value) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (filtered.isEmpty) {
+                          return const Center(
+                              child: Text('No warehouses found'));
+                        }
+                        return ListView.separated(
+                          controller: scrollController,
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (_, index) {
+                            final wh = filtered[index];
+                            final isSelected = fromWarehouse.value == wh;
+                            return ListTile(
+                              leading: Icon(
+                                Icons.warehouse_outlined,
                                 color: isSelected
                                     ? colorScheme.primary
-                                    : colorScheme.onSurface,
+                                    : colorScheme.onSurfaceVariant,
                               ),
-                            ),
-                            trailing: isSelected
-                                ? Icon(Icons.check_circle,
-                                    color: colorScheme.primary, size: 18)
-                                : null,
-                            onTap: () {
-                              Get.back();
-                              fromWarehouse.value        = wh;
-                              fromWarehouseController.text = wh;
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
+                              title: Text(
+                                wh,
+                                style: TextStyle(
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  color: isSelected
+                                      ? colorScheme.primary
+                                      : colorScheme.onSurface,
+                                ),
+                              ),
+                              trailing: isSelected
+                                  ? Icon(Icons.check_circle,
+                                      color: colorScheme.primary, size: 18)
+                                  : null,
+                              onTap: () {
+                                NavigatorUtils.popSheet(ctx);
+                                fromWarehouse.value          = wh;
+                                fromWarehouseController.text = wh;
+                              },
+                            );
+                          },
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
       isScrollControlled: true,
@@ -405,7 +410,7 @@ class _StockEntryFilterBottomSheetState
     }
 
     controller.applyFilters(filters);
-    Get.back();
+    Get.back(); // dismisses the outer filter sheet — page nav, not a snackbar risk
   }
 
   Widget _statusChip({
@@ -481,7 +486,6 @@ class _StockEntryFilterBottomSheetState
             controller.clearFilters();
           },
           filterWidgets: [
-            // ── Status chips ───────────────────────────────────────────────
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             SingleChildScrollView(
@@ -505,7 +509,6 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Entry Type chips ─────────────────────────────────────────
             Text('Entry Type', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             ShaderMask(
@@ -541,7 +544,6 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Posting Date range ────────────────────────────────────────
             TextFormField(
               controller: dateRangeController,
               readOnly: true,
@@ -556,7 +558,6 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Source Warehouse (Warehouse DocType picker) ────────────────
             Obx(() => TextFormField(
                   controller: fromWarehouseController,
                   readOnly: true,
@@ -581,7 +582,6 @@ class _StockEntryFilterBottomSheetState
                 )),
             const SizedBox(height: 16),
 
-            // ── Reference No ───────────────────────────────────────────────
             TextFormField(
               controller: referenceController,
               decoration: const InputDecoration(
@@ -594,15 +594,14 @@ class _StockEntryFilterBottomSheetState
             ),
             const SizedBox(height: 16),
 
-            // ── Created By ────────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: ownerController,
                   readOnly: true,
                   onTap: () => _showUserPicker(
                     title: 'Select Owner',
                     onSelected: (userId, displayName) {
-                      owner.value           = userId;
-                      ownerController.text  = displayName;
+                      owner.value            = userId;
+                      ownerController.text   = displayName;
                       ownerDisplayName.value = displayName;
                     },
                   ),
@@ -615,7 +614,7 @@ class _StockEntryFilterBottomSheetState
                             icon: const Icon(Icons.close, size: 18),
                             tooltip: 'Clear',
                             onPressed: () {
-                              owner.value           = '';
+                              owner.value            = '';
                               ownerController.clear();
                               ownerDisplayName.value = '';
                             },
@@ -626,15 +625,14 @@ class _StockEntryFilterBottomSheetState
                 )),
             const SizedBox(height: 16),
 
-            // ── Modified By ───────────────────────────────────────────────
             Obx(() => TextFormField(
                   controller: modifiedByController,
                   readOnly: true,
                   onTap: () => _showUserPicker(
                     title: 'Select Modified By',
                     onSelected: (userId, displayName) {
-                      modifiedBy.value           = userId;
-                      modifiedByController.text  = displayName;
+                      modifiedBy.value            = userId;
+                      modifiedByController.text   = displayName;
                       modifiedByDisplayName.value = displayName;
                     },
                   ),
@@ -647,7 +645,7 @@ class _StockEntryFilterBottomSheetState
                             icon: const Icon(Icons.close, size: 18),
                             tooltip: 'Clear',
                             onPressed: () {
-                              modifiedBy.value           = '';
+                              modifiedBy.value            = '';
                               modifiedByController.clear();
                               modifiedByDisplayName.value = '';
                             },
