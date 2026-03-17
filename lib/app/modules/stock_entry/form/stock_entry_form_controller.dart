@@ -463,6 +463,49 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Warehouse gate-keeping
+  // ---------------------------------------------------------------------------
+
+  /// Returns true if a Source Warehouse is required for the current entry type.
+  bool get _requiresSourceWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Issue';
+  }
+
+  /// Returns true if a Target Warehouse is required for the current entry type.
+  bool get _requiresTargetWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Receipt';
+  }
+
+  /// Shows a friendly guidance snackbar + navigates user to Details tab
+  /// (index 0) so they can set the missing warehouse.  Returns true if
+  /// scanning must be blocked.
+  bool _enforceWarehouseBeforeScan() {
+    if (_requiresSourceWarehouse &&
+        (selectedFromWarehouse.value == null ||
+            selectedFromWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message:
+              'Please set the Source Warehouse (Details tab) before scanning.');
+      return true;
+    }
+    if (_requiresTargetWarehouse &&
+        (selectedToWarehouse.value == null ||
+            selectedToWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message:
+              'Please set the Target Warehouse (Details tab) before scanning.');
+      return true;
+    }
+    return false;
+  }
+
   bool _validateScanContext(ScanResult result) {
     if (entrySource == StockEntrySource.materialRequest) {
       if (mrReferenceItems.isEmpty) return true;
@@ -676,6 +719,9 @@ class StockEntryFormController extends GetxController
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return false;
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
+    // Validate against the fetched Batch balance — the scanned qty must not
+    // exceed what is actually available in the batch.
+    if (bsBatchBalance.value > 0 && qty > bsBatchBalance.value) return false;
     return true;
   }
 
@@ -922,6 +968,9 @@ class StockEntryFormController extends GetxController
       _handleSheetScan(barcode);
       return;
     }
+
+    // Block scanning if the required warehouse has not been selected yet.
+    if (_enforceWarehouseBeforeScan()) return;
 
     isScanning.value = true;
     try {
@@ -1241,6 +1290,18 @@ class StockEntryFormController extends GetxController
         }
         await _updateAvailableStock();
         await _updateBatchBalance();
+
+        // After fetching balances, validate quantity against batch balance.
+        // Show an error and block the sheet if the entered qty exceeds the
+        // available batch balance.
+        final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
+        if (bsBatchBalance.value > 0 && enteredQty > bsBatchBalance.value) {
+          batchError.value =
+              'Qty ($enteredQty) exceeds Batch balance (${bsBatchBalance.value.toStringAsFixed(0)})';
+          GlobalSnackbar.error(
+              message:
+                  'Entered qty exceeds available Batch balance of ${bsBatchBalance.value.toStringAsFixed(0)}');
+        }
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -1352,6 +1413,11 @@ class StockEntryFormController extends GetxController
         });
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
+        // Close the item form sheet if it is currently open so the deleted
+        // item's sheet does not linger behind after confirmation.
+        if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
+          Get.back();
+        }
       },
     );
   }
@@ -1384,6 +1450,9 @@ class StockEntryFormController extends GetxController
     if (bsMaxQty.value > 0) limit = bsMaxQty.value;
     if (bsValidationMaxQty.value > 0 &&
         bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
+    // Stepper must also respect the batch balance ceiling.
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
 
     if (newVal >= 0 && newVal <= limit) {
       bsQtyController.text =
