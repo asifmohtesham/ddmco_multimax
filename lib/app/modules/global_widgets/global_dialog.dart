@@ -58,7 +58,14 @@ class GlobalDialog {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        Get.back(); // Close dialog
+                        // Dismiss the sheet BEFORE calling onConfirm so that
+                        // any snackbar queued inside onConfirm is enqueued
+                        // after Get.back() has already run. GetX's back()
+                        // internally calls closeCurrentSnackbar(), which
+                        // accesses a late-initialised animation controller —
+                        // if a snackbar was queued first that controller would
+                        // not yet exist, causing a LateInitializationError.
+                        Get.back();
                         onConfirm();
                       },
                       style: ElevatedButton.styleFrom(
@@ -94,11 +101,10 @@ class GlobalDialog {
     );
   }
 
-  // --- NEW: Global Version Conflict Dialog ---
   static void showVersionConflict({required VoidCallback onReload}) {
     Get.dialog(
       WillPopScope(
-        onWillPop: () async => false, // Prevent dismissing without action
+        onWillPop: () async => false,
         child: AlertDialog(
           title: const Text('Version Conflict'),
           content: const Text(
