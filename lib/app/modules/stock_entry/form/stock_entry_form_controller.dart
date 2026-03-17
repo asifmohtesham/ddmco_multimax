@@ -328,14 +328,14 @@ class StockEntryFormController extends GetxController
 
     stockEntry.value = StockEntry(
       name: 'New Stock Entry',
-      purpose: type,
+      purpose: selectedStockEntryType.value,
       totalAmount: 0.0,
       postingDate: DateFormat('yyyy-MM-dd').format(now),
       modified: '',
       creation: now.toString(),
       status: 'Draft',
       docstatus: 0,
-      stockEntryType: type,
+      stockEntryType: selectedStockEntryType.value,
       postingTime: DateFormat('HH:mm:ss').format(now),
       customTotalQty: 0.0,
       customReferenceNo: ref,
@@ -372,6 +372,11 @@ class StockEntryFormController extends GetxController
             await _apiProvider.getDocument('Material Request', ref);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'];
+
+          if (data['material_request_type'] != null) {
+            selectedStockEntryType.value = data['material_request_type'];
+          }
+
           final items = data['items'] as List? ?? [];
           mrReferenceItems = items
               .map((i) => {

@@ -64,54 +64,40 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
   // ---------------------------------------------------------------------------
   // Active filter chips
   // ---------------------------------------------------------------------------
+  // ── Active filter chips ─────────────────────────────────────────────────
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final f = controller.activeFilters;
 
     if (f.containsKey('status')) {
-      chips.add(_chip(
-        context,
-        icon: Icons.flag_outlined,
-        label: 'Status: ${f['status']}',
-        onDeleted: () => controller.removeFilter('status'),
-      ));
+      chips.add(_chip(context,
+          icon: Icons.flag_outlined,
+          label: 'Status: ${f['status']}',
+          onDeleted: () => controller.removeFilter('status')));
     }
-
     if (f.containsKey('supplier') && f['supplier'].toString().isNotEmpty) {
-      chips.add(_chip(
-        context,
-        icon: Icons.business_outlined,
-        label: 'Supplier: ${f['supplier']}',
-        onDeleted: () => controller.removeFilter('supplier'),
-      ));
+      chips.add(_chip(context,
+          icon: Icons.business_outlined,
+          label: 'Supplier: ${f['supplier']}',
+          onDeleted: () => controller.removeFilter('supplier')));
     }
-
     if (f.containsKey('set_warehouse')) {
-      chips.add(_chip(
-        context,
-        icon: Icons.warehouse_outlined,
-        label: 'Warehouse: ${f['set_warehouse']}',
-        onDeleted: () => controller.removeFilter('set_warehouse'),
-      ));
+      chips.add(_chip(context,
+          icon: Icons.warehouse_outlined,
+          label: 'Warehouse: ${f['set_warehouse']}',
+          onDeleted: () => controller.removeFilter('set_warehouse')));
     }
-
     if (f.containsKey('posting_date')) {
       final val = f['posting_date'];
-      if (val is List &&
-          val.length >= 2 &&
-          val[0] == 'between' &&
-          val[1] is List &&
-          (val[1] as List).length >= 2) {
+      if (val is List && val.length >= 2 && val[0] == 'between' &&
+          val[1] is List && (val[1] as List).length >= 2) {
         final dates = val[1] as List;
-        chips.add(_chip(
-          context,
-          icon: Icons.date_range,
-          label: '${dates[0]}  →  ${dates[1]}',
-          onDeleted: () => controller.removeFilter('posting_date'),
-        ));
+        chips.add(_chip(context,
+            icon: Icons.date_range,
+            label: '${dates[0]}  →  ${dates[1]}',
+            onDeleted: () => controller.removeFilter('posting_date')));
       }
     }
-
     return chips;
   }
 

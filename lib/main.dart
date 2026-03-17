@@ -11,40 +11,47 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform; // Required for platform checks
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MultimaxApp());
+}
 
-  // Set up the database factory based on the platform
-  if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
-    // Initialise FFI
-    sqfliteFfiInit();
-    // Change the default factory for sqflite
-    databaseFactory = databaseFactoryFfi;
-  }
-  // For Android and iOS, the default factory is usually sufficient (unless you are replacing the default sqlite_flutter_lib)
+class MultimaxApp extends StatelessWidget {
+  const MultimaxApp({super.key});
 
-  // --- Initialise Services & Global Controllers ---
-  // Initialise SQLite Database Service first
-  await Get.putAsync<DatabaseService>(() => DatabaseService().init());
-  // Initialise API Provider (which now depends on DatabaseService)
-  await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+  @override
+  Future<Widget> build(BuildContext context) async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
-  Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
-  // Removed explicit put of HomeController to avoid dependency issues. 
-  // It will be initialised via HomeBinding when needed.
+    // Set up the database factory based on the platform
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
+      // Initialise FFI
+      sqfliteFfiInit();
+      // Change the default factory for sqflite
+      databaseFactory = databaseFactoryFfi;
+    }
+    // For Android and iOS, the default factory is usually sufficient (unless you are replacing the default sqlite_flutter_lib)
 
-  // --- Determine Initial Route ---
-  final authController = Get.find<AuthenticationController>();
-  await authController.checkAuthenticationStatus();
+    // --- Initialise Services & Global Controllers ---
+    // Initialise SQLite Database Service first
+    await Get.putAsync<DatabaseService>(() => DatabaseService().init());
+    // Initialise API Provider (which now depends on DatabaseService)
+    await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
 
-  // --- Define Custom Colors ---
-  const Color primaryColour = Color(0xFF870E18); // Deep Red
-  const Color secondaryColour = Color(0xFF25286F); // Navy Blue
-  const Color greyColour = Color(0xFF6F6D6E); // Grey
-  const Color backgroundColour = Color(0xFFF5F5F5); // Light Grey Background
+    await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+    Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
+    // Removed explicit put of HomeController to avoid dependency issues.
+    // It will be initialised via HomeBinding when needed.
 
-  runApp(
-    GetMaterialApp(
+    // --- Determine Initial Route ---
+    final authController = Get.find<AuthenticationController>();
+    await authController.checkAuthenticationStatus();
+
+    // --- Define Custom Colors ---
+    const Color primaryColour = Color(0xFF870E18); // Deep Red
+    const Color secondaryColour = Color(0xFF25286F); // Navy Blue
+    const Color greyColour = Color(0xFF6F6D6E); // Grey
+    const Color backgroundColour = Color(0xFFF5F5F5); // Light Grey Background
+
+    return GetMaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'KA-ML Fulfillment',
       initialRoute: authController.isAuthenticated.value ? AppRoutes.HOME : AppRoutes.LOGIN,
@@ -140,6 +147,6 @@ Future<void> main() async {
           }
         }
       },
-    ),
-  );
+    );
+  }
 }
