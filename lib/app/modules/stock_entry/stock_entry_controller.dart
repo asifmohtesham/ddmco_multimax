@@ -620,6 +620,8 @@ class StockEntryController extends GetxController {
                             const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final mr = materialRequestsForSelection[index];
+                          // Derive the correct Stock Entry Type from the MR type
+                          final String seType = _mapMrTypeToSeType(mr.materialRequestType);
                           return Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
@@ -640,7 +642,9 @@ class StockEntryController extends GetxController {
                                     arguments: {
                                       'name': '',
                                       'mode': 'new',
-                                      'stockEntryType': mr.materialRequestType,
+                                      // Use the mapped SE type so it always
+                                      // matches the Material Request type.
+                                      'stockEntryType': seType,
                                       'customReferenceNo': mr.name,
                                       'items': itemsList
                                     });
@@ -707,5 +711,20 @@ class StockEntryController extends GetxController {
       ),
       isScrollControlled: true,
     );
+  }
+
+  /// Maps a Frappe Material Request type to its corresponding Stock Entry type.
+  String _mapMrTypeToSeType(String mrType) {
+    switch (mrType) {
+      case 'Material Transfer':
+        return 'Material Transfer';
+      case 'Material Issue':
+        return 'Material Issue';
+      case 'Manufacture':
+        return 'Material Transfer for Manufacture';
+      case 'Material Receipt':
+      default:
+        return mrType;
+    }
   }
 }
