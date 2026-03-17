@@ -65,7 +65,8 @@ class DeliveryNoteItemCard extends StatelessWidget {
                               fontFeatures: [FontFeature.slashedZero()],
                             ),
                           ),
-                          if (item.itemName != null && item.itemName!.isNotEmpty)
+                          if (item.itemName != null &&
+                              item.itemName!.isNotEmpty)
                             TextSpan(
                               text: ': ${item.itemName}',
                               style: const TextStyle(
@@ -78,7 +79,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
                       ),
                     ),
 
-                    // variant_of badge
+                    // variant_of badge — prefixed so it reads naturally
                     if (item.customVariantOf != null &&
                         item.customVariantOf!.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -92,7 +93,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
                               color: Colors.blueGrey.shade200, width: 0.5),
                         ),
                         child: Text(
-                          item.customVariantOf!,
+                          'Variant of: ${item.customVariantOf!}',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.blueGrey.shade700,
@@ -110,10 +111,10 @@ class DeliveryNoteItemCard extends StatelessWidget {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // Qty chip
+                        // Qty chip — explicit label removes all ambiguity
                         _MetaChip(
-                          icon: Icons.straighten,
-                          label: NumberFormat('#,##0.##').format(item.qty),
+                          icon: Icons.numbers,
+                          label: 'Qty: ${NumberFormat('#,##0.##').format(item.qty)}',
                           color: Colors.indigo,
                         ),
 
@@ -121,7 +122,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
                         if (hasBatch)
                           _MetaChip(
                             icon: Icons.label_outline,
-                            label: item.batchNo!,
+                            label: 'Batch: ${item.batchNo!}',
                             color: Colors.blue,
                           ),
 
@@ -129,7 +130,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
                         if (hasRack)
                           _MetaChip(
                             icon: Icons.shelves,
-                            label: item.rack!,
+                            label: 'Rack: ${item.rack!}',
                             color: Colors.teal,
                           ),
                       ],
@@ -184,6 +185,9 @@ class DeliveryNoteItemCard extends StatelessWidget {
 }
 
 /// Compact icon+label chip used for qty, batch and rack metadata.
+/// The [label] should always include a human-readable prefix
+/// (e.g. 'Qty: 5', 'Batch: B-001') so the value is self-explanatory
+/// without relying on the icon alone.
 class _MetaChip extends StatelessWidget {
   final IconData icon;
   final String label;

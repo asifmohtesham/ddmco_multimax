@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
@@ -12,6 +13,10 @@ class ItemGroupCard extends StatelessWidget {
   final VoidCallback onToggle;
   final List<Widget> children;
 
+  /// ISO currency code (e.g. 'AED', 'USD').  Displayed as a symbol
+  /// prefix on the Rate chip so the value is unambiguous.
+  final String? currency;
+
   const ItemGroupCard({
     super.key,
     required this.isExpanded,
@@ -22,13 +27,34 @@ class ItemGroupCard extends StatelessWidget {
     required this.scannedQty,
     required this.onToggle,
     required this.children,
+    this.currency,
   });
+
+  /// Returns a short display symbol for common ISO codes;
+  /// falls back to the code itself so nothing is ever blank.
+  static String _currencySymbol(String? code) {
+    switch (code?.toUpperCase()) {
+      case 'AED': return 'AED';
+      case 'USD': return '\$';
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'SAR': return 'SAR';
+      case 'KWD': return 'KWD';
+      case 'QAR': return 'QAR';
+      default:    return code ?? '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final percent =
         (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
+
+    final currSymbol  = _currencySymbol(currency);
+    final rateDisplay = currSymbol.isEmpty
+        ? NumberFormat('#,##0.00').format(rate)
+        : '$currSymbol ${NumberFormat('#,##0.00').format(rate)}';
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
@@ -51,7 +77,6 @@ class ItemGroupCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title + status
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,26 +121,26 @@ class ItemGroupCard extends StatelessWidget {
             ),
           ),
 
-          // ── Stats row — always visible, not inside the collapsible ───────
+          // ── Stats row — always visible ───────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Row(
               children: [
                 _buildStatChip(
                   label: 'Required',
-                  value: totalQty.toStringAsFixed(0),
+                  value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
                   color: Colors.grey,
                 ),
                 const SizedBox(width: 12),
                 _buildStatChip(
                   label: 'Scanned',
-                  value: scannedQty.toStringAsFixed(0),
+                  value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
                   color: isCompleted ? Colors.green : Colors.orange,
                 ),
                 const SizedBox(width: 12),
                 _buildStatChip(
                   label: 'Rate',
-                  value: rate.toStringAsFixed(2),
+                  value: rateDisplay,
                   color: Colors.blueGrey,
                 ),
               ],
@@ -155,7 +180,7 @@ class ItemGroupCard extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: 15,
+            fontSize: 13,
             fontFamily: 'ShureTechMono',
             fontWeight: FontWeight.bold,
             color: color,

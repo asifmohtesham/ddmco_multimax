@@ -32,9 +32,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 onSave: controller.deliveryNote.value?.docstatus == 0
                     ? controller.saveDeliveryNote
                     : null,
-                // Reload is only useful when there are no local unsaved
-                // changes (dirty = true means the user would lose edits).
-                // Also hide it for new documents that haven't been persisted.
                 onReload: (controller.mode != 'new' &&
                         !controller.isDirty.value)
                     ? controller.reloadDocument
@@ -306,9 +303,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               }
 
               final currentExpandedKey = controller.expandedInvoice.value;
-              final posUpload = controller.posUpload.value;
-              final deliveryNoteItems =
+              final posUpload          = controller.posUpload.value;
+              final deliveryNoteItems  =
                   controller.deliveryNote.value?.items ?? [];
+              // Currency threaded down to ItemGroupCard for rate display
+              final currency =
+                  controller.deliveryNote.value?.currency;
 
               if (posUpload == null) {
                 if (deliveryNoteItems.isEmpty) {
@@ -334,7 +334,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 );
               }
 
-              final posItems = posUpload.items;
+              final posItems       = posUpload.items;
               final groupedDnItems = controller.groupedItems;
 
               final filteredItems = posItems.where((posItem) {
@@ -384,11 +384,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                     key: controller.itemKeys[expansionKey],
                     child: ItemGroupCard(
                       isExpanded: currentExpandedKey == expansionKey,
-                      serialNo: posItem.idx,
-                      itemName: posItem.itemName,
-                      rate: posItem.rate,
-                      totalQty: posItem.quantity,
+                      serialNo:   posItem.idx,
+                      itemName:   posItem.itemName,
+                      rate:       posItem.rate,
+                      totalQty:   posItem.quantity,
                       scannedQty: cumulativeQty,
+                      currency:   currency,
                       onToggle: () =>
                           controller.toggleInvoiceExpand(expansionKey),
                       children: dnItemsForThisPosItem.map((item) {
@@ -406,7 +407,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }),
           ),
 
-          // 3. Scanner — hidden while item form sheet is loading or open
+          // 3. Scanner
           Obx(() {
             if (controller.deliveryNote.value?.docstatus != 0)
               return const SizedBox.shrink();
