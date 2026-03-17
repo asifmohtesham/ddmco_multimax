@@ -15,7 +15,8 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-class PurchaseOrderFormController extends GetxController with OptimisticLockingMixin {
+class PurchaseOrderFormController extends GetxController
+    with OptimisticLockingMixin {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
@@ -33,50 +34,48 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
       name = args['name'] ?? '';
       mode = args['mode'] ?? 'view';
     } else if (args is String) {
-      // Handle ID passed directly (e.g., from Global Search)
       name = args;
       mode = 'view';
     } else {
-      // Fallback
       name = '';
       mode = 'new';
     }
   }
 
   var isLoading = true.obs;
-  var isSaving = false.obs;
+  var isSaving  = false.obs;
   var isScanning = false.obs;
 
   var isDirty = false.obs;
 
   // Track original state for dirty checks
-  String _originalJson = '';
+  String _originalJson   = '';
   String _originalStatus = 'Draft';
 
   var purchaseOrder = Rx<PurchaseOrder?>(null);
 
-  final supplierController = TextEditingController();
-  final dateController = TextEditingController();
-  final barcodeController = TextEditingController();
+  final supplierController       = TextEditingController();
+  final dateController           = TextEditingController();
+  final barcodeController        = TextEditingController();
 
-  var suppliers = <String>[].obs;
+  var suppliers          = <String>[].obs;
   var isFetchingSuppliers = false.obs;
 
   // Item Sheet State
   var isItemSheetOpen = false.obs;
-  var isSheetValid = false.obs;
+  var isSheetValid    = false.obs;
 
-  final bsQtyController = TextEditingController();
-  final bsRateController = TextEditingController();
+  final bsQtyController          = TextEditingController();
+  final bsRateController         = TextEditingController();
   final bsScheduleDateController = TextEditingController();
 
   // Metadata Observables
-  var bsItemOwner = RxnString();
-  var bsItemCreation = RxnString();
-  var bsItemModified = RxnString();
+  var bsItemOwner      = RxnString();
+  var bsItemCreation   = RxnString();
+  var bsItemModified   = RxnString();
   var bsItemModifiedBy = RxnString();
 
-  var sheetQty = 0.0.obs;
+  var sheetQty  = 0.0.obs;
   var sheetRate = 0.0.obs;
 
   double get sheetAmount => sheetQty.value * sheetRate.value;
@@ -87,7 +86,7 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
   String? currentItemNameKey;
 
   // Validation State Tracking
-  double _initialQty = 0.0;
+  double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
 
@@ -100,10 +99,7 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     super.onInit();
     fetchSuppliers();
 
-    supplierController.addListener(_checkForChanges);
-    dateController.addListener(_checkForChanges);
-
-    // Update validation on change
+    // Item sheet field listeners — always safe to attach immediately.
     bsQtyController.addListener(() {
       sheetQty.value = double.tryParse(bsQtyController.text) ?? 0.0;
       validateSheet();
@@ -121,14 +117,16 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
         if (_storageService.getAutoSubmitEnabled()) {
           final int delay = _storageService.getAutoSubmitDelay();
           _autoSubmitTimer = Timer(Duration(seconds: delay), () {
-            if (isSheetValid.value && isItemSheetOpen.value) {
-              submitItem();
-            }
+            if (isSheetValid.value && isItemSheetOpen.value) submitItem();
           });
         }
       }
     });
 
+    // NOTE: supplierController and dateController listeners are NOT
+    // attached here.  Each path (_initNewPO / fetchPO) attaches them
+    // only after the baseline (_originalJson) has been established,
+    // preventing a false dirty-check during initial population.
     if (mode == 'new') {
       _initNewPO();
     } else {
@@ -148,7 +146,10 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     super.onClose();
   }
 
-  // --- PopScope Logic ---
+  // ---------------------------------------------------------------------------
+  // PopScope
+  // ---------------------------------------------------------------------------
+
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -158,6 +159,10 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Sheet validation
+  // ---------------------------------------------------------------------------
+
   void validateSheet() {
     if (!isEditable) {
       isSheetValid.value = false;
@@ -165,8 +170,6 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     }
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-    // Rate can be 0, but usually implies cost. Allow 0 for FOC.
-    // Basic validation
     if (qty <= 0) {
       isSheetValid.value = false;
       return;
@@ -177,26 +180,32 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
       return;
     }
 
-    // Dirty check: Must differ from initial if editing
     bool isDirtySheet = false;
     if (currentItemNameKey != null) {
       final currentRate = double.tryParse(bsRateController.text) ?? 0;
-      if (qty != _initialQty) isDirtySheet = true;
-      if (currentRate != _initialRate) isDirtySheet = true;
+      if (qty != _initialQty)                        isDirtySheet = true;
+      if (currentRate != _initialRate)               isDirtySheet = true;
       if (bsScheduleDateController.text != _initialDate) isDirtySheet = true;
     } else {
-      isDirtySheet = true; // New items are always dirty
+      isDirtySheet = true; // new items are always dirty
     }
 
     isSheetValid.value = isDirtySheet;
   }
 
+  // ---------------------------------------------------------------------------
+  // Supplier fetch
+  // ---------------------------------------------------------------------------
+
   Future<void> fetchSuppliers() async {
     isFetchingSuppliers.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Supplier', limit: 0, fields: ['name']);
+      final response = await _apiProvider.getDocumentList(
+          'Supplier', limit: 0, fields: ['name']);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        suppliers.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        suppliers.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
       print('Error fetching suppliers: $e');
@@ -205,58 +214,90 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Initialisation helpers
+  // ---------------------------------------------------------------------------
+
+  /// Called for mode == 'new'.  Builds a blank PO, locks in the baseline,
+  /// then attaches the form-field listeners so any subsequent user edit
+  /// is correctly detected as dirty.
   void _initNewPO() {
     isLoading.value = false;
     final now = DateTime.now();
+
     purchaseOrder.value = PurchaseOrder(
-      name: 'New Purchase Order',
-      supplier: '',
+      name:            'New Purchase Order',
+      supplier:        '',
       transactionDate: DateFormat('yyyy-MM-dd').format(now),
-      grandTotal: 0.0,
-      currency: 'AED',
-      status: 'Not Saved', // Initial status for new doc
-      docstatus: 0,
-      modified: '',
-      creation: now.toString(),
-      items: [],
+      grandTotal:      0.0,
+      currency:        'AED',
+      status:          'Not Saved',
+      docstatus:       0,
+      modified:        '',
+      creation:        now.toString(),
+      items:           [],
     );
     dateController.text = DateFormat('yyyy-MM-dd').format(now);
 
-    isDirty.value = true;
-    _originalJson = '';
-    _originalStatus = 'Draft'; // Default server status will be Draft
+    // Baseline for a new doc: empty original so any change stays dirty.
+    _originalJson   = '';
+    _originalStatus = 'Draft';
+    isDirty.value   = true;
+
+    // Attach listeners AFTER baseline is set — changes from here are real.
+    supplierController.addListener(_checkForChanges);
+    dateController.addListener(_checkForChanges);
   }
 
+  /// Called for mode == 'view' / 'edit'.  Detaches listeners while
+  /// populating controllers from server data so the assignments do NOT
+  /// trigger _checkForChanges.  Re-attaches in finally{} after the
+  /// baseline has been locked in via _updateOriginalState().
   Future<void> fetchPO() async {
     isLoading.value = true;
+
+    // Detach before touching controllers — prevents false dirty signal
+    // while we write server values into the form fields.
+    supplierController.removeListener(_checkForChanges);
+    dateController.removeListener(_checkForChanges);
+
     try {
       final response = await _provider.getPurchaseOrder(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final po = PurchaseOrder.fromJson(response.data['data']);
         purchaseOrder.value = po;
 
+        // Silent population — listeners are detached.
         supplierController.text = po.supplier;
-        dateController.text = po.transactionDate;
+        dateController.text     = po.transactionDate;
 
+        // Lock in baseline BEFORE listeners are re-attached.
         _updateOriginalState(po);
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to load PO: $e');
     } finally {
+      // Always re-attach so subsequent user edits are tracked correctly.
+      supplierController.addListener(_checkForChanges);
+      dateController.addListener(_checkForChanges);
       isLoading.value = false;
     }
   }
 
   void _updateOriginalState(PurchaseOrder po) {
-    _originalJson = jsonEncode(po.toJson());
+    _originalJson   = jsonEncode(po.toJson());
     _originalStatus = po.status;
-    isDirty.value = false;
+    isDirty.value   = false;
   }
+
+  // ---------------------------------------------------------------------------
+  // Dirty / status tracking
+  // ---------------------------------------------------------------------------
 
   void _checkForChanges() {
     if (purchaseOrder.value == null) return;
 
-    // Always dirty if new
+    // New docs are always dirty; keep status as 'Not Saved'.
     if (mode == 'new') {
       isDirty.value = true;
       if (purchaseOrder.value!.status != 'Not Saved') {
@@ -265,27 +306,25 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
       return;
     }
 
-    // 1. Create a temporary object mirroring the current form state
-    //    CRITICAL: Use _originalStatus to isolate data changes from status changes
+    // Build a temp object using _originalStatus so data changes are
+    // isolated from status changes in the JSON comparison.
     final tempPO = PurchaseOrder(
-      name: purchaseOrder.value!.name,
-      supplier: supplierController.text,
+      name:            purchaseOrder.value!.name,
+      supplier:        supplierController.text,
       transactionDate: dateController.text,
-      grandTotal: purchaseOrder.value!.grandTotal,
-      currency: purchaseOrder.value!.currency,
-      status: _originalStatus, // Force original status for comparison
-      docstatus: purchaseOrder.value!.docstatus,
-      modified: purchaseOrder.value!.modified,
-      creation: purchaseOrder.value!.creation,
-      items: purchaseOrder.value!.items,
+      grandTotal:      purchaseOrder.value!.grandTotal,
+      currency:        purchaseOrder.value!.currency,
+      status:          _originalStatus,
+      docstatus:       purchaseOrder.value!.docstatus,
+      modified:        purchaseOrder.value!.modified,
+      creation:        purchaseOrder.value!.creation,
+      items:           purchaseOrder.value!.items,
     );
 
-    // 2. Compare against original JSON
     final currentJson = jsonEncode(tempPO.toJson());
-    final dirty = currentJson != _originalJson;
-    isDirty.value = dirty;
+    final dirty       = currentJson != _originalJson;
+    isDirty.value     = dirty;
 
-    // 3. Dynamically update Status Pill based on dirty state
     if (dirty && purchaseOrder.value!.status != 'Not Saved') {
       _updateStatusOnly('Not Saved');
     } else if (!dirty && purchaseOrder.value!.status == 'Not Saved') {
@@ -297,35 +336,40 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     if (purchaseOrder.value == null) return;
     final old = purchaseOrder.value!;
     purchaseOrder.value = PurchaseOrder(
-      name: old.name,
-      supplier: old.supplier,
+      name:            old.name,
+      supplier:        old.supplier,
       transactionDate: old.transactionDate,
-      grandTotal: old.grandTotal,
-      currency: old.currency,
-      status: newStatus,
-      docstatus: old.docstatus,
-      modified: old.modified,
-      creation: old.creation,
-      items: old.items,
+      grandTotal:      old.grandTotal,
+      currency:        old.currency,
+      status:          newStatus,
+      docstatus:       old.docstatus,
+      modified:        old.modified,
+      creation:        old.creation,
+      items:           old.items,
     );
   }
 
-  // 1. IMPLEMENT MIXIN
+  // ---------------------------------------------------------------------------
+  // OptimisticLockingMixin
+  // ---------------------------------------------------------------------------
+
   @override
   Future<void> reloadDocument() async {
     await fetchPO();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
+  // ---------------------------------------------------------------------------
+  // Scan
+  // ---------------------------------------------------------------------------
+
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
-      GlobalSnackbar.warning(message: 'Document is submitted and cannot be edited.');
+      GlobalSnackbar.warning(
+          message: 'Document is submitted and cannot be edited.');
       return;
     }
-
-    // 2. USE GUARD
     if (checkStaleAndBlock()) return;
-
     if (barcode.isEmpty) return;
     if (isItemSheetOpen.value) return;
 
@@ -338,11 +382,12 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
         _openItemSheet(
           code: item.itemCode,
           name: item.itemName,
-          uom: item.stockUom ?? 'Nos',
+          uom:  item.stockUom ?? 'Nos',
           rate: 0.0,
-          qty: 1.0,
+          qty:  1.0,
         );
-      } else if (result.type == ScanType.multiple && result.candidates != null) {
+      } else if (result.type == ScanType.multiple &&
+          result.candidates != null) {
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -350,16 +395,17 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
             onItemSelected: (item) => _openItemSheet(
               code: item.itemCode,
               name: item.itemName,
-              uom: item.stockUom ?? 'Nos',
+              uom:  item.stockUom ?? 'Nos',
               rate: 0.0,
-              qty: 1.0,
+              qty:  1.0,
             ),
           ),
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
         );
       } else {
-        GlobalSnackbar.error(message: result.message ?? 'Item not found');
+        GlobalSnackbar.error(
+            message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan failed: $e');
@@ -369,22 +415,24 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Item sheet
+  // ---------------------------------------------------------------------------
+
   void editItem(PurchaseOrderItem item) {
     if (!isEditable) return;
-
     _openItemSheet(
-        code: item.itemCode,
-        name: item.itemName,
-        uom: item.uom ?? '',
-        rate: item.rate,
-        qty: item.qty,
-        rowId: item.name,
-        scheduleDate: item.scheduleDate
+      code:         item.itemCode,
+      name:         item.itemName,
+      uom:          item.uom ?? '',
+      rate:         item.rate,
+      qty:          item.qty,
+      rowId:        item.name,
+      scheduleDate: item.scheduleDate,
     );
-    // Set after opening
-    bsItemOwner.value = item.owner;
-    bsItemCreation.value = item.creation;
-    bsItemModified.value = item.modified;
+    bsItemOwner.value      = item.owner;
+    bsItemCreation.value   = item.creation;
+    bsItemModified.value   = item.modified;
     bsItemModifiedBy.value = item.modifiedBy;
   }
 
@@ -397,26 +445,25 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     String? rowId,
     String? scheduleDate,
   }) {
-    itemFormKey = GlobalKey<FormState>();
-    currentItemCode = code;
-    currentItemName = name;
-    currentUom = uom;
+    itemFormKey        = GlobalKey<FormState>();
+    currentItemCode    = code;
+    currentItemName    = name;
+    currentUom         = uom;
     currentItemNameKey = rowId;
-    bsItemOwner.value = null; // Reset
-    bsItemCreation.value = null;
-    bsItemModified.value = null;
+    bsItemOwner.value      = null;
+    bsItemCreation.value   = null;
+    bsItemModified.value   = null;
     bsItemModifiedBy.value = null;
 
-    bsQtyController.text = qty.toStringAsFixed(0);
-    bsRateController.text = rate.toStringAsFixed(2);
-    // Set default date to today if new
-    bsScheduleDateController.text = scheduleDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+    bsQtyController.text          = qty.toStringAsFixed(0);
+    bsRateController.text         = rate.toStringAsFixed(2);
+    bsScheduleDateController.text =
+        scheduleDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    sheetQty.value = qty;
+    sheetQty.value  = qty;
     sheetRate.value = rate;
 
-    // Track initial values for dirty check
-    _initialQty = qty;
+    _initialQty  = qty;
     _initialRate = rate;
     _initialDate = bsScheduleDateController.text;
 
@@ -425,11 +472,12 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
 
     Get.bottomSheet(
       DraggableScrollableSheet(
-        initialChildSize: 0.6, // Increased height for new field
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
+        initialChildSize: 0.6,
+        minChildSize:     0.4,
+        maxChildSize:     0.9,
         builder: (context, scrollController) {
-          return PurchaseOrderItemFormSheet(scrollController: scrollController);
+          return PurchaseOrderItemFormSheet(
+              scrollController: scrollController);
         },
       ),
       isScrollControlled: true,
@@ -440,46 +488,45 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
 
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0);
-    bsQtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+    final newVal  = (current + delta).clamp(0.0, 999999.0);
+    bsQtyController.text =
+        newVal == 0 ? '' : newVal.toStringAsFixed(0);
   }
 
   void submitItem() async {
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
+    final qty  = double.tryParse(bsQtyController.text) ?? 0;
     final rate = double.tryParse(bsRateController.text) ?? 0;
-
     if (qty <= 0) return;
 
     final currentItems = purchaseOrder.value?.items.toList() ?? [];
 
-    // Create Item object
     final newItem = PurchaseOrderItem(
-      name: currentItemNameKey,
-      itemCode: currentItemCode!,
-      itemName: currentItemName!,
-      qty: qty,
-      receivedQty: 0.0,
-      rate: rate,
-      amount: qty * rate,
-      uom: currentUom,
+      name:         currentItemNameKey,
+      itemCode:     currentItemCode!,
+      itemName:     currentItemName!,
+      qty:          qty,
+      receivedQty:  0.0,
+      rate:         rate,
+      amount:       qty * rate,
+      uom:          currentUom,
       scheduleDate: bsScheduleDateController.text,
     );
 
     if (currentItemNameKey != null) {
-      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
+      final index =
+          currentItems.indexWhere((i) => i.name == currentItemNameKey);
       if (index != -1) {
-        // Merge with existing to preserve other fields
         final existing = currentItems[index];
         currentItems[index] = PurchaseOrderItem(
-          name: existing.name,
-          itemCode: existing.itemCode,
-          itemName: existing.itemName,
-          qty: qty,
-          receivedQty: existing.receivedQty,
-          rate: rate,
-          amount: qty * rate,
-          uom: existing.uom,
-          description: existing.description,
+          name:         existing.name,
+          itemCode:     existing.itemCode,
+          itemName:     existing.itemName,
+          qty:          qty,
+          receivedQty:  existing.receivedQty,
+          rate:         rate,
+          amount:       qty * rate,
+          uom:          existing.uom,
+          description:  existing.description,
           scheduleDate: bsScheduleDateController.text,
         );
       }
@@ -489,16 +536,17 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
 
     final oldPO = purchaseOrder.value!;
     purchaseOrder.value = PurchaseOrder(
-      name: oldPO.name,
-      supplier: supplierController.text,
+      name:            oldPO.name,
+      supplier:        supplierController.text,
       transactionDate: dateController.text,
-      grandTotal: currentItems.fold(0.0, (sum, i) => sum + i.amount),
-      currency: oldPO.currency,
-      status: oldPO.status,
+      grandTotal:
+          currentItems.fold(0.0, (sum, i) => sum + i.amount),
+      currency:  oldPO.currency,
+      status:    oldPO.status,
       docstatus: oldPO.docstatus,
-      modified: oldPO.modified,
-      creation: oldPO.creation,
-      items: currentItems,
+      modified:  oldPO.modified,
+      creation:  oldPO.creation,
+      items:     currentItems,
     );
 
     Get.back();
@@ -508,9 +556,8 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
 
   void deleteItem(PurchaseOrderItem item) {
     if (!isEditable) return;
-
     GlobalDialog.showConfirmation(
-      title: 'Remove Item?',
+      title:   'Remove Item?',
       message: 'Remove ${item.itemCode} from the order?',
       onConfirm: () {
         final currentItems = purchaseOrder.value?.items.toList() ?? [];
@@ -518,16 +565,17 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
 
         final oldPO = purchaseOrder.value!;
         purchaseOrder.value = PurchaseOrder(
-          name: oldPO.name,
-          supplier: supplierController.text,
+          name:            oldPO.name,
+          supplier:        supplierController.text,
           transactionDate: dateController.text,
-          grandTotal: currentItems.fold(0.0, (sum, i) => sum + i.amount),
-          currency: oldPO.currency,
-          status: oldPO.status,
+          grandTotal:
+              currentItems.fold(0.0, (sum, i) => sum + i.amount),
+          currency:  oldPO.currency,
+          status:    oldPO.status,
           docstatus: oldPO.docstatus,
-          modified: oldPO.modified,
-          creation: oldPO.creation,
-          items: currentItems,
+          modified:  oldPO.modified,
+          creation:  oldPO.creation,
+          items:     currentItems,
         );
         _checkForChanges();
         GlobalSnackbar.success(message: 'Item removed');
@@ -535,21 +583,24 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Save
+  // ---------------------------------------------------------------------------
+
   Future<void> savePurchaseOrder() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
-
-    // 3. USE GUARD
     if (checkStaleAndBlock()) return;
 
     isSaving.value = true;
 
     final data = {
-      'supplier': supplierController.text,
+      'supplier':         supplierController.text,
       'transaction_date': dateController.text,
-      // 4. ADD MODIFIED TIMESTAMP
-      'modified': purchaseOrder.value?.modified,
-      'items': purchaseOrder.value?.items.map((e) => e.toJson()).toList(),
+      'modified':         purchaseOrder.value?.modified,
+      'items': purchaseOrder.value?.items
+          .map((e) => e.toJson())
+          .toList(),
     };
 
     try {
@@ -557,7 +608,8 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
           ? await _provider.createPurchaseOrder(data)
           : await _provider.updatePurchaseOrder(name, data);
 
-      if (response.statusCode == 200 && response.data['data'] != null) {
+      if (response.statusCode == 200 &&
+          response.data['data'] != null) {
         final saved = PurchaseOrder.fromJson(response.data['data']);
         purchaseOrder.value = saved;
         _updateOriginalState(saved);
@@ -566,7 +618,6 @@ class PurchaseOrderFormController extends GetxController with OptimisticLockingM
         GlobalSnackbar.error(message: 'Failed to save');
       }
     } catch (e) {
-      // 5. HANDLE CONFLICT
       if (handleVersionConflict(e)) return;
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
