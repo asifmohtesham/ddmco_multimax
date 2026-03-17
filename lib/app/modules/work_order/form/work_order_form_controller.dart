@@ -352,7 +352,13 @@ class WorkOrderFormController extends GetxController {
                     onTap: () {
                       ctrl.text = filtered[i];
                       markDirty();
-                      Get.back();
+                      // Use NavigatorState.pop() directly to avoid the
+                      // SnackbarController LateInitializationError:
+                      // Get.back() calls Get.closeCurrentSnackbar() which
+                      // accesses a late final field on an uninitialised
+                      // SnackbarController when a snackbar is queued but
+                      // has not yet started its animation.
+                      Get.key.currentState!.pop();
                     },
                   ),
                 );
@@ -403,7 +409,8 @@ class WorkOrderFormController extends GetxController {
                   leading: const Icon(Icons.account_tree_outlined),
                   title: Text(bomOptions[i]),
                   onTap: () {
-                    Get.back();
+                    // Same fix: bypass Get.back() / snackbar queue.
+                    Get.key.currentState!.pop();
                     onBomSelected(bomOptions[i]);
                   },
                 ),
