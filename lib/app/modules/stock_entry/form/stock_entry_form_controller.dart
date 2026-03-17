@@ -244,8 +244,38 @@ class StockEntryFormController extends GetxController {
   // Exposed for BarcodeInputWidget
   void scanBarcode(String code) => _handleGlobalScan(code);
 
+  /// Returns true if the warehouse requirements for [type] are already satisfied.
+  /// When a requirement is missing, shows a guiding snackbar and returns false.
+  bool _validateWarehouseForScan() {
+    final type = selectedStockEntryType.value;
+    final needsSource = ['Material Transfer', 'Material Issue'].contains(type);
+    final needsTarget = ['Material Transfer', 'Material Receipt'].contains(type);
+
+    if (needsSource && (selectedFromWarehouse.value == null || selectedFromWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+        message: 'Please select a Source Warehouse before scanning items.',
+      );
+      barcodeController.clear();
+      return false;
+    }
+
+    if (needsTarget && (selectedToWarehouse.value == null || selectedToWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+        message: 'Please select a Target Warehouse before scanning items.',
+      );
+      barcodeController.clear();
+      return false;
+    }
+
+    return true;
+  }
+
   Future<void> _processNewItemScan(String barcode) async {
     if (isScanning.value) return;
+
+    // Guard: warehouse must be set before we accept any scan
+    if (!_validateWarehouseForScan()) return;
+
     isScanning.value = true;
 
     try {
@@ -372,6 +402,11 @@ class StockEntryFormController extends GetxController {
         }
 
         isDirty.value = true;
+
+        // Close the item bottom sheet after confirming deletion
+        if (isItemSheetOpen.value) {
+          Get.back();
+        }
       },
     );
   }
