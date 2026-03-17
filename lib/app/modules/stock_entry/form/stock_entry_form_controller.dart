@@ -246,6 +246,12 @@ class StockEntryFormController extends GetxController
     ever(selectedStockEntryType, (_) => _markDirty());
     ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
+    // When the item-level source warehouse is resolved (e.g. via rack scan
+    // that happens after the batch was already validated), re-fetch the
+    // batch-wise balance scoped to that warehouse so the balance chip and
+    // qty ceiling reflect the correct warehouse stock.
+    ever(bsItemSourceWarehouse, (_) => _updateBatchBalance());
+
     // Only mark dirty when the text actually changes from the server-loaded
     // snapshot. This prevents a mere tap (focus) or programmatic setText from
     // flipping isDirty, and makes the field safe to render as readOnly.
@@ -468,6 +474,49 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Warehouse gate-keeping
+  // ---------------------------------------------------------------------------
+
+  /// Returns true if a Source Warehouse is required for the current entry type.
+  bool get _requiresSourceWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Issue';
+  }
+
+  /// Returns true if a Target Warehouse is required for the current entry type.
+  bool get _requiresTargetWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Receipt';
+  }
+
+  /// Shows a friendly guidance snackbar + navigates user to Details tab
+  /// (index 0) so they can set the missing warehouse.  Returns true if
+  /// scanning must be blocked.
+  bool _enforceWarehouseBeforeScan() {
+    if (_requiresSourceWarehouse &&
+        (selectedFromWarehouse.value == null ||
+            selectedFromWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message:
+              'Please set the Source Warehouse (Details tab) before scanning.');
+      return true;
+    }
+    if (_requiresTargetWarehouse &&
+        (selectedToWarehouse.value == null ||
+            selectedToWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message:
+              'Please set the Target Warehouse (Details tab) before scanning.');
+      return true;
+    }
+    return false;
+  }
+
   bool _validateScanContext(ScanResult result) {
     if (entrySource == StockEntrySource.materialRequest) {
       if (mrReferenceItems.isEmpty) return true;
@@ -681,6 +730,11 @@ class StockEntryFormController extends GetxController
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return false;
     if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
+    // Qty must not exceed the warehouse-scoped batch balance.
+    // This is the primary guard for the "batch has only X Nos in this
+    // warehouse" scenario — it applies regardless of whether the balance
+    // was loaded before or after the rack/warehouse was resolved.
+    if (bsBatchBalance.value > 0 && qty > bsBatchBalance.value) return false;
     return true;
   }
 
@@ -928,6 +982,9 @@ class StockEntryFormController extends GetxController
       return;
     }
 
+    // Block scanning if the required warehouse has not been selected yet.
+    if (_enforceWarehouseBeforeScan()) return;
+
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
@@ -1148,6 +1205,21 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  /// Resolves the effective warehouse for the batch-balance lookup using the
+  /// same cascade applied everywhere else in the form:
+  ///   1. Item-level source warehouse (set directly on the item row)
+  ///   2. Derived warehouse (resolved from a rack scan, e.g. "WH-01-A1")
+  ///   3. Document-level From Warehouse (header field)
+  ///
+  /// Passing a warehouse scopes the Frappe getBatchWiseBalance call to that
+  /// specific warehouse, so the balance reflects only the stock available in
+  /// the warehouse the user is actually issuing/transferring from — not the
+  /// global batch balance across all warehouses.
+  String? get _effectiveBatchWarehouse =>
+      bsItemSourceWarehouse.value ??
+      derivedSourceWarehouse.value ??
+      selectedFromWarehouse.value;
+
   Future<void> _updateBatchBalance() async {
     final batch = bsBatchController.text.trim();
     if (batch.isEmpty || currentItemCode.isEmpty) {
@@ -1156,9 +1228,10 @@ class StockEntryFormController extends GetxController
       return;
     }
     isLoadingBatchBalance.value = true;
-    final String? warehouse = bsItemSourceWarehouse.value ??
-        derivedSourceWarehouse.value ??
-        selectedFromWarehouse.value;
+    // Always scope the balance to the resolved warehouse so that a batch with
+    // 12 Nos globally but only 5 Nos in the selected warehouse correctly caps
+    // the entered qty at 5.
+    final String? warehouse = _effectiveBatchWarehouse;
     try {
       final response = await _apiProvider.getBatchWiseBalance(
           currentItemCode, batch,
@@ -1246,6 +1319,20 @@ class StockEntryFormController extends GetxController
         }
         await _updateAvailableStock();
         await _updateBatchBalance();
+
+        // After fetching the warehouse-scoped batch balance, validate qty.
+        // The balance is now scoped to the effective warehouse (item-level →
+        // derived from rack → document-level), so this correctly enforces
+        // the "Batch has 12 Nos globally but only X Nos in *this* warehouse"
+        // constraint.
+        final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
+        if (bsBatchBalance.value > 0 && enteredQty > bsBatchBalance.value) {
+          batchError.value =
+              'Qty ($enteredQty) exceeds Batch balance (${bsBatchBalance.value.toStringAsFixed(0)}) in warehouse';
+          GlobalSnackbar.error(
+              message:
+                  'Entered qty exceeds available Batch balance of ${bsBatchBalance.value.toStringAsFixed(0)} in warehouse');
+        }
       } else {
         bsIsBatchValid.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
@@ -1299,7 +1386,33 @@ class StockEntryFormController extends GetxController
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
+          // _updateAvailableStock() is already triggered reactively via
+          // ever(bsItemSourceWarehouse). Also re-fetch the batch balance now
+          // that the warehouse is known — this handles the case where the
+          // batch was scanned first and the balance was fetched without a
+          // warehouse filter (or with the wrong warehouse).
           await _updateAvailableStock();
+          await _updateBatchBalance();
+
+          // Re-run qty validation so the batchError/sheet-valid state
+          // reflects the freshly scoped balance immediately.
+          final double enteredQty =
+              double.tryParse(bsQtyController.text) ?? 0.0;
+          if (bsBatchBalance.value > 0 &&
+              enteredQty > bsBatchBalance.value) {
+            batchError.value =
+                'Qty ($enteredQty) exceeds Batch balance (${bsBatchBalance.value.toStringAsFixed(0)}) in warehouse';
+            GlobalSnackbar.error(
+                message:
+                    'Entered qty exceeds available Batch balance of ${bsBatchBalance.value.toStringAsFixed(0)} in warehouse');
+          } else {
+            // Clear any stale batch-balance error now that the scoped
+            // balance confirms the qty is within limits.
+            if (batchError.value != null &&
+                batchError.value!.contains('Batch balance')) {
+              batchError.value = null;
+            }
+          }
         } else {
           isTargetRackValid.value = true;
         }
@@ -1357,6 +1470,11 @@ class StockEntryFormController extends GetxController
         });
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
+        // Close the item form sheet if it is currently open so the deleted
+        // item's sheet does not linger behind after confirmation.
+        if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
+          Get.back();
+        }
       },
     );
   }
@@ -1389,6 +1507,9 @@ class StockEntryFormController extends GetxController
     if (bsMaxQty.value > 0) limit = bsMaxQty.value;
     if (bsValidationMaxQty.value > 0 &&
         bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
+    // Stepper must also respect the batch balance ceiling.
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
 
     if (newVal >= 0 && newVal <= limit) {
       bsQtyController.text =
