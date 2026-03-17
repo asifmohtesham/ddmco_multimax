@@ -479,7 +479,10 @@ class StockEntryFormController extends GetxController
   // ---------------------------------------------------------------------------
 
   /// Returns true if a Source Warehouse is required for the current entry type.
-  bool get _requiresSourceWarehouse {
+  ///
+  /// Exposed as package-visible (no leading underscore) so it can be unit-tested
+  /// in test/unit/stock_entry/warehouse_requirement_test.dart.
+  bool get requiresSourceWarehouse {
     final t = selectedStockEntryType.value;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
@@ -487,7 +490,10 @@ class StockEntryFormController extends GetxController
   }
 
   /// Returns true if a Target Warehouse is required for the current entry type.
-  bool get _requiresTargetWarehouse {
+  ///
+  /// Exposed as package-visible (no leading underscore) so it can be unit-tested
+  /// in test/unit/stock_entry/warehouse_requirement_test.dart.
+  bool get requiresTargetWarehouse {
     final t = selectedStockEntryType.value;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
@@ -497,8 +503,11 @@ class StockEntryFormController extends GetxController
   /// Shows a friendly guidance snackbar + navigates user to Details tab
   /// (index 0) so they can set the missing warehouse.  Returns true if
   /// scanning must be blocked.
-  bool _enforceWarehouseBeforeScan() {
-    if (_requiresSourceWarehouse &&
+  ///
+  /// Exposed as package-visible so it can be unit-tested in
+  /// test/unit/stock_entry/warehouse_requirement_test.dart.
+  bool enforceWarehouseBeforeScan() {
+    if (requiresSourceWarehouse &&
         (selectedFromWarehouse.value == null ||
             selectedFromWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
@@ -506,7 +515,7 @@ class StockEntryFormController extends GetxController
               'Please set the Source Warehouse (Details tab) before scanning.');
       return true;
     }
-    if (_requiresTargetWarehouse &&
+    if (requiresTargetWarehouse &&
         (selectedToWarehouse.value == null ||
             selectedToWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
@@ -718,11 +727,11 @@ class StockEntryFormController extends GetxController
     log(name: 'Sheet Qty', _isValidQty().toString());
     log(name: 'Sheet Batch', _isValidBatch().toString());
     log(name: 'Sheet Context', _isValidContext().toString());
-    log(name: 'Sheet Racks', _isValidRacks().toString());
+    log(name: 'Sheet Racks', isValidRacks().toString());
     isSheetValid.value = _isValidQty() &&
         _isValidBatch() &&
         _isValidContext() &&
-        _isValidRacks() &&
+        isValidRacks() &&
         _hasChanges();
   }
 
@@ -758,7 +767,18 @@ class StockEntryFormController extends GetxController
     return true;
   }
 
-  bool _isValidRacks() {
+  /// Validates rack fields based on the current Stock Entry type.
+  ///
+  /// Rules:
+  ///  - Source rack required + validated for: Material Issue, Material Transfer,
+  ///    Material Transfer for Manufacture.
+  ///  - Target rack required + validated for: Material Receipt, Material Transfer,
+  ///    Material Transfer for Manufacture.
+  ///  - Source and Target racks must differ when both are required.
+  ///
+  /// Exposed as package-visible (no leading underscore) so it can be unit-tested
+  /// in test/unit/stock_entry/rack_validation_test.dart.
+  bool isValidRacks() {
     final type = selectedStockEntryType.value;
     final requiresSource = [
       'Material Issue',
@@ -983,7 +1003,7 @@ class StockEntryFormController extends GetxController
     }
 
     // Block scanning if the required warehouse has not been selected yet.
-    if (_enforceWarehouseBeforeScan()) return;
+    if (enforceWarehouseBeforeScan()) return;
 
     isScanning.value = true;
     try {
