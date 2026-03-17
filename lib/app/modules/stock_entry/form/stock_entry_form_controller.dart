@@ -1451,10 +1451,31 @@ class StockEntryFormController extends GetxController
     validateSheet();
   }
 
+  /// Removes [uniqueName] from the entry after user confirmation.
+  ///
+  /// The item form sheet is closed **before** the confirmation dialog is shown
+  /// so that only one bottom sheet is on the Navigator stack at a time.
+  /// Previously, Get.back() inside [GlobalDialog.showConfirmation]'s onConfirm
+  /// dismissed the confirmation sheet and left Get.isBottomSheetOpen == false,
+  /// so the subsequent Get.back() guard never fired and the item sheet stayed
+  /// open behind the deleted row.
   void deleteItem(String uniqueName) {
     final item = stockEntry.value?.items
         .firstWhereOrNull((i) => i.name == uniqueName);
     if (item == null) return;
+
+    // Close the item form sheet first so it is not on the stack when the
+    // confirmation dialog opens. isItemSheetOpen is reset by _openSheet()'s
+    // whenComplete callback once the sheet finishes animating out.
+    if (isItemSheetOpen.value) {
+      final ctx = _sheetContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      } else if (Get.isBottomSheetOpen == true) {
+        Get.back();
+      }
+    }
+
     GlobalDialog.showConfirmation(
       title: 'Remove Item?',
       message:
@@ -1467,9 +1488,6 @@ class StockEntryFormController extends GetxController
         });
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
-        if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
-          Get.back();
-        }
       },
     );
   }
