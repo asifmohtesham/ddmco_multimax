@@ -11,6 +11,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class StockEntryController extends GetxController {
@@ -165,10 +166,19 @@ class StockEntryController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch stock entries');
+        GlobalDialog.showError(
+          title: 'Could not load Stock Entries',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
+          onRetry: () => fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load Stock Entries',
+        message: e.toString(),
+        onRetry: () => fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
+      );
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -234,10 +244,19 @@ class StockEntryController extends GetxController {
         final entry = StockEntry.fromJson(response.data['data']);
         _detailedEntriesCache[name] = entry;
       } else {
-        Get.snackbar('Error', 'Failed to fetch entry details');
+        GlobalDialog.showError(
+          title: 'Could not load entry details',
+          message: 'Failed to fetch details for $name. '
+              'Check your connection and try again.',
+          onRetry: () => _fetchAndCacheEntryDetails(name),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load entry details',
+        message: e.toString(),
+        onRetry: () => _fetchAndCacheEntryDetails(name),
+      );
     } finally {
       isLoadingDetails.value = false;
     }
@@ -283,6 +302,7 @@ class StockEntryController extends GetxController {
       _allFetchedPosUploads = sortedList;
       posUploadsForSelection.value = _allFetchedPosUploads;
     } catch (e) {
+      // Selection sheet is still interactive — a snackbar is appropriate here.
       Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
@@ -320,6 +340,7 @@ class StockEntryController extends GetxController {
         materialRequestsForSelection.value = _allFetchedMaterialRequests;
       }
     } catch (e) {
+      // Selection sheet is still interactive — a snackbar is appropriate here.
       Get.snackbar('Error', 'Failed to fetch Material Requests: $e');
     } finally {
       isFetchingMaterialRequests.value = false;
