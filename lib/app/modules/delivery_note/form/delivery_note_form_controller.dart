@@ -18,6 +18,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 
 class DeliveryNoteFormController extends GetxController with OptimisticLockingMixin {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -25,6 +26,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final StorageService _storageService = Get.find<StorageService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+
+  Worker? _scanWorker;
 
   var itemFormKey = GlobalKey<FormState>();
   final String name = Get.arguments['name'];
@@ -151,6 +155,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     ever(bsRackBalance, (_) => validateSheet());
     ever(bsIsRackValid, (_) => validateSheet());
 
+    // Wire DataWedge stream — receives ALL scans whether sheet is open or not.
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isNotEmpty) scanBarcode(code);
+    });
+
     _setupAutoSubmit();
 
     if (mode == 'new') {
@@ -168,6 +177,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   @override
   void onClose() {
+    _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsBatchController.dispose();
@@ -742,16 +752,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _initialSerial = null;
 
       if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
-        // Batch barcode was scanned and balance already resolved outside the
-        // sheet — lock immediately without a second round-trip.
         log('[DN:initBottomSheet] → batchNo+maxQty present → locking field immediately: batchNo=$batchNo maxQty=$maxQty');
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
         bsBatchBalance.value = maxQty;
       } else if (batchNo != null && batchNo.isNotEmpty) {
-        // batchNo seeded (e.g. from item fallback in scanBarcode) but balance
-        // was not pre-fetched — trigger validation now so the field is
-        // resolved before the user interacts with the sheet.
         log('[DN:initBottomSheet] → batchNo present but maxQty=0 → scheduling validateAndFetchBatch("$batchNo")');
         Future.microtask(() => validateAndFetchBatch(batchNo));
       } else {
@@ -1248,20 +1253,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       if (result.type == ScanType.rack && result.rackId != null) {
         log('[DN:scanBarcode] → RACK: unlocking then setting bsRackController="${result.rackId}"');
-        // FIX: unlock first so the read-only TextField accepts the new value
         resetRackValidation();
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if (result.type == ScanType.batch && result.batchNo != null) {
         log('[DN:scanBarcode] → BATCH: unlocking then setting bsBatchController="${result.batchNo}"');
-        // FIX: unlock first so the read-only TextField accepts the new value
         resetBatchValidation();
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.item) {
         final fallbackBatch = result.batchNo ?? barcode.trim();
         log('[DN:scanBarcode] → ITEM fallback: unlocking then setting fallbackBatch=$fallbackBatch');
-        // FIX: unlock first so the read-only TextField accepts the new value
         resetBatchValidation();
         bsBatchController.text = fallbackBatch;
         validateAndFetchBatch(fallbackBatch);
