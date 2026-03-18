@@ -742,10 +742,18 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _initialSerial = null;
 
       if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
-        log('[DN:initBottomSheet] → batchNo+maxQty present → locking field: batchNo=$batchNo maxQty=$maxQty');
+        // Batch barcode was scanned and balance already resolved outside the
+        // sheet — lock immediately without a second round-trip.
+        log('[DN:initBottomSheet] → batchNo+maxQty present → locking field immediately: batchNo=$batchNo maxQty=$maxQty');
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
         bsBatchBalance.value = maxQty;
+      } else if (batchNo != null && batchNo.isNotEmpty) {
+        // batchNo seeded (e.g. from item fallback in scanBarcode) but balance
+        // was not pre-fetched — trigger validation now so the field is
+        // resolved before the user interacts with the sheet.
+        log('[DN:initBottomSheet] → batchNo present but maxQty=0 → scheduling validateAndFetchBatch("$batchNo")');
+        Future.microtask(() => validateAndFetchBatch(batchNo));
       } else {
         log('[DN:initBottomSheet] → no batch/maxQty → field unlocked (batchNo=$batchNo maxQty=$maxQty)');
         bsBatchBalance.value = 0.0;
