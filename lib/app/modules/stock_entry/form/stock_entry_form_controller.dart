@@ -1276,7 +1276,7 @@ class StockEntryFormController extends GetxController
         final message = response.data['message'];
         final List<dynamic> result = message['result'] ?? [];
         double total = 0.0;
-        for (final row in result) {
+        for (final row in result.sublist(0, result.length-1)) {
           if (row is Map) {
             final dynamic val = row['balance_qty'] ??
                 row['bal_qty'] ??
