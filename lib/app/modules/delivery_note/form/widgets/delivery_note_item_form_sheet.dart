@@ -1,60 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 
 class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
   final ScrollController? scrollController;
 
   const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
-
-  /// Renders a balance chip below a field.
-  ///
-  /// [forceShow] — show the chip even when [balance] is 0 (e.g. batch is
-  /// valid but balance hasn't finished loading yet, or it genuinely is 0).
-  Widget _balanceChip({
-    required double balance,
-    required bool isLoading,
-    required Color color,
-    String prefix = 'Avail:',
-    bool forceShow = false,
-  }) {
-    if (isLoading) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 4.0, left: 4.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
-            ),
-            const SizedBox(width: 6),
-            Text('Fetching balance...',
-                style: TextStyle(fontSize: 11, color: color)),
-          ],
-        ),
-      );
-    }
-    if (!forceShow && balance <= 0) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4.0, left: 4.0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.4)),
-        ),
-        child: Text(
-          '$prefix ${balance % 1 == 0 ? balance.toInt() : balance}',
-          style: TextStyle(
-              fontSize: 11, color: color, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +76,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   hintText: 'Select Serial',
                 ),
                 items: controller.bsAvailableInvoiceSerialNos.map((s) {
-                  return DropdownMenuItem(value: s, child: Text('Serial #$s'));
+                  return DropdownMenuItem(value: s, child: Text('Serial #\$s'));
                 }).toList(),
                 onChanged: (value) {
                   controller.bsInvoiceSerialNo.value = value;
@@ -153,8 +106,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     style: const TextStyle(fontFamily: 'ShureTechMono'),
                     decoration: InputDecoration(
                       hintText: 'Enter or scan batch',
-                      // Mirror Stock Entry: show bsBatchError as helperText
-                      // with red colour when present.
                       helperText: controller.bsBatchError.value,
                       helperStyle: TextStyle(
                         color: hasError ? Colors.red : Colors.grey,
@@ -231,9 +182,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       if (!isValid) controller.validateAndFetchBatch(val);
                     },
                   ),
-                  // Balance chip — shown automatically once batch is valid,
-                  // exactly like Stock Entry's BalanceChip below BatchField.
-                  Obx(() => _balanceChip(
+                  Obx(() => BalanceChip(
                         balance: controller.bsBatchBalance.value,
                         isLoading: controller.isLoadingBatchBalance.value,
                         color: Colors.purple,
@@ -304,7 +253,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                       ),
                       onFieldSubmitted: (val) => controller.validateRack(val),
                     )),
-                Obx(() => _balanceChip(
+                Obx(() => BalanceChip(
                       balance: controller.bsRackBalance.value,
                       isLoading: controller.isLoadingRackBalance.value,
                       color: Colors.orange,
