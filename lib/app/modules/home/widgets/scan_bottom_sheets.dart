@@ -83,7 +83,7 @@ class ItemDetailSheet extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => Get.back(),
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Close'),
               ),
             ),
@@ -211,7 +211,7 @@ class RackBalanceSheet extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () => Get.back(),
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Done'),
               ),
             ),
@@ -270,7 +270,7 @@ class RackContentsSheet extends StatelessWidget {
                         ],
                       ),
                       IconButton(
-                        onPressed: () => Get.back(),
+                        onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close),
                         style: IconButton.styleFrom(backgroundColor: Colors.grey
                             .shade100),
@@ -463,7 +463,7 @@ class MultiItemSelectionSheet extends StatelessWidget {
                           Text('${items.length} Items Found', style: Theme.of(context).textTheme.titleLarge),
                         ],
                       ),
-                      IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                      IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
                     ],
                   ),
                 ),
@@ -487,7 +487,7 @@ class MultiItemSelectionSheet extends StatelessWidget {
 
                       return GestureDetector(
                         onTap: () {
-                          Get.back();
+                          Navigator.of(context).pop();
                           onItemSelected(item);
                         },
                         child: Container(
@@ -522,7 +522,7 @@ class MultiItemSelectionSheet extends StatelessWidget {
                                         right: 8,
                                         top: 8,
                                         child: GestureDetector(
-                                          onTap: () => _showEnlargedImage(imageUrl),
+                                          onTap: () => _showEnlargedImage(context, imageUrl),
                                           child: Container(
                                             padding: const EdgeInsets.all(6),
                                             decoration: BoxDecoration(
@@ -612,33 +612,35 @@ class MultiItemSelectionSheet extends StatelessWidget {
     );
   }
 
-  void _showEnlargedImage(String url) {
+  void _showEnlargedImage(BuildContext parentContext, String url) {
     Get.dialog(
-      Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            InteractiveViewer(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(url),
+      Builder(
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              InteractiveViewer(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(url),
+                  ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 40,
-              right: 20,
-              child: IconButton(
-                onPressed: () => Get.back(),
-                icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                style: IconButton.styleFrom(backgroundColor: Colors.black45),
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
