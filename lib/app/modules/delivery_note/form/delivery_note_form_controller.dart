@@ -117,31 +117,23 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   String currentItemCode = '';
   String currentItemName = '';
-
-  // FIX: Renamed from currentScannedEan to be explicit: stores the 8-digit
-  // EAN-8 from the last outside-sheet scan (or derived from batchNo in edit
-  // mode). Batch No format is EAN8-SUFFIX ('20003609-XXX').
-  // MUST NOT fall back to currentItemCode (7 digits) — that produces wrong
-  // batch names. Pass null when empty so processScan returns an error.
   String currentScannedEan = '';
 
   Timer? _autoSubmitTimer;
 
-  // Read-only lock helper (mirrors Stock Entry's bsIsBatchReadOnly pattern).
+  // Read-only lock helper.
   var bsIsBatchReadOnly = false.obs;
 
   // ---------------------------------------------------------------------------
   // Single source of truth for the qty ceiling.
-  // Returns the minimum of every non-zero balance signal.
   // ---------------------------------------------------------------------------
   double get effectiveMaxQty {
     double limit = 999999.0;
-    if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
-      limit = bsMaxQty.value;
-    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
-      limit = bsBatchBalance.value;
-    if (bsIsRackValid.value && bsRackBalance.value > 0 && bsRackBalance.value < limit)
-      limit = bsRackBalance.value;
+    if (bsMaxQty.value > 0 && bsMaxQty.value < limit) limit = bsMaxQty.value;
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit) limit = bsBatchBalance.value;
+    if (bsIsRackValid.value && bsRackBalance.value > 0 && bsRackBalance.value < limit) limit = bsRackBalance.value;
+    log('[DN:effectiveMaxQty] bsMaxQty=${bsMaxQty.value} bsBatchBalance=${bsBatchBalance.value} '
+        'bsIsRackValid=${bsIsRackValid.value} bsRackBalance=${bsRackBalance.value} → limit=$limit');
     return limit;
   }
 
@@ -192,7 +184,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       if (valid && isItemSheetOpen.value && deliveryNote.value?.docstatus == 0) {
         if (_storageService.getAutoSubmitEnabled()) {
           final int delay = _storageService.getAutoSubmitDelay();
+          log('[DN:_setupAutoSubmit] isSheetValid=$valid → scheduling auto-submit in ${delay}s');
           _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
+            log('[DN:_setupAutoSubmit] timer fired: isSheetValid=${isSheetValid.value} isItemSheetOpen=${isItemSheetOpen.value}');
             if (isSheetValid.value && isItemSheetOpen.value) {
               isAddingItem.value = true;
               await Future.delayed(const Duration(milliseconds: 500));
@@ -325,15 +319,27 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Submit sheet → item written locally then saved
+  // ---------------------------------------------------------------------------
   Future<void> submitSheet() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     final rack = bsRackController.text;
     final batch = bsBatchController.text;
     final invoiceSerial = bsInvoiceSerialNo.value;
 
+    log('[DN:submitSheet] ── SUBMIT ──────────────────────────────────────────');
+    log('[DN:submitSheet] qty=$qty rack="$rack" batch="$batch" invoiceSerial=$invoiceSerial');
+    log('[DN:submitSheet] editingItemName=${editingItemName.value} currentItemCode=$currentItemCode currentItemName=$currentItemName');
+    log('[DN:submitSheet] isSheetValid=${isSheetValid.value} isFormDirty=${isFormDirty.value}');
+    log('[DN:submitSheet] bsIsBatchValid=${bsIsBatchValid.value} bsIsRackValid=${bsIsRackValid.value}');
+    log('[DN:submitSheet] bsBatchBalance=${bsBatchBalance.value} bsRackBalance=${bsRackBalance.value} bsMaxQty=${bsMaxQty.value}');
+
     if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
+      log('[DN:submitSheet] → branch: UPDATE existing item "${editingItemName.value}"');
       _updateItemLocally(editingItemName.value!, qty, rack, batch, invoiceSerial);
     } else {
+      log('[DN:submitSheet] → branch: ADD new item');
       _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
     }
 
@@ -352,27 +358,41 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Update an existing item row locally
+  // ---------------------------------------------------------------------------
   void _updateItemLocally(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    log('[DN:_updateItemLocally] itemNameID=$itemNameID qty=$qty rack="$rack" batchNo=$batchNo invoiceSerial=$invoiceSerial');
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final index = currentItems.indexWhere((item) => item.name == itemNameID);
+    log('[DN:_updateItemLocally] found at index=$index (total items=${currentItems.length})');
     if (index != -1) {
       final existingItem = currentItems[index];
+      log('[DN:_updateItemLocally] existing: itemCode=${existingItem.itemCode} qty=${existingItem.qty} batchNo=${existingItem.batchNo} rack=${existingItem.rack}');
       currentItems[index] = existingItem.copyWith(
         qty: qty,
         rack: rack,
         batchNo: batchNo,
         customInvoiceSerialNumber: invoiceSerial,
       );
+      log('[DN:_updateItemLocally] ✅ updated row: qty=$qty rack="$rack" batchNo=$batchNo');
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
       });
       _triggerItemFeedback(existingItem.itemCode, invoiceSerial ?? '0');
+    } else {
+      log('[DN:_updateItemLocally] ❌ item NOT FOUND in list — no update performed');
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Add a new item row locally
+  // ---------------------------------------------------------------------------
   void _addItemLocally(String itemCode, String itemName, double qty, String rack, String? batchNo, String? invoiceSerial) {
+    log('[DN:_addItemLocally] itemCode=$itemCode qty=$qty rack="$rack" batchNo=$batchNo invoiceSerial=$invoiceSerial');
     final currentItems = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
+    log('[DN:_addItemLocally] serial=$serial  existing items count=${currentItems.length}');
 
     final existingIndex = currentItems.indexWhere((item) =>
         item.itemCode == itemCode &&
@@ -380,15 +400,20 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         (item.rack ?? '') == rack &&
         (item.customInvoiceSerialNumber ?? '0') == serial);
 
+    log('[DN:_addItemLocally] duplicate check → existingIndex=$existingIndex');
+
     if (existingIndex != -1) {
       final existing = currentItems[existingIndex];
-      currentItems[existingIndex] = existing.copyWith(qty: existing.qty + qty);
+      final newQty = existing.qty + qty;
+      log('[DN:_addItemLocally] ♻️ merging: old qty=${existing.qty} + $qty = $newQty');
+      currentItems[existingIndex] = existing.copyWith(qty: newQty);
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
       });
       _triggerItemFeedback(itemCode, serial);
     } else {
       final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      log('[DN:_addItemLocally] ✅ adding new row: tempId=$tempId itemCode=$itemCode qty=$qty rack="$rack" batchNo=$batchNo serial=$serial');
       final newItem = DeliveryNoteItem(
         name: tempId,
         itemCode: itemCode,
@@ -404,6 +429,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       deliveryNote.update((val) {
         val?.items.assignAll(currentItems);
       });
+      log('[DN:_addItemLocally] deliveryNote items count after add=${deliveryNote.value?.items.length}');
       _triggerItemFeedback(itemCode, serial);
     }
   }
@@ -438,6 +464,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     try {
       final String docName = deliveryNote.value?.name ?? '';
       final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
+      log('[DN:saveDeliveryNote] docName="$docName" isNew=$isNew');
 
       final Map<String, dynamic> data = deliveryNote.value!.toJson();
       data['set_warehouse'] = setWarehouse.value;
@@ -457,8 +484,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           ? await _apiProvider.createDocument('Delivery Note', data)
           : await _apiProvider.updateDocument('Delivery Note', docName, data);
 
+      log('[DN:saveDeliveryNote] API response status=${response.statusCode}');
+
       if (response.statusCode == 200 && response.data['data'] != null) {
         final savedNote = DeliveryNote.fromJson(response.data['data']);
+        log('[DN:saveDeliveryNote] ✅ saved: name=${savedNote.name} items=${savedNote.items.length}');
         deliveryNote.value = savedNote;
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
@@ -466,17 +496,20 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           GlobalSnackbar.success(message: 'Delivery Note Saved');
         });
       } else {
+        log('[DN:saveDeliveryNote] ❌ failed: ${response.data}');
         GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
       }
     } on DioException catch (e) {
       if (handleVersionConflict(e)) return;
       final errorMsg = e.response?.data.toString() ?? e.message ?? '';
+      log('[DN:saveDeliveryNote] ❌ DioException: $errorMsg');
       if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
         customerError.value = 'Customer not found in the system';
       }
       GlobalSnackbar.error(message: 'Save failed: ${e.message}');
     } catch (e) {
       final errorMsg = e.toString();
+      log('[DN:saveDeliveryNote] ❌ Exception: $errorMsg');
       if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
         customerError.value = 'Customer not found in the system';
       }
@@ -560,30 +593,59 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     return posUpload.value!.items.map((item) => item.idx.toString()).toList();
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Validate sheet state — called after every field change
+  // ---------------------------------------------------------------------------
   void validateSheet() {
     bool valid = true;
     rackError.value = null;
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-    if (qty <= 0) valid = false;
-
     final max = effectiveMaxQty;
-    if (max < 999999.0 && qty > max) valid = false;
 
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
-    if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
+    log('[DN:validateSheet] ── CHECK ────────────────────────────────────────');
+    log('[DN:validateSheet] qty=$qty max=$max');
+    log('[DN:validateSheet] batch="${bsBatchController.text}" bsIsBatchValid=${bsIsBatchValid.value} bsIsBatchReadOnly=${bsIsBatchReadOnly.value}');
+    log('[DN:validateSheet] rack="${bsRackController.text}" bsIsRackValid=${bsIsRackValid.value}');
+    log('[DN:validateSheet] invoiceSerial=${bsInvoiceSerialNo.value} availableSerials=${bsAvailableInvoiceSerialNos}');
+    log('[DN:validateSheet] editingItemName=${editingItemName.value}');
+
+    if (qty <= 0) {
+      log('[DN:validateSheet] ✗ qty<=0');
+      valid = false;
+    }
+
+    if (max < 999999.0 && qty > max) {
+      log('[DN:validateSheet] ✗ qty=$qty exceeds max=$max');
+      valid = false;
+    }
+
+    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) {
+      log('[DN:validateSheet] ✗ batch field non-empty but bsIsBatchValid=false');
+      valid = false;
+    }
+
+    if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) {
+      log('[DN:validateSheet] ✗ rack field non-empty but bsIsRackValid=false');
+      valid = false;
+    }
 
     final selectedRack = bsRackController.text;
     if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
       final availableInRack = rackStockMap[selectedRack] ?? 0.0;
+      log('[DN:validateSheet] rack stock check: availableInRack[$selectedRack]=$availableInRack');
       if (availableInRack > 0 && qty > availableInRack) {
         valid = false;
         rackError.value = 'Only $availableInRack available in $selectedRack';
+        log('[DN:validateSheet] ✗ qty=$qty exceeds rack stock=$availableInRack');
       }
     }
 
     if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
-      if (bsAvailableInvoiceSerialNos.isNotEmpty) valid = false;
+      if (bsAvailableInvoiceSerialNos.isNotEmpty) {
+        log('[DN:validateSheet] ✗ invoiceSerial not set but posUpload has serials');
+        valid = false;
+      }
     }
 
     bool dirty = false;
@@ -593,14 +655,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
     isFormDirty.value = dirty;
 
-    if (editingItemName.value != null && !dirty) valid = false;
+    if (editingItemName.value != null && !dirty) {
+      log('[DN:validateSheet] ✗ edit mode but form not dirty');
+      valid = false;
+    }
 
+    log('[DN:validateSheet] → isSheetValid=$valid dirty=$dirty');
     isSheetValid.value = valid;
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: initBottomSheet — seeds all sheet state before opening
+  // ---------------------------------------------------------------------------
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty,
       {DeliveryNoteItem? editingItem}) {
-    log('[DN:initBottomSheet] itemCode=$itemCode batchNo=$batchNo maxQty=$maxQty editing=${editingItem != null}');
+    log('[DN:initBottomSheet] ── INIT ─────────────────────────────────────────');
+    log('[DN:initBottomSheet] itemCode=$itemCode itemName="$itemName" batchNo=$batchNo maxQty=$maxQty editing=${editingItem != null}');
 
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
@@ -628,7 +698,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingRackBalance.value = false;
 
     if (editingItem != null) {
-      log('[DN:initBottomSheet] → EDIT branch: batchNo=${editingItem.batchNo} rack=${editingItem.rack}');
+      log('[DN:initBottomSheet] → EDIT branch: batchNo=${editingItem.batchNo} rack=${editingItem.rack} qty=${editingItem.qty} serial=${editingItem.customInvoiceSerialNumber}');
       bsItemOwner.value = editingItem.owner;
       bsItemCreation.value = editingItem.creation;
       bsItemModified.value = editingItem.modified;
@@ -650,12 +720,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsIsRackValid.value = (editingItem.rack != null && editingItem.rack!.isNotEmpty);
 
       bsMaxQty.value = maxQty;
+      log('[DN:initBottomSheet] EDIT seeds: bsIsBatchValid=${bsIsBatchValid.value} bsIsRackValid=${bsIsRackValid.value} bsMaxQty=$maxQty');
     } else {
-      log('[DN:initBottomSheet] → NEW branch: resetting readOnly flags');
-      // FIX: Always reset the read-only lock and valid flag at the start of a
-      // new-item sheet. Without this, stale `true` state from the previous
-      // sheet carries over and makes the TextFormField read-only before the
-      // scanned batchNo can be written into bsBatchController.
+      log('[DN:initBottomSheet] → NEW branch: resetting all flags');
       bsIsBatchReadOnly.value = false;
       bsIsBatchValid.value = false;
 
@@ -680,10 +747,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         bsIsBatchReadOnly.value = true;
         bsBatchBalance.value = maxQty;
       } else {
-        log('[DN:initBottomSheet] → no batch/maxQty → field unlocked');
+        log('[DN:initBottomSheet] → no batch/maxQty → field unlocked (batchNo=$batchNo maxQty=$maxQty)');
         bsBatchBalance.value = 0.0;
       }
     }
+
+    log('[DN:initBottomSheet] state after seeding: bsBatchController="${bsBatchController.text}" bsRackController="${bsRackController.text}" bsQtyController="${bsQtyController.text}"');
+    log('[DN:initBottomSheet] bsIsBatchValid=${bsIsBatchValid.value} bsIsBatchReadOnly=${bsIsBatchReadOnly.value} bsIsRackValid=${bsIsRackValid.value}');
+    log('[DN:initBottomSheet] invoiceSerial=${bsInvoiceSerialNo.value} setWarehouse=${setWarehouse.value} bsItemWarehouse=${bsItemWarehouse.value}');
 
     validateSheet();
     _fetchAllRackStocks();
@@ -694,9 +765,16 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isItemSheetOpen.value = true;
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Fetch all rack stocks for current item+warehouse+batch
+  // ---------------------------------------------------------------------------
   Future<void> _fetchAllRackStocks() async {
     final warehouse = bsItemWarehouse.value ?? setWarehouse.value;
-    if (warehouse == null || warehouse.isEmpty) return;
+    log('[DN:_fetchAllRackStocks] itemCode=$currentItemCode warehouse=$warehouse batch="${bsBatchController.text}"');
+    if (warehouse == null || warehouse.isEmpty) {
+      log('[DN:_fetchAllRackStocks] ⚠️ warehouse is null/empty — skipping');
+      return;
+    }
 
     try {
       final response = await _apiProvider.getStockBalance(
@@ -704,6 +782,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         warehouse: warehouse,
         batchNo: bsBatchController.text.isNotEmpty ? bsBatchController.text : null,
       );
+
+      log('[DN:_fetchAllRackStocks] API status=${response.statusCode}');
 
       if (response.statusCode == 200 && response.data['message'] != null) {
         final result = response.data['message']['result'];
@@ -722,22 +802,33 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
             }
           }
 
+          log('[DN:_fetchAllRackStocks] rack map: $tempMap');
           rackStockMap.assignAll(tempMap);
           rackStockTooltip.value =
               tooltipLines.isNotEmpty ? tooltipLines.join('\n') : 'No stock in racks';
 
           if (bsIsRackValid.value && bsRackController.text.isNotEmpty) {
             bsRackBalance.value = tempMap[bsRackController.text] ?? 0.0;
+            log('[DN:_fetchAllRackStocks] updated bsRackBalance=${bsRackBalance.value} for rack=${bsRackController.text}');
           }
+        } else {
+          log('[DN:_fetchAllRackStocks] result is empty or not a List');
         }
+      } else {
+        log('[DN:_fetchAllRackStocks] ⚠️ unexpected response: ${response.data}');
       }
     } catch (e) {
+      log('[DN:_fetchAllRackStocks] ❌ Exception: $e');
       debugPrint('Error fetching rack stocks: $e');
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Validate batch + fetch balance
+  // ---------------------------------------------------------------------------
   Future<void> validateAndFetchBatch(String batchNo) async {
-    log('[DN:validateAndFetchBatch] called with batchNo=$batchNo currentItemCode=$currentItemCode');
+    log('[DN:validateAndFetchBatch] ── BATCH ────────────────────────────────────');
+    log('[DN:validateAndFetchBatch] batchNo=$batchNo currentItemCode=$currentItemCode currentScannedEan=$currentScannedEan');
     log('[DN:validateAndFetchBatch] setWarehouse=${setWarehouse.value} bsItemWarehouse=${bsItemWarehouse.value}');
     if (batchNo.isEmpty) {
       log('[DN:validateAndFetchBatch] EARLY EXIT: batchNo is empty');
@@ -761,13 +852,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       if (batchResponse.data['data'] == null ||
           (batchResponse.data['data'] as List).isEmpty) {
-        log('[DN:validateAndFetchBatch] Batch NOT FOUND in list → throwing');
+        log('[DN:validateAndFetchBatch] ❌ Batch NOT FOUND for name=$batchNo item=$currentItemCode → throwing');
         throw Exception('Batch not found');
       }
 
       final batchData = batchResponse.data['data'][0];
       final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-      log('[DN:validateAndFetchBatch] pkgQty=$pkgQty');
+      log('[DN:validateAndFetchBatch] pkgQty=$pkgQty → ${pkgQty > 0 ? "overriding qty" : "keeping current qty"}');
       if (pkgQty > 0) {
         bsQtyController.text =
             pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
@@ -777,15 +868,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       String? determinedWarehouse = setWarehouse.value;
       if (bsRackController.text.isNotEmpty) {
+        log('[DN:validateAndFetchBatch] rack field non-empty ("${bsRackController.text}") → looking up warehouse from rack');
         try {
           final rackRes = await _apiProvider.getDocument('Rack', bsRackController.text);
           if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
             determinedWarehouse = rackRes.data['data']['warehouse'] ?? determinedWarehouse;
+            log('[DN:validateAndFetchBatch] warehouse from rack: $determinedWarehouse');
           }
         } catch (_) {}
       }
 
-      log('[DN:validateAndFetchBatch] determinedWarehouse=$determinedWarehouse');
+      log('[DN:validateAndFetchBatch] calling getBatchWiseBalance: itemCode=$currentItemCode batch=$batchNo warehouse=$determinedWarehouse');
 
       final balanceResponse = await _apiProvider.getBatchWiseBalance(
         currentItemCode,
@@ -805,9 +898,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         for (final row in result) {
           if (row is Map) {
             final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
-            fetchedBatchQty += (val as num?)?.toDouble() ?? 0.0;
+            final double rowQty = (val as num?)?.toDouble() ?? 0.0;
+            log('[DN:validateAndFetchBatch]   Map row val=$val → $rowQty');
+            fetchedBatchQty += rowQty;
           } else if (row is List) {
-            if (row.isNotEmpty && row[0] is String) continue;
+            if (row.isNotEmpty && row[0] is String) {
+              log('[DN:validateAndFetchBatch]   skipping header row: $row');
+              continue;
+            }
             final cols = message['columns'];
             if (cols is List) {
               int idx = -1;
@@ -824,7 +922,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
                 }
               }
               if (idx >= 0 && idx < row.length) {
-                fetchedBatchQty += (row[idx] as num?)?.toDouble() ?? 0.0;
+                final double rowQty = (row[idx] as num?)?.toDouble() ?? 0.0;
+                log('[DN:validateAndFetchBatch]   List row col[$idx]=$rowQty');
+                fetchedBatchQty += rowQty;
+              } else {
+                log('[DN:validateAndFetchBatch]   ⚠️ balance qty column not found in cols');
               }
             }
           }
@@ -845,7 +947,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       batchInfoTooltip.value = sb.toString().trim();
 
       if (fetchedBatchQty > 0) {
-        log('[DN:validateAndFetchBatch] ✅ batch valid, locking field');
+        log('[DN:validateAndFetchBatch] ✅ batch valid, locking field, focusing rack');
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
         bsBatchError.value = null;
@@ -856,9 +958,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       }
 
       final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
+      log('[DN:validateAndFetchBatch] qty check: enteredQty=$enteredQty fetchedBatchQty=$fetchedBatchQty');
       if (fetchedBatchQty > 0 && enteredQty > fetchedBatchQty) {
         bsBatchError.value =
             'Qty ($enteredQty) exceeds batch balance (${fetchedBatchQty.toStringAsFixed(0)})';
+        log('[DN:validateAndFetchBatch] ⚠️ qty exceeds balance → ${bsBatchError.value}');
       }
     } catch (e) {
       log('[DN:validateAndFetchBatch] ❌ EXCEPTION: $e');
@@ -871,11 +975,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     } finally {
       isValidatingBatch.value = false;
       isLoadingBatchBalance.value = false;
+      log('[DN:validateAndFetchBatch] finally: bsIsBatchValid=${bsIsBatchValid.value} bsBatchBalance=${bsBatchBalance.value}');
       validateSheet();
     }
   }
 
   void resetBatchValidation() {
+    log('[DN:resetBatchValidation] resetting batch state');
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
     bsBatchBalance.value = 0.0;
@@ -883,9 +989,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     validateSheet();
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Validate rack
+  // ---------------------------------------------------------------------------
   Future<void> validateRack(String rack) async {
-    log('[DN:validateRack] called with rack=$rack');
+    log('[DN:validateRack] ── RACK ──────────────────────────────────────────────');
+    log('[DN:validateRack] rack="$rack" currentItemCode=$currentItemCode setWarehouse=${setWarehouse.value}');
     if (rack.isEmpty) {
+      log('[DN:validateRack] rack empty → clearing state');
       bsIsRackValid.value = false;
       bsItemWarehouse.value = null;
       bsRackBalance.value = 0.0;
@@ -918,7 +1029,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         await _fetchAllRackStocks();
 
         bsRackBalance.value = rackStockMap[rack] ?? 0.0;
-        log('[DN:validateRack] ✅ rack valid, balance=${bsRackBalance.value}');
+        log('[DN:validateRack] ✅ rack valid, balance=${bsRackBalance.value}  rackStockMap keys=${rackStockMap.keys.toList()}');
       } else {
         log('[DN:validateRack] ❌ rack not found in API response');
         bsIsRackValid.value = false;
@@ -933,11 +1044,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     } finally {
       isValidatingRack.value = false;
       isLoadingRackBalance.value = false;
+      log('[DN:validateRack] finally: bsIsRackValid=${bsIsRackValid.value} bsRackBalance=${bsRackBalance.value}');
       validateSheet();
     }
   }
 
   void resetRackValidation() {
+    log('[DN:resetRackValidation] resetting rack state');
     bsIsRackValid.value = false;
     bsRackBalance.value = 0.0;
     validateSheet();
@@ -949,11 +1062,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     if (newQty < 0) newQty = 0;
     final limit = effectiveMaxQty;
     if (limit < 999999.0 && newQty > limit) newQty = limit;
+    log('[DN:adjustSheetQty] amount=$amount old=$currentQty new=$newQty limit=$limit');
     bsQtyController.text = newQty.toStringAsFixed(0);
     validateSheet();
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Open edit sheet for existing item
+  // ---------------------------------------------------------------------------
   Future<void> editItem(DeliveryNoteItem item) async {
+    log('[DN:editItem] ── EDIT ──────────────────────────────────────────────────');
+    log('[DN:editItem] itemCode=${item.itemCode} name=${item.name} batchNo=${item.batchNo} rack=${item.rack} qty=${item.qty}');
     loadingForItemName.value = item.name;
     isLoadingItemEdit.value = true;
     double fetchedQty = 0.0;
@@ -961,11 +1080,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingBatchBalance.value = true;
     isLoadingRackBalance.value = true;
 
-    // FIX: Derive EAN-8 context from the existing batchNo (format: EAN8-SUFFIX).
-    // This ensures that if the operator rescans a batch suffix while editing,
-    // processScan receives the correct 8-digit EAN-8 as contextItemCode.
-    // Without this, currentScannedEan stays empty (from a prior outside scan)
-    // and the inside-sheet path passes null → operator gets an unhelpful error.
     if (item.batchNo != null && item.batchNo!.contains('-')) {
       currentScannedEan = item.batchNo!.split('-').first;
     } else {
@@ -976,31 +1090,44 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     try {
       if (item.batchNo != null) {
         String? targetWh = setWarehouse.value;
+        log('[DN:editItem] batchNo present → fetching balance. initial targetWh=$targetWh');
         if (item.rack != null && item.rack!.isNotEmpty) {
+          log('[DN:editItem] rack present ("${item.rack}") → deriving warehouse from rack API');
           try {
             final rackRes = await _apiProvider.getDocument('Rack', item.rack!);
             if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
               targetWh = rackRes.data['data']['warehouse'];
+              log('[DN:editItem] targetWh from rack API: $targetWh');
             }
-          } catch (_) {}
+          } catch (_) {
+            log('[DN:editItem] ⚠️ rack API failed, keeping targetWh=$targetWh');
+          }
         }
 
+        log('[DN:editItem] calling getBatchWiseBalance: itemCode=${item.itemCode} batchNo=${item.batchNo} warehouse=$targetWh');
         final balanceResponse = await _apiProvider.getBatchWiseBalance(
           item.itemCode,
           item.batchNo!,
           warehouse: targetWh,
         );
+        log('[DN:editItem] balance response status=${balanceResponse.statusCode} message=${balanceResponse.data[\'message\']}');
 
         if (balanceResponse.statusCode == 200 &&
             balanceResponse.data['message'] != null) {
           final message = balanceResponse.data['message'];
           final List<dynamic> result = message['result'] ?? [];
+          log('[DN:editItem] result rows=${result.length}');
           for (final row in result) {
             if (row is Map) {
               final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
-              fetchedQty += (val as num?)?.toDouble() ?? 0.0;
+              final double rowQty = (val as num?)?.toDouble() ?? 0.0;
+              log('[DN:editItem]   Map row val=$val → $rowQty');
+              fetchedQty += rowQty;
             } else if (row is List) {
-              if (row.isNotEmpty && row[0] is String) continue;
+              if (row.isNotEmpty && row[0] is String) {
+                log('[DN:editItem]   skipping header row');
+                continue;
+              }
               final cols = message['columns'];
               if (cols is List) {
                 int idx = -1;
@@ -1017,14 +1144,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
                   }
                 }
                 if (idx >= 0 && idx < row.length) {
-                  fetchedQty += (row[idx] as num?)?.toDouble() ?? 0.0;
+                  final double rowQty = (row[idx] as num?)?.toDouble() ?? 0.0;
+                  log('[DN:editItem]   List row col[$idx]=$rowQty');
+                  fetchedQty += rowQty;
+                } else {
+                  log('[DN:editItem]   ⚠️ balance qty column not found');
                 }
               }
             }
           }
         }
+        log('[DN:editItem] fetchedQty=$fetchedQty');
+      } else {
+        log('[DN:editItem] batchNo is null → skipping balance fetch, fetchedQty stays 0');
       }
     } catch (e) {
+      log('[DN:editItem] ❌ EXCEPTION during balance fetch: $e — defaulting fetchedQty=999');
       fetchedQty = 999;
     } finally {
       bsIsLoadingBatch.value = false;
@@ -1034,14 +1169,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       loadingForItemName.value = null;
     }
 
+    log('[DN:editItem] calling initBottomSheet with fetchedQty=$fetchedQty');
     initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty,
         editingItem: item);
 
     bsBatchBalance.value = fetchedQty;
     if (item.rack != null && item.rack!.isNotEmpty) {
       bsRackBalance.value = rackStockMap[item.rack] ?? 0.0;
+      log('[DN:editItem] bsRackBalance set to ${bsRackBalance.value} for rack=${item.rack}');
     }
 
+    log('[DN:editItem] opening bottomSheet');
     await Get.bottomSheet(
       _FadeSlideSheet(
         child: DraggableScrollableSheet(
@@ -1060,6 +1198,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       exitBottomSheetDuration: const Duration(milliseconds: 250),
     );
 
+    log('[DN:editItem] bottomSheet closed → resetting isItemSheetOpen + editingItemName');
     isItemSheetOpen.value = false;
     editingItemName.value = null;
   }
@@ -1077,8 +1216,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     return true;
   }
 
+  // ---------------------------------------------------------------------------
+  // STEP: Handle barcode scan (outside or inside sheet)
+  // ---------------------------------------------------------------------------
   Future<void> scanBarcode(String barcode) async {
-    log('[DN:scanBarcode] ▶ barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value} isScanning=${isScanning.value}');
+    log('[DN:scanBarcode] ── SCAN ────────────────────────────────────────────────');
+    log('[DN:scanBarcode] barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value} isScanning=${isScanning.value}');
     if (barcode.isEmpty) return;
     if (checkStaleAndBlock()) return;
     if (!_validateHeaderBeforeScan()) {
@@ -1089,41 +1232,34 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     if (isItemSheetOpen.value) {
       barcodeController.clear();
 
-      // FIX: Use the 8-digit EAN-8 as context — NEVER fall back to
-      // currentItemCode (7 digits). That would cause processScan to build
-      // a wrong '7digit-SUFFIX' batch name instead of 'EAN8-SUFFIX'.
-      // Pass null when currentScannedEan is empty so processScan returns
-      // ScanType.error and the operator gets a clear prompt.
       final String? contextEan = currentScannedEan.isNotEmpty ? currentScannedEan : null;
-      log('[DN:scanBarcode] inside-sheet path. contextEan=$contextEan');
+      log('[DN:scanBarcode] inside-sheet: contextEan=$contextEan currentItemCode=$currentItemCode');
 
       final result = await _scanService.processScan(barcode, contextItemCode: contextEan);
-      log('[DN:scanBarcode] processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode} message=${result.message}');
+      log('[DN:scanBarcode] processScan → type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode} message=${result.message}');
 
       if (result.type == ScanType.rack && result.rackId != null) {
-        log('[DN:scanBarcode] → RACK branch: setting bsRackController=${result.rackId}');
+        log('[DN:scanBarcode] → RACK: setting bsRackController="${result.rackId}"');
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if (result.type == ScanType.batch && result.batchNo != null) {
-        log('[DN:scanBarcode] → BATCH branch: setting bsBatchController=${result.batchNo}');
+        log('[DN:scanBarcode] → BATCH: setting bsBatchController="${result.batchNo}"');
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.item) {
         final fallbackBatch = result.batchNo ?? barcode.trim();
-        log('[DN:scanBarcode] → ITEM fallback branch: fallbackBatch=$fallbackBatch');
+        log('[DN:scanBarcode] → ITEM fallback: fallbackBatch=$fallbackBatch');
         bsBatchController.text = fallbackBatch;
         validateAndFetchBatch(fallbackBatch);
       } else if (result.type == ScanType.error) {
-        log('[DN:scanBarcode] → ERROR branch: ${result.message}');
-        // When contextEan was null it means the operator hasn't scanned the
-        // item EAN-8 yet. Give a clear, actionable message.
+        log('[DN:scanBarcode] → ERROR: contextEan=$contextEan message=${result.message}');
         if (contextEan == null) {
           GlobalSnackbar.error(message: 'Please scan the item EAN barcode first, then scan the batch suffix.');
         } else {
           GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
         }
       } else {
-        log('[DN:scanBarcode] ⚠️ UNHANDLED result type=${result.type} — no branch matched, doing nothing');
+        log('[DN:scanBarcode] ⚠️ UNHANDLED type=${result.type}');
       }
       return;
     }
@@ -1132,11 +1268,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
-      log('[DN:scanBarcode] outside processScan result: type=${result.type} batchNo=${result.batchNo} itemCode=${result.itemData?.itemCode}');
+      log('[DN:scanBarcode] outside processScan → type=${result.type} batchNo=${result.batchNo} itemCode=${result.itemData?.itemCode} rawCode=${result.rawCode}');
 
       if (result.isSuccess && result.itemData != null) {
-        // FIX: Store the EAN-8 (8 digits) from the outside scan so the
-        // inside-sheet path can use it as context for batch suffix scans.
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
@@ -1148,12 +1282,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         double maxQty = 0.0;
 
         if (result.batchNo != null) {
+          log('[DN:scanBarcode] outside → batchNo present, fetching balance for itemCode=${itemData.itemCode} batchNo=${result.batchNo} warehouse=${setWarehouse.value}');
           try {
             final balanceResponse = await _apiProvider.getBatchWiseBalance(
               itemData.itemCode,
               result.batchNo!,
               warehouse: setWarehouse.value,
             );
+            log('[DN:scanBarcode] outside balance status=${balanceResponse.statusCode}');
             if (balanceResponse.statusCode == 200 &&
                 balanceResponse.data['message']?['result'] != null) {
               final message = balanceResponse.data['message'];
@@ -1187,6 +1323,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
               }
             }
           } catch (_) {
+            log('[DN:scanBarcode] outside ⚠️ balance fetch failed → maxQty=6');
             maxQty = 6.0;
           }
         }
@@ -1217,6 +1354,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
         isItemSheetOpen.value = false;
       } else if (result.type == ScanType.multiple && result.candidates != null) {
+        log('[DN:scanBarcode] outside → multiple matches');
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
       } else {
         log('[DN:scanBarcode] outside → no match: message=${result.message}');
