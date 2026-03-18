@@ -56,6 +56,20 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
 
+      // Explicitly read every Rx field that effectiveMaxQty depends on so
+      // that Obx registers them as reactive dependencies and rebuilds the
+      // Available label whenever any of them change.
+      // ignore: unused_local_variable
+      final _ = controller.bsMaxQty.value;
+      // ignore: unused_local_variable
+      final __ = controller.bsBatchBalance.value;
+      // ignore: unused_local_variable
+      final ___ = controller.bsRackBalance.value;
+      // ignore: unused_local_variable
+      final ____ = controller.bsIsRackValid.value;
+
+      final effectiveMax = controller.effectiveMaxQty;
+
       return GlobalItemFormSheet(
         owner: controller.bsItemOwner.value,
         creation: controller.bsItemCreation.value,
@@ -66,13 +80,13 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         title: isEditing ? 'Update Item' : 'Add Item',
         itemCode: controller.currentItemCode,
         itemName: controller.currentItemName,
-        // Show variant_of under the item code chip in the sheet header
         itemSubtext: controller.bsItemVariantOf.value,
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
-        qtyInfoText: controller.bsMaxQty.value > 0
-            ? 'Max Available: ${controller.bsMaxQty.value}'
+        // Show the effective ceiling (lower of batch & rack) in the label.
+        qtyInfoText: effectiveMax < 999999.0
+            ? 'Available: ${effectiveMax.toStringAsFixed(0)}'
             : null,
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: true,
@@ -90,7 +104,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
         customFields: [
-          // ── Invoice Serial No ─────────────────────────────────────────
+          // ── Invoice Serial No ────────────────────────────────────────────
           if (controller.bsAvailableInvoiceSerialNos.isNotEmpty)
             GlobalItemFormSheet.buildInputGroup(
               label: 'Invoice Serial No',
@@ -105,7 +119,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   hintText: 'Select Serial',
                 ),
                 items: controller.bsAvailableInvoiceSerialNos.map((s) {
-                  // Fixed: was 'Serial #\$s' (escaped dollar — literal text)
                   return DropdownMenuItem(value: s, child: Text('Serial #$s'));
                 }).toList(),
                 onChanged: (value) {
@@ -115,7 +128,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
-          // ── Batch No ──────────────────────────────────────────────────
+          // ── Batch No ────────────────────────────────────────────────────────
           Obx(() => GlobalItemFormSheet.buildInputGroup(
                 label: 'Batch No',
                 color: Colors.purple,
@@ -210,7 +223,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                 ),
               )),
 
-          // ── Source Rack ───────────────────────────────────────────────
+          // ── Source Rack ──────────────────────────────────────────────────────
           GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,

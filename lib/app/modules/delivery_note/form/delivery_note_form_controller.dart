@@ -62,9 +62,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   final bsRackFocusNode = FocusNode();
 
   var isItemSheetOpen = false.obs;
-  /// True while [editItem] is fetching the batch balance before opening the sheet.
   var isLoadingItemEdit = false.obs;
-  /// The item.name of the item currently being loaded for editing.
   var loadingForItemName = RxnString();
   var bsIsLoadingBatch = false.obs;
   var isValidatingBatch = false.obs;
@@ -123,6 +121,21 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   Timer? _autoSubmitTimer;
 
+  // ---------------------------------------------------------------------------
+  // Single source of truth for the qty ceiling.
+  // Returns the minimum of every non-zero balance signal.
+  // ---------------------------------------------------------------------------
+  double get effectiveMaxQty {
+    double limit = 999999.0;
+    if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
+      limit = bsMaxQty.value;
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
+    if (bsIsRackValid.value && bsRackBalance.value > 0 && bsRackBalance.value < limit)
+      limit = bsRackBalance.value;
+    return limit;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -133,6 +146,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     bsRackController.addListener(validateSheet);
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _checkForChanges());
+
+    // Re-validate the sheet whenever rack balance or rack-valid flag changes
+    // so that a qty already in the field is immediately re-checked against
+    // the newly arrived rack ceiling.
+    ever(bsRackBalance, (_) => validateSheet());
+    ever(bsIsRackValid, (_) => validateSheet());
 
     _setupAutoSubmit();
 
@@ -235,7 +254,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      debugPrint('Error fetching warehouses: $e');
     } finally {
       isFetchingWarehouses.value = false;
     }
@@ -296,7 +315,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      print('Failed to fetch linked POS Upload: $e');
+      debugPrint('Failed to fetch linked POS Upload: $e');
     }
   }
 
@@ -540,17 +559,20 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     rackError.value = null;
 
     final qty = double.tryParse(bsQtyController.text) ?? 0;
-
     if (qty <= 0) valid = false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
+
+    // Use effectiveMaxQty as the single ceiling (min of batch + rack balance).
+    final max = effectiveMaxQty;
+    if (max < 999999.0 && qty > max) valid = false;
 
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
     if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
 
+    // Keep the per-rack error message for user feedback.
     final selectedRack = bsRackController.text;
     if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
       final availableInRack = rackStockMap[selectedRack] ?? 0.0;
-      if (qty > availableInRack) {
+      if (availableInRack > 0 && qty > availableInRack) {
         valid = false;
         rackError.value = 'Only $availableInRack available in $selectedRack';
       }
@@ -692,7 +714,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
       }
     } catch (e) {
-      print('Error fetching rack stocks: $e');
+      debugPrint('Error fetching rack stocks: $e');
     }
   }
 
@@ -743,10 +765,36 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       double fetchedBatchQty = 0.0;
       if (balanceResponse.statusCode == 200 &&
           balanceResponse.data['message'] != null) {
-        final result = balanceResponse.data['message']['result'];
-        if (result is List && result.isNotEmpty) {
-          fetchedBatchQty =
-              (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
+        final message = balanceResponse.data['message'];
+        final List<dynamic> result = message['result'] ?? [];
+        for (final row in result) {
+          if (row is Map) {
+            final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
+            fetchedBatchQty += (val as num?)?.toDouble() ?? 0.0;
+          } else if (row is List) {
+            // Skip ERPNext summary/footer rows whose first element is a
+            // non-numeric string (e.g. ["Total", ..., 126.0, ...]).
+            if (row.isNotEmpty && row[0] is String) continue;
+            final cols = message['columns'];
+            if (cols is List) {
+              int idx = -1;
+              for (int i = 0; i < cols.length; i++) {
+                final col = cols[i];
+                if (col is Map) {
+                  final label = (col['label'] ?? '').toString().toLowerCase();
+                  final fieldname = (col['fieldname'] ?? '').toString().toLowerCase();
+                  if (label.contains('balance qty') ||
+                      (fieldname.contains('balance') && fieldname.contains('qty'))) {
+                    idx = i;
+                    break;
+                  }
+                }
+              }
+              if (idx >= 0 && idx < row.length) {
+                fetchedBatchQty += (row[idx] as num?)?.toDouble() ?? 0.0;
+              }
+            }
+          }
         }
       }
 
@@ -846,7 +894,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     double currentQty = double.tryParse(bsQtyController.text) ?? 0;
     double newQty = currentQty + amount;
     if (newQty < 0) newQty = 0;
-    if (newQty > bsMaxQty.value && bsMaxQty.value > 0) newQty = bsMaxQty.value;
+    // Clamp to the lower of batch balance and rack balance.
+    final limit = effectiveMaxQty;
+    if (limit < 999999.0 && newQty > limit) newQty = limit;
     bsQtyController.text = newQty.toStringAsFixed(0);
     validateSheet();
   }
@@ -878,9 +928,34 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
         if (balanceResponse.statusCode == 200 &&
             balanceResponse.data['message'] != null) {
-          final result = balanceResponse.data['message']['result'];
-          if (result is List && result.isNotEmpty) {
-            fetchedQty = (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
+          final message = balanceResponse.data['message'];
+          final List<dynamic> result = message['result'] ?? [];
+          for (final row in result) {
+            if (row is Map) {
+              final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
+              fetchedQty += (val as num?)?.toDouble() ?? 0.0;
+            } else if (row is List) {
+              if (row.isNotEmpty && row[0] is String) continue;
+              final cols = message['columns'];
+              if (cols is List) {
+                int idx = -1;
+                for (int i = 0; i < cols.length; i++) {
+                  final col = cols[i];
+                  if (col is Map) {
+                    final label = (col['label'] ?? '').toString().toLowerCase();
+                    final fieldname = (col['fieldname'] ?? '').toString().toLowerCase();
+                    if (label.contains('balance qty') ||
+                        (fieldname.contains('balance') && fieldname.contains('qty'))) {
+                      idx = i;
+                      break;
+                    }
+                  }
+                }
+                if (idx >= 0 && idx < row.length) {
+                  fetchedQty += (row[idx] as num?)?.toDouble() ?? 0.0;
+                }
+              }
+            }
           }
         }
       }
@@ -985,8 +1060,35 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
             );
             if (balanceResponse.statusCode == 200 &&
                 balanceResponse.data['message']?['result'] != null) {
-              final list = balanceResponse.data['message']['result'] as List;
-              if (list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
+              final message = balanceResponse.data['message'];
+              final list = message['result'] as List;
+              for (final row in list) {
+                if (row is Map) {
+                  final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
+                  maxQty += (val as num?)?.toDouble() ?? 0.0;
+                } else if (row is List) {
+                  if (row.isNotEmpty && row[0] is String) continue;
+                  final cols = message['columns'];
+                  if (cols is List) {
+                    int idx = -1;
+                    for (int i = 0; i < cols.length; i++) {
+                      final col = cols[i];
+                      if (col is Map) {
+                        final label = (col['label'] ?? '').toString().toLowerCase();
+                        final fieldname = (col['fieldname'] ?? '').toString().toLowerCase();
+                        if (label.contains('balance qty') ||
+                            (fieldname.contains('balance') && fieldname.contains('qty'))) {
+                          idx = i;
+                          break;
+                        }
+                      }
+                    }
+                    if (idx >= 0 && idx < row.length) {
+                      maxQty += (row[idx] as num?)?.toDouble() ?? 0.0;
+                    }
+                  }
+                }
+              }
             }
           } catch (_) {
             maxQty = 6.0;
