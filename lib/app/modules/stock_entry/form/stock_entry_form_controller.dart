@@ -771,11 +771,6 @@ class StockEntryFormController extends GetxController
   }
 
   void validateSheet() {
-    log(name: 'Sheet', 'Validating sheet...');
-    log(name: 'Sheet Qty', _isValidQty().toString());
-    log(name: 'Sheet Batch', _isValidBatch().toString());
-    log(name: 'Sheet Context', _isValidContext().toString());
-    log(name: 'Sheet Racks', isValidRacks().toString());
     isSheetValid.value = _isValidQty() &&
         _isValidBatch() &&
         _isValidContext() &&

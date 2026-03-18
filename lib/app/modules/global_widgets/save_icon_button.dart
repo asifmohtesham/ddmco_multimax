@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 /// Represents the outcome of the most recent save attempt.
 ///
 /// The controller sets this after [saveStockEntry] (or any equivalent)
-completes and resets it back to [idle] after a 2-second delay so the
-button returns to its normal appearance automatically.
+/// completes and resets it back to [idle] after a 2-second delay so the
+/// button returns to its normal appearance automatically.
 enum SaveResult {
   /// No save has been attempted, or the result has already been cleared.
   idle,

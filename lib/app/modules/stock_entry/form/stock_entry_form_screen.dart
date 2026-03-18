@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
