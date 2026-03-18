@@ -30,15 +30,27 @@ class StockEntryItemFormSheet extends StatelessWidget {
       final isEditing = controller.currentItemNameKey.value != null;
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
-      // Use effectiveMaxQty (min of warehouse / batch / rack balances) so
-      // the 'Available' label always reflects the true ceiling rather than
-      // the warehouse-only total which ignores the rack constraint.
+      // Explicitly read every Rx field that effectiveMaxQty depends on so
+      // that Obx registers them as reactive dependencies. Obx only tracks
+      // reads that occur directly inside its closure — reads hidden inside
+      // a plain getter body are invisible to the tracker and will not
+      // trigger a rebuild when they change.
+      // ignore: unused_local_variable
+      final _ = controller.bsMaxQty.value;
+      // ignore: unused_local_variable
+      final __ = controller.bsBatchBalance.value;
+      // ignore: unused_local_variable
+      final ___ = controller.bsRackBalance.value;
+      // ignore: unused_local_variable
+      final ____ = controller.isSourceRackValid.value;
+
       final effectiveMax = controller.effectiveMaxQty;
       final maxMr = controller.bsValidationMaxQty.value;
+
       String? qtyInfoText;
       if (effectiveMax < 999999.0 && maxMr > 0) {
         qtyInfoText =
-            'Avail: ${effectiveMax.toStringAsFixed(0)} • MR max: ${maxMr.toStringAsFixed(0)}';
+            'Avail: ${effectiveMax.toStringAsFixed(0)} \u2022 MR max: ${maxMr.toStringAsFixed(0)}';
       } else if (effectiveMax < 999999.0) {
         qtyInfoText = 'Available: ${effectiveMax.toStringAsFixed(0)}';
       } else if (maxMr > 0) {
@@ -74,7 +86,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
         modifiedBy: controller.bsItemModifiedBy.value,
 
         customFields: [
-          // ── Batch No (Step 5) ─────────────────────────────────────────────
+          // ── Batch No (Step 5) ───────────────────────────────────────────
           BatchField(controller: controller),
 
           // ── Invoice Serial (conditional) ──────────────────────────────
