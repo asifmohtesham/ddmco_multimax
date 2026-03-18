@@ -737,6 +737,10 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         throw Exception('Batch not found');
       }
 
+      // Batch document confirmed to exist — mark valid immediately (mirrors Stock Entry).
+      bsIsBatchValid.value = true;
+      bsIsBatchReadOnly.value = true;
+
       final batchData = batchResponse.data['data'][0];
       final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
       if (pkgQty > 0) {
@@ -809,14 +813,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       }
       batchInfoTooltip.value = sb.toString().trim();
 
+      // Warn on zero stock but do NOT invalidate — mirrors Stock Entry behaviour.
       if (fetchedBatchQty > 0) {
-        bsIsBatchValid.value = true;
         bsBatchError.value = null;
         bsRackFocusNode.requestFocus();
       } else {
-        bsIsBatchValid.value = false;
-        bsBatchError.value = 'Batch has no stock';
-        GlobalSnackbar.error(message: 'Batch has 0 stock');
+        bsBatchError.value = 'Batch has no stock in this warehouse';
+        GlobalSnackbar.warning(message: 'Batch has 0 stock in the selected warehouse');
+      }
+
+      final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
+      if (fetchedBatchQty > 0 && enteredQty > fetchedBatchQty) {
+        bsBatchError.value =
+            'Qty ($enteredQty) exceeds Batch balance (${fetchedBatchQty.toStringAsFixed(0)}) in warehouse';
+        GlobalSnackbar.error(
+            message:
+                'Entered qty exceeds available Batch balance of ${fetchedBatchQty.toStringAsFixed(0)} in warehouse');
       }
     } catch (e) {
       bsBatchError.value = 'Invalid Batch';
@@ -831,9 +843,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
   }
 
+  // Mirrors Stock Entry's resetBatchValidation — also clears the read-only lock.
   void resetBatchValidation() {
     bsIsBatchValid.value = false;
+    bsIsBatchReadOnly.value = false;
     bsBatchBalance.value = 0.0;
+    bsBatchError.value = null;
     validateSheet();
   }
 
@@ -1131,6 +1146,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       barcodeController.clear();
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Read-only lock helper (mirrors Stock Entry's bsIsBatchReadOnly pattern).
+  // ---------------------------------------------------------------------------
+  var bsIsBatchReadOnly = false.obs;
 }
 
 class _FadeSlideSheet extends StatelessWidget {
