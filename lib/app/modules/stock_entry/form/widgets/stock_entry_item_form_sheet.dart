@@ -30,14 +30,29 @@ class StockEntryItemFormSheet extends StatelessWidget {
       final isEditing = controller.currentItemNameKey.value != null;
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
-      final maxStock = controller.bsMaxQty.value;
+      // Explicitly read every Rx field that effectiveMaxQty depends on so
+      // that Obx registers them as reactive dependencies. Obx only tracks
+      // reads that occur directly inside its closure — reads hidden inside
+      // a plain getter body are invisible to the tracker and will not
+      // trigger a rebuild when they change.
+      // ignore: unused_local_variable
+      final _ = controller.bsMaxQty.value;
+      // ignore: unused_local_variable
+      final __ = controller.bsBatchBalance.value;
+      // ignore: unused_local_variable
+      final ___ = controller.bsRackBalance.value;
+      // ignore: unused_local_variable
+      final ____ = controller.isSourceRackValid.value;
+
+      final effectiveMax = controller.effectiveMaxQty;
       final maxMr = controller.bsValidationMaxQty.value;
+
       String? qtyInfoText;
-      if (maxStock > 0 && maxMr > 0) {
+      if (effectiveMax < 999999.0 && maxMr > 0) {
         qtyInfoText =
-            'Avail: ${maxStock.toStringAsFixed(0)} \u2022 MR max: ${maxMr.toStringAsFixed(0)}';
-      } else if (maxStock > 0) {
-        qtyInfoText = 'Available: ${maxStock.toStringAsFixed(0)}';
+            'Avail: ${effectiveMax.toStringAsFixed(0)} \u2022 MR max: ${maxMr.toStringAsFixed(0)}';
+      } else if (effectiveMax < 999999.0) {
+        qtyInfoText = 'Available: ${effectiveMax.toStringAsFixed(0)}';
       } else if (maxMr > 0) {
         qtyInfoText = 'MR max: ${maxMr.toStringAsFixed(0)}';
       }

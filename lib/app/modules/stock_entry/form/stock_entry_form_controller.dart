@@ -134,10 +134,6 @@ class StockEntryFormController extends GetxController
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
-  // Dedicated loading flags for the balance chips so they show a spinner in
-  // both add-mode (scan flow) and edit-mode (editItem) independently of the
-  // field-level validation spinners (isValidatingBatch / isValidatingSourceRack)
-  // which are never toggled in editItem().
   var isLoadingBatchBalance = false.obs;
   var isLoadingRackBalance = false.obs;
 
@@ -173,17 +169,12 @@ class StockEntryFormController extends GetxController
   Timer? _autoSubmitTimer;
   Worker? _scanWorker;
 
-  // Navigator context captured from the sheet builder — used by addItem() to
-  // pop the sheet via Navigator instead of Get.back() (avoids snackbar race).
   BuildContext? _sheetContext;
 
   // ---------------------------------------------------------------------------
-  // Domain helpers (Step 1 — moved from screen)
+  // Domain helpers
   // ---------------------------------------------------------------------------
 
-  /// Human-readable description for a given Stock Entry type.
-  /// Previously lived as _getTypeHelperText() on StockEntryFormScreen —
-  /// moved here so it can be unit-tested and reused across pickers.
   String getTypeHelperText(String type) {
     switch (type) {
       case 'Material Issue':
@@ -198,13 +189,6 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Item key management (Step 7 — moved from screen)
-  // ---------------------------------------------------------------------------
-
-  /// Ensures a [GlobalKey] exists in [itemKeys] for [item].
-  /// Called from addItem() and editItem() so the view never needs to
-  /// mutate controller state directly.
   void ensureItemKey(StockEntryItem item) {
     if (item.name != null && !itemKeys.containsKey(item.name)) {
       itemKeys[item.name!] = GlobalKey();
@@ -215,14 +199,9 @@ class StockEntryFormController extends GetxController
   // MR helpers
   // ---------------------------------------------------------------------------
 
-  /// True when the current entry was created from a Material Request
-  /// (customReferenceNo starts with 'MAT-MR-').
   bool get isMaterialRequestEntry =>
       customReferenceNoController.text.startsWith('MAT-MR-');
 
-  /// All MR rows merged with current scanned quantities — NO filter applied.
-  /// Used by [MrItemFilterBar] to compute per-category counts without
-  /// re-running the merge a second time.
   List<MrItemRow> get mrAllItems {
     final entry = stockEntry.value;
     return mrReferenceItems.map((ref) {
@@ -246,8 +225,6 @@ class StockEntryFormController extends GetxController
     }).toList();
   }
 
-  /// Merges mrReferenceItems with entry.items grouped by itemCode, then
-  /// applies the active [mrItemFilter].
   List<MrItemRow> get mrFilteredItems {
     final allRows = mrAllItems;
     switch (mrItemFilter.value) {
@@ -284,17 +261,20 @@ class StockEntryFormController extends GetxController
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
-    ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
-    // When the item-level source warehouse is resolved (e.g. via rack scan
-    // that happens after the batch was already validated), re-fetch the
-    // batch-wise balance scoped to that warehouse so the balance chip and
-    // qty ceiling reflect the correct warehouse stock.
-    ever(bsItemSourceWarehouse, (_) => _updateBatchBalance());
+    // Single combined listener: each warehouse change fires exactly one
+    // _updateAvailableStock + one _updateBatchBalance call.
+    ever(bsItemSourceWarehouse, (_) async {
+      await _updateAvailableStock();
+      await _updateBatchBalance();
+    });
 
-    // Only mark dirty when the text actually changes from the server-loaded
-    // snapshot. This prevents a mere tap (focus) or programmatic setText from
-    // flipping isDirty, and makes the field safe to render as readOnly.
+    // Re-validate the sheet whenever rack balance or rack-valid flag changes
+    // so that a qty already in the field is immediately re-checked against
+    // the newly arrived rack ceiling.
+    ever(bsRackBalance, (_) => validateSheet());
+    ever(isSourceRackValid, (_) => validateSheet());
+
     customReferenceNoController.addListener(() {
       final current = customReferenceNoController.text;
       if (current != _initialReferenceNo) {
@@ -346,16 +326,13 @@ class StockEntryFormController extends GetxController
     _saveResultTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
+    bsBatchBalance.value = 0.0;
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
     customReferenceNoController.dispose();
     super.onClose();
   }
-
-  // ---------------------------------------------------------------------------
-  // SaveResult helpers
-  // ---------------------------------------------------------------------------
 
   void _setSaveResult(SaveResult result) {
     _saveResultTimer?.cancel();
@@ -365,8 +342,6 @@ class StockEntryFormController extends GetxController
     });
   }
 
-  // ---------------------------------------------------------------------------
-
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
     final now = DateTime.now();
@@ -375,8 +350,6 @@ class StockEntryFormController extends GetxController
 
     selectedStockEntryType.value = type;
     customReferenceNoController.text = ref;
-    // Snapshot so the listener does not mark a brand-new entry as dirty
-    // simply because the controller was populated programmatically.
     _initialReferenceNo = ref;
 
     _determineSource(type, ref);
@@ -433,11 +406,9 @@ class StockEntryFormController extends GetxController
             await _apiProvider.getDocument('Material Request', ref);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'];
-
           if (data['material_request_type'] != null) {
             selectedStockEntryType.value = data['material_request_type'];
           }
-
           final items = data['items'] as List? ?? [];
           mrReferenceItems = items
               .map((i) => {
@@ -475,8 +446,6 @@ class StockEntryFormController extends GetxController
         selectedFromWarehouse.value = entry.fromWarehouse;
         selectedToWarehouse.value = entry.toWarehouse;
 
-        // Populate the controller and snapshot in one step so the listener
-        // sees current == _initialReferenceNo and does NOT call _markDirty().
         final ref = entry.customReferenceNo ?? '';
         _initialReferenceNo = ref;
         customReferenceNoController.text = ref;
@@ -538,11 +507,6 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Warehouse gate-keeping
-  // ---------------------------------------------------------------------------
-
-  /// Returns true if a Source Warehouse is required for the current entry type.
   bool get requiresSourceWarehouse {
     final t = selectedStockEntryType.value;
     return t == 'Material Transfer' ||
@@ -550,7 +514,6 @@ class StockEntryFormController extends GetxController
         t == 'Material Issue';
   }
 
-  /// Returns true if a Target Warehouse is required for the current entry type.
   bool get requiresTargetWarehouse {
     final t = selectedStockEntryType.value;
     return t == 'Material Transfer' ||
@@ -734,8 +697,6 @@ class StockEntryFormController extends GetxController
     }
 
     newItem = _enrichItemWithSourceData(newItem);
-
-    // Ensure a scroll key exists before the list rebuilds (Step 7).
     ensureItemKey(newItem);
 
     if (existingIndex != -1) {
@@ -762,8 +723,6 @@ class StockEntryFormController extends GetxController
       saveStockEntry();
     } else {
       isDirty.value = true;
-      // Background save — the save-button flash (SaveResult) is the sole
-      // feedback; no snackbar needed here.
       saveStockEntry().catchError((e) {
         debugPrint('Background save error: $e');
       });
@@ -771,6 +730,11 @@ class StockEntryFormController extends GetxController
   }
 
   void validateSheet() {
+    log(name: 'Sheet', 'Validating sheet...');
+    log(name: 'Sheet Qty', _isValidQty().toString());
+    log(name: 'Sheet Batch', _isValidBatch().toString());
+    log(name: 'Sheet Context', _isValidContext().toString());
+    log(name: 'Sheet Racks', isValidRacks().toString());
     isSheetValid.value = _isValidQty() &&
         _isValidBatch() &&
         _isValidContext() &&
@@ -778,11 +742,28 @@ class StockEntryFormController extends GetxController
         _hasChanges();
   }
 
+  /// Returns the effective maximum allowed quantity — the minimum of every
+  /// non-zero balance signal: bsMaxQty, bsBatchBalance, bsRackBalance,
+  /// bsValidationMaxQty. Zero means "not yet known" and is excluded.
+  double get effectiveMaxQty {
+    double limit = 999999.0;
+    if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
+      limit = bsMaxQty.value;
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
+    if (isSourceRackValid.value &&
+        bsRackBalance.value > 0 &&
+        bsRackBalance.value < limit) limit = bsRackBalance.value;
+    if (bsValidationMaxQty.value > 0 && bsValidationMaxQty.value < limit)
+      limit = bsValidationMaxQty.value;
+    return limit;
+  }
+
   bool _isValidQty() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
-    if (bsBatchBalance.value > 0 && qty > bsBatchBalance.value) return false;
+    final max = effectiveMaxQty;
+    if (max < 999999.0 && qty > max) return false;
     return true;
   }
 
@@ -1004,20 +985,15 @@ class StockEntryFormController extends GetxController
     }
     isLoadingRackBalance.value = true;
 
+    // Setting bsItemSourceWarehouse fires the merged ever() listener which
+    // calls _updateAvailableStock() + _updateBatchBalance() exactly once.
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
-    // Ensure key exists when entering edit mode (Step 7).
     ensureItemKey(item);
 
     validateSheet();
     _openSheet();
-
-    unawaited(Future.wait([
-      if (item.batchNo != null && item.batchNo!.isNotEmpty)
-        _updateBatchBalance(),
-      _updateAvailableStock(),
-    ]));
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -1276,7 +1252,7 @@ class StockEntryFormController extends GetxController
         final message = response.data['message'];
         final List<dynamic> result = message['result'] ?? [];
         double total = 0.0;
-        for (final row in result.sublist(0, result.length-1)) {
+        for (final row in result) {
           if (row is Map) {
             final dynamic val = row['balance_qty'] ??
                 row['bal_qty'] ??
@@ -1284,6 +1260,9 @@ class StockEntryFormController extends GetxController
                 row['qty'];
             total += (val as num?)?.toDouble() ?? 0.0;
           } else if (row is List) {
+            // Skip ERPNext summary/footer rows whose first element is a
+            // non-numeric string (e.g. ["Total", ..., 126.0, ...]).
+            if (row.isNotEmpty && row[0] is String) continue;
             final cols = message['columns'];
             if (cols is List) {
               int idx = -1;
@@ -1416,9 +1395,6 @@ class StockEntryFormController extends GetxController
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          await _updateAvailableStock();
-          await _updateBatchBalance();
-
           final double enteredQty =
               double.tryParse(bsQtyController.text) ?? 0.0;
           if (bsBatchBalance.value > 0 &&
@@ -1475,22 +1451,11 @@ class StockEntryFormController extends GetxController
     validateSheet();
   }
 
-  /// Removes [uniqueName] from the entry after user confirmation.
-  ///
-  /// The item form sheet is closed **before** the confirmation dialog is shown
-  /// so that only one bottom sheet is on the Navigator stack at a time.
-  /// Previously, Get.back() inside [GlobalDialog.showConfirmation]'s onConfirm
-  /// dismissed the confirmation sheet and left Get.isBottomSheetOpen == false,
-  /// so the subsequent Get.back() guard never fired and the item sheet stayed
-  /// open behind the deleted row.
   void deleteItem(String uniqueName) {
     final item = stockEntry.value?.items
         .firstWhereOrNull((i) => i.name == uniqueName);
     if (item == null) return;
 
-    // Close the item form sheet first so it is not on the stack when the
-    // confirmation dialog opens. isItemSheetOpen is reset by _openSheet()'s
-    // whenComplete callback once the sheet finishes animating out.
     if (isItemSheetOpen.value) {
       final ctx = _sheetContext;
       if (ctx != null && ctx.mounted) {
@@ -1539,14 +1504,7 @@ class StockEntryFormController extends GetxController
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = current + delta;
-
-    double limit = 999999.0;
-    if (bsMaxQty.value > 0) limit = bsMaxQty.value;
-    if (bsValidationMaxQty.value > 0 &&
-        bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
-    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
-      limit = bsBatchBalance.value;
-
+    final limit = effectiveMaxQty;
     if (newVal >= 0 && newVal <= limit) {
       bsQtyController.text =
           newVal == 0 ? '' : newVal.toStringAsFixed(0);
