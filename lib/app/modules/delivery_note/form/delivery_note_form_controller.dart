@@ -642,6 +642,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       bsMaxQty.value = maxQty;
     } else {
+      // FIX: Always reset the read-only lock and valid flag at the start of a
+      // new-item sheet. Without this, stale `true` state from the previous
+      // sheet carries over and makes the TextFormField read-only before the
+      // scanned batchNo can be written into bsBatchController.
+      bsIsBatchReadOnly.value = false;
+      bsIsBatchValid.value = false;
+
       editingItemName.value = null;
       bsBatchController.text = batchNo ?? '';
       bsRackController.clear();
@@ -659,9 +666,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
         bsIsBatchValid.value = true;
+        bsIsBatchReadOnly.value = true;
         bsBatchBalance.value = maxQty;
       } else {
-        bsIsBatchValid.value = false;
         bsBatchBalance.value = 0.0;
       }
     }
