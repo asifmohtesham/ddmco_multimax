@@ -8,11 +8,16 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
 
   const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
 
+  /// Renders a balance chip below a field.
+  ///
+  /// [forceShow] — show the chip even when [balance] is 0 (e.g. batch is
+  /// valid but balance hasn't finished loading yet, or it genuinely is 0).
   Widget _balanceChip({
     required double balance,
     required bool isLoading,
     required Color color,
     String prefix = 'Avail:',
+    bool forceShow = false,
   }) {
     if (isLoading) {
       return Padding(
@@ -32,7 +37,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         ),
       );
     }
-    if (balance <= 0) return const SizedBox.shrink();
+    if (!forceShow && balance <= 0) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 4.0, left: 4.0),
       child: Container(
@@ -84,7 +89,6 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
-        // Show the effective ceiling (lower of batch & rack) in the label.
         qtyInfoText: effectiveMax < 999999.0
             ? 'Available: ${effectiveMax.toStringAsFixed(0)}'
             : null,
@@ -104,7 +108,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
         customFields: [
-          // ── Invoice Serial No ────────────────────────────────────────────
+          // ── Invoice Serial No ─────────────────────────────────────────
           if (controller.bsAvailableInvoiceSerialNos.isNotEmpty)
             GlobalItemFormSheet.buildInputGroup(
               label: 'Invoice Serial No',
@@ -128,7 +132,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
               ),
             ),
 
-          // ── Batch No ────────────────────────────────────────────────────────
+          // ── Batch No ──────────────────────────────────────────────────
           Obx(() => GlobalItemFormSheet.buildInputGroup(
                 label: 'Batch No',
                 color: Colors.purple,
@@ -213,17 +217,21 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                         }
                       },
                     ),
+                    // Show chip whenever batch is being validated OR is already
+                    // valid — forceShow ensures a "0" balance still renders
+                    // rather than silently hiding after validation.
                     Obx(() => _balanceChip(
                           balance: controller.bsBatchBalance.value,
                           isLoading: controller.isLoadingBatchBalance.value,
                           color: Colors.purple,
                           prefix: 'Batch Qty:',
+                          forceShow: controller.bsIsBatchValid.value,
                         )),
                   ],
                 ),
               )),
 
-          // ── Source Rack ──────────────────────────────────────────────────────
+          // ── Source Rack ───────────────────────────────────────────────
           GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
             color: Colors.orange,
