@@ -89,6 +89,11 @@ class DeliveryNoteFormController extends GetxController {
   String _initialQty = '';
   String? _initialSerial;
 
+  // Flag: true while we are in add-mode (not editing an existing item).
+  // _autoFillRackIfEmpty uses this to avoid overwriting the operator's
+  // manual rack entry when editing an existing line.
+  bool _isAddMode = false;
+
   // Warehouse State
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
@@ -598,6 +603,8 @@ class DeliveryNoteFormController extends GetxController {
     rackError.value = null;
 
     if (editingItem != null) {
+      _isAddMode = false;
+
       bsItemOwner.value = editingItem.owner;
       bsItemCreation.value = editingItem.creation;
       bsItemModified.value = editingItem.modified;
@@ -620,7 +627,11 @@ class DeliveryNoteFormController extends GetxController {
       bsMaxQty.value = maxQty;
       bsBatchError.value = null;
     } else {
+      _isAddMode = true;
+
       editingItemName.value = null;
+      // FIX: Pre-populate batch text whenever a batchNo is resolved, regardless
+      // of maxQty. Mark it valid so the field renders correctly on open.
       bsBatchController.text = batchNo ?? '';
       bsRackController.clear();
       bsQtyController.text = '6';
@@ -636,23 +647,40 @@ class DeliveryNoteFormController extends GetxController {
       bsInvoiceSerialNo.value = null;
       _initialSerial = null;
 
-      // FIX: Only mark batch as valid when we actually have a batch AND confirmed stock.
-      if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
-        bsIsBatchValid.value = true;
-        log('[DN:initBottomSheet] → batchNo+maxQty present → field locked valid', name: 'DN');
-      } else {
-        bsIsBatchValid.value = false;
-        log('[DN:initBottomSheet] → batchNo=null or maxQty=0 → field unlocked', name: 'DN');
-      }
+      // FIX: Mark batch valid whenever batchNo text is present — even if maxQty
+      // came back 0 (stock may live in a different warehouse; user can still
+      // proceed and the batch will be validated on submit).
+      bsIsBatchValid.value = (batchNo != null && batchNo.isNotEmpty);
+      log('[DN:initBottomSheet] add-mode → bsBatchController="${bsBatchController.text}" bsIsBatchValid=${bsIsBatchValid.value}', name: 'DN');
     }
 
     validateSheet();
+    // FIX: _fetchAllRackStocks now calls _autoFillRackIfEmpty() after the
+    // rackStockMap is populated, so the rack field is set automatically
+    // in add-mode without requiring a manual scan.
     _fetchAllRackStocks();
 
     bsIsLoadingBatch.value = false;
     isValidatingRack.value = false;
     isValidatingBatch.value = false;
     isItemSheetOpen.value = true;
+  }
+
+  // FIX: After rackStockMap is populated in add-mode, auto-fill the rack
+  // field with the rack that has the highest available stock, then validate it.
+  void _autoFillRackIfEmpty() {
+    if (!_isAddMode) return;
+    if (bsRackController.text.isNotEmpty) return; // operator already typed something
+    if (rackStockMap.isEmpty) return;
+
+    // Pick the rack with the greatest available stock quantity.
+    final bestRack = rackStockMap.entries
+        .reduce((a, b) => a.value >= b.value ? a : b)
+        .key;
+
+    log('[DN:_autoFillRackIfEmpty] auto-filling rack="$bestRack"', name: 'DN');
+    bsRackController.text = bestRack;
+    validateRack(bestRack);
   }
 
   // Updated to respect the derived Item Warehouse
@@ -694,6 +722,9 @@ class DeliveryNoteFormController extends GetxController {
           } else {
             rackStockTooltip.value = "No stock in racks";
           }
+
+          // FIX: Auto-fill the rack field in add-mode once we have the stock map.
+          _autoFillRackIfEmpty();
         }
       }
     } catch (e) {
