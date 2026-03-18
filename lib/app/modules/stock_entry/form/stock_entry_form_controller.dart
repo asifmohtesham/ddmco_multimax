@@ -284,13 +284,22 @@ class StockEntryFormController extends GetxController
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
-    ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
-    // When the item-level source warehouse is resolved (e.g. via rack scan
-    // that happens after the batch was already validated), re-fetch the
-    // batch-wise balance scoped to that warehouse so the balance chip and
-    // qty ceiling reflect the correct warehouse stock.
-    ever(bsItemSourceWarehouse, (_) => _updateBatchBalance());
+    // Single combined listener: each warehouse change fires exactly one
+    // _updateAvailableStock + one _updateBatchBalance call.
+    // Previously two separate ever() calls caused both fetches to run twice
+    // whenever bsItemSourceWarehouse changed, doubling bsBatchBalance.
+    ever(bsItemSourceWarehouse, (_) async {
+      await _updateAvailableStock();
+      await _updateBatchBalance();
+    });
+
+    // Re-validate the sheet whenever rack balance or rack-valid flag changes
+    // so that a qty already in the field is immediately re-checked against the
+    // newly arrived rack ceiling. Without these listeners the sheet could stay
+    // valid (green) with qty=126 even after bsRackBalance settled at 114.
+    ever(bsRackBalance, (_) => validateSheet());
+    ever(isSourceRackValid, (_) => validateSheet());
 
     // Only mark dirty when the text actually changes from the server-loaded
     // snapshot. This prevents a mere tap (focus) or programmatic setText from
@@ -346,6 +355,7 @@ class StockEntryFormController extends GetxController
     _saveResultTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
+    bsBatchBalance.value = 0.0;
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
@@ -778,11 +788,37 @@ class StockEntryFormController extends GetxController
         _hasChanges();
   }
 
+  /// Returns the effective maximum allowed quantity for the current item,
+  /// taking the minimum of every non-zero balance signal:
+  ///   • bsMaxQty       — total warehouse balance for the item+batch
+  ///   • bsBatchBalance — batch-wise ledger balance
+  ///   • bsRackBalance  — balance specific to the selected source rack
+  ///   • bsValidationMaxQty — MR-requested qty ceiling (when applicable)
+  ///
+  /// A value of 0 for any signal means "not yet known / not applicable"
+  /// and is excluded from the minimum so it does not incorrectly block entry.
+  double get effectiveMaxQty {
+    double limit = 999999.0;
+    if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
+      limit = bsMaxQty.value;
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
+    // Only apply rack balance when the source rack has been validated and
+    // the balance is known (> 0). bsRackBalance is 0 before the rack scan.
+    if (isSourceRackValid.value &&
+        bsRackBalance.value > 0 &&
+        bsRackBalance.value < limit) limit = bsRackBalance.value;
+    if (bsValidationMaxQty.value > 0 && bsValidationMaxQty.value < limit)
+      limit = bsValidationMaxQty.value;
+    return limit;
+  }
+
   bool _isValidQty() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
-    if (bsBatchBalance.value > 0 && qty > bsBatchBalance.value) return false;
+    // Use the unified ceiling so rack balance is always enforced.
+    final max = effectiveMaxQty;
+    if (max < 999999.0 && qty > max) return false;
     return true;
   }
 
@@ -1004,6 +1040,10 @@ class StockEntryFormController extends GetxController
     }
     isLoadingRackBalance.value = true;
 
+    // Setting bsItemSourceWarehouse fires the merged ever() listener which
+    // calls _updateAvailableStock() + _updateBatchBalance() exactly once.
+    // The previous unawaited(Future.wait([...])) below this block was a
+    // duplicate that caused both fetches to run twice.
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
@@ -1012,12 +1052,6 @@ class StockEntryFormController extends GetxController
 
     validateSheet();
     _openSheet();
-
-    unawaited(Future.wait([
-      if (item.batchNo != null && item.batchNo!.isNotEmpty)
-        _updateBatchBalance(),
-      _updateAvailableStock(),
-    ]));
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -1284,6 +1318,11 @@ class StockEntryFormController extends GetxController
                 row['qty'];
             total += (val as num?)?.toDouble() ?? 0.0;
           } else if (row is List) {
+            // Skip ERPNext summary/footer rows whose first element is a
+            // non-numeric string (e.g. ["Total", "", ..., 126.0, ...]).
+            // Previously these were summed alongside real data rows,
+            // causing bsBatchBalance to be doubled.
+            if (row.isNotEmpty && row[0] is String) continue;
             final cols = message['columns'];
             if (cols is List) {
               int idx = -1;
@@ -1352,6 +1391,10 @@ class StockEntryFormController extends GetxController
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
+        // Balance fetches are handled by the ever(bsItemSourceWarehouse)
+        // listener. If the warehouse is already known at this point (e.g.
+        // scan flow where selectedFromWarehouse is pre-set), trigger them
+        // directly here since bsItemSourceWarehouse won't change again.
         await _updateAvailableStock();
         await _updateBatchBalance();
 
@@ -1398,6 +1441,8 @@ class StockEntryFormController extends GetxController
         final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
         if (isSource) {
           derivedSourceWarehouse.value = wh;
+          // Setting bsItemSourceWarehouse fires the ever() listener which
+          // calls _updateAvailableStock() + _updateBatchBalance() once.
           bsItemSourceWarehouse.value = wh;
         } else {
           derivedTargetWarehouse.value = wh;
@@ -1416,9 +1461,9 @@ class StockEntryFormController extends GetxController
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          await _updateAvailableStock();
-          await _updateBatchBalance();
-
+          // The ever(bsItemSourceWarehouse) listener already triggered
+          // _updateAvailableStock() + _updateBatchBalance() when the warehouse
+          // was derived above. No explicit calls needed here.
           final double enteredQty =
               double.tryParse(bsQtyController.text) ?? 0.0;
           if (bsBatchBalance.value > 0 &&
@@ -1539,14 +1584,9 @@ class StockEntryFormController extends GetxController
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = current + delta;
-
-    double limit = 999999.0;
-    if (bsMaxQty.value > 0) limit = bsMaxQty.value;
-    if (bsValidationMaxQty.value > 0 &&
-        bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
-    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
-      limit = bsBatchBalance.value;
-
+    // Use the same unified ceiling as _isValidQty() so the +/- stepper
+    // respects rack balance in addition to warehouse and batch balances.
+    final limit = effectiveMaxQty;
     if (newVal >= 0 && newVal <= limit) {
       bsQtyController.text =
           newVal == 0 ? '' : newVal.toStringAsFixed(0);
