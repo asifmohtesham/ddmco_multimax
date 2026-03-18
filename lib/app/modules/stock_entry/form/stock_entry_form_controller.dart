@@ -284,13 +284,15 @@ class StockEntryFormController extends GetxController
     ever(selectedFromWarehouse, (_) => _markDirty());
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
-    ever(bsItemSourceWarehouse, (_) => _updateAvailableStock());
 
-    // When the item-level source warehouse is resolved (e.g. via rack scan
-    // that happens after the batch was already validated), re-fetch the
-    // batch-wise balance scoped to that warehouse so the balance chip and
-    // qty ceiling reflect the correct warehouse stock.
-    ever(bsItemSourceWarehouse, (_) => _updateBatchBalance());
+    // Single combined listener: each warehouse change fires exactly one
+    // _updateAvailableStock + one _updateBatchBalance call.
+    // Previously two separate ever() calls caused both fetches to run twice
+    // whenever bsItemSourceWarehouse changed, doubling bsBatchBalance.
+    ever(bsItemSourceWarehouse, (_) async {
+      await _updateAvailableStock();
+      await _updateBatchBalance();
+    });
 
     // Only mark dirty when the text actually changes from the server-loaded
     // snapshot. This prevents a mere tap (focus) or programmatic setText from
@@ -1009,6 +1011,10 @@ class StockEntryFormController extends GetxController
     }
     isLoadingRackBalance.value = true;
 
+    // Setting bsItemSourceWarehouse fires the merged ever() listener which
+    // calls _updateAvailableStock() + _updateBatchBalance() exactly once.
+    // The previous unawaited(Future.wait([...])) below this block was a
+    // duplicate that caused both fetches to run twice.
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
@@ -1017,12 +1023,6 @@ class StockEntryFormController extends GetxController
 
     validateSheet();
     _openSheet();
-
-    unawaited(Future.wait([
-      if (item.batchNo != null && item.batchNo!.isNotEmpty)
-        _updateBatchBalance(),
-      _updateAvailableStock(),
-    ]));
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -1357,6 +1357,10 @@ class StockEntryFormController extends GetxController
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
+        // Balance fetches are handled by the ever(bsItemSourceWarehouse)
+        // listener. If the warehouse is already known at this point (e.g.
+        // scan flow where selectedFromWarehouse is pre-set), trigger them
+        // directly here since bsItemSourceWarehouse won't change again.
         await _updateAvailableStock();
         await _updateBatchBalance();
 
@@ -1403,6 +1407,8 @@ class StockEntryFormController extends GetxController
         final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
         if (isSource) {
           derivedSourceWarehouse.value = wh;
+          // Setting bsItemSourceWarehouse fires the ever() listener which
+          // calls _updateAvailableStock() + _updateBatchBalance() once.
           bsItemSourceWarehouse.value = wh;
         } else {
           derivedTargetWarehouse.value = wh;
@@ -1421,9 +1427,9 @@ class StockEntryFormController extends GetxController
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
-          await _updateAvailableStock();
-          await _updateBatchBalance();
-
+          // The ever(bsItemSourceWarehouse) listener already triggered
+          // _updateAvailableStock() + _updateBatchBalance() when the warehouse
+          // was derived above. No explicit calls needed here.
           final double enteredQty =
               double.tryParse(bsQtyController.text) ?? 0.0;
           if (bsBatchBalance.value > 0 &&
