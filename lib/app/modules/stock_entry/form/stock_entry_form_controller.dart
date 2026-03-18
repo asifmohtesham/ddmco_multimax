@@ -785,11 +785,37 @@ class StockEntryFormController extends GetxController
         _hasChanges();
   }
 
+  /// Returns the effective maximum allowed quantity for the current item,
+  /// taking the minimum of every non-zero balance signal:
+  ///   • bsMaxQty       — total warehouse balance for the item+batch
+  ///   • bsBatchBalance — batch-wise ledger balance
+  ///   • bsRackBalance  — balance specific to the selected source rack
+  ///   • bsValidationMaxQty — MR-requested qty ceiling (when applicable)
+  ///
+  /// A value of 0 for any signal means "not yet known / not applicable"
+  /// and is excluded from the minimum so it does not incorrectly block entry.
+  double get effectiveMaxQty {
+    double limit = 999999.0;
+    if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
+      limit = bsMaxQty.value;
+    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
+      limit = bsBatchBalance.value;
+    // Only apply rack balance when the source rack has been validated and
+    // the balance is known (> 0). bsRackBalance is 0 before the rack scan.
+    if (isSourceRackValid.value &&
+        bsRackBalance.value > 0 &&
+        bsRackBalance.value < limit) limit = bsRackBalance.value;
+    if (bsValidationMaxQty.value > 0 && bsValidationMaxQty.value < limit)
+      limit = bsValidationMaxQty.value;
+    return limit;
+  }
+
   bool _isValidQty() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) return false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) return false;
-    if (bsBatchBalance.value > 0 && qty > bsBatchBalance.value) return false;
+    // Use the unified ceiling so rack balance is always enforced.
+    final max = effectiveMaxQty;
+    if (max < 999999.0 && qty > max) return false;
     return true;
   }
 
@@ -1289,6 +1315,11 @@ class StockEntryFormController extends GetxController
                 row['qty'];
             total += (val as num?)?.toDouble() ?? 0.0;
           } else if (row is List) {
+            // Skip ERPNext summary/footer rows whose first element is a
+            // non-numeric string (e.g. ["Total", "", ..., 126.0, ...]).
+            // Previously these were summed alongside real data rows,
+            // causing bsBatchBalance to be doubled.
+            if (row.isNotEmpty && row[0] is String) continue;
             final cols = message['columns'];
             if (cols is List) {
               int idx = -1;
@@ -1550,14 +1581,9 @@ class StockEntryFormController extends GetxController
   void adjustSheetQty(double delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = current + delta;
-
-    double limit = 999999.0;
-    if (bsMaxQty.value > 0) limit = bsMaxQty.value;
-    if (bsValidationMaxQty.value > 0 &&
-        bsValidationMaxQty.value < limit) limit = bsValidationMaxQty.value;
-    if (bsBatchBalance.value > 0 && bsBatchBalance.value < limit)
-      limit = bsBatchBalance.value;
-
+    // Use the same unified ceiling as _isValidQty() so the +/- stepper
+    // respects rack balance in addition to warehouse and batch balances.
+    final limit = effectiveMaxQty;
     if (newVal >= 0 && newVal <= limit) {
       bsQtyController.text =
           newVal == 0 ? '' : newVal.toStringAsFixed(0);
