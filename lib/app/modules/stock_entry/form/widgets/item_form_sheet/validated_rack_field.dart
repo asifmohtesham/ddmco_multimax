@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart';
 
-/// Step 2 — replaces the two near-identical Source Rack / Target Rack blocks.
-/// Parameterised by [color], callbacks, and reactive state from the controller.
+/// Thin wrapper around [ValidatedFieldWidget] for rack fields in Stock Entry.
+///
+/// Accepts plain-primitive state so the caller (RackSection) can wrap in
+/// its own Obx with precisely-scoped reactivity.
 class ValidatedRackField extends StatelessWidget {
   final TextEditingController textController;
-  final RxBool isValid;
-  final RxBool isValidating;
+  final bool isValid;
+  final bool isValidating;
   final String label;
   final Color color;
   final VoidCallback onReset;
@@ -26,58 +27,19 @@ class ValidatedRackField extends StatelessWidget {
     required this.onSubmitted,
   });
 
-  Widget _suffixIcon() {
-    if (isValidating.value) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: color),
-        ),
-      );
-    }
-    if (isValid.value) {
-      return IconButton(
-        icon: Icon(Icons.edit, color: color),
-        onPressed: onReset,
-      );
-    }
-    return IconButton(
-      icon: Icon(Icons.check, color: color),
-      onPressed: onValidate,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Obx(() => GlobalItemFormSheet.buildInputGroup(
-          label: label,
-          color: color,
-          bgColor: isValid.value ? color.withOpacity(0.07) : null,
-          child: TextFormField(
-            controller: textController,
-            readOnly: isValid.value,
-            autofocus: false,
-            decoration: InputDecoration(
-              hintText: 'Rack',
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: color.withOpacity(0.4)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: const BorderRadius.all(Radius.circular(8)),
-                borderSide: BorderSide(color: color, width: 2),
-              ),
-              filled: true,
-              fillColor:
-                  isValid.value ? color.withOpacity(0.07) : Colors.white,
-              suffixIcon: _suffixIcon(),
-            ),
-            onFieldSubmitted: onSubmitted,
-          ),
-        ));
+    return ValidatedFieldWidget(
+      controller: textController,
+      color: color,
+      hintText: label,
+      isReadOnly: isValid,
+      isValid: isValid,
+      isValidating: isValidating,
+      onValidate: onValidate,
+      onReset: onReset,
+      onFieldSubmitted: onSubmitted,
+      fontFamily: 'ShureTechMono',
+    );
   }
 }
