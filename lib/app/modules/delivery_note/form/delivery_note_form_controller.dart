@@ -121,6 +121,9 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   Timer? _autoSubmitTimer;
 
+  // Read-only lock helper (mirrors Stock Entry's bsIsBatchReadOnly pattern).
+  var bsIsBatchReadOnly = false.obs;
+
   // ---------------------------------------------------------------------------
   // Single source of truth for the qty ceiling.
   // Returns the minimum of every non-zero balance signal.
@@ -147,9 +150,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     ever(bsInvoiceSerialNo, (_) => validateSheet());
     ever(setWarehouse, (_) => _checkForChanges());
 
-    // Re-validate the sheet whenever rack balance or rack-valid flag changes
-    // so that a qty already in the field is immediately re-checked against
-    // the newly arrived rack ceiling.
     ever(bsRackBalance, (_) => validateSheet());
     ever(bsIsRackValid, (_) => validateSheet());
 
@@ -561,14 +561,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     if (qty <= 0) valid = false;
 
-    // Use effectiveMaxQty as the single ceiling (min of batch + rack balance).
     final max = effectiveMaxQty;
     if (max < 999999.0 && qty > max) valid = false;
 
     if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
     if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
 
-    // Keep the per-rack error message for user feedback.
     final selectedRack = bsRackController.text;
     if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
       final availableInRack = rackStockMap[selectedRack] ?? 0.0;
@@ -614,6 +612,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     rackStockTooltip.value = null;
     rackStockMap.clear();
     rackError.value = null;
+    bsBatchError.value = null;
 
     bsBatchBalance.value = 0.0;
     bsRackBalance.value = 0.0;
@@ -642,7 +641,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsIsRackValid.value = (editingItem.rack != null && editingItem.rack!.isNotEmpty);
 
       bsMaxQty.value = maxQty;
-      bsBatchError.value = null;
     } else {
       editingItemName.value = null;
       bsBatchController.text = batchNo ?? '';
@@ -654,16 +652,19 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _initialQty = '6';
 
       bsMaxQty.value = maxQty;
-      bsBatchError.value = null;
       bsIsRackValid.value = false;
 
       bsInvoiceSerialNo.value = null;
       _initialSerial = null;
 
-      if (batchNo != null && maxQty > 0) {
+      if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
+        // Batch was pre-fetched by the scan path — seed balance immediately
+        // so the chip renders without waiting for a second validateAndFetchBatch call.
         bsIsBatchValid.value = true;
+        bsBatchBalance.value = maxQty;
       } else {
         bsIsBatchValid.value = false;
+        bsBatchBalance.value = 0.0;
       }
     }
 
@@ -737,7 +738,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         throw Exception('Batch not found');
       }
 
-      // Batch document confirmed to exist — mark valid immediately (mirrors Stock Entry).
+      // Batch document confirmed to exist — mark valid immediately.
       bsIsBatchValid.value = true;
       bsIsBatchReadOnly.value = true;
 
@@ -776,8 +777,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
             final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
             fetchedBatchQty += (val as num?)?.toDouble() ?? 0.0;
           } else if (row is List) {
-            // Skip ERPNext summary/footer rows whose first element is a
-            // non-numeric string (e.g. ["Total", ..., 126.0, ...]).
             if (row.isNotEmpty && row[0] is String) continue;
             final cols = message['columns'];
             if (cols is List) {
@@ -813,7 +812,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       }
       batchInfoTooltip.value = sb.toString().trim();
 
-      // Warn on zero stock but do NOT invalidate — mirrors Stock Entry behaviour.
       if (fetchedBatchQty > 0) {
         bsBatchError.value = null;
         bsRackFocusNode.requestFocus();
@@ -843,7 +841,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     }
   }
 
-  // Mirrors Stock Entry's resetBatchValidation — also clears the read-only lock.
   void resetBatchValidation() {
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
@@ -909,7 +906,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     double currentQty = double.tryParse(bsQtyController.text) ?? 0;
     double newQty = currentQty + amount;
     if (newQty < 0) newQty = 0;
-    // Clamp to the lower of batch balance and rack balance.
     final limit = effectiveMaxQty;
     if (limit < 999999.0 && newQty > limit) newQty = limit;
     bsQtyController.text = newQty.toStringAsFixed(0);
@@ -1146,11 +1142,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       barcodeController.clear();
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Read-only lock helper (mirrors Stock Entry's bsIsBatchReadOnly pattern).
-  // ---------------------------------------------------------------------------
-  var bsIsBatchReadOnly = false.obs;
 }
 
 class _FadeSlideSheet extends StatelessWidget {
