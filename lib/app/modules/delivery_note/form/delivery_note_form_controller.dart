@@ -117,6 +117,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   String currentItemCode = '';
   String currentItemName = '';
+
+  // FIX: Renamed from currentScannedEan to be explicit: stores the 8-digit
+  // EAN-8 from the last outside-sheet scan (or derived from batchNo in edit
+  // mode). Batch No format is EAN8-SUFFIX ('20003609-XXX').
+  // MUST NOT fall back to currentItemCode (7 digits) — that produces wrong
+  // batch names. Pass null when empty so processScan returns an error.
   String currentScannedEan = '';
 
   Timer? _autoSubmitTimer;
@@ -954,6 +960,19 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     bsIsLoadingBatch.value = true;
     isLoadingBatchBalance.value = true;
     isLoadingRackBalance.value = true;
+
+    // FIX: Derive EAN-8 context from the existing batchNo (format: EAN8-SUFFIX).
+    // This ensures that if the operator rescans a batch suffix while editing,
+    // processScan receives the correct 8-digit EAN-8 as contextItemCode.
+    // Without this, currentScannedEan stays empty (from a prior outside scan)
+    // and the inside-sheet path passes null → operator gets an unhelpful error.
+    if (item.batchNo != null && item.batchNo!.contains('-')) {
+      currentScannedEan = item.batchNo!.split('-').first;
+    } else {
+      currentScannedEan = '';
+    }
+    log('[DN:editItem] derived currentScannedEan="$currentScannedEan" from batchNo=${item.batchNo}');
+
     try {
       if (item.batchNo != null) {
         String? targetWh = setWarehouse.value;
@@ -1069,11 +1088,16 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
     if (isItemSheetOpen.value) {
       barcodeController.clear();
-      final String? contextItem =
-          currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-      log('[DN:scanBarcode] inside-sheet path. contextItem=$contextItem');
 
-      final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
+      // FIX: Use the 8-digit EAN-8 as context — NEVER fall back to
+      // currentItemCode (7 digits). That would cause processScan to build
+      // a wrong '7digit-SUFFIX' batch name instead of 'EAN8-SUFFIX'.
+      // Pass null when currentScannedEan is empty so processScan returns
+      // ScanType.error and the operator gets a clear prompt.
+      final String? contextEan = currentScannedEan.isNotEmpty ? currentScannedEan : null;
+      log('[DN:scanBarcode] inside-sheet path. contextEan=$contextEan');
+
+      final result = await _scanService.processScan(barcode, contextItemCode: contextEan);
       log('[DN:scanBarcode] processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode} message=${result.message}');
 
       if (result.type == ScanType.rack && result.rackId != null) {
@@ -1091,7 +1115,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         validateAndFetchBatch(fallbackBatch);
       } else if (result.type == ScanType.error) {
         log('[DN:scanBarcode] → ERROR branch: ${result.message}');
-        GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+        // When contextEan was null it means the operator hasn't scanned the
+        // item EAN-8 yet. Give a clear, actionable message.
+        if (contextEan == null) {
+          GlobalSnackbar.error(message: 'Please scan the item EAN barcode first, then scan the batch suffix.');
+        } else {
+          GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+        }
       } else {
         log('[DN:scanBarcode] ⚠️ UNHANDLED result type=${result.type} — no branch matched, doing nothing');
       }
@@ -1105,11 +1135,14 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       log('[DN:scanBarcode] outside processScan result: type=${result.type} batchNo=${result.batchNo} itemCode=${result.itemData?.itemCode}');
 
       if (result.isSuccess && result.itemData != null) {
+        // FIX: Store the EAN-8 (8 digits) from the outside scan so the
+        // inside-sheet path can use it as context for batch suffix scans.
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-')[0];
         } else {
           currentScannedEan = result.rawCode;
         }
+        log('[DN:scanBarcode] outside → currentScannedEan="$currentScannedEan"');
 
         final itemData = result.itemData!;
         double maxQty = 0.0;
