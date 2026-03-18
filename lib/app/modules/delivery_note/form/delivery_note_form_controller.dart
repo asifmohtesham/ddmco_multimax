@@ -723,6 +723,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingBatchBalance.value = true;
     bsBatchError.value = null;
     batchInfoTooltip.value = null;
+    // FIX: Do NOT set bsIsBatchValid = true here. It must only be set
+    // after the balance API confirms the batch exists AND has stock.
+    // Setting it early caused the TextFormField to become readOnly
+    // immediately, which prevented the scanned batchNo from being
+    // written into bsBatchController before the field locked.
+    bsIsBatchValid.value = false;
+    bsIsBatchReadOnly.value = false;
 
     try {
       final batchResponse = await _apiProvider.getDocumentList(
@@ -735,9 +742,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           (batchResponse.data['data'] as List).isEmpty) {
         throw Exception('Batch not found');
       }
-
-      bsIsBatchValid.value = true;
-      bsIsBatchReadOnly.value = true;
 
       final batchData = batchResponse.data['data'][0];
       final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
@@ -810,16 +814,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       batchInfoTooltip.value = sb.toString().trim();
 
       if (fetchedBatchQty > 0) {
+        // FIX: Only mark valid (and thus readOnly) AFTER balance is confirmed.
+        bsIsBatchValid.value = true;
+        bsIsBatchReadOnly.value = true;
         bsBatchError.value = null;
         bsRackFocusNode.requestFocus();
       } else {
-        // Show inline error only — no snackbar inside an active sheet (crashes Get.back).
         bsBatchError.value = 'Batch has no stock in this warehouse';
       }
 
       final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
       if (fetchedBatchQty > 0 && enteredQty > fetchedBatchQty) {
-        // Show inline error only — no snackbar inside an active sheet (crashes Get.back).
         bsBatchError.value =
             'Qty ($enteredQty) exceeds batch balance (${fetchedBatchQty.toStringAsFixed(0)})';
       }
@@ -828,6 +833,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       bsMaxQty.value = 0.0;
       bsBatchBalance.value = 0.0;
       bsIsBatchValid.value = false;
+      bsIsBatchReadOnly.value = false;
       GlobalSnackbar.error(message: 'Batch validation failed');
     } finally {
       isValidatingBatch.value = false;
@@ -1033,10 +1039,19 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       if (result.type == ScanType.rack && result.rackId != null) {
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
-      } else if ((result.type == ScanType.batch || result.type == ScanType.item) &&
-          result.batchNo != null) {
+      } else if (result.type == ScanType.batch && result.batchNo != null) {
+        // Batch scan: processScan resolved a full batch number (e.g. ITEMCODE-ESU).
+        // Write to field BEFORE calling validateAndFetchBatch so the
+        // TextFormField is populated even while the field is not yet readOnly.
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
+      } else if (result.type == ScanType.item) {
+        // Item scan inside sheet: treat the raw scanned code as a batch suffix.
+        // This covers physical labels where the barcode IS the batch number
+        // but processScan has no batchNo to return (no context suffix match).
+        final fallbackBatch = result.batchNo ?? barcode.trim();
+        bsBatchController.text = fallbackBatch;
+        validateAndFetchBatch(fallbackBatch);
       } else if (result.type == ScanType.error) {
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       }
