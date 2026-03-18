@@ -12,11 +12,13 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 // Child sheet controller
 import 'controllers/delivery_note_item_form_controller.dart';
@@ -27,6 +29,7 @@ class DeliveryNoteFormController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final StorageService _storageService = Get.find<StorageService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
   final String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
@@ -81,11 +84,21 @@ class DeliveryNoteFormController extends GetxController {
   // ── EAN-8 context for inside-sheet scan routing ───────────────────────────
   String currentScannedEan8 = '';
 
+  // ── Persistent scan worker (lives for entire controller lifetime) ─────────
+  Worker? _scanWorker;
+
   @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
     ever(setWarehouse, (_) => _checkForChanges());
+
+    // FIX: Subscribe to DataWedgeService at the controller level so scans
+    // are always routed — even while BarcodeInputWidget is off-screen/disposed
+    // (which happens when isItemSheetOpen=true hides the widget).
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    log('[DN:onInit] _scanWorker registered on DataWedgeService.scannedCode',
+        name: 'DN');
 
     if (mode == 'new') {
       _createNewDeliveryNote();
@@ -96,9 +109,38 @@ class DeliveryNoteFormController extends GetxController {
 
   @override
   void onClose() {
+    _scanWorker?.dispose();
+    log('[DN:onClose] _scanWorker disposed', name: 'DN');
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
+  }
+
+  // ── Raw scan entry point (replaces BarcodeInputWidget ever() worker) ──────
+  /// Called by the persistent [_scanWorker] every time DataWedge fires a code.
+  /// Guards:
+  ///   • empty / blank codes are ignored
+  ///   • only fires when the current route is DELIVERY_NOTE_FORM
+  void _onRawScan(String code) {
+    log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
+        name: 'DN');
+
+    if (code.isEmpty) {
+      log('[DN:_onRawScan] CHECKPOINT-1A empty code — ignored', name: 'DN');
+      return;
+    }
+
+    if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) {
+      log('[DN:_onRawScan] CHECKPOINT-1B wrong route (${Get.currentRoute}) — ignored',
+          name: 'DN');
+      return;
+    }
+
+    final clean = code.trim();
+    log('[DN:_onRawScan] CHECKPOINT-2 forwarding clean="$clean" to scanBarcode',
+        name: 'DN');
+    barcodeController.text = clean;
+    scanBarcode(clean);
   }
 
   // ── PopScope ────────────────────────────────────────────────────────────
@@ -262,7 +304,7 @@ class DeliveryNoteFormController extends GetxController {
     // FIX: set the flag synchronously BEFORE showing the sheet so that any
     // ScanCheck broadcast arriving while the sheet is visible sees true.
     isItemSheetOpen.value = true;
-    log('[DN:_openItemSheet] isItemSheetOpen → true', name: 'DN');
+    log('[DN:_openItemSheet] CHECKPOINT-3 isItemSheetOpen → true', name: 'DN');
 
     await Get.bottomSheet(
       DraggableScrollableSheet(
@@ -275,11 +317,8 @@ class DeliveryNoteFormController extends GetxController {
       isScrollControlled: true,
     );
 
-    // FIX: reset synchronously right after the sheet future resolves — NOT
-    // inside addPostFrameCallback, which could fire before the next broadcast
-    // arrives and incorrectly reset the flag to false mid-scan.
     isItemSheetOpen.value = false;
-    log('[DN:_openItemSheet] isItemSheetOpen → false', name: 'DN');
+    log('[DN:_openItemSheet] CHECKPOINT-3B isItemSheetOpen → false', name: 'DN');
     barcodeController.clear();
     if (Get.isRegistered<DeliveryNoteItemFormController>()) {
       Get.delete<DeliveryNoteItemFormController>();
@@ -509,54 +548,83 @@ class DeliveryNoteFormController extends GetxController {
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
-    log('[DN:scanBarcode] ▶ barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}',
+    log('[DN:scanBarcode] CHECKPOINT-4 barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}',
         name: 'DN');
 
-    if (!_validateHeaderBeforeScan()) return;
+    if (!_validateHeaderBeforeScan()) {
+      log('[DN:scanBarcode] CHECKPOINT-4A header validation failed — aborted',
+          name: 'DN');
+      return;
+    }
 
     // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
+      log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
+          name: 'DN');
       barcodeController.clear();
+
+      final bool childRegistered =
+          Get.isRegistered<DeliveryNoteItemFormController>();
+      log('[DN:scanBarcode] CHECKPOINT-5A childRegistered=$childRegistered',
+          name: 'DN');
+
+      if (!childRegistered) {
+        log('[DN:scanBarcode] CHECKPOINT-5B child NOT registered — scan dropped',
+            name: 'DN');
+        return;
+      }
+
       final child = Get.find<DeliveryNoteItemFormController>();
       final String? contextEan8 =
           child.currentScannedEan8.isNotEmpty ? child.currentScannedEan8 : null;
 
-      log('[DN:scanBarcode] inside-sheet. contextEan8=$contextEan8', name: 'DN');
+      log('[DN:scanBarcode] CHECKPOINT-5C contextEan8=$contextEan8', name: 'DN');
       final result =
           await _scanService.processScan(barcode, contextItemCode: contextEan8);
 
-      log('[DN:scanBarcode] inside-sheet result: type=${result.type} batchNo=${result.batchNo}',
+      log('[DN:scanBarcode] CHECKPOINT-5D result: type=${result.type} batchNo=${result.batchNo}',
           name: 'DN');
 
       if (result.type == ScanType.rack && result.rackId != null) {
+        log('[DN:scanBarcode] CHECKPOINT-5E routing to rack: ${result.rackId}',
+            name: 'DN');
         child.rackController.text = result.rackId!;
         child.validateRack(result.rackId!);
       } else if (result.type == ScanType.batch || result.type == ScanType.item) {
         final candidateBatch = result.batchNo;
-        log('[DN:scanBarcode] inside-sheet batch path: candidateBatch=$candidateBatch '
+        log('[DN:scanBarcode] CHECKPOINT-5F batch path: candidateBatch=$candidateBatch '
             'batchController.hashCode=${child.batchController.hashCode}',
             name: 'DN');
         if (candidateBatch != null && candidateBatch.isNotEmpty) {
           child.batchController.text = candidateBatch;
-          log('[DN:scanBarcode] batchController.text set → "${child.batchController.text}"',
+          log('[DN:scanBarcode] CHECKPOINT-5G batchController.text → "${child.batchController.text}"',
               name: 'DN');
           child.validateBatch(candidateBatch);
         } else {
+          log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty — showing error snackbar',
+              name: 'DN');
           GlobalSnackbar.error(
               message:
                   'Scan the item EAN first, then scan the batch suffix.');
         }
       } else if (result.type == ScanType.error) {
+        log('[DN:scanBarcode] CHECKPOINT-5I ScanType.error: ${result.message}',
+            name: 'DN');
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+      } else {
+        log('[DN:scanBarcode] CHECKPOINT-5J unhandled type=${result.type}',
+            name: 'DN');
       }
       return;
     }
 
     // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────────
+    log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
+        name: 'DN');
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
-      log('[DN:scanBarcode] outside result: type=${result.type} item=${result.itemData?.itemCode}',
+      log('[DN:scanBarcode] CHECKPOINT-6A outside result: type=${result.type} item=${result.itemData?.itemCode}',
           name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
@@ -566,11 +634,11 @@ class DeliveryNoteFormController extends GetxController {
         } else {
           currentScannedEan8 = result.rawCode;
         }
+        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan8 set → "$currentScannedEan8"',
+            name: 'DN');
 
         final itemData = result.itemData!;
         double  maxQty         = 0.0;
-        // Use a promoted local so Dart flow analysis accepts it as non-null
-        // inside the guard block without requiring a bang operator.
         String? resolvedBatchNo = result.batchNo;
 
         try {
@@ -578,7 +646,7 @@ class DeliveryNoteFormController extends GetxController {
           if (batchNo != null && batchNo.isNotEmpty) {
             final balRes = await _apiProvider.getBatchWiseBalance(
               itemData.itemCode,
-              batchNo,                  // promoted — non-nullable here
+              batchNo,
               warehouse: setWarehouse.value,
             );
             if (balRes.statusCode == 200 &&
@@ -597,6 +665,8 @@ class DeliveryNoteFormController extends GetxController {
         isScanning.value = false;
         barcodeController.clear();
 
+        log('[DN:scanBarcode] CHECKPOINT-6C opening item sheet for ${itemData.itemCode} batchNo=$resolvedBatchNo maxQty=$maxQty',
+            name: 'DN');
         await _openItemSheet(
           itemCode:      itemData.itemCode,
           itemName:      itemData.itemName,
@@ -604,12 +674,16 @@ class DeliveryNoteFormController extends GetxController {
           initialMaxQty: maxQty,
         );
       } else if (result.type == ScanType.multiple) {
+        log('[DN:scanBarcode] CHECKPOINT-6D ScanType.multiple', name: 'DN');
         GlobalSnackbar.warning(
             message: 'Multiple items found. Please search manually.');
       } else {
+        log('[DN:scanBarcode] CHECKPOINT-6E no item found: ${result.message}',
+            name: 'DN');
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
+      log('[DN:scanBarcode] CHECKPOINT-6F exception: $e', name: 'DN');
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;

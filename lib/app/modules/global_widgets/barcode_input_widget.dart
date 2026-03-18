@@ -3,6 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 
+/// BarcodeInputWidget
+///
+/// Renders the scanner text field and handles MANUAL keyboard / send-button
+/// input. Hardware-scan routing (DataWedge EventChannel) is now handled by
+/// each consuming Controller's own persistent Worker, so this widget no longer
+/// attaches a GetX `ever()` worker to [DataWedgeService.scannedCode].
+///
+/// The only path that still calls [onScan] from here is:
+///   • [onFieldSubmitted]  — user types a barcode and presses Enter
+///   • suffix IconButton   — user taps the send icon
+///
+/// Controllers that need hardware-scan events (e.g. DeliveryNoteFormController)
+/// subscribe directly in `onInit` via:
+///   ```dart
+///   _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+///   ```
 class BarcodeInputWidget extends StatefulWidget {
   final TextEditingController? controller;
   final Function(String) onScan;
@@ -31,33 +47,17 @@ class BarcodeInputWidget extends StatefulWidget {
 
 class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
   late TextEditingController _textController;
-  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
-  Worker? _scanWorker;
 
   @override
   void initState() {
     super.initState();
     _textController = widget.controller ?? TextEditingController();
-
-    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty) {
-        if (widget.activeRoute != null && Get.currentRoute != widget.activeRoute) {
-          return;
-        }
-
-        final cleanCode = code.trim();
-        _textController.text = cleanCode;
-        _textController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _textController.text.length),
-        );
-        widget.onScan(cleanCode);
-      }
-    });
+    log('[BarcodeInputWidget] initState — manual-input-only mode (no ever worker)',
+        name: 'Scan');
   }
 
   @override
   void dispose() {
-    _scanWorker?.dispose();
     if (widget.controller == null) {
       _textController.dispose();
     }
@@ -101,7 +101,6 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
         ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
         : const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
 
-    // UX IMPROVEMENT: Determine Helper Text and Color
     String? helperText = widget.hintText;
     Color? helperColor = Colors.grey;
 
@@ -122,9 +121,9 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       child: SafeArea(
         bottom: !widget.isEmbedded,
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start, // Align to top for multi-line
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if(widget.isEmbedded)
+            if (widget.isEmbedded)
               Container(
                 margin: const EdgeInsets.only(right: 12),
                 padding: const EdgeInsets.all(10),
@@ -133,67 +132,101 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                     shape: BoxShape.circle,
                     border: Border.all(color: primaryColor.withValues(alpha: 0.2)),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0,2))
-                    ]
-                ),
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2))
+                    ]),
                 child: Icon(Icons.qr_code_scanner, color: primaryColor, size: 24),
               ),
-
             Expanded(
               child: TextFormField(
                 controller: _textController,
                 readOnly: widget.isLoading,
                 decoration: InputDecoration(
-                  // Keep the label static
                   labelText: 'Barcode',
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  // UX IMPROVEMENT: Use helperText for feedback
                   helperText: helperText,
                   helperStyle: TextStyle(
                     color: helperColor,
-                    fontWeight: (widget.isSuccess || widget.hasError) ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        (widget.isSuccess || widget.hasError)
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                   ),
                   labelStyle: TextStyle(
-                    color: widget.isEmbedded ? Colors.grey.shade700 : null,
-                    fontWeight: widget.isEmbedded ? FontWeight.w500 : null,
+                    color:
+                        widget.isEmbedded ? Colors.grey.shade700 : null,
+                    fontWeight:
+                        widget.isEmbedded ? FontWeight.w500 : null,
                   ),
                   border: inputBorder,
                   enabledBorder: widget.isEmbedded
-                      ? OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: widget.hasError ? Colors.red : Colors.transparent))
+                      ? OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                              color: widget.hasError
+                                  ? Colors.red
+                                  : Colors.transparent))
                       : (widget.hasError
-                      ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red))
-                      : null),
+                          ? OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide:
+                                  const BorderSide(color: Colors.red))
+                          : null),
                   focusedBorder: widget.isEmbedded
-                      ? OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: widget.hasError ? Colors.red : primaryColor, width: 1.5))
+                      ? OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                              color: widget.hasError
+                                  ? Colors.red
+                                  : primaryColor,
+                              width: 1.5))
                       : (widget.hasError
-                      ? OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.red, width: 2))
-                      : null),
+                          ? OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(
+                                  color: Colors.red, width: 2))
+                          : null),
                   contentPadding: contentPadding,
                   prefixIcon: widget.isEmbedded
                       ? null
-                      : Icon(Icons.qr_code_scanner, color: Colors.grey),
+                      : const Icon(Icons.qr_code_scanner,
+                          color: Colors.grey),
                   filled: widget.isEmbedded,
                   fillColor: Colors.white,
                   suffixIcon: widget.isLoading
                       ? const Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
-                  )
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2.5)),
+                        )
                       : (widget.isSuccess
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : (widget.hasError
-                      ? const Icon(Icons.error, color: Colors.red)
-                      : IconButton(
-                    icon: Icon(
-                        widget.isEmbedded ? Icons.arrow_forward : Icons.send,
-                        color: widget.isEmbedded ? primaryColor : null
-                    ),
-                    onPressed: () {
-                      if (_textController.text.trim().isNotEmpty) {
-                        widget.onScan(_textController.text.trim());
-                      }
-                    },
-                  ))),
+                          ? const Icon(Icons.check_circle,
+                              color: Colors.green)
+                          : (widget.hasError
+                              ? const Icon(Icons.error,
+                                  color: Colors.red)
+                              : IconButton(
+                                  icon: Icon(
+                                      widget.isEmbedded
+                                          ? Icons.arrow_forward
+                                          : Icons.send,
+                                      color: widget.isEmbedded
+                                          ? primaryColor
+                                          : null),
+                                  onPressed: () {
+                                    if (_textController.text
+                                        .trim()
+                                        .isNotEmpty) {
+                                      widget.onScan(
+                                          _textController.text.trim());
+                                    }
+                                  },
+                                ))),
                 ),
                 onFieldSubmitted: (value) {
                   if (value.trim().isNotEmpty && !widget.isLoading) {
