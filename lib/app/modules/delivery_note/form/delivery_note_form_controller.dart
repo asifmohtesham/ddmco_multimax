@@ -1247,16 +1247,22 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       log('[DN:scanBarcode] processScan → type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode} message=${result.message}');
 
       if (result.type == ScanType.rack && result.rackId != null) {
-        log('[DN:scanBarcode] → RACK: setting bsRackController="${result.rackId}"');
+        log('[DN:scanBarcode] → RACK: unlocking then setting bsRackController="${result.rackId}"');
+        // FIX: unlock first so the read-only TextField accepts the new value
+        resetRackValidation();
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if (result.type == ScanType.batch && result.batchNo != null) {
-        log('[DN:scanBarcode] → BATCH: setting bsBatchController="${result.batchNo}"');
+        log('[DN:scanBarcode] → BATCH: unlocking then setting bsBatchController="${result.batchNo}"');
+        // FIX: unlock first so the read-only TextField accepts the new value
+        resetBatchValidation();
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.item) {
         final fallbackBatch = result.batchNo ?? barcode.trim();
-        log('[DN:scanBarcode] → ITEM fallback: fallbackBatch=$fallbackBatch');
+        log('[DN:scanBarcode] → ITEM fallback: unlocking then setting fallbackBatch=$fallbackBatch');
+        // FIX: unlock first so the read-only TextField accepts the new value
+        resetBatchValidation();
         bsBatchController.text = fallbackBatch;
         validateAndFetchBatch(fallbackBatch);
       } else if (result.type == ScanType.error) {
