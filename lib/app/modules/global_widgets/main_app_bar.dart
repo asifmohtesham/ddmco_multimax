@@ -15,6 +15,11 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? status;
   final bool isDirty;
   final bool isSaving;
+
+  /// Result of the most recent save attempt. Forwarded directly to
+  /// [SaveIconButton]. Defaults to [SaveResult.idle] (no-op).
+  final SaveResult saveResult;
+
   final VoidCallback? onSave;
   final VoidCallback? onReload;
   final List<Widget>? actions;
@@ -33,6 +38,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.titleWidget,
     this.status,
     this.isSaving = false,
+    this.saveResult = SaveResult.idle,
     this.onSave,
     this.onReload,
     this.actions,
@@ -76,6 +82,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
           onPressed: onSave,
           isSaving: isSaving,
           isDirty: isDirty,
+          saveResult: saveResult,
         ),
     ];
 
