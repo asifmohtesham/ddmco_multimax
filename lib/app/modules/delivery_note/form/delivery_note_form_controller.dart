@@ -259,7 +259,10 @@ class DeliveryNoteFormController extends GetxController {
       },
     );
 
+    // FIX: set the flag synchronously BEFORE showing the sheet so that any
+    // ScanCheck broadcast arriving while the sheet is visible sees true.
     isItemSheetOpen.value = true;
+    log('[DN:_openItemSheet] isItemSheetOpen → true', name: 'DN');
 
     await Get.bottomSheet(
       DraggableScrollableSheet(
@@ -272,13 +275,15 @@ class DeliveryNoteFormController extends GetxController {
       isScrollControlled: true,
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      isItemSheetOpen.value = false;
-      barcodeController.clear();
-      if (Get.isRegistered<DeliveryNoteItemFormController>()) {
-        Get.delete<DeliveryNoteItemFormController>();
-      }
-    });
+    // FIX: reset synchronously right after the sheet future resolves — NOT
+    // inside addPostFrameCallback, which could fire before the next broadcast
+    // arrives and incorrectly reset the flag to false mid-scan.
+    isItemSheetOpen.value = false;
+    log('[DN:_openItemSheet] isItemSheetOpen → false', name: 'DN');
+    barcodeController.clear();
+    if (Get.isRegistered<DeliveryNoteItemFormController>()) {
+      Get.delete<DeliveryNoteItemFormController>();
+    }
   }
 
   // ── Public entry points ────────────────────────────────────────────────────
@@ -520,13 +525,21 @@ class DeliveryNoteFormController extends GetxController {
       final result =
           await _scanService.processScan(barcode, contextItemCode: contextEan8);
 
+      log('[DN:scanBarcode] inside-sheet result: type=${result.type} batchNo=${result.batchNo}',
+          name: 'DN');
+
       if (result.type == ScanType.rack && result.rackId != null) {
         child.rackController.text = result.rackId!;
         child.validateRack(result.rackId!);
       } else if (result.type == ScanType.batch || result.type == ScanType.item) {
         final candidateBatch = result.batchNo;
+        log('[DN:scanBarcode] inside-sheet batch path: candidateBatch=$candidateBatch '
+            'batchController.hashCode=${child.batchController.hashCode}',
+            name: 'DN');
         if (candidateBatch != null && candidateBatch.isNotEmpty) {
           child.batchController.text = candidateBatch;
+          log('[DN:scanBarcode] batchController.text set → "${child.batchController.text}"',
+              name: 'DN');
           child.validateBatch(candidateBatch);
         } else {
           GlobalSnackbar.error(
