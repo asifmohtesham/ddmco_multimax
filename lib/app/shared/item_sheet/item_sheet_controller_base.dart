@@ -19,10 +19,10 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 /// Concrete subclasses only need to implement the four abstract members
 /// and call [initialise] from their own [initialise] method.
 abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ───────────────────────────────────────────────────────────
+  // ── Dependencies ─────────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  // ── Form infrastructure ───────────────────────────────────────────────────
+  // ── Form infrastructure ───────────────────────────────────────────────
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   final ScrollController sheetScrollController = ScrollController();
 
@@ -31,11 +31,11 @@ abstract class ItemSheetControllerBase extends GetxController {
   final TextEditingController rackController  = TextEditingController();
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ─────────────────────────────────────────────────────
+  // ── Core item identity ──────────────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
-  // ── Validation state ───────────────────────────────────────────────────────
+  // ── Validation state ───────────────────────────────────────────────────
   var isBatchValid      = false.obs;
   var isRackValid       = false.obs;
   var isValidatingBatch = false.obs;
@@ -49,22 +49,22 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── Item metadata (for GlobalItemFormSheet footer) ─────────────────────────
+  // ── Item metadata (for GlobalItemFormSheet footer) ──────────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
   var itemModified   = RxnString();
   var itemModifiedBy = RxnString();
 
-  // ── Editing context ────────────────────────────────────────────────────────
+  // ── Editing context ──────────────────────────────────────────────────
   /// Non-null when editing an existing child-table row.
   var editingItemName = RxnString();
 
-  // ── Snapshot for dirty-checking ────────────────────────────────────────────
+  // ── Snapshot for dirty-checking ──────────────────────────────────────────
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Abstract interface ─────────────────────────────────────────────────────
+  // ── Abstract interface ──────────────────────────────────────────────────
 
   /// The warehouse to use for stock/batch queries.
   /// Return null if not yet determined.
@@ -83,7 +83,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Commits the current field values back to the parent document controller.
   Future<void> submit();
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────
 
   @override
   void onClose() {
@@ -95,7 +95,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     super.onClose();
   }
 
-  // ── Shared initialisation helper ───────────────────────────────────────────
+  // ── Shared initialisation helper ──────────────────────────────────────────
 
   /// Call from concrete [initialise] after fields are populated.
   /// Sets the dirty-check snapshot and registers field listeners.
@@ -118,7 +118,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Qty helpers ────────────────────────────────────────────────────────────
+  // ── Qty helpers ──────────────────────────────────────────────────────────
 
   void adjustQty(double delta) {
     double current = double.tryParse(qtyController.text) ?? 0;
@@ -129,7 +129,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Batch validation ───────────────────────────────────────────────────────
+  // ── Batch validation ─────────────────────────────────────────────────────
 
   /// Validates [batch] against Batch-Wise Balance History.
   /// Sets [isBatchValid], [maxQty], [batchError], and focuses the rack field
@@ -152,26 +152,26 @@ abstract class ItemSheetControllerBase extends GetxController {
       if (batchList.isEmpty) throw Exception('Batch not found');
 
       final batchData = batchList.first as Map<String, dynamic>;
-      final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+      final double pkgQty =
+          (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
       if (pkgQty > 0) {
-        qtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
+        qtyController.text =
+            pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
-      // 2. Fetch balance
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      // 2. Fetch balance — positional args; ApiProvider builds its own dates
       final balRes = await _api.getBatchWiseBalance(
-        itemCode:  itemCode.value,
-        batchNo:   batch,
+        itemCode.value,
+        batch,
         warehouse: resolvedWarehouse,
-        fromDate:  today,
-        toDate:    today,
       );
 
       double fetchedQty = 0.0;
       if (balRes.statusCode == 200 && balRes.data['message'] != null) {
         final result = balRes.data['message']['result'];
         if (result is List && result.isNotEmpty) {
-          fetchedQty = (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
+          fetchedQty =
+              (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
         }
       }
 
@@ -187,7 +187,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       if (fetchedQty > 0) {
         isBatchValid.value = true;
         batchError.value   = null;
-        _focusRack();   // post-frame safe
+        _focusRack(); // post-frame safe
       } else {
         isBatchValid.value = false;
         batchError.value   = 'Batch has no stock';
@@ -215,11 +215,9 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Rack validation ────────────────────────────────────────────────────────
+  // ── Rack validation ──────────────────────────────────────────────────────
 
   /// Validates [rack] via the Rack doctype API.
-  /// Derives the warehouse from rack code optimistically (format ZONE-WH-NUM)
-  /// then confirms with the API response.
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
       isRackValid.value = false;
@@ -253,12 +251,9 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Stock / rack-map fetching ──────────────────────────────────────────────
+  // ── Stock / rack-map fetching ───────────────────────────────────────────────
 
   /// Fetches per-rack stock availability for the current item + warehouse.
-  /// Populates [rackStockMap] and [rackStockTooltip].
-  /// Concrete classes that use [AutoFillRackMixin] should override this to
-  /// call [autoFillBestRack] after super.
   Future<void> fetchAllRackStocks() async {
     final warehouse = resolvedWarehouse;
     if (warehouse == null || warehouse.isEmpty) return;
@@ -279,8 +274,8 @@ abstract class ItemSheetControllerBase extends GetxController {
           // Last row is the totals row — skip it
           for (int i = 0; i < result.length - 1; i++) {
             final row = result[i] as Map<String, dynamic>;
-            final String? r = row['rack'] as String?;
-            final double qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+            final String? r   = row['rack'] as String?;
+            final double  qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
             if (r != null && r.isNotEmpty && qty > 0) {
               tempMap[r] = qty;
               tooltipLines.add('$r: $qty');
@@ -298,10 +293,9 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Base validation helper ─────────────────────────────────────────────────
+  // ── Base validation helper ──────────────────────────────────────────────────
 
   /// Returns true when all base rules pass.
-  /// Concrete [validateSheet] implementations call this first.
   bool baseValidate() {
     rackError.value = null;
 
@@ -327,9 +321,6 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   // ── Focus helpers ──────────────────────────────────────────────────────────
 
-  /// Requests focus on the rack field in the next frame.
-  /// Using addPostFrameCallback prevents the
-  /// "requestFocus called during build" assertion crash.
   void _focusRack() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (rackFocusNode.canRequestFocus) {

@@ -1,3 +1,4 @@
+import 'package:get/get.dart';
 import 'item_sheet_controller_base.dart';
 
 /// Mixin for DocType item-sheet controllers that carry a POS-Upload invoice

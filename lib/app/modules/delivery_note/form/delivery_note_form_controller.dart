@@ -35,11 +35,11 @@ class DeliveryNoteFormController extends GetxController {
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
   // ── Document-level state ──────────────────────────────────────────────────
-  var isLoading   = true.obs;
-  var isScanning  = false.obs;
+  var isLoading    = true.obs;
+  var isScanning   = false.obs;
   var isAddingItem = false.obs;
-  var isSaving    = false.obs;
-  var isDirty     = false.obs;
+  var isSaving     = false.obs;
+  var isDirty      = false.obs;
   String _originalJson = '';
 
   var deliveryNote = Rx<DeliveryNote?>(null);
@@ -55,13 +55,22 @@ class DeliveryNoteFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open flag (still needed for scan routing + auto-submit) ───────────
+  // ── Sheet-open + item-edit loading flags ──────────────────────────────────
+  /// True while the item bottom-sheet is open (used for scan routing).
   var isItemSheetOpen = false.obs;
 
+  /// True while [editItem] is fetching batch balance before opening the sheet.
+  /// Consumed by DeliveryNoteFormScreen to hide the barcode scanner widget.
+  var isLoadingItemEdit = false.obs;
+
+  /// The `name` field of the item currently being loaded for editing.
+  /// Used by DeliveryNoteItemCard to show a per-row spinner.
+  var loadingForItemName = RxnString();
+
   // ── Warehouse ────────────────────────────────────────────────────────────
-  var warehouses          = <String>[].obs;
+  var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
-  var setWarehouse        = RxnString();
+  var setWarehouse         = RxnString();
 
   // ── Item warehouse (derived from rack — still needed by child controller) ──
   var bsItemWarehouse = RxnString();
@@ -70,7 +79,6 @@ class DeliveryNoteFormController extends GetxController {
   var customerError = RxnString();
 
   // ── EAN-8 context for inside-sheet scan routing ───────────────────────────
-  /// Set from outside-sheet scan; forwarded to child controller on open.
   String currentScannedEan8 = '';
 
   @override
@@ -93,7 +101,7 @@ class DeliveryNoteFormController extends GetxController {
     super.onClose();
   }
 
-  // ── PopScope ──────────────────────────────────────────────────────────────
+  // ── PopScope ────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -103,7 +111,7 @@ class DeliveryNoteFormController extends GetxController {
     );
   }
 
-  // ── Dirty tracking ────────────────────────────────────────────────────────
+  // ── Dirty tracking ──────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -132,7 +140,7 @@ class DeliveryNoteFormController extends GetxController {
     isDirty.value = false;
   }
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
+  // ── Data fetching ──────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -198,6 +206,9 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
+  /// Reloads the document from the server. Consumed by [MainAppBar.onReload].
+  Future<void> reloadDocument() => fetchDeliveryNote();
+
   Future<void> fetchPosUpload(String posName) async {
     try {
       final response = await _posUploadProvider.getPosUpload(posName);
@@ -209,10 +220,7 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── Item sheet orchestration ───────────────────────────────────────────────
-
-  /// Opens the item bottom-sheet for a NEW item.
-  /// Puts the child controller ephemerally; deletes it after sheet closes.
+  // ── Item sheet orchestration ──────────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -220,7 +228,6 @@ class DeliveryNoteFormController extends GetxController {
     double   initialMaxQty = 0.0,
     DeliveryNoteItem? editingItem,
   }) async {
-    // 1. Derive EAN-8 context when editing
     if (editingItem != null) {
       if (editingItem.batchNo != null && editingItem.batchNo!.contains('-')) {
         currentScannedEan8 = editingItem.batchNo!.split('-').first;
@@ -229,19 +236,17 @@ class DeliveryNoteFormController extends GetxController {
       }
     }
 
-    // 2. Spin up child controller
     final child = Get.put(DeliveryNoteItemFormController());
     child.initialise(
-      parent:         this,
-      code:           itemCode,
-      name:           itemName,
-      batchNo:        batchNo,
-      initialMaxQty:  initialMaxQty,
-      editingItem:    editingItem,
-      scannedEan8:    currentScannedEan8,
+      parent:        this,
+      code:          itemCode,
+      name:          itemName,
+      batchNo:       batchNo,
+      initialMaxQty: initialMaxQty,
+      editingItem:   editingItem,
+      scannedEan8:   currentScannedEan8,
     );
 
-    // 3. Wire auto-submit using StorageService settings
     child.setupAutoSubmit(
       enabled:      _storageService.getAutoSubmitEnabled(),
       delaySeconds: _storageService.getAutoSubmitDelay(),
@@ -256,7 +261,6 @@ class DeliveryNoteFormController extends GetxController {
 
     isItemSheetOpen.value = true;
 
-    // 4. Show sheet
     await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -268,63 +272,68 @@ class DeliveryNoteFormController extends GetxController {
       isScrollControlled: true,
     );
 
-    // 5. Post-frame cleanup — never touch overlay state synchronously
     WidgetsBinding.instance.addPostFrameCallback((_) {
       isItemSheetOpen.value = false;
       barcodeController.clear();
-      // Delete child controller after sheet is fully gone
       if (Get.isRegistered<DeliveryNoteItemFormController>()) {
         Get.delete<DeliveryNoteItemFormController>();
       }
     });
   }
 
-  // ── Public entry points for screen / scan routing ────────────────────────
-
+  // ── Public entry points ────────────────────────────────────────────────────
   Future<void> editItem(DeliveryNoteItem item) async {
+    isLoadingItemEdit.value  = true;
+    loadingForItemName.value = item.name;
     double fetchedQty = 0.0;
     try {
       if (item.batchNo != null) {
         String? targetWh = setWarehouse.value;
         if (item.rack != null && item.rack!.isNotEmpty) {
           try {
-            final rackRes = await _apiProvider.getDocument('Rack', item.rack!);
-            if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
+            final rackRes =
+                await _apiProvider.getDocument('Rack', item.rack!);
+            if (rackRes.statusCode == 200 &&
+                rackRes.data['data'] != null) {
               targetWh = rackRes.data['data']['warehouse'];
             }
           } catch (_) {}
         }
+        // Positional args; ApiProvider builds its own today dates
         final balRes = await _apiProvider.getBatchWiseBalance(
-          itemCode:  item.itemCode,
-          batchNo:   item.batchNo!,
+          item.itemCode,
+          item.batchNo!,
           warehouse: targetWh,
-          fromDate:  DateFormat('yyyy-MM-dd').format(DateTime.now()),
-          toDate:    DateFormat('yyyy-MM-dd').format(DateTime.now()),
         );
-        if (balRes.statusCode == 200 && balRes.data['message'] != null) {
+        if (balRes.statusCode == 200 &&
+            balRes.data['message'] != null) {
           final result = balRes.data['message']['result'];
           if (result is List && result.isNotEmpty) {
-            fetchedQty = (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
+            fetchedQty =
+                (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
           }
         }
       }
     } catch (_) {
       fetchedQty = 999;
+    } finally {
+      isLoadingItemEdit.value  = false;
+      loadingForItemName.value = null;
     }
 
     await _openItemSheet(
-      itemCode:     item.itemCode,
-      itemName:     item.itemName ?? '',
-      batchNo:      item.batchNo,
+      itemCode:      item.itemCode,
+      itemName:      item.itemName ?? '',
+      batchNo:       item.batchNo,
       initialMaxQty: fetchedQty,
-      editingItem:  item,
+      editingItem:   item,
     );
   }
 
-  // ── Item CRUD (called by child controller.submit()) ──────────────────────
-
+  // ── Item CRUD ──────────────────────────────────────────────────────────────
   void updateItemLocally(
-      String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
+      String itemNameID, double qty, String rack,
+      String? batchNo, String? invoiceSerial) {
     final items = deliveryNote.value?.items.toList() ?? [];
     final idx   = items.indexWhere((i) => i.name == itemNameID);
     if (idx != -1) {
@@ -384,11 +393,11 @@ class DeliveryNoteFormController extends GetxController {
     GlobalSnackbar.success(message: 'Item removed');
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
-    isSaving.value        = true;
-    customerError.value   = null;
+    isSaving.value      = true;
+    customerError.value = null;
 
     try {
       final String docName = deliveryNote.value?.name ?? '';
@@ -397,8 +406,8 @@ class DeliveryNoteFormController extends GetxController {
       data['set_warehouse'] = setWarehouse.value;
 
       if (isNew) {
-        data['customer']      = deliveryNote.value!.customer;
-        data['posting_date']  = deliveryNote.value!.postingDate;
+        data['customer']     = deliveryNote.value!.customer;
+        data['posting_date'] = deliveryNote.value!.postingDate;
         if (deliveryNote.value!.poNo != null) data['po_no'] = deliveryNote.value!.poNo;
         data['docstatus'] = 0;
       }
@@ -434,7 +443,7 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── UX helpers ────────────────────────────────────────────────────────────
+  // ── UX helpers ─────────────────────────────────────────────────────────────
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value   = serial;
@@ -453,8 +462,8 @@ class DeliveryNoteFormController extends GetxController {
           if (key?.currentContext != null) {
             Scrollable.ensureVisible(
               key!.currentContext!,
-              duration: const Duration(milliseconds: 500),
-              curve:    Curves.easeInOut,
+              duration:  const Duration(milliseconds: 500),
+              curve:     Curves.easeInOut,
               alignment: 0.5,
             );
           }
@@ -478,7 +487,7 @@ class DeliveryNoteFormController extends GetxController {
         expandedInvoice.value == key ? '' : key;
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────
+  // ── Scan routing ────────────────────────────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
@@ -501,7 +510,7 @@ class DeliveryNoteFormController extends GetxController {
 
     if (!_validateHeaderBeforeScan()) return;
 
-    // ── INSIDE-SHEET PATH ───────────────────────────────────────────────────
+    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       barcodeController.clear();
       final child = Get.find<DeliveryNoteItemFormController>();
@@ -531,7 +540,7 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────────
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
@@ -539,8 +548,8 @@ class DeliveryNoteFormController extends GetxController {
           name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
-        // Capture EAN-8 for inside-sheet context
-        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
+        if (result.rawCode.contains('-') &&
+            !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan8 = result.rawCode.split('-').first;
         } else {
           currentScannedEan8 = result.rawCode;
@@ -551,18 +560,17 @@ class DeliveryNoteFormController extends GetxController {
         String? resolvedBatchNo = result.batchNo;
 
         try {
+          // Positional args; ApiProvider builds its own today dates
           final balRes = await _apiProvider.getBatchWiseBalance(
-            itemCode:  itemData.itemCode,
-            batchNo:   resolvedBatchNo,
+            itemData.itemCode,
+            resolvedBatchNo,
             warehouse: setWarehouse.value,
-            fromDate:  DateFormat('yyyy-MM-dd').format(DateTime.now()),
-            toDate:    DateFormat('yyyy-MM-dd').format(DateTime.now()),
           );
           if (balRes.statusCode == 200 &&
               balRes.data['message']?['result'] != null) {
             final list = balRes.data['message']['result'] as List;
             if (list.isNotEmpty) {
-              maxQty = (list[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
+              maxQty          = (list[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
               resolvedBatchNo ??= list[0]['batch_no'] as String?;
             }
           }
@@ -593,7 +601,7 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── Grouped items + filter helpers ──────────────────────────────────────────
+  // ── Grouped items + filter helpers ────────────────────────────────────────────
   Map<String, List<DeliveryNoteItem>> get groupedItems {
     if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
       return {};
@@ -608,8 +616,10 @@ class DeliveryNoteFormController extends GetxController {
     if (posUpload.value == null) return 0;
     final groups = groupedItems;
     return posUpload.value!.items.where((posItem) {
-      final serial = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final qty = (groups[serial] ?? []).fold(0.0, (s, i) => s + i.qty);
+      final serial =
+          (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final qty =
+          (groups[serial] ?? []).fold(0.0, (s, i) => s + i.qty);
       return qty >= posItem.quantity;
     }).length;
   }
@@ -618,8 +628,10 @@ class DeliveryNoteFormController extends GetxController {
     if (posUpload.value == null) return 0;
     final groups = groupedItems;
     return posUpload.value!.items.where((posItem) {
-      final serial = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final qty = (groups[serial] ?? []).fold(0.0, (s, i) => s + i.qty);
+      final serial =
+          (posUpload.value!.items.indexOf(posItem) + 1).toString();
+      final qty =
+          (groups[serial] ?? []).fold(0.0, (s, i) => s + i.qty);
       return qty < posItem.quantity;
     }).length;
   }
