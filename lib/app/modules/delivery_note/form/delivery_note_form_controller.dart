@@ -658,8 +658,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _initialSerial = null;
 
       if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
-        // Batch was pre-fetched by the scan path — seed balance immediately
-        // so the chip renders without waiting for a second validateAndFetchBatch call.
         bsIsBatchValid.value = true;
         bsBatchBalance.value = maxQty;
       } else {
@@ -738,7 +736,6 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         throw Exception('Batch not found');
       }
 
-      // Batch document confirmed to exist — mark valid immediately.
       bsIsBatchValid.value = true;
       bsIsBatchReadOnly.value = true;
 
@@ -816,17 +813,15 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         bsBatchError.value = null;
         bsRackFocusNode.requestFocus();
       } else {
+        // Show inline error only — no snackbar inside an active sheet (crashes Get.back).
         bsBatchError.value = 'Batch has no stock in this warehouse';
-        GlobalSnackbar.warning(message: 'Batch has 0 stock in the selected warehouse');
       }
 
       final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
       if (fetchedBatchQty > 0 && enteredQty > fetchedBatchQty) {
+        // Show inline error only — no snackbar inside an active sheet (crashes Get.back).
         bsBatchError.value =
-            'Qty ($enteredQty) exceeds Batch balance (${fetchedBatchQty.toStringAsFixed(0)}) in warehouse';
-        GlobalSnackbar.error(
-            message:
-                'Entered qty exceeds available Batch balance of ${fetchedBatchQty.toStringAsFixed(0)} in warehouse');
+            'Qty ($enteredQty) exceeds batch balance (${fetchedBatchQty.toStringAsFixed(0)})';
       }
     } catch (e) {
       bsBatchError.value = 'Invalid Batch';
