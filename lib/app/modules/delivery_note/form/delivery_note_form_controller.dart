@@ -299,7 +299,6 @@ class DeliveryNoteFormController extends GetxController {
             }
           } catch (_) {}
         }
-        // Positional args; ApiProvider builds its own today dates
         final balRes = await _apiProvider.getBatchWiseBalance(
           item.itemCode,
           item.batchNo!,
@@ -556,22 +555,26 @@ class DeliveryNoteFormController extends GetxController {
         }
 
         final itemData = result.itemData!;
-        double maxQty  = 0.0;
+        double  maxQty         = 0.0;
+        // Use a promoted local so Dart flow analysis accepts it as non-null
+        // inside the guard block without requiring a bang operator.
         String? resolvedBatchNo = result.batchNo;
 
         try {
-          // Positional args; ApiProvider builds its own today dates
-          final balRes = await _apiProvider.getBatchWiseBalance(
-            itemData.itemCode,
-            resolvedBatchNo,
-            warehouse: setWarehouse.value,
-          );
-          if (balRes.statusCode == 200 &&
-              balRes.data['message']?['result'] != null) {
-            final list = balRes.data['message']['result'] as List;
-            if (list.isNotEmpty) {
-              maxQty          = (list[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
-              resolvedBatchNo ??= list[0]['batch_no'] as String?;
+          final batchNo = resolvedBatchNo;
+          if (batchNo != null && batchNo.isNotEmpty) {
+            final balRes = await _apiProvider.getBatchWiseBalance(
+              itemData.itemCode,
+              batchNo,                  // promoted — non-nullable here
+              warehouse: setWarehouse.value,
+            );
+            if (balRes.statusCode == 200 &&
+                balRes.data['message']?['result'] != null) {
+              final list = balRes.data['message']['result'] as List;
+              if (list.isNotEmpty) {
+                maxQty          = (list[0]['balance_qty'] as num?)?.toDouble() ?? 0.0;
+                resolvedBatchNo ??= list[0]['batch_no'] as String?;
+              }
             }
           }
         } catch (_) {
