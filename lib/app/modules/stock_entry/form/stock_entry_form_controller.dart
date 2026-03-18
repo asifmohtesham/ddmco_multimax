@@ -17,6 +17,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
@@ -67,6 +68,11 @@ class StockEntryFormController extends GetxController
   var isSaving = false.obs;
   var isDirty = false.obs;
   var isAddingItem = false.obs;
+
+  /// Result of the most recent save attempt. Auto-resets to [SaveResult.idle]
+  /// after 2 seconds. Consumed by [MainAppBar] → [SaveIconButton].
+  var saveResult = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
 
   var stockEntry = Rx<StockEntry?>(null);
 
@@ -337,6 +343,7 @@ class StockEntryFormController extends GetxController
   void onClose() {
     _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
+    _saveResultTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
     bsBatchController.dispose();
@@ -345,6 +352,20 @@ class StockEntryFormController extends GetxController
     customReferenceNoController.dispose();
     super.onClose();
   }
+
+  // ---------------------------------------------------------------------------
+  // SaveResult helpers
+  // ---------------------------------------------------------------------------
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
 
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
@@ -484,10 +505,19 @@ class StockEntryFormController extends GetxController
 
         isDirty.value = false;
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch stock entry');
+        GlobalDialog.showError(
+          title: 'Could not load Stock Entry',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
+          onRetry: fetchStockEntry,
+        );
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
+      GlobalDialog.showError(
+        title: 'Could not load Stock Entry',
+        message: e.toString(),
+        onRetry: fetchStockEntry,
+      );
     } finally {
       isLoading.value = false;
     }
@@ -732,10 +762,9 @@ class StockEntryFormController extends GetxController
       saveStockEntry();
     } else {
       isDirty.value = true;
-      saveStockEntry().then((_) {
-        GlobalSnackbar.success(
-            message: existingIndex != -1 ? 'Item updated' : 'Item added');
-      }).catchError((e) {
+      // Background save — the save-button flash (SaveResult) is the sole
+      // feedback; no snackbar needed here.
+      saveStockEntry().catchError((e) {
         debugPrint('Background save error: $e');
       });
     }
@@ -1616,9 +1645,11 @@ class StockEntryFormController extends GetxController
           name = createdDoc['name'];
           mode = 'edit';
           await fetchStockEntry();
+          _setSaveResult(SaveResult.success);
           GlobalSnackbar.success(
               message: 'Stock Entry created: $name');
         } else {
+          _setSaveResult(SaveResult.error);
           GlobalSnackbar.error(
               message:
                   'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
@@ -1631,9 +1662,11 @@ class StockEntryFormController extends GetxController
           if (updatedDoc != null) {
             stockEntry.value = StockEntry.fromJson(updatedDoc);
           }
-          GlobalSnackbar.success(message: 'Stock Entry updated');
+          _setSaveResult(SaveResult.success);
+          isDirty.value = false;
           await fetchStockEntry();
         } else {
+          _setSaveResult(SaveResult.error);
           GlobalSnackbar.error(
               message:
                   'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
@@ -1643,6 +1676,7 @@ class StockEntryFormController extends GetxController
       if (handleVersionConflict(e)) {
         // conflict handled by mixin
       } else {
+        _setSaveResult(SaveResult.error);
         String errorMessage = 'Save failed';
         if (e.response?.data is Map) {
           if (e.response!.data['exception'] != null) {
@@ -1658,6 +1692,7 @@ class StockEntryFormController extends GetxController
         GlobalSnackbar.error(message: errorMessage);
       }
     } catch (e) {
+      _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
