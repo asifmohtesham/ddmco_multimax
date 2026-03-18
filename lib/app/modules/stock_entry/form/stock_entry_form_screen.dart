@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
@@ -46,6 +47,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               status: entry?.status,
               isDirty: controller.isDirty.value,
               isSaving: controller.isSaving.value,
+              saveResult: controller.saveResult.value,
               onSave: onSave,
               onReload: onReload,
               bottom: const TabBar(
