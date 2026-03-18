@@ -1,222 +1,203 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
-import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart';
 
-class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
+// Sheet controller (child — owns all bs* state)
+import 'package:multimax/app/modules/delivery_note/form/controllers/delivery_note_item_form_controller.dart';
+
+// Parent controller (for isAddingItem / isScanning / barcodeController)
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+
+// Shared base widgets
+import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+
+/// Delivery Note item-entry bottom sheet.
+///
+/// Now a [GetView<DeliveryNoteItemFormController>] — reads the ephemeral child
+/// controller only. No direct access to [DeliveryNoteFormController] except for
+/// scan routing (isScanning, barcodeController) which lives at document level.
+class DeliveryNoteItemBottomSheet
+    extends GetView<DeliveryNoteItemFormController> {
   final ScrollController? scrollController;
 
   const DeliveryNoteItemBottomSheet({super.key, this.scrollController});
 
-  // ---------------------------------------------------------------------------
-  // Scoped reactive helpers — each subscribes only to the Rx fields it needs.
-  // ---------------------------------------------------------------------------
+  @override
+  Widget build(BuildContext context) {
+    final parent = Get.find<DeliveryNoteFormController>();
 
-  /// Rebuilds only the qtyInfoText string.
-  /// Depends on: bsMaxQty, bsBatchBalance, bsRackBalance, bsIsRackValid.
-  Widget _qtyInfoText(Widget Function(String?) builder) {
     return Obx(() {
-      // ignore: unused_local_variable
-      final _ = controller.bsMaxQty.value;
-      // ignore: unused_local_variable
-      final __ = controller.bsBatchBalance.value;
-      // ignore: unused_local_variable
-      final ___ = controller.bsRackBalance.value;
-      // ignore: unused_local_variable
-      final ____ = controller.bsIsRackValid.value;
-      final max = controller.effectiveMaxQty;
-      final text = max < 999999.0 ? 'Available: \${max.toStringAsFixed(0)}' : null;
-      return builder(text);
+      final isEditing = controller.editingItemName.value != null;
+
+      return GlobalItemFormSheet(
+        // ── Identity ─────────────────────────────────────────────────────────
+        formKey:    controller.formKey,
+        scrollController: scrollController,
+        title:      isEditing ? 'Update Item' : 'Add Item',
+        itemCode:   controller.itemCode.value,
+        itemName:   controller.itemName.value,
+
+        // ── Metadata footer ────────────────────────────────────────────────
+        owner:      controller.itemOwner.value,
+        creation:   controller.itemCreation.value,
+        modified:   controller.itemModified.value,
+        modifiedBy: controller.itemModifiedBy.value,
+
+        // ── Qty ──────────────────────────────────────────────────────────────
+        qtyController: controller.qtyController,
+        onIncrement:   () => controller.adjustQty(1),
+        onDecrement:   () => controller.adjustQty(-1),
+        qtyInfoText: controller.maxQty.value > 0
+            ? 'Max Available: ${controller.maxQty.value}'
+            : null,
+
+        // ── Save / delete ───────────────────────────────────────────────────
+        isSaveEnabledRx: controller.isSheetValid,
+        isSaveEnabled:   true,
+        isLoading: controller.isValidatingBatch.value || parent.isAddingItem.value,
+        onSubmit:  () => controller.submit(),
+        onDelete: isEditing
+            ? () {
+                final item = parent.deliveryNote.value?.items
+                    .firstWhereOrNull((i) => i.name == controller.editingItemName.value);
+                if (item != null) parent.confirmAndDeleteItem(item);
+              }
+            : null,
+
+        // ── Scan footer ──────────────────────────────────────────────────────
+        onScan:         (code) => parent.scanBarcode(code),
+        scanController: parent.barcodeController,
+        isScanning:     parent.isScanning.value,
+
+        // ── Custom fields ───────────────────────────────────────────────────
+        customFields: [
+          // 1. Invoice Serial No (POS Upload flow only)
+          if (controller.availableSerialNos.isNotEmpty)
+            GlobalItemFormSheet.buildInputGroup(
+              label: 'Invoice Serial No',
+              color: Colors.blueGrey,
+              child: Obx(() => DropdownButtonFormField<String>(
+                value: controller.selectedSerial.value,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 14),
+                  hintText: 'Select Serial',
+                ),
+                items: controller.availableSerialNos.map((s) {
+                  return DropdownMenuItem(
+                      value: s, child: Text('Serial #$s'));
+                }).toList(),
+                onChanged: (value) {
+                  controller.selectedSerial.value = value;
+                },
+              )),
+            ),
+
+          // 2. Batch No — shared widget (carries tooltip + validate/edit actions)
+          Obx(() => _BatchFieldDN(controller: controller)),
+
+          // 3. Rack — shared widget
+          SharedRackField(
+            c:           controller,
+            accentColor: Colors.orange,
+          ),
+        ],
+      );
     });
   }
+}
 
-  /// Rebuilds only the isLoading flag.
-  /// Depends on: isValidatingBatch, isAddingItem.
-  Widget _isLoading(Widget Function(bool) builder) {
-    return Obx(() => builder(
-          controller.isValidatingBatch.value || controller.isAddingItem.value,
-        ));
-  }
+// ─────────────────────────────────────────────────────────────────────────────────
+// DN Batch field: preserves DN-specific purple styling + validate/edit icons
+// Cannot use generic SharedBatchField here because DN has a unique
+// 'readOnly-when-valid' pattern with an explicit Edit button.
+// SharedBatchField can be adopted in Phase 4 once the icon pattern is unified.
+// ─────────────────────────────────────────────────────────────────────────────────
+class _BatchFieldDN extends StatelessWidget {
+  final DeliveryNoteItemFormController controller;
+  const _BatchFieldDN({required this.controller});
 
-  /// Rebuilds only the isScanning flag.
-  Widget _isScanning(Widget Function(bool) builder) {
-    return Obx(() => builder(controller.isScanning.value));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Invoice Serial No field — scoped to its own Rx fields.
-  // ---------------------------------------------------------------------------
-  Widget _invoiceSerialField() {
+  @override
+  Widget build(BuildContext context) {
     return Obx(() {
-      if (controller.bsAvailableInvoiceSerialNos.isEmpty) {
-        return const SizedBox.shrink();
-      }
+      final isValid    = controller.isBatchValid.value;
+      final validating = controller.isValidatingBatch.value;
+
       return GlobalItemFormSheet.buildInputGroup(
-        label: 'Invoice Serial No',
-        color: Colors.blueGrey,
-        child: DropdownButtonFormField<String>(
-          value: controller.bsInvoiceSerialNo.value,
+        label:   'Batch No',
+        color:   Colors.purple,
+        bgColor: isValid ? Colors.purple.shade50 : null,
+        child: TextFormField(
+          key:        const ValueKey('dn_batch_field'),
+          controller: controller.batchController,
+          readOnly:   isValid,
+          autofocus:  false,
+          style: const TextStyle(fontFamily: 'ShureTechMono'),
           decoration: InputDecoration(
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            hintText: 'Select Serial',
+            hintText: 'Enter or scan batch',
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.purple.shade200),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.purple, width: 2),
+            ),
+            filled:    true,
+            fillColor: isValid ? Colors.purple.shade50 : Colors.white,
+            suffixIcon: validating
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.purple),
+                    ),
+                  )
+                : isValid
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (controller.batchInfoTooltip.value != null)
+                            Tooltip(
+                              message: controller.batchInfoTooltip.value!,
+                              triggerMode: TooltipTriggerMode.tap,
+                              child: const Padding(
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 8.0),
+                                child: Icon(Icons.info_outline,
+                                    color: Colors.blue),
+                              ),
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.edit,
+                                color: Colors.purple),
+                            onPressed: controller.resetBatch,
+                            tooltip: 'Edit Batch',
+                          ),
+                        ],
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.arrow_forward),
+                        onPressed: () => controller
+                            .validateBatch(controller.batchController.text),
+                        tooltip: 'Validate',
+                      ),
           ),
-          items: controller.bsAvailableInvoiceSerialNos.map((s) {
-            return DropdownMenuItem(value: s, child: Text('Serial #\$s'));
-          }).toList(),
-          onChanged: (value) {
-            controller.bsInvoiceSerialNo.value = value;
-            controller.validateSheet();
+          onChanged:      (_) => controller.validateSheet(),
+          onFieldSubmitted: (val) {
+            if (!controller.isBatchValid.value) {
+              controller.validateBatch(val);
+            }
           },
         ),
       );
     });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Batch No field — scoped Obx unchanged from Step 2.
-  // ---------------------------------------------------------------------------
-  Widget _batchField() {
-    return Obx(() => GlobalItemFormSheet.buildInputGroup(
-          label: 'Batch No',
-          color: Colors.purple,
-          bgColor:
-              controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
-          child: ValidatedFieldWidget(
-            fieldKey: const ValueKey('batch_field'),
-            controller: controller.bsBatchController,
-            color: Colors.purple,
-            hintText: 'Enter or scan batch',
-            isReadOnly: controller.bsIsBatchReadOnly.value,
-            isValid: controller.bsIsBatchValid.value,
-            isValidating: controller.isValidatingBatch.value,
-            hasError: controller.bsBatchError.value != null,
-            helperText: controller.bsBatchError.value,
-            onValidate: () => controller
-                .validateAndFetchBatch(controller.bsBatchController.text),
-            onReset: controller.resetBatchValidation,
-            extraSuffixActions: [
-              if (controller.batchInfoTooltip.value != null)
-                Tooltip(
-                  message: controller.batchInfoTooltip.value!,
-                  triggerMode: TooltipTriggerMode.tap,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Icon(Icons.info_outline, color: Colors.blue),
-                  ),
-                ),
-            ],
-            onChanged: (_) => controller.validateSheet(),
-            onFieldSubmitted: (val) {
-              if (!controller.bsIsBatchValid.value) {
-                controller.validateAndFetchBatch(val);
-              }
-            },
-            chip: Obx(() => BalanceChip(
-                  balance: controller.bsBatchBalance.value,
-                  isLoading: controller.isLoadingBatchBalance.value,
-                  color: Colors.purple,
-                  prefix: 'Batch Qty:',
-                  forceShow: controller.bsIsBatchValid.value,
-                )),
-          ),
-        ));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Rack field — scoped Obx unchanged from Step 2.
-  // ---------------------------------------------------------------------------
-  Widget _rackField() {
-    return Obx(() => GlobalItemFormSheet.buildInputGroup(
-          label: 'Rack',
-          color: Colors.orange,
-          bgColor:
-              controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
-          child: ValidatedFieldWidget(
-            fieldKey: const ValueKey('rack_field'),
-            controller: controller.bsRackController,
-            focusNode: controller.bsRackFocusNode,
-            color: Colors.orange,
-            hintText: 'Enter or scan rack',
-            isReadOnly: controller.bsIsRackValid.value,
-            isValid: controller.bsIsRackValid.value,
-            isValidating: controller.isValidatingRack.value,
-            onValidate: () =>
-                controller.validateRack(controller.bsRackController.text),
-            onReset: controller.resetRackValidation,
-            onFieldSubmitted: (val) => controller.validateRack(val),
-            chip: Obx(() => BalanceChip(
-                  balance: controller.bsRackBalance.value,
-                  isLoading: controller.isLoadingRackBalance.value,
-                  color: Colors.orange,
-                  prefix: 'Rack Qty:',
-                )),
-            errorText: controller.rackError.value,
-          ),
-        ));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-  @override
-  Widget build(BuildContext context) {
-    // Metadata is static after the sheet opens — read once, no Obx needed.
-    final owner = controller.bsItemOwner.value;
-    final creation = controller.bsItemCreation.value;
-    final modified = controller.bsItemModified.value;
-    final modifiedBy = controller.bsItemModifiedBy.value;
-    final variantOf = controller.bsItemVariantOf.value;
-
-    // Root Obx: only editingItemName changes the sheet structure.
-    return Obx(() {
-      final isEditing = controller.editingItemName.value != null;
-
-      return _qtyInfoText((qtyInfoText) =>
-          _isLoading((isLoading) =>
-              _isScanning((isScanning) =>
-                  GlobalItemFormSheet(
-                    owner: owner,
-                    creation: creation,
-                    modified: modified,
-                    modifiedBy: modifiedBy,
-                    formKey: controller.itemFormKey,
-                    scrollController: scrollController,
-                    title: isEditing ? 'Update Item' : 'Add Item',
-                    itemCode: controller.currentItemCode,
-                    itemName: controller.currentItemName,
-                    itemSubtext: variantOf,
-                    qtyController: controller.bsQtyController,
-                    onIncrement: () => controller.adjustSheetQty(1),
-                    onDecrement: () => controller.adjustSheetQty(-1),
-                    qtyInfoText: qtyInfoText,
-                    isSaveEnabledRx: controller.isSheetValid,
-                    isSaveEnabled: true,
-                    isLoading: isLoading,
-                    onSubmit: controller.submitSheet,
-                    onDelete: isEditing
-                        ? () {
-                            final item = controller.deliveryNote.value?.items
-                                .firstWhereOrNull((i) =>
-                                    i.name ==
-                                    controller.editingItemName.value);
-                            if (item != null) {
-                              controller.confirmAndDeleteItem(item);
-                            }
-                          }
-                        : null,
-                    onScan: (code) => controller.scanBarcode(code),
-                    scanController: controller.barcodeController,
-                    isScanning: isScanning,
-                    customFields: [
-                      _invoiceSerialField(),
-                      _batchField(),
-                      _rackField(),
-                    ],
-                  ))));});
   }
 }
