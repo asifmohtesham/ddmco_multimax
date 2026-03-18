@@ -940,14 +940,23 @@ class DeliveryNoteFormController extends GetxController {
       log('[DN:scanBarcode] inside-sheet path. contextItem=$contextItem', name: 'DN');
 
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
-      log('[DN:scanBarcode] inside processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId}', name: 'DN');
+      log('[DN:scanBarcode] inside processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode}', name: 'DN');
 
       if (result.type == ScanType.rack && result.rackId != null) {
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
-      } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
-        bsBatchController.text = result.batchNo!;
-        validateAndFetchBatch(result.batchNo!);
+      } else if (result.type == ScanType.batch || result.type == ScanType.item) {
+        // FIX: Use result.batchNo if available; fall back to result.rawCode so the
+        // field is always populated regardless of which processScan branch fired.
+        final String? candidateBatch = result.batchNo ?? (result.rawCode.isNotEmpty ? result.rawCode : null);
+        if (candidateBatch != null && candidateBatch.isNotEmpty) {
+          log('[DN:scanBarcode] inside-sheet → setting batch field: "$candidateBatch"', name: 'DN');
+          bsBatchController.text = candidateBatch;
+          validateAndFetchBatch(candidateBatch);
+        } else {
+          log('[DN:scanBarcode] inside-sheet → batch/item scan but no usable batch candidate', name: 'DN');
+          GlobalSnackbar.error(message: 'Could not resolve batch from scan');
+        }
       } else if (result.type == ScanType.error) {
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       } else {
