@@ -594,6 +594,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty,
       {DeliveryNoteItem? editingItem}) {
+    log('[DN:initBottomSheet] itemCode=$itemCode batchNo=$batchNo maxQty=$maxQty editing=${editingItem != null}');
+
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -620,6 +622,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingRackBalance.value = false;
 
     if (editingItem != null) {
+      log('[DN:initBottomSheet] → EDIT branch: batchNo=${editingItem.batchNo} rack=${editingItem.rack}');
       bsItemOwner.value = editingItem.owner;
       bsItemCreation.value = editingItem.creation;
       bsItemModified.value = editingItem.modified;
@@ -642,6 +645,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
 
       bsMaxQty.value = maxQty;
     } else {
+      log('[DN:initBottomSheet] → NEW branch: resetting readOnly flags');
       // FIX: Always reset the read-only lock and valid flag at the start of a
       // new-item sheet. Without this, stale `true` state from the previous
       // sheet carries over and makes the TextFormField read-only before the
@@ -665,10 +669,12 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       _initialSerial = null;
 
       if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
+        log('[DN:initBottomSheet] → batchNo+maxQty present → locking field: batchNo=$batchNo maxQty=$maxQty');
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
         bsBatchBalance.value = maxQty;
       } else {
+        log('[DN:initBottomSheet] → no batch/maxQty → field unlocked');
         bsBatchBalance.value = 0.0;
       }
     }
@@ -725,16 +731,16 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> validateAndFetchBatch(String batchNo) async {
-    if (batchNo.isEmpty) return;
+    log('[DN:validateAndFetchBatch] called with batchNo=$batchNo currentItemCode=$currentItemCode');
+    log('[DN:validateAndFetchBatch] setWarehouse=${setWarehouse.value} bsItemWarehouse=${bsItemWarehouse.value}');
+    if (batchNo.isEmpty) {
+      log('[DN:validateAndFetchBatch] EARLY EXIT: batchNo is empty');
+      return;
+    }
     isValidatingBatch.value = true;
     isLoadingBatchBalance.value = true;
     bsBatchError.value = null;
     batchInfoTooltip.value = null;
-    // FIX: Do NOT set bsIsBatchValid = true here. It must only be set
-    // after the balance API confirms the batch exists AND has stock.
-    // Setting it early caused the TextFormField to become readOnly
-    // immediately, which prevented the scanned batchNo from being
-    // written into bsBatchController before the field locked.
     bsIsBatchValid.value = false;
     bsIsBatchReadOnly.value = false;
 
@@ -745,13 +751,17 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         fields: ['name', 'custom_packaging_qty'],
       );
 
+      log('[DN:validateAndFetchBatch] Batch list response: status=${batchResponse.statusCode} data=${batchResponse.data[\'data\']}');
+
       if (batchResponse.data['data'] == null ||
           (batchResponse.data['data'] as List).isEmpty) {
+        log('[DN:validateAndFetchBatch] Batch NOT FOUND in list → throwing');
         throw Exception('Batch not found');
       }
 
       final batchData = batchResponse.data['data'][0];
       final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+      log('[DN:validateAndFetchBatch] pkgQty=$pkgQty');
       if (pkgQty > 0) {
         bsQtyController.text =
             pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
@@ -769,17 +779,23 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         } catch (_) {}
       }
 
+      log('[DN:validateAndFetchBatch] determinedWarehouse=$determinedWarehouse');
+
       final balanceResponse = await _apiProvider.getBatchWiseBalance(
         currentItemCode,
         batchNo,
         warehouse: determinedWarehouse,
       );
 
+      log('[DN:validateAndFetchBatch] balance response status=${balanceResponse.statusCode}');
+      log('[DN:validateAndFetchBatch] balance message=${balanceResponse.data[\'message\']}');
+
       double fetchedBatchQty = 0.0;
       if (balanceResponse.statusCode == 200 &&
           balanceResponse.data['message'] != null) {
         final message = balanceResponse.data['message'];
         final List<dynamic> result = message['result'] ?? [];
+        log('[DN:validateAndFetchBatch] result rows=${result.length}');
         for (final row in result) {
           if (row is Map) {
             final dynamic val = row['balance_qty'] ?? row['bal_qty'] ?? row['qty_after_transaction'] ?? row['qty'];
@@ -809,6 +825,8 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         }
       }
 
+      log('[DN:validateAndFetchBatch] fetchedBatchQty=$fetchedBatchQty');
+
       bsMaxQty.value = fetchedBatchQty;
       bsBatchBalance.value = fetchedBatchQty;
 
@@ -821,12 +839,13 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       batchInfoTooltip.value = sb.toString().trim();
 
       if (fetchedBatchQty > 0) {
-        // FIX: Only mark valid (and thus readOnly) AFTER balance is confirmed.
+        log('[DN:validateAndFetchBatch] ✅ batch valid, locking field');
         bsIsBatchValid.value = true;
         bsIsBatchReadOnly.value = true;
         bsBatchError.value = null;
         bsRackFocusNode.requestFocus();
       } else {
+        log('[DN:validateAndFetchBatch] ⚠️ fetchedBatchQty=0 → no stock error');
         bsBatchError.value = 'Batch has no stock in this warehouse';
       }
 
@@ -836,6 +855,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
             'Qty ($enteredQty) exceeds batch balance (${fetchedBatchQty.toStringAsFixed(0)})';
       }
     } catch (e) {
+      log('[DN:validateAndFetchBatch] ❌ EXCEPTION: $e');
       bsBatchError.value = 'Invalid Batch';
       bsMaxQty.value = 0.0;
       bsBatchBalance.value = 0.0;
@@ -858,6 +878,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> validateRack(String rack) async {
+    log('[DN:validateRack] called with rack=$rack');
     if (rack.isEmpty) {
       bsIsRackValid.value = false;
       bsItemWarehouse.value = null;
@@ -870,6 +891,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       final parts = rack.split('-');
       if (parts.length >= 3) {
         bsItemWarehouse.value = '${parts[1]}-${parts[2]} - ${parts[0]}';
+        log('[DN:validateRack] derived warehouse from rack name: ${bsItemWarehouse.value}');
       }
     }
 
@@ -877,23 +899,28 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingRackBalance.value = true;
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
+      log('[DN:validateRack] API response status=${response.statusCode} data=${response.data[\'data\']}');
       if (response.statusCode == 200 && response.data['data'] != null) {
         bsIsRackValid.value = true;
 
         if (response.data['data']['warehouse'] != null) {
           bsItemWarehouse.value = response.data['data']['warehouse'];
+          log('[DN:validateRack] warehouse from API: ${bsItemWarehouse.value}');
         }
 
         validateSheet();
         await _fetchAllRackStocks();
 
         bsRackBalance.value = rackStockMap[rack] ?? 0.0;
+        log('[DN:validateRack] ✅ rack valid, balance=${bsRackBalance.value}');
       } else {
+        log('[DN:validateRack] ❌ rack not found in API response');
         bsIsRackValid.value = false;
         bsRackBalance.value = 0.0;
         GlobalSnackbar.error(message: 'Rack not found');
       }
     } catch (e) {
+      log('[DN:validateRack] ❌ EXCEPTION: $e');
       bsIsRackValid.value = false;
       bsRackBalance.value = 0.0;
       GlobalSnackbar.error(message: 'Validation failed: $e');
@@ -1032,42 +1059,50 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
   }
 
   Future<void> scanBarcode(String barcode) async {
+    log('[DN:scanBarcode] ▶ barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value} isScanning=${isScanning.value}');
     if (barcode.isEmpty) return;
     if (checkStaleAndBlock()) return;
-    if (!_validateHeaderBeforeScan()) return;
+    if (!_validateHeaderBeforeScan()) {
+      log('[DN:scanBarcode] ✋ blocked by _validateHeaderBeforeScan');
+      return;
+    }
 
     if (isItemSheetOpen.value) {
       barcodeController.clear();
       final String? contextItem =
           currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+      log('[DN:scanBarcode] inside-sheet path. contextItem=$contextItem');
 
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
+      log('[DN:scanBarcode] processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId} rawCode=${result.rawCode} message=${result.message}');
 
       if (result.type == ScanType.rack && result.rackId != null) {
+        log('[DN:scanBarcode] → RACK branch: setting bsRackController=${result.rackId}');
         bsRackController.text = result.rackId!;
         validateRack(result.rackId!);
       } else if (result.type == ScanType.batch && result.batchNo != null) {
-        // Batch scan: processScan resolved a full batch number (e.g. ITEMCODE-ESU).
-        // Write to field BEFORE calling validateAndFetchBatch so the
-        // TextFormField is populated even while the field is not yet readOnly.
+        log('[DN:scanBarcode] → BATCH branch: setting bsBatchController=${result.batchNo}');
         bsBatchController.text = result.batchNo!;
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.item) {
-        // Item scan inside sheet: treat the raw scanned code as a batch suffix.
-        // This covers physical labels where the barcode IS the batch number
-        // but processScan has no batchNo to return (no context suffix match).
         final fallbackBatch = result.batchNo ?? barcode.trim();
+        log('[DN:scanBarcode] → ITEM fallback branch: fallbackBatch=$fallbackBatch');
         bsBatchController.text = fallbackBatch;
         validateAndFetchBatch(fallbackBatch);
       } else if (result.type == ScanType.error) {
+        log('[DN:scanBarcode] → ERROR branch: ${result.message}');
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+      } else {
+        log('[DN:scanBarcode] ⚠️ UNHANDLED result type=${result.type} — no branch matched, doing nothing');
       }
       return;
     }
 
+    log('[DN:scanBarcode] outside-sheet path');
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
+      log('[DN:scanBarcode] outside processScan result: type=${result.type} batchNo=${result.batchNo} itemCode=${result.itemData?.itemCode}');
 
       if (result.isSuccess && result.itemData != null) {
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
@@ -1123,6 +1158,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           }
         }
 
+        log('[DN:scanBarcode] outside → opening sheet: itemCode=${itemData.itemCode} batchNo=${result.batchNo} maxQty=$maxQty');
         isScanning.value = false;
         barcodeController.clear();
 
@@ -1150,9 +1186,11 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
       } else {
+        log('[DN:scanBarcode] outside → no match: message=${result.message}');
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
+      log('[DN:scanBarcode] ❌ EXCEPTION outside: $e');
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
