@@ -96,107 +96,21 @@ class DeliveryNoteItemBottomSheet
               )),
             ),
 
-          // 2. Batch No — shared widget (carries tooltip + validate/edit actions)
-          Obx(() => _BatchFieldDN(controller: controller)),
+          // 2. Batch No — unified SharedBatchField in editMode
+          //    Replaces the former private _BatchFieldDN class.
+          SharedBatchField(
+            c:           controller,
+            accentColor: Colors.purple,
+            editMode:    true,
+            fieldKey:    'dn_batch_field',
+          ),
 
-          // 3. Rack — shared widget
+          // 3. Rack — shared widget (simple mode — DN uses stock tooltip)
           SharedRackField(
             c:           controller,
             accentColor: Colors.orange,
           ),
         ],
-      );
-    });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────
-// DN Batch field: preserves DN-specific purple styling + validate/edit icons
-// Cannot use generic SharedBatchField here because DN has a unique
-// 'readOnly-when-valid' pattern with an explicit Edit button.
-// SharedBatchField can be adopted in Phase 4 once the icon pattern is unified.
-// ─────────────────────────────────────────────────────────────────────────────────
-class _BatchFieldDN extends StatelessWidget {
-  final DeliveryNoteItemFormController controller;
-  const _BatchFieldDN({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final isValid    = controller.isBatchValid.value;
-      final validating = controller.isValidatingBatch.value;
-
-      return GlobalItemFormSheet.buildInputGroup(
-        label:   'Batch No',
-        color:   Colors.purple,
-        bgColor: isValid ? Colors.purple.shade50 : null,
-        child: TextFormField(
-          key:        const ValueKey('dn_batch_field'),
-          controller: controller.batchController,
-          readOnly:   isValid,
-          autofocus:  false,
-          style: const TextStyle(fontFamily: 'ShureTechMono'),
-          decoration: InputDecoration(
-            hintText: 'Enter or scan batch',
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.purple.shade200),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.purple, width: 2),
-            ),
-            filled:    true,
-            fillColor: isValid ? Colors.purple.shade50 : Colors.white,
-            suffixIcon: validating
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.purple),
-                    ),
-                  )
-                : isValid
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (controller.batchInfoTooltip.value != null)
-                            Tooltip(
-                              message: controller.batchInfoTooltip.value!,
-                              triggerMode: TooltipTriggerMode.tap,
-                              child: const Padding(
-                                padding:
-                                    EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Icon(Icons.info_outline,
-                                    color: Colors.blue),
-                              ),
-                            ),
-                          IconButton(
-                            icon: const Icon(Icons.edit,
-                                color: Colors.purple),
-                            onPressed: controller.resetBatch,
-                            tooltip: 'Edit Batch',
-                          ),
-                        ],
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.arrow_forward),
-                        onPressed: () => controller
-                            .validateBatch(controller.batchController.text),
-                        tooltip: 'Validate',
-                      ),
-          ),
-          onChanged:      (_) => controller.validateSheet(),
-          onFieldSubmitted: (val) {
-            if (!controller.isBatchValid.value) {
-              controller.validateBatch(val);
-            }
-          },
-        ),
       );
     });
   }
