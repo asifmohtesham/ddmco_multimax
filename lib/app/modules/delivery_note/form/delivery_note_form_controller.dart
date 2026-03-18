@@ -224,7 +224,7 @@ class DeliveryNoteFormController extends GetxController {
         warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      log('[DN:fetchWarehouses] error: $e', name: 'DN');
     } finally {
       isFetchingWarehouses.value = false;
     }
@@ -287,7 +287,7 @@ class DeliveryNoteFormController extends GetxController {
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      print('Failed to fetch linked POS Upload: $e');
+      log('[DN:fetchPosUpload] error: $e', name: 'DN');
     }
   }
 
@@ -573,6 +573,8 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
+    log('[DN:initBottomSheet] itemCode=$itemCode batchNo=$batchNo maxQty=$maxQty editingItem=${editingItem?.name}', name: 'DN');
+
     itemFormKey = GlobalKey<FormState>();
     currentItemCode = itemCode;
     currentItemName = itemName;
@@ -630,10 +632,13 @@ class DeliveryNoteFormController extends GetxController {
       bsInvoiceSerialNo.value = null;
       _initialSerial = null;
 
-      if (batchNo != null && maxQty > 0) {
+      // FIX: Only mark batch as valid when we actually have a batch AND confirmed stock.
+      if (batchNo != null && batchNo.isNotEmpty && maxQty > 0) {
         bsIsBatchValid.value = true;
+        log('[DN:initBottomSheet] → batchNo+maxQty present → field locked valid', name: 'DN');
       } else {
         bsIsBatchValid.value = false;
+        log('[DN:initBottomSheet] → batchNo=null or maxQty=0 → field unlocked', name: 'DN');
       }
     }
 
@@ -688,7 +693,7 @@ class DeliveryNoteFormController extends GetxController {
         }
       }
     } catch (e) {
-      print('Error fetching rack stocks: $e');
+      log('[DN:_fetchAllRackStocks] error: $e', name: 'DN');
     }
   }
 
@@ -761,7 +766,6 @@ class DeliveryNoteFormController extends GetxController {
       if (fetchedBatchQty > 0) {
         bsIsBatchValid.value = true;
         bsBatchError.value = null;
-        // GlobalSnackbar.success(message: 'Batch Validated');
         bsRackFocusNode.requestFocus();
       } else {
         bsIsBatchValid.value = false;
@@ -807,7 +811,6 @@ class DeliveryNoteFormController extends GetxController {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         bsIsRackValid.value = true;
-        // GlobalSnackbar.success(message: 'Rack validated');
 
         // Confirm warehouse from API response
         if (response.data['data']['warehouse'] != null) {
@@ -847,7 +850,6 @@ class DeliveryNoteFormController extends GetxController {
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
-    // REMOVED: isAddingItem.value = true;
     double fetchedQty = 0.0;
     bsIsLoadingBatch.value = true;
     try {
@@ -896,9 +898,11 @@ class DeliveryNoteFormController extends GetxController {
       ),
       isScrollControlled: true,
     ).then((_) {
-      isItemSheetOpen.value = false;
-      // REMOVED: isAddingItem.value = false;
-      editingItemName.value = null;
+      // FIX: Defer state updates + snackbar until after the overlay frame is settled
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        isItemSheetOpen.value = false;
+        editingItemName.value = null;
+      });
     });
   }
 
@@ -918,24 +922,25 @@ class DeliveryNoteFormController extends GetxController {
       return false;
     }
 
-    // 3. Optional: PO No Check (if required by business logic)
-    // if (deliveryNote.value!.poNo == null) ...
-
     return true;
   }
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
 
+    log('[DN:scanBarcode] ▶ barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}', name: 'DN');
+
     // [UX] Rigid Validation: Prevent scanning if header is invalid
-    // This blocks the user from adding items if the document is currently in an unsavable state.
     if (!_validateHeaderBeforeScan()) return;
 
+    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       barcodeController.clear();
       final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
+      log('[DN:scanBarcode] inside-sheet path. contextItem=$contextItem', name: 'DN');
 
       final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
+      log('[DN:scanBarcode] inside processScan result: type=${result.type} batchNo=${result.batchNo} rackId=${result.rackId}', name: 'DN');
 
       if (result.type == ScanType.rack && result.rackId != null) {
         bsRackController.text = result.rackId!;
@@ -945,13 +950,17 @@ class DeliveryNoteFormController extends GetxController {
         validateAndFetchBatch(result.batchNo!);
       } else if (result.type == ScanType.error) {
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
+      } else {
+        log('[DN:scanBarcode] UNHANDLED inside-sheet result type=${result.type}', name: 'DN');
       }
       return;
     }
 
+    // ── OUTSIDE-SHEET PATH ─────────────────────────────────────────────────────
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
+      log('[DN:scanBarcode] outside processScan result: type=${result.type} batchNo=${result.batchNo} itemCode=${result.itemData?.itemCode}', name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
         if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
@@ -961,30 +970,44 @@ class DeliveryNoteFormController extends GetxController {
         }
 
         final itemData = result.itemData!;
+
+        // FIX: Always fetch stock balance for this item (even when batchNo is null)
+        // so that maxQty and batchNo are resolved BEFORE the sheet opens.
         double maxQty = 0.0;
+        String? resolvedBatchNo = result.batchNo;
 
-        if (result.batchNo != null) {
-          try {
-            final balanceResponse = await _apiProvider.getBatchWiseBalance(
-              itemCode: itemData.itemCode,
-              batchNo: result.batchNo!,
-              warehouse: setWarehouse.value,
-              fromDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-              toDate: DateFormat('yyyy-MM-dd').format(DateTime.now())
-            );
+        try {
+          final balanceResponse = await _apiProvider.getBatchWiseBalance(
+            itemCode: itemData.itemCode,
+            batchNo: resolvedBatchNo,          // null = any batch
+            warehouse: setWarehouse.value,
+            fromDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+            toDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+          );
 
-            if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
-              final list = balanceResponse.data['message']['result'] as List;
-              if(list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
+          log('[DN:scanBarcode] getBatchWiseBalance status=${balanceResponse.statusCode}', name: 'DN');
+
+          if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
+            final list = balanceResponse.data['message']['result'] as List;
+            if (list.isNotEmpty) {
+              final firstRow = list[0];
+              maxQty = (firstRow['balance_qty'] as num?)?.toDouble() ?? 0.0;
+              // If the scan didn't supply a batchNo, try to derive it from the stock result
+              resolvedBatchNo ??= firstRow['batch_no'] as String?;
             }
-          } catch (_) { maxQty = 6.0; }
+          }
+        } catch (e) {
+          log('[DN:scanBarcode] getBatchWiseBalance error: $e — defaulting maxQty=6', name: 'DN');
+          maxQty = 6.0;
         }
 
+        log('[DN:scanBarcode] outside → opening sheet: itemCode=${itemData.itemCode} batchNo=$resolvedBatchNo maxQty=$maxQty', name: 'DN');
+
+        // Reset scanner state BEFORE opening sheet so spinner doesn't hang on errors
         isScanning.value = false;
-        // REMOVED: isAddingItem.value = true;
         barcodeController.clear();
 
-        initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
+        initBottomSheet(itemData.itemCode, itemData.itemName, resolvedBatchNo, maxQty);
 
         await Get.bottomSheet(
           DraggableScrollableSheet(
@@ -998,8 +1021,10 @@ class DeliveryNoteFormController extends GetxController {
           isScrollControlled: true,
         );
 
-        isItemSheetOpen.value = false;
-        // REMOVED: isAddingItem.value = false;
+        // FIX: Defer overlay-touching state updates until next frame
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          isItemSheetOpen.value = false;
+        });
 
       } else if (result.type == ScanType.multiple && result.candidates != null) {
         GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
