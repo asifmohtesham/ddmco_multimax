@@ -133,103 +133,117 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
             ),
 
           // ── Batch No ──────────────────────────────────────────────────
-          Obx(() => GlobalItemFormSheet.buildInputGroup(
-                label: 'Batch No',
-                color: Colors.purple,
-                bgColor: controller.bsIsBatchValid.value
-                    ? Colors.purple.shade50
-                    : null,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      key: const ValueKey('batch_field'),
-                      controller: controller.bsBatchController,
-                      readOnly: controller.bsIsBatchValid.value,
-                      autofocus: false,
-                      style: const TextStyle(fontFamily: 'ShureTechMono'),
-                      decoration: InputDecoration(
-                        hintText: 'Enter or scan batch',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide:
-                              BorderSide(color: Colors.purple.shade200),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                              color: Colors.purple, width: 2),
-                        ),
-                        filled: true,
-                        fillColor: controller.bsIsBatchValid.value
-                            ? Colors.purple.shade50
-                            : Colors.white,
-                        suffixIcon: controller.isValidatingBatch.value
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.purple),
-                                ))
-                            : (controller.bsIsBatchValid.value
-                                ? Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (controller.batchInfoTooltip.value !=
-                                          null)
-                                        Tooltip(
-                                          message:
-                                              controller.batchInfoTooltip.value!,
-                                          triggerMode: TooltipTriggerMode.tap,
-                                          child: const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                                horizontal: 8.0),
-                                            child: Icon(Icons.info_outline,
-                                                color: Colors.blue),
-                                          ),
-                                        ),
-                                      IconButton(
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.purple),
-                                        onPressed:
-                                            controller.resetBatchValidation,
-                                        tooltip: 'Edit Batch',
-                                      ),
-                                    ],
-                                  )
-                                : IconButton(
-                                    icon: const Icon(Icons.check,
-                                        color: Colors.purple),
-                                    onPressed: () =>
-                                        controller.validateAndFetchBatch(
-                                            controller.bsBatchController.text),
-                                    tooltip: 'Validate',
-                                  )),
+          Obx(() {
+            final hasError = controller.bsBatchError.value != null;
+            final isValid = controller.bsIsBatchValid.value;
+            final isValidating = controller.isValidatingBatch.value;
+
+            return GlobalItemFormSheet.buildInputGroup(
+              label: 'Batch No',
+              color: Colors.purple,
+              bgColor: isValid ? Colors.purple.shade50 : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    key: const ValueKey('batch_field'),
+                    controller: controller.bsBatchController,
+                    readOnly: isValid,
+                    autofocus: false,
+                    style: const TextStyle(fontFamily: 'ShureTechMono'),
+                    decoration: InputDecoration(
+                      hintText: 'Enter or scan batch',
+                      // Mirror Stock Entry: show bsBatchError as helperText
+                      // with red colour when present.
+                      helperText: controller.bsBatchError.value,
+                      helperStyle: TextStyle(
+                        color: hasError ? Colors.red : Colors.grey,
+                        fontWeight: hasError
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
-                      onChanged: (_) => controller.validateSheet(),
-                      onFieldSubmitted: (val) {
-                        if (!controller.bsIsBatchValid.value) {
-                          controller.validateAndFetchBatch(val);
-                        }
-                      },
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: hasError
+                              ? Colors.red
+                              : Colors.purple.shade200,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: hasError ? Colors.red : Colors.purple,
+                          width: 2,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor:
+                          isValid ? Colors.purple.shade50 : Colors.white,
+                      suffixIcon: isValidating
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.purple),
+                              ))
+                          : (isValid
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (controller.batchInfoTooltip.value !=
+                                        null)
+                                      Tooltip(
+                                        message:
+                                            controller.batchInfoTooltip.value!,
+                                        triggerMode: TooltipTriggerMode.tap,
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: 8.0),
+                                          child: Icon(Icons.info_outline,
+                                              color: Colors.blue),
+                                        ),
+                                      ),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit,
+                                          color: Colors.purple),
+                                      onPressed:
+                                          controller.resetBatchValidation,
+                                      tooltip: 'Edit Batch',
+                                    ),
+                                  ],
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.check,
+                                      color: Colors.purple),
+                                  onPressed: () =>
+                                      controller.validateAndFetchBatch(
+                                          controller.bsBatchController.text),
+                                  tooltip: 'Validate',
+                                )),
                     ),
-                    // Show chip whenever batch is being validated OR is already
-                    // valid — forceShow ensures a "0" balance still renders
-                    // rather than silently hiding after validation.
-                    Obx(() => _balanceChip(
-                          balance: controller.bsBatchBalance.value,
-                          isLoading: controller.isLoadingBatchBalance.value,
-                          color: Colors.purple,
-                          prefix: 'Batch Qty:',
-                          forceShow: controller.bsIsBatchValid.value,
-                        )),
-                  ],
-                ),
-              )),
+                    onChanged: (_) => controller.validateSheet(),
+                    onFieldSubmitted: (val) {
+                      if (!isValid) controller.validateAndFetchBatch(val);
+                    },
+                  ),
+                  // Balance chip — shown automatically once batch is valid,
+                  // exactly like Stock Entry's BalanceChip below BatchField.
+                  Obx(() => _balanceChip(
+                        balance: controller.bsBatchBalance.value,
+                        isLoading: controller.isLoadingBatchBalance.value,
+                        color: Colors.purple,
+                        prefix: 'Batch Qty:',
+                        forceShow: controller.bsIsBatchValid.value,
+                      )),
+                ],
+              ),
+            );
+          }),
 
           // ── Source Rack ───────────────────────────────────────────────
           GlobalItemFormSheet.buildInputGroup(
