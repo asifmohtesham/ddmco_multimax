@@ -294,6 +294,13 @@ class StockEntryFormController extends GetxController
       await _updateBatchBalance();
     });
 
+    // Re-validate the sheet whenever rack balance or rack-valid flag changes
+    // so that a qty already in the field is immediately re-checked against the
+    // newly arrived rack ceiling. Without these listeners the sheet could stay
+    // valid (green) with qty=126 even after bsRackBalance settled at 114.
+    ever(bsRackBalance, (_) => validateSheet());
+    ever(isSourceRackValid, (_) => validateSheet());
+
     // Only mark dirty when the text actually changes from the server-loaded
     // snapshot. This prevents a mere tap (focus) or programmatic setText from
     // flipping isDirty, and makes the field safe to render as readOnly.
@@ -348,6 +355,7 @@ class StockEntryFormController extends GetxController
     _saveResultTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
+    bsBatchBalance.value = 0.0;
     bsBatchController.dispose();
     bsSourceRackController.dispose();
     bsTargetRackController.dispose();
