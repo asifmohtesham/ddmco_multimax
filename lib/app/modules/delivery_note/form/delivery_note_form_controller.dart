@@ -856,7 +856,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         fields: ['name', 'custom_packaging_qty'],
       );
 
-      log('[DN:validateAndFetchBatch] Batch list response: status=${batchResponse.statusCode} data=${batchResponse.data[\'data\']}');
+      log('[DN:validateAndFetchBatch] Batch list response: status=${batchResponse.statusCode} data=${batchResponse.data['data']}');
 
       if (batchResponse.data['data'] == null ||
           (batchResponse.data['data'] as List).isEmpty) {
@@ -895,7 +895,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
       );
 
       log('[DN:validateAndFetchBatch] balance response status=${balanceResponse.statusCode}');
-      log('[DN:validateAndFetchBatch] balance message=${balanceResponse.data[\'message\']}');
+      log('[DN:validateAndFetchBatch] balance message=${balanceResponse.data['message']}');
 
       double fetchedBatchQty = 0.0;
       if (balanceResponse.statusCode == 200 &&
@@ -1024,7 +1024,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoadingRackBalance.value = true;
     try {
       final response = await _apiProvider.getDocument('Rack', rack);
-      log('[DN:validateRack] API response status=${response.statusCode} data=${response.data[\'data\']}');
+      log('[DN:validateRack] API response status=${response.statusCode} data=${response.data['data']}');
       if (response.statusCode == 200 && response.data['data'] != null) {
         bsIsRackValid.value = true;
 
@@ -1118,7 +1118,7 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
           item.batchNo!,
           warehouse: targetWh,
         );
-        log('[DN:editItem] balance response status=${balanceResponse.statusCode} message=${balanceResponse.data[\'message\']}');
+        log('[DN:editItem] balance response status=${balanceResponse.statusCode} message=${balanceResponse.data['message']}');
 
         if (balanceResponse.statusCode == 200 &&
             balanceResponse.data['message'] != null) {

@@ -148,7 +148,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   TextFormField(
                     key: const ValueKey('batch_field'),
                     controller: controller.bsBatchController,
-                    readOnly: isValid,
+                    readOnly: controller.bsIsBatchReadOnly.value,
                     autofocus: false,
                     style: const TextStyle(fontFamily: 'ShureTechMono'),
                     decoration: InputDecoration(
