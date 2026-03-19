@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
-import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
 import 'derived_warehouse_label.dart';
 import 'validated_rack_field.dart';
 
 /// Groups Source Rack, Target Rack, balance chips, warehouse labels, and the
 /// rack error message into one self-contained widget.
+///
+/// Receives [StockEntryItemFormController] — all state is now in the child.
 class RackSection extends StatelessWidget {
-  final StockEntryFormController controller;
+  final StockEntryItemFormController controller;
 
   const RackSection({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final showSource = controller.requiresSourceWarehouse;
-    final showTarget = controller.requiresTargetWarehouse;
+    final showSource = [
+      'Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'
+    ].contains(controller._parent.selectedStockEntryType.value);
+    final showTarget = [
+      'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'
+    ].contains(controller._parent.selectedStockEntryType.value);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -25,29 +31,29 @@ class RackSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 4.0),
             child: Obx(() => ValidatedRackField(
-                  key: const ValueKey('source_rack_field'),
-                  textController: controller.bsSourceRackController,
-                  isValid: controller.isSourceRackValid.value,
-                  isValidating: controller.isValidatingSourceRack.value,
-                  label: 'Source Rack',
-                  color: Colors.orange,
-                  onReset: controller.resetSourceRackValidation,
-                  onValidate: () => controller.validateRack(
-                      controller.bsSourceRackController.text, true),
-                  onSubmitted: (val) => controller.validateRack(val, true),
+                  key:            const ValueKey('source_rack_field'),
+                  textController: controller.sourceRackController,
+                  isValid:        controller.isSourceRackValid.value,
+                  isValidating:   controller.isValidatingSourceRack.value,
+                  label:          'Source Rack',
+                  color:          Colors.orange,
+                  onReset:        controller.resetSourceRackValidation,
+                  onValidate:     () => controller.validateRack(
+                      controller.sourceRackController.text, true),
+                  onSubmitted:    (val) => controller.validateRack(val, true),
                 )),
           ),
           Obx(() => BalanceChip(
-                balance: controller.bsRackBalance.value,
+                balance:   controller.rackBalance.value,
                 isLoading: controller.isLoadingRackBalance.value,
-                color: Colors.orange.shade800,
-                prefix: 'Rack Balance:',
+                color:     Colors.orange.shade800,
+                prefix:    'Rack Balance:',
               )),
           const SizedBox(height: 4),
           DerivedWarehouseLabel(
-            itemWarehouse: controller.bsItemSourceWarehouse,
+            itemWarehouse:    controller.itemSourceWarehouse,
             derivedWarehouse: controller.derivedSourceWarehouse,
-            headerWarehouse: controller.selectedFromWarehouse,
+            headerWarehouse:  controller._parent.selectedFromWarehouse,
           ),
         ],
 
@@ -56,26 +62,26 @@ class RackSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: Obx(() => ValidatedRackField(
-                  key: const ValueKey('target_rack_field'),
-                  textController: controller.bsTargetRackController,
-                  isValid: controller.isTargetRackValid.value,
-                  isValidating: controller.isValidatingTargetRack.value,
-                  label: 'Target Rack',
-                  color: Colors.green,
-                  onReset: controller.resetTargetRackValidation,
-                  onValidate: () => controller.validateRack(
-                      controller.bsTargetRackController.text, false),
-                  onSubmitted: (val) => controller.validateRack(val, false),
+                  key:            const ValueKey('target_rack_field'),
+                  textController: controller.targetRackController,
+                  isValid:        controller.isTargetRackValid.value,
+                  isValidating:   controller.isValidatingTargetRack.value,
+                  label:          'Target Rack',
+                  color:          Colors.green,
+                  onReset:        controller.resetTargetRackValidation,
+                  onValidate:     () => controller.validateRack(
+                      controller.targetRackController.text, false),
+                  onSubmitted:    (val) => controller.validateRack(val, false),
                 )),
           ),
           DerivedWarehouseLabel(
-            itemWarehouse: controller.bsItemTargetWarehouse,
+            itemWarehouse:    controller.itemTargetWarehouse,
             derivedWarehouse: controller.derivedTargetWarehouse,
-            headerWarehouse: controller.selectedToWarehouse,
+            headerWarehouse:  controller._parent.selectedToWarehouse,
           ),
         ],
 
-        // ── Rack error ───────────────────────────────────────────────
+        // ── Rack error ────────────────────────────────────────────────
         Obx(() {
           final err = controller.rackError.value;
           if (err == null) return const SizedBox.shrink();
@@ -84,8 +90,8 @@ class RackSection extends StatelessWidget {
             child: Text(
               err,
               style: TextStyle(
-                color: Colors.red.shade700,
-                fontSize: 12,
+                color:      Colors.red.shade700,
+                fontSize:   12,
                 fontWeight: FontWeight.bold,
               ),
             ),
