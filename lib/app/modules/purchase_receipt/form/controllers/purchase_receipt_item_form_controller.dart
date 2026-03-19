@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
@@ -21,14 +22,23 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - Step 2.1: ApiProvider access via typed field (no more untyped getter)
 ///  - Step 2.3: validateRack no longer emits a success snackbar (silent on
 ///    success, matching SE/DN behaviour)
+///
+/// Phase 5 changes:
+///  - Step 5.1: isAddingItemFlag wired to _parent.isSaving so isSheetLoading
+///    reflects parent-save-in-progress → Save button spinner + disabled state.
+///  - Step 5.1: sheetScanController wired to _parent.barcodeController so the
+///    embedded scan bar in GlobalItemFormSheet has a live TEC for DataWedge.
+///  - Step 5.1: isScanning initialised from _parent.isScanning snapshot.
+///  - Step 5.2: validateBatchOnInit called in _loadNewItem when batchNo is
+///    pre-supplied, fetching packaging qty + batch tooltip post-frame.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
-  // ── Step 2.1: typed ApiProvider ────────────────────────────────────────────
+  // ── Step 2.1: typed ApiProvider ─────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Parent reference ────────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────────────────────
   late PurchaseReceiptFormController _parent;
 
-  // ── PR-specific state ───────────────────────────────────────────────────
+  // ── PR-specific state ─────────────────────────────────────────────────────────
 
   // PO linking
   var poItemId  = ''.obs;
@@ -49,7 +59,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // Warehouse derived from rack (overrides setWarehouse when present)
   var itemWarehouse = RxnString();
 
-  // ── ItemSheetControllerBase contract ──────────────────────────────────────
+  // ── ItemSheetControllerBase contract ────────────────────────────────────────────
 
   @override
   String? get resolvedWarehouse =>
@@ -61,7 +71,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => true;   // Target rack is mandatory for PR
 
-  // ── ItemSheetControllerBase abstract stubs ────────────────────────────────
+  // ── ItemSheetControllerBase abstract stubs ──────────────────────────────────
 
   @override
   String? get qtyInfoText {
@@ -82,7 +92,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     _parent.confirmAndDeleteItem(item);
   }
 
-  // ── Initialisation ─────────────────────────────────────────────────────────
+  // ── Initialisation ─────────────────────────────────────────────────────────────
 
   void initialise({
     required PurchaseReceiptFormController parent,
@@ -96,6 +106,19 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parent;
     currentScannedEan = scannedEan ?? '';
+
+    // ── Step 5.1: wire base loading / scan flags to parent ───────────────────
+    // isAddingItemFlag is assigned by reference so isSheetLoading stays live:
+    //   Save button disables + shows spinner while savePurchaseReceipt() runs.
+    isAddingItemFlag    = _parent.isSaving;
+    // isScanning is a plain RxBool in the base (not a ref-alias);
+    // snapshot the current value — the scan bar’s own async lifecycle drives
+    // its loading indicator from the onScan callback return, not a persistent
+    // reactive link (same pattern as DN P1-A).
+    isScanning.value    = _parent.isScanning.value;
+    // sheetScanController gives GlobalItemFormSheet’s BarcodeInputWidget a
+    // live TEC so DataWedge keystrokes are captured inside the sheet.
+    sheetScanController = _parent.barcodeController;
 
     // Core identity
     itemCode.value  = code;
@@ -169,6 +192,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         name: 'PR:ItemSheet');
   }
 
+  // ── Step 5.2: _loadNewItem + validateBatchOnInit ──────────────────────────────
+
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
 
@@ -181,15 +206,34 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     rackController.clear();
     qtyController.clear();
 
-    isBatchValid.value    = batchNo != null && batchNo.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value;
+    // Step 5.2: do NOT pre-set isBatchValid=true here when batchNo is supplied.
+    // validateBatchOnInit() will confirm the batch via the API and set the
+    // flag correctly.  Optimistic true was wrong for two reasons:
+    //   1. The batch may not exist in ERPNext ("New Batch" flow is valid, but
+    //      isBatchReadOnly should NOT be set until the API responds).
+    //   2. packaging qty and batchInfoTooltip were never populated, leaving
+    //      the tooltip blank and skipping the qty pre-fill.
+    isBatchValid.value    = false;
+    isBatchReadOnly.value = false;
     isRackValid.value     = false;
+
+    if (batchNo != null && batchNo.isNotEmpty) {
+      // Schedule post-frame so the sheet’s Form/Scaffold is mounted first.
+      validateBatchOnInit(batchNo);
+    }
 
     log('[PR:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
         name: 'PR:ItemSheet');
   }
 
-  // ── validateSheet ───────────────────────────────────────────────────────────
+  /// Schedules a batch-validation call after the first frame.
+  /// Mirrors DeliveryNoteItemFormController.validateBatchOnInit (P1-A).
+  void validateBatchOnInit(String batch) {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => validateBatch(batch));
+  }
+
+  // ── validateSheet ──────────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -205,7 +249,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isSheetValid.value = valid;
   }
 
-  // ── PR batch validation override ──────────────────────────────────────────
+  // ── PR batch validation override ──────────────────────────────────────────────
   // PR overrides validateBatch because:
   // 1. EAN == Batch suffix guard (unique to PR)
   // 2. Missing batch from API is OK (new batch creation flow)
@@ -241,11 +285,15 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         final batchData = batchList.first as Map<String, dynamic>;
         final double pkgQty =
             (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-        if (pkgQty > 0) {
+        // Only auto-fill qty when field is still empty (avoid clobbering an
+        // already-entered value, e.g. when validateBatchOnInit fires on edit).
+        if (pkgQty > 0 && qtyController.text.isEmpty) {
           qtyController.text = pkgQty % 1 == 0
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
+        batchInfoTooltip.value =
+            pkgQty > 0 ? 'Packaging Qty: $pkgQty' : null;
         GlobalSnackbar.success(message: 'Existing Batch found');
       } else {
         // Batch not in system — allowed for PR (new batch creation)
@@ -266,7 +314,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Rack validation override ──────────────────────────────────────────────
+  // ── Rack validation override ────────────────────────────────────────────────
   // PR derives warehouse from the rack code format: ZONE-WH-NUM → WH-NUM - ZONE
   // Step 2.3: No success snackbar — silent on success, matching SE/DN.
 
@@ -319,9 +367,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────────
+  // ── submit ──────────────────────────────────────────────────────────────────────────
   // Phase 1 Step 1.4: Get.back() removed from here.
-  // Sheet closure is the exclusive responsibility of the parent's
+  // Sheet closure is the exclusive responsibility of the parent’s
   // onAutoSubmit callback, matching SE/DN responsibility boundaries.
 
   @override
