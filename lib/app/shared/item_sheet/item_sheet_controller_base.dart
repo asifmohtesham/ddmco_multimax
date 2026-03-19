@@ -17,14 +17,22 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 ///   • Dirty-state & sheet-validity flags
 ///   • Auto-submit worker (enabled per-DocType via setupAutoSubmit)
 ///
-/// Concrete subclasses only need to implement the four abstract members
-/// and call [initialise] from their own [initialise] method.
+/// Step-1 additions (UniversalItemFormSheet migration):
+///   • [isSheetLoading]     — merged loading flag (validating OR parent saving)
+///   • [qtyInfoText]        — abstract; DocType provides its qty-hint string
+///   • [deleteCurrentItem]  — abstract; DocType resolves item and dispatches
+///   • [isScanning]         — scan-bar active state (promoted from DN parent)
+///   • [scanController]     — scan-bar TEC (promoted from DN parent)
+///   • [isAddMode]          — true when no editingItemName
+///
+/// Concrete subclasses only need to implement the abstract members
+/// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Dependencies ─────────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
 
   // ── Form infrastructure ───────────────────────────────────────────────
-  final GlobalKey<FormState> formKey            = GlobalKey<FormState>();
+  final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
   final ScrollController     sheetScrollController = ScrollController();
 
   final TextEditingController qtyController   = TextEditingController();
@@ -59,6 +67,72 @@ abstract class ItemSheetControllerBase extends GetxController {
   // ── Editing context ─────────────────────────────────────────────────
   /// Non-null when editing an existing child-table row.
   var editingItemName = RxnString();
+
+  // ── Add / edit mode ───────────────────────────────────────────────────
+  /// Set by concrete [initialise] after determining edit vs. add.
+  /// True  → new item (no editingItemName).
+  /// False → editing existing row.
+  bool isAddMode = true;
+
+  // ── Step-1: merged loading flag ───────────────────────────────────────
+  //
+  // Concrete subclasses set [isAddingItemFlag] to a reference from their
+  // parent document controller (e.g. `parent.isAddingItem`). The base
+  // then exposes a single [isSheetLoading] getter so UniversalItemFormSheet
+  // only needs one binding.
+  //
+  // Default is a local false.obs so callers that haven't migrated yet
+  // still compile safely.
+
+  /// Parent-level "saving in progress" flag.
+  /// Concrete subclass sets this in [initialise]:
+  ///   `isAddingItemFlag = _parent.isAddingItem;`
+  RxBool isAddingItemFlag = false.obs;
+
+  /// Single merged loading state for UniversalItemFormSheet.
+  /// True when either batch-validation or parent save is in progress.
+  bool get isSheetLoading =>
+      isValidatingBatch.value || isAddingItemFlag.value;
+
+  // ── Step-1: scan-bar state (promoted from DN parent) ─────────────────
+  //
+  // SE does not use the scan bar in the item sheet (it routes scans
+  // through the document-level scanner).  DN does.  Both will bind to
+  // these fields so GlobalItemFormSheet can use a single code path.
+
+  /// Whether the embedded scan bar is actively scanning.
+  /// Set by the concrete subclass / parent during initialise.
+  final RxBool isScanning = false.obs;
+
+  /// TEC for the embedded barcode input inside the sheet.
+  /// Concrete subclass assigns the parent's controller if it uses a scan bar:
+  ///   `sheetScanController = _parent.barcodeController;`
+  /// Leave null (default) if DocType does not embed a scan bar.
+  TextEditingController? sheetScanController;
+
+  // ── Step-1: abstract qty info text ────────────────────────────────────
+  //
+  // Each DocType returns its own human-readable qty hint that appears
+  // below the quantity field.  Examples:
+  //   SE  → 'Avail: 42 • MR max: 10'
+  //   DN  → 'Max Available: 42'
+  //   MR  → 'Max: 10'
+  //   (no cap) → null (hides the hint entirely)
+
+  /// Human-readable qty hint shown below the Quantity field.
+  /// Return null to hide the hint.
+  String? get qtyInfoText;
+
+  // ── Step-1: abstract delete dispatch ─────────────────────────────────
+  //
+  // Centralises the delete path so UniversalItemFormSheet calls
+  // `controller.deleteCurrentItem()` without knowing the DocType.
+  // Concrete subclass resolves the item from its parent and calls
+  // e.g. `_parent.confirmAndDeleteItem(item)`.
+
+  /// Deletes (or confirms deletion of) the item currently being edited.
+  /// Only called when [editingItemName] is non-null.
+  Future<void> deleteCurrentItem();
 
   // ── Snapshot for dirty-checking ───────────────────────────────────────
   String _snapshotBatch = '';
@@ -110,7 +184,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.addListener(validateSheet);
   }
 
-  /// Capture current field values as the “clean” baseline for dirty checking.
+  /// Capture current field values as the "clean" baseline for dirty checking.
   void captureSnapshot() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
@@ -130,9 +204,9 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Call from the DocType parent after [initialise]. The worker is
   /// automatically disposed in [onClose], so subclasses need no cleanup.
   ///
-  /// [isSheetOpen]  — reactive bool owned by the parent document controller.
+  /// [isSheetOpen]   — reactive bool owned by the parent document controller.
   /// [isSubmittable] — extra predicate (e.g. docstatus == 0); evaluated at
-  ///                    trigger time so it always reflects live state.
+  ///                   trigger time so it always reflects live state.
   void setupAutoSubmit({
     required bool            enabled,
     required int             delaySeconds,
