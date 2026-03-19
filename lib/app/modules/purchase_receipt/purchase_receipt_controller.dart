@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:dio/dio.dart' hide Response;
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_po_selection_sheet.dart';
 
 class PurchaseReceiptController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -18,7 +18,7 @@ class PurchaseReceiptController extends GetxController {
   final int _limit = 20;
   int _currentPage = 0;
 
-  // Sorting State
+  // Sorting state
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
@@ -28,11 +28,10 @@ class PurchaseReceiptController extends GetxController {
 
   final activeFilters = <String, dynamic>{}.obs;
 
-  // For PO Selection
+  // PO selection
   var isFetchingPOs = false.obs;
   var purchaseOrdersForSelection = <PurchaseOrder>[].obs;
   List<PurchaseOrder> _allFetchedPOs = [];
-  var poSearchQuery = ''.obs;
 
   PurchaseReceipt? get detailedReceipt =>
       _detailedReceiptsCache[expandedReceiptName.value];
@@ -51,6 +50,8 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
+  // ── Sorting / filtering ───────────────────────────────────────────────────
+
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
@@ -62,7 +63,6 @@ class PurchaseReceiptController extends GetxController {
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
 
-  /// Remove a single filter key and re-fetch.
   void removeFilter(String key) {
     activeFilters.remove(key);
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
@@ -72,6 +72,8 @@ class PurchaseReceiptController extends GetxController {
     activeFilters.clear();
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
+
+  // ── List fetching ───────────────────────────────────────────────────────────
 
   Future<void> fetchPurchaseReceipts(
       {bool isLoadMore = false, bool clear = false}) async {
@@ -88,7 +90,6 @@ class PurchaseReceiptController extends GetxController {
 
     try {
       final orderBy = '${sortField.value} ${sortOrder.value}';
-
       final response = await _provider.getPurchaseReceipts(
         limit: _limit,
         limitStart: _currentPage * _limit,
@@ -110,10 +111,10 @@ class PurchaseReceiptController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch purchase receipts');
+        GlobalSnackbar.error(message: 'Failed to fetch purchase receipts');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -123,9 +124,10 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
+  // ── Expanded-row detail cache ──────────────────────────────────────────────
+
   Future<void> _fetchAndCacheReceiptDetails(String name) async {
     if (_detailedReceiptsCache.containsKey(name)) return;
-
     isLoadingDetails.value = true;
     try {
       final response = await _provider.getPurchaseReceipt(name);
@@ -133,10 +135,10 @@ class PurchaseReceiptController extends GetxController {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
         _detailedReceiptsCache[name] = receipt;
       } else {
-        Get.snackbar('Error', 'Failed to fetch receipt details');
+        GlobalSnackbar.error(message: 'Failed to fetch receipt details');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalSnackbar.error(message: e.toString());
     } finally {
       isLoadingDetails.value = false;
     }
@@ -151,12 +153,12 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Creation flow
-  // ---------------------------------------------------------------------------
+  // ── PO selection (used by PurchaseReceiptPoSelectionSheet) ─────────────────
 
   Future<void> fetchPurchaseOrdersForSelection() async {
     isFetchingPOs.value = true;
+    purchaseOrdersForSelection.clear();
+    _allFetchedPOs = [];
     try {
       final response = await _poProvider.getPurchaseOrders(
         limit: 0,
@@ -169,7 +171,7 @@ class PurchaseReceiptController extends GetxController {
         purchaseOrdersForSelection.value = _allFetchedPOs;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch Purchase Orders');
+      GlobalSnackbar.error(message: 'Failed to fetch Purchase Orders');
     } finally {
       isFetchingPOs.value = false;
     }
@@ -178,13 +180,13 @@ class PurchaseReceiptController extends GetxController {
   void filterPurchaseOrders(String query) {
     if (query.isEmpty) {
       purchaseOrdersForSelection.value = _allFetchedPOs;
-    } else {
-      final q = query.toLowerCase();
-      purchaseOrdersForSelection.value = _allFetchedPOs.where((po) {
-        return po.name.toLowerCase().contains(q) ||
-            po.supplier.toLowerCase().contains(q);
-      }).toList();
+      return;
     }
+    final q = query.toLowerCase();
+    purchaseOrdersForSelection.value = _allFetchedPOs.where((po) {
+      return po.name.toLowerCase().contains(q) ||
+          po.supplier.toLowerCase().contains(q);
+    }).toList();
   }
 
   void initiatePurchaseReceiptCreation(PurchaseOrder po) {
@@ -196,92 +198,14 @@ class PurchaseReceiptController extends GetxController {
     });
   }
 
+  // ── Create dialog ────────────────────────────────────────────────────────
+
   void openCreateDialog() {
     fetchPurchaseOrdersForSelection();
-
     Get.bottomSheet(
-      SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Select Purchase Order',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Get.back(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: filterPurchaseOrders,
-                    decoration: const InputDecoration(
-                      labelText: 'Search Purchase Orders',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Obx(() {
-                      if (isFetchingPOs.value) {
-                        return const Center(
-                            child: CircularProgressIndicator());
-                      }
-                      if (purchaseOrdersForSelection.isEmpty) {
-                        return const Center(
-                            child:
-                                Text('No Purchase Orders found.'));
-                      }
-                      return ListView.separated(
-                        controller: scrollController,
-                        itemCount: purchaseOrdersForSelection.length,
-                        separatorBuilder: (_, __) => const Divider(
-                            height: 1, indent: 16, endIndent: 16),
-                        itemBuilder: (context, index) {
-                          final po =
-                              purchaseOrdersForSelection[index];
-                          return ListTile(
-                            title: Text(po.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Text(
-                                '${po.supplier} \u2022 ${po.transactionDate}'),
-                            trailing:
-                                const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Get.back();
-                              initiatePurchaseReceiptCreation(po);
-                            },
-                          );
-                        },
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+      const PurchaseReceiptPoSelectionSheet(),
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 }
