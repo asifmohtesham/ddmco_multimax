@@ -251,8 +251,9 @@ class DeliveryNoteFormController extends GetxController {
   // ── Item sheet orchestration ───────────────────────────────────────────────
   //
   // Step-4: DeliveryNoteItemBottomSheet is eliminated.
-  // The DraggableScrollableSheet builder now directly instantiates
-  // UniversalItemFormSheet with the DN-specific customFields inline.
+  // P1-B:  onSubmit lambda now owns the full save coordinator:
+  //          child.submit()  →  isDirty  →  saveDeliveryNote()
+  //        child.submit() itself no longer calls saveDeliveryNote().
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -279,17 +280,29 @@ class DeliveryNoteFormController extends GetxController {
       scannedEan8:   currentScannedEan8,
     );
 
+    // ── P1-B: onSubmit coordinator ─────────────────────────────────────────
+    // child.submit() performs the local mutation only.
+    // isDirty + saveDeliveryNote() are the parent's responsibility.
+    Future<void> onSubmit() async {
+      isAddingItem.value = true;
+      try {
+        await child.submit();
+        isDirty.value = true;
+        await saveDeliveryNote();
+      } finally {
+        isAddingItem.value = false;
+      }
+    }
+
     child.setupAutoSubmit(
       enabled:      _storageService.getAutoSubmitEnabled(),
       delaySeconds: _storageService.getAutoSubmitDelay(),
       isSheetOpen:  isItemSheetOpen,
       isSubmittable: () => (deliveryNote.value?.docstatus ?? 1) == 0,
       onAutoSubmit: () async {
-        isAddingItem.value = true;
-        await Future.delayed(const Duration(milliseconds: 500));
-        await child.submit();
+        // Auto-submit uses the same coordinator path.
+        await onSubmit();
         Get.back();
-        isAddingItem.value = false;
       },
     );
 
@@ -304,7 +317,7 @@ class DeliveryNoteFormController extends GetxController {
         builder: (context, sc) => UniversalItemFormSheet(
           controller:       child,
           scrollController: sc,
-          onSubmit:         child.submit,
+          onSubmit:         onSubmit,
           onScan:           (code) => scanBarcode(code),
           customFields: [
             // 1. Invoice Serial No — POS Upload flow only
@@ -662,7 +675,7 @@ class DeliveryNoteFormController extends GetxController {
             }
           }
         } catch (_) {
-          maxQty = 6.0;
+          maxQty = 0.0;
         }
 
         isScanning.value = false;

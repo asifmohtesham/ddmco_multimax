@@ -27,6 +27,10 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [qtyInfoText]        'Max Available: N' or null
 ///   • [deleteCurrentItem]  resolves item + calls parent.confirmAndDeleteItem
 ///
+/// P1-A: _loadNewItem no longer hard-codes qty '6'; clears the field instead.
+/// P1-A: _loadNewItem now pre-validates batch when batchNo is supplied, matching SE.
+/// P1-B: submit() removed its own save call; the parent onSubmit lambda owns saving.
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
@@ -96,8 +100,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     currentScannedEan8 = scannedEan8;
 
     // ── Step-2: wire base loading / scan flags to parent ───────────────────
-    isAddingItemFlag   = _parent.isAddingItem;
-    isScanning         = _parent.isScanning;
+    isAddingItemFlag    = _parent.isAddingItem;
+    isScanning          = _parent.isScanning;
     sheetScanController = _parent.barcodeController;
 
     itemCode.value = code;
@@ -153,6 +157,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
+  // ── P1-A: _loadNewItem ────────────────────────────────────────────────────
+  //
+  // Previously hard-coded qtyController.text = '6' (POS prototype leftover).
+  // Now clears the field — user must always enter qty explicitly.
+  //
+  // Also calls validateBatchOnInit when a batchNo is pre-supplied (e.g. via
+  // barcode scan outside the sheet), matching SE behaviour.
+
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
 
@@ -163,14 +175,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     batchController.text = batchNo ?? '';
     rackController.clear();
-    qtyController.text   = '6';
+    qtyController.clear(); // P1-A: was '6'
     selectedSerial.value = null;
 
     isBatchValid.value = batchNo != null && batchNo.isNotEmpty;
     isRackValid.value  = false;
 
+    // P1-A: pre-validate supplied batch (e.g. from outside-sheet scan),
+    // mirrors SE._loadNewItem → validateBatchOnInit path.
+    if (batchNo != null && batchNo.isNotEmpty) {
+      validateBatchOnInit(batchNo);
+    }
+
     log('[DN:ItemSheet] new item code=${itemCode.value} batch=$batchNo batchValid=${isBatchValid.value}',
         name: 'DN:ItemSheet');
+  }
+
+  /// Schedules a batch-validation call after the first frame.
+  /// Mirrors [StockEntryItemFormController.validateBatchOnInit].
+  void validateBatchOnInit(String batch) {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => validateBatch(batch));
   }
 
   // ── AutoFillRackMixin override ─────────────────────────────────────────────
@@ -196,7 +221,15 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────
+  // ── P1-B: submit ──────────────────────────────────────────────────────────
+  //
+  // Previously called _parent.saveDeliveryNote() here, bypassing the parent
+  // coordinator (_triggerItemFeedback / scroll-into-view / isDirty flag).
+  //
+  // Now submit() is a pure local mutation — identical to SE.submit().
+  // The parent _openItemSheet.onSubmit lambda is responsible for:
+  //   child.submit()  →  parent marks dirty  →  parent saves.
+  // The auto-submit lambda in setupAutoSubmit also handles save after submit.
 
   @override
   Future<void> submit() async {
@@ -210,9 +243,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } else {
       _parent.addItemLocally(itemCode.value, itemName.value, qty, rack, batch, serial);
     }
-
-    _parent.isDirty.value = true;
-    await _parent.saveDeliveryNote();
+    // Save is now owned by the parent onSubmit lambda / auto-submit lambda.
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────

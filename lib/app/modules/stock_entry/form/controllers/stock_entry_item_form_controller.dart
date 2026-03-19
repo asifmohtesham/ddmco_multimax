@@ -32,6 +32,10 @@ import '../stock_entry_form_controller.dart';
 ///   • [qtyInfoText]        SE-specific 'Avail / MR max' string or null
 ///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
 ///
+/// P1-C: [isSheetLoading] overridden to also cover SE dual-rack validation
+///       (isValidatingSourceRack / isValidatingTargetRack) so the Save button
+///       is correctly disabled while rack network calls are in-flight.
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
 ///   sheet closes → Get.delete<StockEntryItemFormController>()
@@ -90,10 +94,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
 
-  // ── Step-2: qtyInfoText ───────────────────────────────────────────────
+  // ── P1-C: isSheetLoading override ────────────────────────────────────────
   //
-  // Mirrors the inline logic previously in StockEntryItemFormSheet so
-  // UniversalItemFormSheet can bind to a single getter.
+  // Base merges: isValidatingBatch || isAddingItemFlag.
+  // SE also validates source + target rack via separate network calls,
+  // neither of which was reflected in the base getter.
+  // Adding both flags here ensures the Save button is disabled while any
+  // of the four async validation paths is in-flight.
+
+  @override
+  bool get isSheetLoading =>
+      super.isSheetLoading ||
+      isValidatingSourceRack.value ||
+      isValidatingTargetRack.value;
+
+  // ── Step-2: qtyInfoText ───────────────────────────────────────────────
 
   @override
   String? get qtyInfoText {
@@ -191,10 +206,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
-    // NOTE: ever(itemSourceWarehouse) handles warehouse changes AFTER init.
-    // For the edit-mode initial load, balances are fetched via the explicit
-    // post-frame callback below — not via this worker — because
-    // itemSourceWarehouse is already assigned before ever() is registered.
     ever(itemSourceWarehouse, (_) async {
       await _updateAvailableStock();
       await _updateBatchBalance();
@@ -207,10 +218,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     isAddMode = editingItem == null;
 
-    // ── Edit-mode: kick off balance fetches post-frame ────────────────────
-    // _loadExistingItem() assigns itemSourceWarehouse synchronously, which
-    // means the ever() worker above never fires for the initial value.
-    // Schedule explicit fetches here so both BalanceChips resolve on open.
     if (editingItem != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _updateAvailableStock();
@@ -257,13 +264,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       currentScannedEan8 = item.batchNo!.split('-').first;
     }
 
-    // ── DO NOT set isLoadingBatchBalance / isLoadingRackBalance to true here.
-    // Both flags start as false (reset above in initialise). The actual fetch
-    // is triggered by the post-frame callback in initialise(), which sets them
-    // to true inside _updateAvailableStock() / _updateBatchBalance() and resets
-    // them in their own finally blocks. Setting them true here without a
-    // guaranteed reset path was the cause of the stuck "Fetching balance..." bug.
-
     log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
         name: 'SE:ItemSheet');
   }
@@ -305,8 +305,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final effMax = effectiveMaxQty;
     if (effMax < 999999.0 && qty > effMax) valid = false;
 
-    // requiresBatch=true enforced via baseValidate; SE bypasses base
-    // because it owns a richer effectiveMaxQty ceiling. Re-check manually.
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
 
     if (!isValidRacks()) valid = false;
@@ -504,11 +502,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── validateDualRack (SE dual-rack — NOT an override of base validateRack) ─
-  //
-  // The base class declares validateRack(String rack) with one positional arg.
-  // SE needs a second `bool isSource` discriminator, so this is a separate
-  // method name to avoid the override-signature mismatch compiler error.
+  // ── validateDualRack ──────────────────────────────────────────────────────
 
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
@@ -829,6 +823,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void onClose() {
     sourceRackController.dispose();
     targetRackController.dispose();
-    super.onClose(); // disposes base TECs, FocusNode, scrollController, worker
+    super.onClose();
   }
 }
