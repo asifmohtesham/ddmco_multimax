@@ -9,12 +9,16 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///
 /// ### `editMode: false` (default — SE style)
 /// Borderless [TextField], green check-circle when valid, clear + validate
-/// icons, optional per-rack stock tooltip.
+/// icons, per-rack stock tooltip.
 ///
 /// ### `editMode: true` (PR / DN style)
 /// [OutlineInputBorder] [TextFormField], readOnly-when-valid, spinner →
-/// Edit-btn → forward-arrow suffix pattern. `rackError` rendered as
-/// `helperText`. Replaces the inline Obx rack field in PurchaseReceiptItemFormSheet.
+/// Edit-btn → forward-arrow suffix pattern.
+///
+/// P3-C: onChanged simplified to c.resetRack() — eliminates direct Rx reads
+///       outside a reactive context and avoids spurious rebuilds.
+/// P3-D: Per-rack stock tooltip added to _EditModeRack suffix row (was only
+///       in _SimpleRack). Shown next to the Edit button when isValid.
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -134,7 +138,9 @@ class _SimpleRack extends StatelessWidget {
 }
 
 // ── Edit-mode (OutlineInputBorder, readOnly-when-valid) ──────────────────────
-// Replaces the inline Obx rack field in PurchaseReceiptItemFormSheet.
+// P3-C: onChanged simplified — c.resetRack() already clears isRackValid and
+//       calls validateSheet, so no inner Rx read needed.
+// P3-D: stock tooltip added to the isValid suffix row next to Edit button.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -180,12 +186,10 @@ class _EditModeRack extends StatelessWidget {
             fillColor: isValid ? w._validFill : Colors.white,
             suffixIcon: _suffixIcon(c, isValid, validating),
           ),
-          onChanged: isValid
-              ? null
-              : (_) {
-                  if (c.isRackValid.value) c.isRackValid.value = false;
-                  c.validateSheet();
-                },
+          // P3-C: was `if (c.isRackValid.value) c.isRackValid.value = false`
+          // which read Rx outside a reactive scope. resetRack() is the
+          // canonical path: clears isRackValid + calls validateSheet.
+          onChanged: isValid ? null : (_) => c.resetRack(),
           onFieldSubmitted: (val) => c.validateRack(val),
         ),
       );
@@ -208,10 +212,26 @@ class _EditModeRack extends StatelessWidget {
       );
     }
     if (isValid) {
-      return IconButton(
-        icon:    Icon(Icons.edit, color: w.accentColor, size: 20),
-        onPressed: c.resetRack,
-        tooltip: 'Edit Rack',
+      // P3-D: stock tooltip present (matches _SimpleRack behaviour).
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (c.rackStockTooltip.value != null)
+            Tooltip(
+              message:     c.rackStockTooltip.value!,
+              triggerMode: TooltipTriggerMode.tap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(Icons.inventory_2_outlined,
+                    color: w.accentColor, size: 20),
+              ),
+            ),
+          IconButton(
+            icon:    Icon(Icons.edit, color: w.accentColor, size: 20),
+            onPressed: c.resetRack,
+            tooltip: 'Edit Rack',
+          ),
+        ],
       );
     }
     return IconButton(
