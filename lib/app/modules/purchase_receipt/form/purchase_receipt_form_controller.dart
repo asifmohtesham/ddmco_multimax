@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -15,8 +16,10 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 // Step 3.2: UniversalItemFormSheet used directly in _openItemSheet.
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
@@ -25,7 +28,8 @@ import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
 
 import 'controllers/purchase_receipt_item_form_controller.dart';
 
-class PurchaseReceiptFormController extends GetxController {
+class PurchaseReceiptFormController extends GetxController
+    with OptimisticLockingMixin {
   final PurchaseReceiptProvider _provider       = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider   _poProvider     = Get.find<PurchaseOrderProvider>();
   final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
@@ -42,6 +46,21 @@ class PurchaseReceiptFormController extends GetxController {
   var isDirty         = false.obs;
   var isScanning      = false.obs;
   var isItemSheetOpen = false.obs;
+
+  // Sheet-level loading flag (separate from isSaving)
+  var isAddingItem = false.obs;
+
+  // ── Save result state machine (mirrors SE) ──────────────────────────────
+  var saveResult      = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
@@ -71,7 +90,7 @@ class PurchaseReceiptFormController extends GetxController {
   // ── Persistent scan worker ──────────────────────────────────────────────
   Worker? _scanWorker;
 
-  bool get isEditable => purchaseReceipt.value?.docstatus == 0;
+  bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -102,6 +121,7 @@ class PurchaseReceiptFormController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
     log('[PR:onClose] _scanWorker disposed', name: 'PR');
     supplierController.dispose();
     postingDateController.dispose();
@@ -109,6 +129,15 @@ class PurchaseReceiptFormController extends GetxController {
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
+  }
+
+  // ── OptimisticLockingMixin contract ────────────────────────────────────
+  @override
+  Future<void> reloadDocument() async {
+    await fetchPurchaseReceipt();
+    isStale.value    = false;
+    isScanning.value = false;
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   // ── PopScope ────────────────────────────────────────────────────────────
@@ -120,12 +149,6 @@ class PurchaseReceiptFormController extends GetxController {
       },
     );
   }
-
-  // ── Step 2.2: reloadDocument ──────────────────────────────────────────────
-  /// Reloads the document from the server and resets dirty state.
-  /// Mirrors [DeliveryNoteFormController.reloadDocument].
-  /// Called by OptimisticLockingMixin (Phase 5.1) and pull-to-refresh.
-  Future<void> reloadDocument() => fetchPurchaseReceipt();
 
   // ── Raw scan entry point ───────────────────────────────────────────────
   void _onRawScan(String code) {
@@ -270,13 +293,19 @@ class PurchaseReceiptFormController extends GetxController {
     return poItemQuantities[poItemName] ?? 0.0;
   }
 
+  // ── ensureItemKey (mirrors SE pattern) ───────────────────────────────────
+  void ensureItemKey(PurchaseReceiptItem item) {
+    if (item.name != null && !itemKeys.containsKey(item.name)) {
+      itemKeys[item.name!] = GlobalKey();
+    }
+  }
+
   // ── Item sheet orchestration ──────────────────────────────────────────────
   //
-  // Step 3.2: Mirrors DN’s _openItemSheet structure (P1-B pattern).
-  //   • onSubmit lambda declared locally, passed to both the sheet widget
-  //     AND setupAutoSubmit.onAutoSubmit — single coordinator path.
-  //   • UniversalItemFormSheet used directly.
-  //   • await on Get.bottomSheet so isItemSheetOpen resets after dismiss.
+  // Red Fix #1 (SRP): onSubmit coordinator lives here.
+  //   child.submit()  → mutates PurchaseReceipt.items + sets isDirty
+  //   savePurchaseReceipt() → persists to ERPNext
+  // The child never calls savePurchaseReceipt() directly.
 
   Future<void> _openItemSheet({
     required String itemCode,
@@ -301,11 +330,12 @@ class PurchaseReceiptFormController extends GetxController {
       editingItem:    editingItem,
     );
 
-    // ── P1-B: onSubmit coordinator ─────────────────────────────────────────
-    // child.submit() performs the local mutation + ERPNext save.
-    // Sheet closure is exclusively the caller’s responsibility.
+    if (editingItem != null) ensureItemKey(editingItem);
+
+    // ── SRP coordinator: parent owns save decision ─────────────────────────
     Future<void> onSubmit() async {
       await child.submit();
+      await savePurchaseReceipt();
     }
 
     child.setupAutoSubmit(
@@ -314,7 +344,9 @@ class PurchaseReceiptFormController extends GetxController {
       isSheetOpen:   isItemSheetOpen,
       isSubmittable: () => purchaseReceipt.value?.docstatus == 0,
       onAutoSubmit: () async {
+        isAddingItem.value = true;
         await onSubmit();
+        isAddingItem.value = false;
         if (Get.isBottomSheetOpen == true) Get.back();
       },
     );
@@ -327,23 +359,22 @@ class PurchaseReceiptFormController extends GetxController {
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
+        expand:           false,
         builder: (ctx, sc) => UniversalItemFormSheet(
           controller:       child,
           scrollController: sc,
-          onSubmit:         () async {
+          onSubmit: () async {
             await onSubmit();
             Get.back();
           },
           onScan: (code) => scanBarcode(code),
           customFields: [
-            // 1. Batch No — editMode (purple, readOnly-when-valid + Edit btn)
             SharedBatchField(
               c:           child,
               accentColor: Colors.purple,
               editMode:    true,
               fieldKey:    'pr_batch_field',
             ),
-            // 2. Target Rack — required (green)
             SharedRackField(
               c:           child,
               accentColor: Colors.green,
@@ -419,6 +450,8 @@ class PurchaseReceiptFormController extends GetxController {
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
+    if (checkStaleAndBlock()) return;
+
     isSaving.value = true;
 
     final Map<String, dynamic> data = {
@@ -426,6 +459,7 @@ class PurchaseReceiptFormController extends GetxController {
       'posting_date': purchaseReceipt.value?.postingDate,
       'posting_time': purchaseReceipt.value?.postingTime,
       'set_warehouse': setWarehouse.value,
+      'modified':     purchaseReceipt.value?.modified,
     };
 
     final itemsJson = purchaseReceipt.value?.items.map((i) {
@@ -433,6 +467,7 @@ class PurchaseReceiptFormController extends GetxController {
       if (json['name']?.toString().startsWith('local_') == true) {
         json.remove('name');
       }
+      json.removeWhere((key, value) => value == null);
       return json;
     }).toList() ?? [];
     data['items'] = itemsJson;
@@ -445,29 +480,44 @@ class PurchaseReceiptFormController extends GetxController {
           name = created['name'];
           mode = 'edit';
           await fetchPurchaseReceipt();
+          _setSaveResult(SaveResult.success);
           GlobalSnackbar.success(message: 'Purchase Receipt created: $name');
         } else {
-          GlobalSnackbar.error(message:
-              'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
+          _setSaveResult(SaveResult.error);
+          GlobalSnackbar.error(
+              message: 'Failed to create: '
+                  '${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
         final response = await _provider.updatePurchaseReceipt(name, data);
         if (response.statusCode == 200) {
-          GlobalSnackbar.success(message: 'Purchase Receipt updated');
+          _setSaveResult(SaveResult.success);
           await fetchPurchaseReceipt();
         } else {
-          GlobalSnackbar.error(message:
-              'Failed to update: ${response.data['exception'] ?? 'Unknown error'}');
+          _setSaveResult(SaveResult.error);
+          GlobalSnackbar.error(
+              message: 'Failed to update: '
+                  '${response.data['exception'] ?? 'Unknown error'}');
         }
       }
     } on DioException catch (e) {
-      String msg = 'Save failed';
-      if (e.response?.data is Map) {
-        msg = e.response!.data['exception']?.toString().split(':').last.trim()
-            ?? 'Validation Error: Check form details';
+      if (handleVersionConflict(e)) {
+        // handled by OptimisticLockingMixin
+      } else {
+        _setSaveResult(SaveResult.error);
+        String msg = 'Save failed';
+        if (e.response?.data is Map) {
+          if (e.response!.data['exception'] != null) {
+            msg = e.response!.data['exception']
+                .toString().split(':').last.trim();
+          } else if (e.response!.data['_server_messages'] != null) {
+            msg = 'Validation Error: Check form details';
+          }
+        }
+        GlobalSnackbar.error(message: msg);
       }
-      GlobalSnackbar.error(message: msg);
     } catch (e) {
+      _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
@@ -512,8 +562,7 @@ class PurchaseReceiptFormController extends GetxController {
         await _scanService.processScan(barcode, contextItemCode: contextEan);
 
     if (result.type == ScanType.rack && result.rackId != null) {
-      child.rackController.text = result.rackId!;
-      child.validateRack(result.rackId!);
+      child.applyRackScan(result.rackId!);
     } else if (result.batchNo != null) {
       child.batchController.text = result.batchNo!;
       child.validateBatch(result.batchNo!);

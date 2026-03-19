@@ -9,6 +9,7 @@ import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_rece
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
@@ -27,26 +28,25 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           appBar: MainAppBar(
             title: controller.purchaseReceipt.value?.name ?? 'Loading...',
             status: controller.purchaseReceipt.value?.status,
-            isDirty: controller.isDirty.value, // Pass dirty state
+            isDirty: controller.isDirty.value,
             actions: [
+              // Red Fix #3 (UX): SaveIconButton replaces the hand-rolled
+              // IconButton + inline spinner, matching SE/DN AppBar behaviour.
+              // Idle: faded save icon.
+              // Saving: animated CircularProgressIndicator.
+              // Success: animated tick for 2 seconds.
+              // Error: error glyph for 2 seconds.
               Obx(() {
-                if (controller.purchaseReceipt.value?.docstatus == 1) return const SizedBox.shrink();
-
-                return controller.isSaving.value
-                    ? const Center(
-                    child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0),
-                        child: SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
-                        )
-                    )
-                )
-                    : IconButton(
-                  icon: Icon(Icons.save, color: controller.isDirty.value ? Colors.white : Colors.white54),
-                  // Enable save only if dirty AND draft
-                  onPressed: (controller.isDirty.value && controller.isEditable)
+                if (controller.purchaseReceipt.value?.docstatus == 1) {
+                  return const SizedBox.shrink();
+                }
+                final canSave =
+                    controller.isDirty.value && controller.isEditable;
+                return SaveIconButton(
+                  isSaving:   controller.isSaving.value,
+                  saveResult: controller.saveResult.value,
+                  isEnabled:  canSave,
+                  onPressed:  canSave
                       ? controller.savePurchaseReceipt
                       : null,
                 );
@@ -103,14 +103,20 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Receipt ID', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            Text(receipt.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const Text('Receipt ID',
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 12)),
+                            Text(receipt.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16)),
                           ],
                         ),
                       ),
-                      // Mirroring status in the body as well using StatusPill directly if desired,
-                      // or just relying on AppBar. Keeping existing structure:
-                      StatusPill(status: controller.isDirty.value ? 'Not Saved' : receipt.status),
+                      StatusPill(
+                          status: controller.isDirty.value
+                              ? 'Not Saved'
+                              : receipt.status),
                     ],
                   ),
                   const Divider(height: 24),
@@ -123,9 +129,10 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     filled: true,
                     fillColor: Colors.white,
                     prefixIcon: Icon(Icons.business),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
-                  readOnly: true, // Supplier generally fixed after creation via arg, or add picker if needed
+                  readOnly: true,
                 ),
               ],
             ),
@@ -144,7 +151,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                           labelText: 'Posting Date',
                           border: OutlineInputBorder(),
                           suffixIcon: Icon(Icons.calendar_today),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 14),
                         ),
                       ),
                     ),
@@ -157,7 +165,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                           labelText: 'Posting Time',
                           border: OutlineInputBorder(),
                           suffixIcon: Icon(Icons.access_time),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 14),
                         ),
                       ),
                     ),
@@ -170,33 +179,41 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
               title: 'Settings',
               children: [
                 Obx(() => DropdownButtonFormField<String>(
-                  value: controller.setWarehouse.value,
-                  decoration: const InputDecoration(
-                    labelText: 'Set Accepted Warehouse',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.store),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  ),
-                  items: controller.warehouses.map((wh) {
-                    return DropdownMenuItem(value: wh, child: Text(wh, overflow: TextOverflow.ellipsis));
-                  }).toList(),
-                  onChanged: isEditable ? (value) => controller.setWarehouse.value = value : null,
-                )),
+                      value: controller.setWarehouse.value,
+                      decoration: const InputDecoration(
+                        labelText: 'Set Accepted Warehouse',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.store),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      items: controller.warehouses.map((wh) {
+                        return DropdownMenuItem(
+                            value: wh,
+                            child: Text(wh,
+                                overflow: TextOverflow.ellipsis));
+                      }).toList(),
+                      onChanged: isEditable
+                          ? (value) =>
+                              controller.setWarehouse.value = value
+                          : null,
+                    )),
               ],
             ),
             const SizedBox(height: 16),
             _buildSectionCard(
                 title: 'Summary',
                 children: [
-                  _buildSummaryRow('Total Quantity', '${receipt.totalQty.toStringAsFixed(2)} Items'),
+                  _buildSummaryRow('Total Quantity',
+                      '${receipt.totalQty.toStringAsFixed(2)} Items'),
                   const Divider(),
                   _buildSummaryRow(
-                      'Grand Total',
-                      '${FormattingHelper.getCurrencySymbol(receipt.currency)} ${receipt.grandTotal.toStringAsFixed(2)}',
-                      isBold: true
+                    'Grand Total',
+                    '${FormattingHelper.getCurrencySymbol(receipt.currency)} '
+                        '${receipt.grandTotal.toStringAsFixed(2)}',
+                    isBold: true,
                   ),
-                ]
-            ),
+                ]),
             const SizedBox(height: 80),
           ],
         ),
@@ -204,17 +221,24 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+  Widget _buildSectionCard(
+      {required String title, required List<Widget> children}) {
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87)),
             const SizedBox(height: 16),
             ...children,
           ],
@@ -223,20 +247,24 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+  Widget _buildSummaryRow(String label, String value,
+      {bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(label,
+              style:
+                  const TextStyle(color: Colors.grey, fontSize: 14)),
           Text(
-              value,
-              style: TextStyle(
-                  fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                  fontSize: isBold ? 16 : 14,
-                  color: isBold ? Colors.black87 : Colors.black54
-              )
+            value,
+            style: TextStyle(
+              fontWeight:
+                  isBold ? FontWeight.bold : FontWeight.w500,
+              fontSize: isBold ? 16 : 14,
+              color: isBold ? Colors.black87 : Colors.black54,
+            ),
           ),
         ],
       ),
@@ -252,30 +280,33 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           child: items.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
               : ListView.separated(
-            controller: controller.scrollController,
-            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
-            itemCount: items.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 0),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              if (item.name != null && !controller.itemKeys.containsKey(item.name)) {
-                controller.itemKeys[item.name!] = GlobalKey();
-              }
-              return Container(
-                  key: item.name != null ? controller.itemKeys[item.name] : null,
-                  child: PurchaseReceiptItemCard(item: item, index: index)
-              );
-            },
-          ),
+                  controller: controller.scrollController,
+                  padding:
+                      const EdgeInsets.only(top: 8.0, bottom: 80.0),
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 0),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    // ensureItemKey moved to controller (mirrors SE pattern).
+                    controller.ensureItemKey(item);
+                    return Container(
+                      key: item.name != null
+                          ? controller.itemKeys[item.name]
+                          : null,
+                      child: PurchaseReceiptItemCard(
+                          item: item, index: index),
+                    );
+                  },
+                ),
         ),
-        // Only show scanner if editable
         if (controller.isEditable)
           Obx(() => BarcodeInputWidget(
-            onScan: (code) => controller.scanBarcode(code),
-            isLoading: controller.isScanning.value,
-            controller: controller.barcodeController,
-            activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
-          )),
+                onScan: (code) => controller.scanBarcode(code),
+                isLoading: controller.isScanning.value,
+                controller: controller.barcodeController,
+                activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
+              )),
       ],
     );
   }
