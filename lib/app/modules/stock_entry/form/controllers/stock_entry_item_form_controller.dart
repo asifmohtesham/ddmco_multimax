@@ -10,7 +10,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'stock_entry_form_controller.dart';
+import '../stock_entry_form_controller.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -441,9 +441,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── validateRack (SE dual-rack override) ──────────────────────────────────
+  // ── validateDualRack (SE dual-rack — NOT an override of base validateRack) ─
+  //
+  // The base class declares validateRack(String rack) with one positional arg.
+  // SE needs a second `bool isSource` discriminator, so this is a separate
+  // method name to avoid the override-signature mismatch compiler error.
 
-  Future<void> validateRack(String rack, bool isSource) async {
+  Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) {
         isSourceRackValid.value      = false;
@@ -661,7 +665,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
       log('[SE:ItemSheet] auto-fill source rack="$best"', name: 'SE:ItemSheet');
       sourceRackController.text = best;
-      await validateRack(best, true);
+      await validateDualRack(best, true);
     } catch (e) {
       log('[SE:ItemSheet] _autoFillBestSourceRack error (non-fatal): $e',
           name: 'SE:ItemSheet');
@@ -700,7 +704,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
       log('[SE:ItemSheet] auto-fill target rack="$best"', name: 'SE:ItemSheet');
       targetRackController.text = best;
-      await validateRack(best, false);
+      await validateDualRack(best, false);
     } catch (e) {
       log('[SE:ItemSheet] _autoFillBestTargetRack error (non-fatal): $e',
           name: 'SE:ItemSheet');
@@ -715,21 +719,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         type == 'Material Transfer for Manufacture') {
       if (sourceRackController.text.isEmpty) {
         sourceRackController.text = code;
-        validateRack(code, true);
+        validateDualRack(code, true);
       } else {
         if (code == sourceRackController.text) {
           rackError.value = 'Source and Target Racks cannot be the same';
           return;
         }
         targetRackController.text = code;
-        validateRack(code, false);
+        validateDualRack(code, false);
       }
     } else if (type == 'Material Issue') {
       sourceRackController.text = code;
-      validateRack(code, true);
+      validateDualRack(code, true);
     } else if (type == 'Material Receipt') {
       targetRackController.text = code;
-      validateRack(code, false);
+      validateDualRack(code, false);
     }
   }
 
