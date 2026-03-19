@@ -15,6 +15,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 ///   • Stock / rack map fetching
 ///   • Qty adjustment helpers
 ///   • Dirty-state & sheet-validity flags
+///   • Auto-submit worker (enabled per-DocType via setupAutoSubmit)
 ///
 /// Concrete subclasses only need to implement the four abstract members
 /// and call [initialise] from their own [initialise] method.
@@ -23,19 +24,19 @@ abstract class ItemSheetControllerBase extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
 
   // ── Form infrastructure ───────────────────────────────────────────────
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  final ScrollController sheetScrollController = ScrollController();
+  final GlobalKey<FormState> formKey            = GlobalKey<FormState>();
+  final ScrollController     sheetScrollController = ScrollController();
 
   final TextEditingController qtyController   = TextEditingController();
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ──────────────────────────────────────────────────
+  // ── Core item identity ─────────────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
-  // ── Validation state ───────────────────────────────────────────────────
+  // ── Validation state ──────────────────────────────────────────────────
   var isBatchValid      = false.obs;
   var isRackValid       = false.obs;
   var isValidatingBatch = false.obs;
@@ -49,41 +50,45 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── Item metadata (for GlobalItemFormSheet footer) ──────────────────────
+  // ── Item metadata (for GlobalItemFormSheet footer) ─────────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
   var itemModified   = RxnString();
   var itemModifiedBy = RxnString();
 
-  // ── Editing context ──────────────────────────────────────────────────
+  // ── Editing context ─────────────────────────────────────────────────
   /// Non-null when editing an existing child-table row.
   var editingItemName = RxnString();
 
-  // ── Snapshot for dirty-checking ──────────────────────────────────────────
+  // ── Snapshot for dirty-checking ───────────────────────────────────────
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Abstract interface ──────────────────────────────────────────────────
+  // ── Auto-submit worker ──────────────────────────────────────────────────
+  Worker? _autoSubmitWorker;
+
+  // ── Abstract interface ───────────────────────────────────────────────
 
   /// The warehouse to use for stock/batch queries.
   /// Return null if not yet determined.
   String? get resolvedWarehouse;
 
-  /// Whether this DocType requires a valid batch before saving.
+  /// Whether this DocType requires a valid batch before the sheet can be saved.
+  /// Enforced by [baseValidate].
   bool get requiresBatch;
 
-  /// Whether this DocType requires a rack entry.
+  /// Whether this DocType requires a non-empty rack entry before saving.
+  /// Enforced by [baseValidate].
   bool get requiresRack;
 
-  /// DocType-specific validation rules applied ON TOP of [_baseValidate].
-  /// Implementations should call [_baseValidate] first, then add their checks.
+  /// DocType-specific validation rules applied ON TOP of [baseValidate].
   void validateSheet();
 
   /// Commits the current field values back to the parent document controller.
   Future<void> submit();
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
@@ -92,20 +97,20 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.dispose();
     rackFocusNode.dispose();
     sheetScrollController.dispose();
+    _autoSubmitWorker?.dispose();
     super.onClose();
   }
 
-  // ── Shared initialisation helper ──────────────────────────────────────────
+  // ── Shared initialisation helper ───────────────────────────────────────
 
   /// Call from concrete [initialise] after fields are populated.
-  /// Sets the dirty-check snapshot and registers field listeners.
   void initBaseListeners() {
     qtyController.addListener(validateSheet);
     batchController.addListener(validateSheet);
     rackController.addListener(validateSheet);
   }
 
-  /// Capture current field values as the "clean" baseline for dirty checking.
+  /// Capture current field values as the “clean” baseline for dirty checking.
   void captureSnapshot() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
@@ -118,6 +123,37 @@ abstract class ItemSheetControllerBase extends GetxController {
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
+  // ── Auto-submit wiring ────────────────────────────────────────────────
+
+  /// Wires an auto-submit timer on [isSheetValid].
+  ///
+  /// Call from the DocType parent after [initialise]. The worker is
+  /// automatically disposed in [onClose], so subclasses need no cleanup.
+  ///
+  /// [isSheetOpen]  — reactive bool owned by the parent document controller.
+  /// [isSubmittable] — extra predicate (e.g. docstatus == 0); evaluated at
+  ///                    trigger time so it always reflects live state.
+  void setupAutoSubmit({
+    required bool            enabled,
+    required int             delaySeconds,
+    required RxBool          isSheetOpen,
+    required bool Function() isSubmittable,
+    required VoidCallback    onAutoSubmit,
+  }) {
+    _autoSubmitWorker?.dispose();
+    if (!enabled) return;
+
+    _autoSubmitWorker = ever(isSheetValid, (bool valid) {
+      if (valid && isSheetOpen.value && isSubmittable()) {
+        Future.delayed(Duration(seconds: delaySeconds), () async {
+          if (isSheetValid.value && isSheetOpen.value) {
+            onAutoSubmit();
+          }
+        });
+      }
+    });
+  }
+
   // ── Qty helpers ──────────────────────────────────────────────────────────
 
   void adjustQty(double delta) {
@@ -125,15 +161,13 @@ abstract class ItemSheetControllerBase extends GetxController {
     double next    = current + delta;
     if (next < 0) next = 0;
     if (maxQty.value > 0 && next > maxQty.value) next = maxQty.value;
-    qtyController.text = next % 1 == 0 ? next.toInt().toString() : next.toString();
+    qtyController.text =
+        next % 1 == 0 ? next.toInt().toString() : next.toString();
     validateSheet();
   }
 
-  // ── Batch validation ─────────────────────────────────────────────────────
+  // ── Batch validation ───────────────────────────────────────────────────
 
-  /// Validates [batch] against Batch-Wise Balance History.
-  /// Sets [isBatchValid], [maxQty], [batchError], and focuses the rack field
-  /// on success via a post-frame callback (prevents mid-rebuild focus crash).
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
     batchError.value        = null;
@@ -141,7 +175,6 @@ abstract class ItemSheetControllerBase extends GetxController {
     isValidatingBatch.value = true;
 
     try {
-      // 1. Confirm batch exists for this item
       final batchRes = await _api.getDocumentList(
         'Batch',
         filters: {'name': batch, 'item': itemCode.value},
@@ -159,7 +192,6 @@ abstract class ItemSheetControllerBase extends GetxController {
             pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
-      // 2. Fetch balance — positional args; ApiProvider builds its own dates
       final balRes = await _api.getBatchWiseBalance(
         itemCode.value,
         batch,
@@ -177,7 +209,6 @@ abstract class ItemSheetControllerBase extends GetxController {
 
       maxQty.value = fetchedQty;
 
-      // 3. Build tooltip
       final sb = StringBuffer('Batch Stock: $fetchedQty');
       if (rackStockTooltip.value != null) {
         sb.write('\n\nRack Availability:\n${rackStockTooltip.value}');
@@ -187,14 +218,13 @@ abstract class ItemSheetControllerBase extends GetxController {
       if (fetchedQty > 0) {
         isBatchValid.value = true;
         batchError.value   = null;
-        _focusRack(); // post-frame safe
+        _focusRack();
       } else {
         isBatchValid.value = false;
         batchError.value   = 'Batch has no stock';
         GlobalSnackbar.error(message: 'Batch has 0 stock');
       }
 
-      // 4. Refresh rack stocks after batch is known
       await fetchAllRackStocks();
 
     } catch (e) {
@@ -215,9 +245,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Rack validation ──────────────────────────────────────────────────────
+  // ── Rack validation ────────────────────────────────────────────────────
 
-  /// Validates [rack] via the Rack doctype API.
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
       isRackValid.value = false;
@@ -251,9 +280,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Stock / rack-map fetching ───────────────────────────────────────────────
+  // ── Stock / rack-map fetching ───────────────────────────────────────────
 
-  /// Fetches per-rack stock availability for the current item + warehouse.
   Future<void> fetchAllRackStocks() async {
     final warehouse = resolvedWarehouse;
     if (warehouse == null || warehouse.isEmpty) return;
@@ -268,10 +296,9 @@ abstract class ItemSheetControllerBase extends GetxController {
       if (response.statusCode == 200 && response.data['message'] != null) {
         final result = response.data['message']['result'];
         if (result is List && result.isNotEmpty) {
-          final Map<String, double> tempMap = {};
-          final List<String> tooltipLines = [];
+          final Map<String, double> tempMap     = {};
+          final List<String>        tooltipLines = [];
 
-          // Last row is the totals row — skip it
           for (int i = 0; i < result.length - 1; i++) {
             final row = result[i] as Map<String, dynamic>;
             final String? r   = row['rack'] as String?;
@@ -293,18 +320,33 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Base validation helper ──────────────────────────────────────────────────
+  // ── Base validation ───────────────────────────────────────────────────────
 
   /// Returns true when all base rules pass.
+  ///
+  /// Enforces [requiresBatch] and [requiresRack] so the abstract contract
+  /// is behavioural, not merely documentary.
   bool baseValidate() {
     rackError.value = null;
 
+    // Qty
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return false;
     if (maxQty.value > 0 && qty > maxQty.value) return false;
 
-    if (batchController.text.isNotEmpty && !isBatchValid.value) return false;
-    if (rackController.text.isNotEmpty  && !isRackValid.value)  return false;
+    // Batch — required if declared, or invalid if partially entered
+    if (requiresBatch) {
+      if (batchController.text.isEmpty || !isBatchValid.value) return false;
+    } else {
+      if (batchController.text.isNotEmpty && !isBatchValid.value) return false;
+    }
+
+    // Rack — required if declared, or invalid if partially entered
+    if (requiresRack) {
+      if (rackController.text.isEmpty || !isRackValid.value) return false;
+    } else {
+      if (rackController.text.isNotEmpty && !isRackValid.value) return false;
+    }
 
     // Rack-wise stock availability check
     final selectedRack = rackController.text;
@@ -319,7 +361,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     return true;
   }
 
-  // ── Focus helpers ──────────────────────────────────────────────────────────
+  // ── Focus helpers ────────────────────────────────────────────────────────
 
   void _focusRack() {
     WidgetsBinding.instance.addPostFrameCallback((_) {

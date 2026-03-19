@@ -23,7 +23,7 @@ import 'stock_entry_form_controller.dart';
 ///   • MR qty constraint
 ///   • batch-balance cross-check
 ///   • auto-fill source/target rack
-///   • auto-submit worker
+///   • auto-submit worker (via base setupAutoSubmit)
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
@@ -65,12 +65,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Scan context ──────────────────────────────────────────────────────────
   String currentScannedEan8 = '';
 
-  // ── Dirty-check snapshots (SE has two extra rack fields) ─────────────────
+  // ── SE dirty-check snapshots (source + target rack extend base) ───────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
-
-  // ── Auto-submit worker ────────────────────────────────────────────────────
-  Worker? _autoSubmitWorker;
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
@@ -84,14 +81,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get requiresBatch => true;
 
   @override
-  bool get requiresRack => false; // rack rules depend on entry type; handled in validateSheet
+  bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
 
-  // ── PosSerialMixin contract ───────────────────────────────────────────────
+  // ── PosSerialMixin contract ─────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
-  // ── Initialisation ────────────────────────────────────────────────────────
+  // ── Initialisation ─────────────────────────────────────────────────────
 
   void initialise({
     required StockEntryFormController parent,
@@ -107,7 +104,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     _parent = parent;
     currentScannedEan8 = scannedEan8;
 
-    // Reset shared base state
     itemCode.value = code;
     this.itemName.value = itemName;
     maxQty.value   = 0.0;
@@ -119,7 +115,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isBatchValid.value     = false;
     isRackValid.value      = false;
 
-    // Reset SE-specific state
     isSourceRackValid.value      = false;
     isTargetRackValid.value      = false;
     derivedSourceWarehouse.value = null;
@@ -135,7 +130,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.clear();
     targetRackController.clear();
 
-    // MR cap
     if (mrReferenceItems.isNotEmpty) {
       final ref = mrReferenceItems.firstWhereOrNull(
           (r) => r['item_code'].toString().trim().toLowerCase() ==
@@ -151,7 +145,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo, mrReferenceItems);
     }
 
-    // Base listeners
     initBaseListeners();
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
@@ -249,6 +242,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final effMax = effectiveMaxQty;
     if (effMax < 999999.0 && qty > effMax) valid = false;
 
+    // requiresBatch=true enforced via baseValidate; SE bypasses base
+    // because it owns a richer effectiveMaxQty ceiling. Re-check manually.
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
 
     if (!isValidRacks()) valid = false;
@@ -271,7 +266,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit ────────────────────────────────────────────────────────────────
+  // ── submit ───────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -578,9 +573,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         rackBalance.value = rack.isNotEmpty ? rackBal : 0.0;
 
         if (rack.isNotEmpty && rackBal <= 0) {
-          rackError.value = 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)';
+          rackError.value =
+              'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)';
           GlobalSnackbar.error(
-              message: 'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)');
+              message:
+                  'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)');
           isSourceRackValid.value = false;
         }
       }
@@ -710,29 +707,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Auto-submit wiring ────────────────────────────────────────────────────
-
-  void setupAutoSubmit({
-    required bool enabled,
-    required int delaySeconds,
-    required VoidCallback onAutoSubmit,
-  }) {
-    _autoSubmitWorker?.dispose();
-    if (!enabled) return;
-
-    _autoSubmitWorker = ever(isSheetValid, (bool valid) {
-      if (valid &&
-          _parent.isItemSheetOpen.value &&
-          _parent.stockEntry.value?.docstatus == 0) {
-        Future.delayed(Duration(seconds: delaySeconds), () async {
-          if (isSheetValid.value && _parent.isItemSheetOpen.value) {
-            onAutoSubmit();
-          }
-        });
-      }
-    });
-  }
-
   // ── Sheet scan helpers ────────────────────────────────────────────────────
 
   void applyRackScan(String code) {
@@ -788,7 +762,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void onClose() {
     sourceRackController.dispose();
     targetRackController.dispose();
-    _autoSubmitWorker?.dispose();
-    super.onClose();
+    super.onClose(); // disposes base TECs, FocusNode, scrollController, worker
   }
 }

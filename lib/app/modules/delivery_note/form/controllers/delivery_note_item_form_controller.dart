@@ -20,35 +20,35 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [PosSerialMixin]    — invoice serial-number selector (POS Upload flow)
 ///   • [AutoFillRackMixin] — auto-selects the best-stock rack in add-mode
 ///
+/// Auto-submit wiring is handled by [ItemSheetControllerBase.setupAutoSubmit];
+/// no worker duplication here.
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ──────────────────────────────────────────────────────
+  // ── Parent reference ───────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // ── DN-specific extra state ───────────────────────────────────────────────
+  // ── DN-specific extra state ────────────────────────────────────────────
 
   /// The EAN-8 string captured from the last outside-sheet scan.
-  /// Passed as context to ScanService so batch-suffix scans inside the
-  /// sheet produce the correct 'EAN8-SUFFIX' batch name.
   String currentScannedEan8 = '';
 
-  // ── ItemSheetControllerBase contract ────────────────────────────────────────
+  // ── ItemSheetControllerBase contract ───────────────────────────────────
 
   @override
   String? get resolvedWarehouse =>
-      // Item-level warehouse (derived from rack) takes priority over global
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
 
   @override
   bool get requiresBatch => true;
 
   @override
-  bool get requiresRack => false; // preferred but not mandatory
+  bool get requiresRack => false;
 
-  // ── PosSerialMixin contract ───────────────────────────────────────────────
+  // ── PosSerialMixin contract ─────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos =>
@@ -57,7 +57,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
           .toList() ??
       [];
 
-  // ── Initialisation ─────────────────────────────────────────────────────────
+  // ── Initialisation ─────────────────────────────────────────────────────
 
   void initialise({
     required DeliveryNoteFormController parent,
@@ -71,7 +71,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     _parent = parent;
     currentScannedEan8 = scannedEan8;
 
-    // Reset shared state
     itemCode.value = code;
     itemName.value = name;
     maxQty.value   = initialMaxQty;
@@ -87,33 +86,26 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo);
     }
 
-    // Base listener wiring (qty / batch / rack -> validateSheet)
     initBaseListeners();
     ever(selectedSerial, (_) => validateSheet());
 
-    // Capture snapshot AFTER fields are populated
     captureSnapshot();
     captureSerialSnapshot();
 
-    // AutoFillRack add-mode flag
     isAddMode = editingItem == null;
 
     validateSheet();
-
-    // Kick off rack-stock fetch (will call autoFillBestRack in add-mode)
     fetchAllRackStocks();
   }
 
   void _loadExistingItem(DeliveryNoteItem item) {
     editingItemName.value = item.name;
 
-    // Metadata
     itemOwner.value      = item.owner;
     itemCreation.value   = item.creation;
     itemModified.value   = item.modified;
     itemModifiedBy.value = item.modifiedBy;
 
-    // Fields
     batchController.text = item.batchNo ?? '';
     rackController.text  = item.rack   ?? '';
     qtyController.text   = item.qty % 1 == 0
@@ -121,11 +113,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         : item.qty.toString();
     selectedSerial.value = item.customInvoiceSerialNumber;
 
-    // Pre-mark valid if already populated
     isBatchValid.value = item.batchNo != null && item.batchNo!.isNotEmpty;
     isRackValid.value  = item.rack    != null && item.rack!.isNotEmpty;
 
-    // Derive EAN-8 from batch no for inside-sheet scan context
     if (item.batchNo != null && item.batchNo!.contains('-')) {
       currentScannedEan8 = item.batchNo!.split('-').first;
     }
@@ -137,7 +127,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
 
-    // Clear metadata
     itemOwner.value      = null;
     itemCreation.value   = null;
     itemModified.value   = null;
@@ -145,10 +134,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     batchController.text = batchNo ?? '';
     rackController.clear();
-    qtyController.text   = '6'; // default DN quantity
+    qtyController.text   = '6';
     selectedSerial.value = null;
 
-    // Mark batch valid if pre-populated from scan
     isBatchValid.value = batchNo != null && batchNo.isNotEmpty;
     isRackValid.value  = false;
 
@@ -156,36 +144,30 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── AutoFillRackMixin override ───────────────────────────────────────────────
+  // ── AutoFillRackMixin override ────────────────────────────────────────────
 
   @override
   Future<void> fetchAllRackStocks() async {
     await super.fetchAllRackStocks();
-    autoFillBestRack(); // AutoFillRackMixin: fill best rack after map loads
+    autoFillBestRack();
   }
 
-  // ── validateSheet ───────────────────────────────────────────────────────────
+  // ── validateSheet ─────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
-    bool valid = baseValidate();
+    bool valid = baseValidate(); // requiresBatch=true enforced here
 
-    // DN-specific: batch is always required
-    if (batchController.text.isEmpty) valid = false;
-
-    // DN-specific: serial required when POS Upload items are present
     if (!validateSerial()) valid = false;
 
-    // Dirty check
     isFormDirty.value = isFieldsDirty || isSerialDirty;
 
-    // In edit-mode, disable Save when nothing changed
     if (editingItemName.value != null && !isFormDirty.value) valid = false;
 
     isSheetValid.value = valid;
   }
 
-  // ── submit ──────────────────────────────────────────────────────────────────
+  // ── submit ───────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -204,40 +186,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     await _parent.saveDeliveryNote();
   }
 
-  // ── validateBatch override ──────────────────────────────────────────────────
-  // DN needs custom_packaging_qty → auto-fill qty, which is already handled
-  // in ItemSheetControllerBase.validateBatch. No override needed unless
-  // DN-specific batch logic diverges in future.
-
-  // ── Auto-submit wiring (mirrors DN parent _setupAutoSubmit) ──────────────
-
-  /// Called by parent after initialise() to wire the auto-submit timer.
-  /// Kept here so the timer is cleaned up with the controller lifecycle.
-  Worker? _autoSubmitWorker;
-
-  void setupAutoSubmit({
-    required bool enabled,
-    required int delaySeconds,
-    required VoidCallback onAutoSubmit,
-  }) {
-    _autoSubmitWorker?.dispose();
-    if (!enabled) return;
-
-    _autoSubmitWorker = ever(isSheetValid, (bool valid) {
-      if (valid && _parent.isItemSheetOpen.value &&
-          _parent.deliveryNote.value?.docstatus == 0) {
-        Future.delayed(Duration(seconds: delaySeconds), () async {
-          if (isSheetValid.value && _parent.isItemSheetOpen.value) {
-            onAutoSubmit();
-          }
-        });
-      }
-    });
-  }
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
-    _autoSubmitWorker?.dispose();
-    super.onClose(); // disposes TECs, FocusNode, scrollController
+    super.onClose(); // disposes TECs, FocusNode, scrollController, worker
   }
 }
