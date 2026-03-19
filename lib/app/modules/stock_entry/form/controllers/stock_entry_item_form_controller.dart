@@ -33,13 +33,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Parent reference ──────────────────────────────────────────────────────
   late StockEntryFormController _parent;
 
+  /// Public read-only access to the parent document controller.
+  /// Used by widgets (e.g. RackSection) that need parent state without
+  /// accessing the private field directly.
+  StockEntryFormController get parent => _parent;
+
   // ── SE-specific extra TECs ────────────────────────────────────────────────
   final TextEditingController sourceRackController = TextEditingController();
   final TextEditingController targetRackController = TextEditingController();
 
   // ── SE-specific validation state ──────────────────────────────────────────
-  var isSourceRackValid     = false.obs;
-  var isTargetRackValid     = false.obs;
+  var isSourceRackValid      = false.obs;
+  var isTargetRackValid      = false.obs;
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
@@ -50,12 +55,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var itemTargetWarehouse    = RxnString();
 
   // ── Balance state ─────────────────────────────────────────────────────────
-  var batchBalance           = 0.0.obs;
-  var rackBalance            = 0.0.obs;
-  var validationMaxQty       = 0.0.obs; // MR cap
-  var isLoadingBatchBalance  = false.obs;
-  var isLoadingRackBalance   = false.obs;
-  var isBatchReadOnly        = false.obs;
+  var batchBalance          = 0.0.obs;
+  var rackBalance           = 0.0.obs;
+  var validationMaxQty      = 0.0.obs; // MR cap
+  var isLoadingBatchBalance = false.obs;
+  var isLoadingRackBalance  = false.obs;
+  var isBatchReadOnly       = false.obs;
 
   // ── Scan context ──────────────────────────────────────────────────────────
   String currentScannedEan8 = '';
@@ -63,7 +68,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Dirty-check snapshots (SE has two extra rack fields) ─────────────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
-  String _snapshotSerial2    = '';   // alias — PosSerialMixin owns _snapshotSerial
 
   // ── Auto-submit worker ────────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
@@ -177,10 +181,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     itemModifiedBy.value = item.modifiedBy;
 
     final qty = item.qty;
-    qtyController.text = qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
-    batchController.text      = item.batchNo   ?? '';
-    sourceRackController.text = item.rack      ?? '';
-    targetRackController.text = item.toRack    ?? '';
+    qtyController.text        = qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
+    batchController.text      = item.batchNo ?? '';
+    sourceRackController.text = item.rack    ?? '';
+    targetRackController.text = item.toRack  ?? '';
     selectedSerial.value      = item.customInvoiceSerialNumber;
 
     if (_parent.entrySource == StockEntrySource.materialRequest &&
@@ -188,10 +192,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       selectedSerial.value = '0';
     }
 
-    isBatchValid.value        = item.batchNo  != null && item.batchNo!.isNotEmpty;
+    isBatchValid.value        = item.batchNo != null && item.batchNo!.isNotEmpty;
     isBatchReadOnly.value     = isBatchValid.value;
-    isSourceRackValid.value   = item.rack     != null && item.rack!.isNotEmpty;
-    isTargetRackValid.value   = item.toRack   != null && item.toRack!.isNotEmpty;
+    isSourceRackValid.value   = item.rack    != null && item.rack!.isNotEmpty;
+    isTargetRackValid.value   = item.toRack  != null && item.toRack!.isNotEmpty;
     itemSourceWarehouse.value = item.sWarehouse;
     itemTargetWarehouse.value = item.tWarehouse;
     derivedSourceWarehouse.value = item.sWarehouse;
@@ -201,7 +205,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       currentScannedEan8 = item.batchNo!.split('-').first;
     }
 
-    // Trigger balance loads
     isLoadingBatchBalance.value = item.batchNo != null && item.batchNo!.isNotEmpty;
     isLoadingRackBalance.value  = true;
 
@@ -241,29 +244,23 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void validateSheet() {
     bool valid = true;
 
-    // Qty
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) valid = false;
     final effMax = effectiveMaxQty;
     if (effMax < 999999.0 && qty > effMax) valid = false;
 
-    // Batch always required in SE
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
 
-    // Rack rules depend on entry type
     if (!isValidRacks()) valid = false;
 
-    // MR context
     if (_parent.entrySource == StockEntrySource.materialRequest) {
       if (!_checkMrConstraints()) valid = false;
     } else if (_parent.entrySource == StockEntrySource.posUpload) {
       if (!_checkPosConstraints()) valid = false;
     }
 
-    // POS serial
     if (!validateSerial()) valid = false;
 
-    // Dirty check
     isFormDirty.value = isFieldsDirty ||
         sourceRackController.text != _snapshotSourceRack ||
         targetRackController.text != _snapshotTargetRack ||
@@ -304,11 +301,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   double get effectiveMaxQty {
     double limit = 999999.0;
-    if (maxQty.value      > 0 && maxQty.value      < limit) limit = maxQty.value;
+    if (maxQty.value       > 0 && maxQty.value       < limit) limit = maxQty.value;
     if (batchBalance.value > 0 && batchBalance.value < limit) limit = batchBalance.value;
     if (isSourceRackValid.value &&
-        rackBalance.value > 0 &&
-        rackBalance.value < limit) limit = rackBalance.value;
+        rackBalance.value  > 0 && rackBalance.value  < limit) limit = rackBalance.value;
     if (validationMaxQty.value > 0 && validationMaxQty.value < limit)
       limit = validationMaxQty.value;
     return limit;
@@ -352,7 +348,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool _checkMrConstraints() {
     if (_parent.mrReferenceItems.isEmpty) return true;
     final code = itemCode.value.trim().toLowerCase();
-    final ref = _parent.mrReferenceItems.firstWhereOrNull(
+    final ref  = _parent.mrReferenceItems.firstWhereOrNull(
         (r) => r['item_code'].toString().trim().toLowerCase() == code);
     if (ref == null) return true;
     final allowed = (ref['qty'] as num).toDouble();
@@ -378,7 +374,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     batchError.value = null;
     if (batch.isEmpty) return;
 
-    // SE-specific: reject batch where ID == EAN prefix
     if (batch.contains('-')) {
       final parts = batch.split('-');
       if (parts.length >= 2 && parts[0] == parts[1]) {
@@ -391,8 +386,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     isValidatingBatch.value = true;
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getDocumentList(
+      final api = Get.find<ApiProvider>();
+      final response = await api.getDocumentList(
         'Batch',
         filters: {'item': itemCode.value, 'name': batch},
         fields: ['name', 'custom_packaging_qty'],
@@ -413,7 +408,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         await _updateAvailableStock();
         await _updateBatchBalance();
 
-        // Auto-fill source rack for Material Issue after batch is known
         if (_parent.selectedStockEntryType.value == 'Material Issue' &&
             sourceRackController.text.isEmpty) {
           unawaited(_autoFillBestSourceRack());
@@ -441,7 +435,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  /// Called during initialise() when batchNo is pre-populated (scan path).
   void validateBatchOnInit(String batch) {
     WidgetsBinding.instance.addPostFrameCallback((_) => validateBatch(batch));
   }
@@ -468,7 +461,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       return;
     }
 
-    // Derive warehouse from rack name suffix pattern "WH-CC-NN"
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -487,8 +479,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     else          isValidatingTargetRack.value = true;
 
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getDocument('Rack', rack);
+      final api = Get.find<ApiProvider>();
+      final response = await api.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         if (isSource) {
           isSourceRackValid.value = true;
@@ -543,8 +535,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     ].contains(type);
 
     if (!isSourceOp) {
-      maxQty.value      = 999999.0;
-      rackBalance.value = 0.0;
+      maxQty.value               = 999999.0;
+      rackBalance.value          = 0.0;
       isLoadingRackBalance.value = false;
       return;
     }
@@ -565,8 +557,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final rack  = sourceRackController.text.trim();
 
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getStockBalance(
+      final api = Get.find<ApiProvider>();
+      final response = await api.getStockBalance(
         itemCode:  itemCode.value,
         warehouse: effectiveWh,
         batchNo:   batch.isNotEmpty ? batch : null,
@@ -602,7 +594,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   Future<void> _updateBatchBalance() async {
     final batch = batchController.text.trim();
     if (batch.isEmpty || itemCode.value.isEmpty) {
-      batchBalance.value = 0.0;
+      batchBalance.value          = 0.0;
       isLoadingBatchBalance.value = false;
       return;
     }
@@ -611,10 +603,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         derivedSourceWarehouse.value ??
         _parent.selectedFromWarehouse.value;
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getBatchWiseBalance(
-          itemCode.value, batch,
-          warehouse: warehouse);
+      final api = Get.find<ApiProvider>();
+      final response = await api.getBatchWiseBalance(
+          itemCode.value, batch, warehouse: warehouse);
       if (response.statusCode == 200 &&
           response.data['message']?['result'] != null) {
         final List<dynamic> result = response.data['message']['result'];
@@ -641,8 +632,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Auto-fill racks ───────────────────────────────────────────────────────
 
   Future<void> _autoFillBestSourceRack() async {
-    final type = _parent.selectedStockEntryType.value;
-    if (type != 'Material Issue') return;
+    if (_parent.selectedStockEntryType.value != 'Material Issue') return;
     if (sourceRackController.text.isNotEmpty) return;
 
     final warehouse = itemSourceWarehouse.value ??
@@ -651,8 +641,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (warehouse == null || warehouse.isEmpty) return;
 
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getStockBalance(
+      final api = Get.find<ApiProvider>();
+      final response = await api.getStockBalance(
         itemCode:  itemCode.value,
         warehouse: warehouse,
         batchNo:   batchController.text.isNotEmpty ? batchController.text : null,
@@ -665,7 +655,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       for (int i = 0; i < result.length - 1; i++) {
         final row = result[i] as Map<String, dynamic>;
         final String? r = row['rack'] as String?;
-        final double q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        final double  q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
         if (r != null && r.isNotEmpty && q > 0) map[r] = q;
       }
       rackStockMap.assignAll(map);
@@ -682,8 +672,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   Future<void> _autoFillBestTargetRack() async {
-    final type = _parent.selectedStockEntryType.value;
-    if (type != 'Material Receipt') return;
+    if (_parent.selectedStockEntryType.value != 'Material Receipt') return;
     if (targetRackController.text.isNotEmpty) return;
 
     final warehouse = itemTargetWarehouse.value ??
@@ -692,8 +681,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (warehouse == null || warehouse.isEmpty) return;
 
     try {
-      final _api = Get.find<ApiProvider>();
-      final response = await _api.getStockBalance(
+      final api = Get.find<ApiProvider>();
+      final response = await api.getStockBalance(
         itemCode:  itemCode.value,
         warehouse: warehouse,
       );
@@ -705,7 +694,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       for (int i = 0; i < result.length - 1; i++) {
         final row = result[i] as Map<String, dynamic>;
         final String? r = row['rack'] as String?;
-        final double q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        final double  q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
         if (r != null && r.isNotEmpty && q > 0) map[r] = q;
       }
       rackStockMap.assignAll(map);
@@ -744,7 +733,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     });
   }
 
-  // ── Sheet scan helpers (delegated from parent _handleSheetScan) ───────────
+  // ── Sheet scan helpers ────────────────────────────────────────────────────
 
   void applyRackScan(String code) {
     final type = _parent.selectedStockEntryType.value;
@@ -772,7 +761,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   bool get needsRackScanFallback {
     final type = _parent.selectedStockEntryType.value;
-    if (type == 'Material Issue') return sourceRackController.text.isEmpty;
+    if (type == 'Material Issue')   return sourceRackController.text.isEmpty;
     if (type == 'Material Receipt') return targetRackController.text.isEmpty;
     if (type == 'Material Transfer' ||
         type == 'Material Transfer for Manufacture') {
@@ -800,6 +789,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.dispose();
     targetRackController.dispose();
     _autoSubmitWorker?.dispose();
-    super.onClose(); // disposes base TECs, FocusNode, scrollController
+    super.onClose();
   }
 }

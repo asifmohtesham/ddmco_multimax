@@ -8,7 +8,9 @@ import 'validated_rack_field.dart';
 /// Groups Source Rack, Target Rack, balance chips, warehouse labels, and the
 /// rack error message into one self-contained widget.
 ///
-/// Receives [StockEntryItemFormController] — all state is now in the child.
+/// Receives [StockEntryItemFormController] — all state lives in the child.
+/// Parent state is accessed via the public [StockEntryItemFormController.parent]
+/// getter; no private field access from outside the class.
 class RackSection extends StatelessWidget {
   final StockEntryItemFormController controller;
 
@@ -18,10 +20,10 @@ class RackSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final showSource = [
       'Material Issue', 'Material Transfer', 'Material Transfer for Manufacture'
-    ].contains(controller._parent.selectedStockEntryType.value);
+    ].contains(controller.parent.selectedStockEntryType.value);
     final showTarget = [
       'Material Receipt', 'Material Transfer', 'Material Transfer for Manufacture'
-    ].contains(controller._parent.selectedStockEntryType.value);
+    ].contains(controller.parent.selectedStockEntryType.value);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +55,7 @@ class RackSection extends StatelessWidget {
           DerivedWarehouseLabel(
             itemWarehouse:    controller.itemSourceWarehouse,
             derivedWarehouse: controller.derivedSourceWarehouse,
-            headerWarehouse:  controller._parent.selectedFromWarehouse,
+            headerWarehouse:  controller.parent.selectedFromWarehouse,
           ),
         ],
 
@@ -77,7 +79,7 @@ class RackSection extends StatelessWidget {
           DerivedWarehouseLabel(
             itemWarehouse:    controller.itemTargetWarehouse,
             derivedWarehouse: controller.derivedTargetWarehouse,
-            headerWarehouse:  controller._parent.selectedToWarehouse,
+            headerWarehouse:  controller.parent.selectedToWarehouse,
           ),
         ],
 
