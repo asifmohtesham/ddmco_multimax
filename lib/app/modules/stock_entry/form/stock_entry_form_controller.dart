@@ -86,18 +86,12 @@ class StockEntryFormController extends GetxController
   var expandedInvoice = ''.obs;
 
   // --- MR Filter ---
-  /// Active filter chip for Material Request items view.
-  /// Values: 'All' | 'Pending' | 'Completed'
   var mrItemFilter = 'All'.obs;
 
   // --- Form Fields ---
   var selectedFromWarehouse = RxnString();
   var selectedToWarehouse = RxnString();
   final customReferenceNoController = TextEditingController();
-
-  // Snapshot of the Reference No value as loaded from the server.
-  // _markDirty() is only called when the current text differs from this,
-  // preventing a read-only tap or programmatic population from dirtying the doc.
   String _initialReferenceNo = '';
 
   var stockEntryTypes = <String>[].obs;
@@ -170,6 +164,10 @@ class StockEntryFormController extends GetxController
   Worker? _scanWorker;
 
   BuildContext? _sheetContext;
+
+  // ── Per-rack stock map (populated by _autoFillBestSourceRack /
+  //    _autoFillBestTargetRack and exposed to the sheet for tooltip use) ──
+  var seRackStockMap = <String, double>{}.obs;
 
   // ---------------------------------------------------------------------------
   // Domain helpers
@@ -262,16 +260,11 @@ class StockEntryFormController extends GetxController
     ever(selectedToWarehouse, (_) => _markDirty());
     ever(selectedStockEntryType, (_) => _markDirty());
 
-    // Single combined listener: each warehouse change fires exactly one
-    // _updateAvailableStock + one _updateBatchBalance call.
     ever(bsItemSourceWarehouse, (_) async {
       await _updateAvailableStock();
       await _updateBatchBalance();
     });
 
-    // Re-validate the sheet whenever rack balance or rack-valid flag changes
-    // so that a qty already in the field is immediately re-checked against
-    // the newly arrived rack ceiling.
     ever(bsRackBalance, (_) => validateSheet());
     ever(isSourceRackValid, (_) => validateSheet());
 
@@ -742,9 +735,6 @@ class StockEntryFormController extends GetxController
         _hasChanges();
   }
 
-  /// Returns the effective maximum allowed quantity — the minimum of every
-  /// non-zero balance signal: bsMaxQty, bsBatchBalance, bsRackBalance,
-  /// bsValidationMaxQty. Zero means "not yet known" and is excluded.
   double get effectiveMaxQty {
     double limit = 999999.0;
     if (bsMaxQty.value > 0 && bsMaxQty.value < limit)
@@ -872,6 +862,7 @@ class StockEntryFormController extends GetxController
     _initialSourceRack = '';
     _initialTargetRack = '';
     _sheetContext = null;
+    seRackStockMap.clear();
   }
 
   void _openSheet() {
@@ -899,6 +890,140 @@ class StockEntryFormController extends GetxController
     });
   }
 
+  // ── AUTO-FILL RACK ─────────────────────────────────────────────────────────
+
+  /// Fetches per-rack stock for the current item + source warehouse and
+  /// pre-fills [bsSourceRackController] with the rack that has the most stock.
+  ///
+  /// Guards:
+  ///   • Only fires for Material Issue (single source rack)
+  ///   • Only in add-mode (source rack field must be empty)
+  ///   • Silently skips on any network error — operator can still scan
+  Future<void> _autoFillBestSourceRack() async {
+    final type = selectedStockEntryType.value;
+    if (type != 'Material Issue') return;
+    if (bsSourceRackController.text.isNotEmpty) return;
+
+    final warehouse = bsItemSourceWarehouse.value ??
+        derivedSourceWarehouse.value ??
+        selectedFromWarehouse.value;
+    if (warehouse == null || warehouse.isEmpty) return;
+
+    log('[SE:AutoFill] fetching rack stocks for item=$currentItemCode wh=$warehouse',
+        name: 'SE');
+
+    try {
+      final response = await _apiProvider.getStockBalance(
+        itemCode: currentItemCode,
+        warehouse: warehouse,
+        batchNo: bsBatchController.text.isNotEmpty
+            ? bsBatchController.text
+            : null,
+      );
+
+      if (response.statusCode != 200 ||
+          response.data['message'] == null) return;
+
+      final result = response.data['message']['result'];
+      if (result is! List || result.isEmpty) return;
+
+      // Build rack → qty map (skip totals row = last entry with null rack)
+      final Map<String, double> rackMap = {};
+      for (int i = 0; i < result.length - 1; i++) {
+        final row = result[i] as Map<String, dynamic>;
+        final String? rack = row['rack'] as String?;
+        final double qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        if (rack != null && rack.isNotEmpty && qty > 0) {
+          rackMap[rack] = qty;
+        }
+      }
+
+      seRackStockMap.assignAll(rackMap);
+
+      if (rackMap.isEmpty) {
+        log('[SE:AutoFill] no rack stock found — skipping auto-fill', name: 'SE');
+        return;
+      }
+
+      // Guard again: operator may have typed a rack while we were fetching
+      if (bsSourceRackController.text.isNotEmpty) return;
+
+      final best =
+          rackMap.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+
+      log('[SE:AutoFill] auto-filling source rack="$best" (qty=${rackMap[best]})',
+          name: 'SE');
+
+      bsSourceRackController.text = best;
+      await validateRack(best, true);
+    } catch (e) {
+      log('[SE:AutoFill] _autoFillBestSourceRack error (non-fatal): $e',
+          name: 'SE');
+    }
+  }
+
+  /// Same as [_autoFillBestSourceRack] but for Material Receipt target rack.
+  Future<void> _autoFillBestTargetRack() async {
+    final type = selectedStockEntryType.value;
+    if (type != 'Material Receipt') return;
+    if (bsTargetRackController.text.isNotEmpty) return;
+
+    final warehouse = bsItemTargetWarehouse.value ??
+        derivedTargetWarehouse.value ??
+        selectedToWarehouse.value;
+    if (warehouse == null || warehouse.isEmpty) return;
+
+    log('[SE:AutoFill] fetching rack stocks for Receipt item=$currentItemCode wh=$warehouse',
+        name: 'SE');
+
+    try {
+      final response = await _apiProvider.getStockBalance(
+        itemCode: currentItemCode,
+        warehouse: warehouse,
+      );
+
+      if (response.statusCode != 200 ||
+          response.data['message'] == null) return;
+
+      final result = response.data['message']['result'];
+      if (result is! List || result.isEmpty) return;
+
+      final Map<String, double> rackMap = {};
+      for (int i = 0; i < result.length - 1; i++) {
+        final row = result[i] as Map<String, dynamic>;
+        final String? rack = row['rack'] as String?;
+        final double qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        if (rack != null && rack.isNotEmpty && qty > 0) {
+          rackMap[rack] = qty;
+        }
+      }
+
+      seRackStockMap.assignAll(rackMap);
+
+      if (rackMap.isEmpty) {
+        log('[SE:AutoFill] no rack stock for Receipt — skipping auto-fill',
+            name: 'SE');
+        return;
+      }
+
+      if (bsTargetRackController.text.isNotEmpty) return;
+
+      final best =
+          rackMap.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+
+      log('[SE:AutoFill] auto-filling target rack="$best" (qty=${rackMap[best]})',
+          name: 'SE');
+
+      bsTargetRackController.text = best;
+      await validateRack(best, false);
+    } catch (e) {
+      log('[SE:AutoFill] _autoFillBestTargetRack error (non-fatal): $e',
+          name: 'SE');
+    }
+  }
+
+  // ── END AUTO-FILL RACK ─────────────────────────────────────────────────────
+
   void _openQtySheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
@@ -923,6 +1048,17 @@ class StockEntryFormController extends GetxController
     }
 
     _openSheet();
+
+    // Auto-fill best rack after sheet opens (unawaited — non-blocking).
+    // Guarded inside each helper: only fires for the matching single-rack type
+    // and only when the rack field is still empty.
+    final type = selectedStockEntryType.value;
+    if (type == 'Material Issue') {
+      unawaited(_autoFillBestSourceRack());
+    } else if (type == 'Material Receipt') {
+      unawaited(_autoFillBestTargetRack());
+    }
+    // Material Transfer / Transfer for Manufacture: NOT auto-filled (dual rack)
   }
 
   Future<void> editItem(StockEntryItem item) async {
@@ -985,8 +1121,6 @@ class StockEntryFormController extends GetxController
     }
     isLoadingRackBalance.value = true;
 
-    // Setting bsItemSourceWarehouse fires the merged ever() listener which
-    // calls _updateAvailableStock() + _updateBatchBalance() exactly once.
     bsItemSourceWarehouse.value = item.sWarehouse;
     bsItemTargetWarehouse.value = item.tWarehouse;
 
@@ -994,6 +1128,7 @@ class StockEntryFormController extends GetxController
 
     validateSheet();
     _openSheet();
+    // NOTE: editItem does NOT auto-fill racks — existing values are preserved.
   }
 
   Future<void> scanBarcode(String barcode) async {
@@ -1260,8 +1395,6 @@ class StockEntryFormController extends GetxController
                 row['qty'];
             total += (val as num?)?.toDouble() ?? 0.0;
           } else if (row is List) {
-            // Skip ERPNext summary/footer rows whose first element is a
-            // non-numeric string (e.g. ["Total", ..., 126.0, ...]).
             if (row.isNotEmpty && row[0] is String) continue;
             final cols = message['columns'];
             if (cols is List) {
@@ -1333,6 +1466,15 @@ class StockEntryFormController extends GetxController
         }
         await _updateAvailableStock();
         await _updateBatchBalance();
+
+        // After batch is confirmed, refresh rack-stock map so that if
+        // auto-fill hasn't fired yet (batch arrived before rack fetch),
+        // we now have batch-filtered rack balances.
+        final type = selectedStockEntryType.value;
+        if (type == 'Material Issue' &&
+            bsSourceRackController.text.isEmpty) {
+          unawaited(_autoFillBestSourceRack());
+        }
 
         final double enteredQty = double.tryParse(bsQtyController.text) ?? 0.0;
         if (bsBatchBalance.value > 0 && enteredQty > bsBatchBalance.value) {
