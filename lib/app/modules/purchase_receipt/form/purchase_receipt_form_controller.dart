@@ -18,7 +18,11 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
-import 'widgets/purchase_receipt_item_form_sheet.dart';
+// Step 3.2: UniversalItemFormSheet used directly in _openItemSheet.
+import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+
 import 'controllers/purchase_receipt_item_form_controller.dart';
 
 class PurchaseReceiptFormController extends GetxController {
@@ -124,7 +128,6 @@ class PurchaseReceiptFormController extends GetxController {
   Future<void> reloadDocument() => fetchPurchaseReceipt();
 
   // ── Raw scan entry point ───────────────────────────────────────────────
-  /// Called by the persistent [_scanWorker] every time DataWedge fires.
   void _onRawScan(String code) {
     log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
     if (code.isEmpty) return;
@@ -242,7 +245,6 @@ class PurchaseReceiptFormController extends GetxController {
 
   // ── PO linking (called by child controller) ────────────────────────────────
 
-  /// Links [itemCode] to the best pending PO line.
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
     var match = _cachedPoItems.firstWhereOrNull((d) {
@@ -269,8 +271,14 @@ class PurchaseReceiptFormController extends GetxController {
   }
 
   // ── Item sheet orchestration ──────────────────────────────────────────────
+  //
+  // Step 3.2: Mirrors DN’s _openItemSheet structure (P1-B pattern).
+  //   • onSubmit lambda declared locally, passed to both the sheet widget
+  //     AND setupAutoSubmit.onAutoSubmit — single coordinator path.
+  //   • UniversalItemFormSheet used directly.
+  //   • await on Get.bottomSheet so isItemSheetOpen resets after dismiss.
 
-  void _openItemSheet({
+  Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
     String?  batchNo,
@@ -278,7 +286,7 @@ class PurchaseReceiptFormController extends GetxController {
     String?  variantOf,
     String?  uom,
     PurchaseReceiptItem? editingItem,
-  }) {
+  }) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     final child = Get.put(PurchaseReceiptItemFormController());
@@ -293,13 +301,20 @@ class PurchaseReceiptFormController extends GetxController {
       editingItem:    editingItem,
     );
 
+    // ── P1-B: onSubmit coordinator ─────────────────────────────────────────
+    // child.submit() performs the local mutation + ERPNext save.
+    // Sheet closure is exclusively the caller’s responsibility.
+    Future<void> onSubmit() async {
+      await child.submit();
+    }
+
     child.setupAutoSubmit(
-      enabled:      _storageService.getAutoSubmitEnabled(),
-      delaySeconds: _storageService.getAutoSubmitDelay(),
-      isSheetOpen:  isItemSheetOpen,
+      enabled:       _storageService.getAutoSubmitEnabled(),
+      delaySeconds:  _storageService.getAutoSubmitDelay(),
+      isSheetOpen:   isItemSheetOpen,
       isSubmittable: () => purchaseReceipt.value?.docstatus == 0,
       onAutoSubmit: () async {
-        await child.submit();
+        await onSubmit();
         if (Get.isBottomSheetOpen == true) Get.back();
       },
     );
@@ -307,25 +322,47 @@ class PurchaseReceiptFormController extends GetxController {
     isItemSheetOpen.value = true;
     log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');
 
-    Get.bottomSheet(
+    await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
-        builder: (ctx, sc) =>
-            PurchaseReceiptItemFormSheet(scrollController: sc),
+        builder: (ctx, sc) => UniversalItemFormSheet(
+          controller:       child,
+          scrollController: sc,
+          onSubmit:         () async {
+            await onSubmit();
+            Get.back();
+          },
+          onScan: (code) => scanBarcode(code),
+          customFields: [
+            // 1. Batch No — editMode (purple, readOnly-when-valid + Edit btn)
+            SharedBatchField(
+              c:           child,
+              accentColor: Colors.purple,
+              editMode:    true,
+              fieldKey:    'pr_batch_field',
+            ),
+            // 2. Target Rack — required (green)
+            SharedRackField(
+              c:           child,
+              accentColor: Colors.green,
+              label:       'Target Rack',
+              hint:        'Rack',
+              editMode:    true,
+            ),
+          ],
+        ),
       ),
       isScrollControlled: true,
-    ).whenComplete(() {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        isItemSheetOpen.value = false;
-        log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
-        barcodeController.clear();
-        if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
-          Get.delete<PurchaseReceiptItemFormController>();
-        }
-      });
-    });
+    );
+
+    isItemSheetOpen.value = false;
+    log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
+    barcodeController.clear();
+    if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
+      Get.delete<PurchaseReceiptItemFormController>();
+    }
   }
 
   // ── Public entry points ────────────────────────────────────────────────
@@ -358,7 +395,6 @@ class PurchaseReceiptFormController extends GetxController {
     );
   }
 
-  // Step 1.3 (Phase 1): confirmAndDeleteItem takes item object directly.
   void confirmAndDeleteItem(PurchaseReceiptItem item) {
     if (!isEditable) return;
 
