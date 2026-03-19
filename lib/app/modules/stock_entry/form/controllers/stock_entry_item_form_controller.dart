@@ -149,6 +149,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
+    // NOTE: ever(itemSourceWarehouse) handles warehouse changes AFTER init.
+    // For the edit-mode initial load, balances are fetched via the explicit
+    // post-frame callback below — not via this worker — because
+    // itemSourceWarehouse is already assigned before ever() is registered.
     ever(itemSourceWarehouse, (_) async {
       await _updateAvailableStock();
       await _updateBatchBalance();
@@ -158,6 +162,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     captureSerialSnapshot();
     _snapshotSourceRack = sourceRackController.text;
     _snapshotTargetRack = targetRackController.text;
+
+    // ── Edit-mode: kick off balance fetches post-frame ────────────────────
+    // _loadExistingItem() assigns itemSourceWarehouse synchronously, which
+    // means the ever() worker above never fires for the initial value.
+    // Schedule explicit fetches here so both BalanceChips resolve on open.
+    if (editingItem != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _updateAvailableStock();
+        await _updateBatchBalance();
+      });
+    }
 
     validateSheet();
   }
@@ -198,8 +213,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       currentScannedEan8 = item.batchNo!.split('-').first;
     }
 
-    isLoadingBatchBalance.value = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isLoadingRackBalance.value  = true;
+    // ── DO NOT set isLoadingBatchBalance / isLoadingRackBalance to true here.
+    // Both flags start as false (reset above in initialise). The actual fetch
+    // is triggered by the post-frame callback in initialise(), which sets them
+    // to true inside _updateAvailableStock() / _updateBatchBalance() and resets
+    // them in their own finally blocks. Setting them true here without a
+    // guaranteed reset path was the cause of the stuck "Fetching balance..." bug.
 
     log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
         name: 'SE:ItemSheet');
