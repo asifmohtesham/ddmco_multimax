@@ -4,7 +4,6 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
 
 /// Items list for manual / standard Stock Entries.
-/// Step 6 — extracted from StockEntryFormScreen._buildStandardItemsView().
 class StandardItemsView extends StatelessWidget {
   final StockEntryFormController controller;
   final StockEntry entry;
@@ -31,7 +30,7 @@ class StandardItemsView extends StatelessWidget {
               ? () => controller.editItem(item)
               : null,
           onDelete: controller.stockEntry.value?.docstatus == 0
-              ? () => controller.deleteItem(item.name!)
+              ? () => controller.confirmAndDeleteItem(item)
               : null,
         );
       },

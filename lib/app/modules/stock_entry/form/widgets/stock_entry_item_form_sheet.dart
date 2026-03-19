@@ -6,14 +6,6 @@ import 'item_form_sheet/batch_field.dart';
 import 'item_form_sheet/rack_section.dart';
 
 /// Slim orchestrator — all sub-blocks live in item_form_sheet/.
-///
-/// Steps applied:
-///   1  BalanceChip        → item_form_sheet/balance_chip.dart
-///   2  ValidatedRackField → item_form_sheet/validated_rack_field.dart
-///   3  DerivedWarehouseLabel → item_form_sheet/derived_warehouse_label.dart
-///   4  SE-type booleans   → use controller.requiresSourceWarehouse / requiresTargetWarehouse
-///   5  BatchField         → item_form_sheet/batch_field.dart
-///   6  RackSection        → item_form_sheet/rack_section.dart
 class StockEntryItemFormSheet extends StatelessWidget {
   final StockEntryFormController controller;
   final ScrollController? scrollController;
@@ -31,10 +23,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
       final docStatus = controller.stockEntry.value?.docstatus ?? 0;
 
       // Explicitly read every Rx field that effectiveMaxQty depends on so
-      // that Obx registers them as reactive dependencies. Obx only tracks
-      // reads that occur directly inside its closure — reads hidden inside
-      // a plain getter body are invisible to the tracker and will not
-      // trigger a rebuild when they change.
+      // that Obx registers them as reactive dependencies.
       // ignore: unused_local_variable
       final _ = controller.bsMaxQty.value;
       // ignore: unused_local_variable
@@ -77,7 +66,11 @@ class StockEntryItemFormSheet extends StatelessWidget {
         isLoading: controller.isAddingItem.value,
         onSubmit: controller.addItem,
         onDelete: isEditing
-            ? () => controller.deleteItem(controller.currentItemNameKey.value!)
+            ? () => controller.confirmAndDeleteItem(
+                  controller.stockEntry.value!.items.firstWhere(
+                    (i) => i.name == controller.currentItemNameKey.value,
+                  ),
+                )
             : null,
 
         owner: controller.bsItemOwner.value,
@@ -86,10 +79,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
         modifiedBy: controller.bsItemModifiedBy.value,
 
         customFields: [
-          // ── Batch No (Step 5) ───────────────────────────────────────────
           BatchField(controller: controller),
 
-          // ── Invoice Serial (conditional) ──────────────────────────────
           if (controller.posUploadSerialOptions.isNotEmpty)
             Obx(() => GlobalItemFormSheet.buildInputGroup(
                   label: 'Invoice Serial No',
@@ -103,14 +94,14 @@ class StockEntryItemFormSheet extends StatelessWidget {
                           horizontal: 12, vertical: 14),
                     ),
                     items: controller.posUploadSerialOptions
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .map((s) =>
+                            DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
                     onChanged: (value) =>
                         controller.selectedSerial.value = value,
                   ),
                 )),
 
-          // ── Rack section (Steps 2, 3, 4, 6) ────────────────────────────
           RackSection(controller: controller),
         ],
       );

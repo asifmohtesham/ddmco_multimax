@@ -6,7 +6,6 @@ import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_c
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
 
 /// Items list grouped by POS Upload invoice serial.
-/// Step 6 — extracted from StockEntryFormScreen._buildPosUploadItemsView().
 class PosUploadItemsView extends StatelessWidget {
   final StockEntryFormController controller;
   final StockEntry entry;
@@ -52,8 +51,7 @@ class PosUploadItemsView extends StatelessWidget {
               rate: posItem.rate,
               totalQty: posItem.quantity,
               scannedQty: currentScannedQty,
-              onToggle: () =>
-                  controller.toggleInvoiceExpand(expansionKey),
+              onToggle: () => controller.toggleInvoiceExpand(expansionKey),
               children: itemsInGroup.map((item) {
                 controller.ensureItemKey(item);
                 return Container(
@@ -62,15 +60,12 @@ class PosUploadItemsView extends StatelessWidget {
                       : null,
                   child: StockEntryItemCard(
                     item: item,
-                    onTap:
-                        controller.stockEntry.value?.docstatus == 0
-                            ? () => controller.editItem(item)
-                            : null,
-                    onDelete:
-                        controller.stockEntry.value?.docstatus == 0
-                            ? () =>
-                                controller.deleteItem(item.name!)
-                            : null,
+                    onTap: controller.stockEntry.value?.docstatus == 0
+                        ? () => controller.editItem(item)
+                        : null,
+                    onDelete: controller.stockEntry.value?.docstatus == 0
+                        ? () => controller.confirmAndDeleteItem(item)
+                        : null,
                   ),
                 );
               }).toList(),
