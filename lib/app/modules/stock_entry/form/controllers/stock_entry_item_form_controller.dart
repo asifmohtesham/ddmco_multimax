@@ -25,12 +25,19 @@ import '../stock_entry_form_controller.dart';
 ///   • auto-fill source/target rack
 ///   • auto-submit worker (via base setupAutoSubmit)
 ///
+/// Step-2 additions:
+///   • [isAddingItemFlag]   wired to _parent.isAddingItem
+///   • [isScanning]         left at base default (SE scan bar is doc-level)
+///   • [sheetScanController] left null (SE scan bar is doc-level)
+///   • [qtyInfoText]        SE-specific 'Avail / MR max' string or null
+///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
 ///   sheet closes → Get.delete<StockEntryItemFormController>()
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin {
-  // ── Parent reference ──────────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────────────
   late StockEntryFormController _parent;
 
   /// Public read-only access to the parent document controller.
@@ -83,6 +90,36 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
 
+  // ── Step-2: qtyInfoText ───────────────────────────────────────────────
+  //
+  // Mirrors the inline logic previously in StockEntryItemFormSheet so
+  // UniversalItemFormSheet can bind to a single getter.
+
+  @override
+  String? get qtyInfoText {
+    final effectiveMax = effectiveMaxQty;
+    final maxMr        = validationMaxQty.value;
+    if (effectiveMax < 999999.0 && maxMr > 0) {
+      return 'Avail: ${effectiveMax.toStringAsFixed(0)} • MR max: ${maxMr.toStringAsFixed(0)}';
+    } else if (effectiveMax < 999999.0) {
+      return 'Available: ${effectiveMax.toStringAsFixed(0)}';
+    } else if (maxMr > 0) {
+      return 'MR max: ${maxMr.toStringAsFixed(0)}';
+    }
+    return null;
+  }
+
+  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────
+
+  @override
+  Future<void> deleteCurrentItem() async {
+    final name = editingItemName.value;
+    if (name == null) return;
+    final item = _parent.stockEntry.value?.items
+        .firstWhereOrNull((i) => i.name == name);
+    if (item != null) _parent.confirmAndDeleteItem(item);
+  }
+
   // ── PosSerialMixin contract ─────────────────────────────────────────────
 
   @override
@@ -103,6 +140,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }) {
     _parent = parent;
     currentScannedEan8 = scannedEan8;
+
+    // ── Step-2: wire isAddingItemFlag to parent ──────────────────────────
+    // isScanning and sheetScanController are intentionally NOT set —
+    // SE routes all scans at the document level, not inside the item sheet.
+    isAddingItemFlag = _parent.isAddingItem;
 
     itemCode.value = code;
     this.itemName.value = itemName;
@@ -162,6 +204,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     captureSerialSnapshot();
     _snapshotSourceRack = sourceRackController.text;
     _snapshotTargetRack = targetRackController.text;
+
+    isAddMode = editingItem == null;
 
     // ── Edit-mode: kick off balance fetches post-frame ────────────────────
     // _loadExistingItem() assigns itemSourceWarehouse synchronously, which

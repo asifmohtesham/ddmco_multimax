@@ -1,7 +1,7 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:collection/collection.dart';
 
 // Shared base + mixins
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
@@ -20,18 +20,22 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [PosSerialMixin]    — invoice serial-number selector (POS Upload flow)
 ///   • [AutoFillRackMixin] — auto-selects the best-stock rack in add-mode
 ///
-/// Auto-submit wiring is handled by [ItemSheetControllerBase.setupAutoSubmit];
-/// no worker duplication here.
+/// Step-2 additions:
+///   • [isAddingItemFlag]    wired to _parent.isAddingItem
+///   • [isScanning]         wired to _parent.isScanning
+///   • [sheetScanController] wired to _parent.barcodeController
+///   • [qtyInfoText]        'Max Available: N' or null
+///   • [deleteCurrentItem]  resolves item + calls parent.confirmAndDeleteItem
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ───────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // ── DN-specific extra state ────────────────────────────────────────────
+  // ── DN-specific extra state ──────────────────────────────────────────
 
   /// The EAN-8 string captured from the last outside-sheet scan.
   String currentScannedEan8 = '';
@@ -48,7 +52,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false;
 
-  // ── PosSerialMixin contract ─────────────────────────────────────────────
+  // ── Step-2: qtyInfoText ───────────────────────────────────────────────
+
+  @override
+  String? get qtyInfoText {
+    final max = maxQty.value;
+    if (max <= 0) return null;
+    return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
+  }
+
+  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────
+
+  @override
+  Future<void> deleteCurrentItem() async {
+    final name = editingItemName.value;
+    if (name == null) return;
+    final item = _parent.deliveryNote.value?.items
+        .firstWhereOrNull((i) => i.name == name);
+    if (item != null) _parent.confirmAndDeleteItem(item);
+  }
+
+  // ── PosSerialMixin contract ────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos =>
@@ -70,6 +94,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }) {
     _parent = parent;
     currentScannedEan8 = scannedEan8;
+
+    // ── Step-2: wire base loading / scan flags to parent ───────────────────
+    isAddingItemFlag   = _parent.isAddingItem;
+    isScanning         = _parent.isScanning;
+    sheetScanController = _parent.barcodeController;
 
     itemCode.value = code;
     itemName.value = name;
@@ -144,7 +173,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── AutoFillRackMixin override ────────────────────────────────────────────
+  // ── AutoFillRackMixin override ─────────────────────────────────────────────
 
   @override
   Future<void> fetchAllRackStocks() async {
