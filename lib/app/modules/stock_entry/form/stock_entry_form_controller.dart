@@ -15,7 +15,6 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 
 import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -24,10 +23,16 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
+// ── Step-4: sheet widget now inlined directly ────────────────────────────────
+import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_serial_field.dart';
+import 'widgets/item_form_sheet/batch_field.dart';
+import 'widgets/item_form_sheet/rack_section.dart';
+// (stock_entry_item_form_sheet.dart is now a stub re-export)
+
 enum StockEntrySource { manual, materialRequest, posUpload }
 
-/// Lightweight view-model that merges one MR line with the summed scanned qty
-/// for the same item_code across all entry.items rows.
+/// Lightweight view-model that merges one MR line with the summed scanned qty.
 class MrItemRow {
   final String itemCode;
   final double requestedQty;
@@ -69,12 +74,7 @@ class StockEntryFormController extends GetxController
   var isSaving         = false.obs;
   var isDirty          = false.obs;
   var isAddingItem     = false.obs;
-
-  /// True while [editItem] is performing its pre-sheet child-initialise fetch.
   var isLoadingItemEdit = false.obs;
-
-  /// The `name` field of the item currently being loaded for editing.
-  /// Enables per-row spinner in StockEntryItemCard.
   var loadingForItemName = RxnString();
 
   var saveResult      = SaveResult.idle.obs;
@@ -108,10 +108,8 @@ class StockEntryFormController extends GetxController
 
   // ── Sheet & scan context ──────────────────────────────────────────────────
   final TextEditingController barcodeController = TextEditingController();
-
   var isItemSheetOpen = false.obs;
 
-  /// Current item being scanned / edited — needed by addItemLocally.
   var currentItemCode   = '';
   var currentVariantOf  = '';
   var currentItemName   = '';
@@ -120,7 +118,6 @@ class StockEntryFormController extends GetxController
 
   // ── Item feedback ─────────────────────────────────────────────────────────
   var recentlyAddedItemCode = ''.obs;
-
   final Map<String, GlobalKey> itemKeys = {};
   var itemFormKey = GlobalKey<FormState>();
   final ScrollController scrollController = ScrollController();
@@ -132,15 +129,12 @@ class StockEntryFormController extends GetxController
 
   String getTypeHelperText(String type) {
     switch (type) {
-      case 'Material Issue':
-        return 'Remove stock from a warehouse (outbound movement).';
-      case 'Material Receipt':
-        return 'Receive stock into a warehouse (inbound movement).';
+      case 'Material Issue':   return 'Remove stock from a warehouse (outbound movement).';
+      case 'Material Receipt': return 'Receive stock into a warehouse (inbound movement).';
       case 'Material Transfer':
       case 'Material Transfer for Manufacture':
         return 'Move stock between warehouses without changing valuation.';
-      default:
-        return 'Configure how this stock movement should behave.';
+      default: return 'Configure how this stock movement should behave.';
     }
   }
 
@@ -168,11 +162,8 @@ class StockEntryFormController extends GetxController
               .fold(0.0, (sum, i) => sum + i.qty) ??
           0.0;
       return MrItemRow(
-        itemCode: code,
-        requestedQty: requestedQty,
-        scannedQty: scannedQty,
-        materialRequest: matReq,
-        materialRequestItem: matReqItem,
+        itemCode: code, requestedQty: requestedQty, scannedQty: scannedQty,
+        materialRequest: matReq, materialRequestItem: matReqItem,
       );
     }).toList();
   }
@@ -224,9 +215,9 @@ class StockEntryFormController extends GetxController
       if (code.isNotEmpty) scanBarcode(code);
     });
 
-    ever(selectedFromWarehouse, (_) => _markDirty());
-    ever(selectedToWarehouse,   (_) => _markDirty());
-    ever(selectedStockEntryType, (_) => _markDirty());
+    ever(selectedFromWarehouse,    (_) => _markDirty());
+    ever(selectedToWarehouse,      (_) => _markDirty());
+    ever(selectedStockEntryType,   (_) => _markDirty());
 
     customReferenceNoController.addListener(() {
       final current = customReferenceNoController.text;
@@ -264,7 +255,7 @@ class StockEntryFormController extends GetxController
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
     final now  = DateTime.now();
-    final type = argStockEntryType   ?? 'Material Transfer';
+    final type = argStockEntryType    ?? 'Material Transfer';
     final ref  = argCustomReferenceNo ?? '';
 
     selectedStockEntryType.value     = type;
@@ -433,16 +424,14 @@ class StockEntryFormController extends GetxController
         (selectedFromWarehouse.value == null ||
             selectedFromWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
-          message:
-              'Please set the Source Warehouse (Details tab) before scanning.');
+          message: 'Please set the Source Warehouse (Details tab) before scanning.');
       return false;
     }
     if (requiresTargetWarehouse &&
         (selectedToWarehouse.value == null ||
             selectedToWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
-          message:
-              'Please set the Target Warehouse (Details tab) before scanning.');
+          message: 'Please set the Target Warehouse (Details tab) before scanning.');
       return false;
     }
     return true;
@@ -509,19 +498,13 @@ class StockEntryFormController extends GetxController
   // ── Item CRUD ─────────────────────────────────────────────────────────────
 
   void updateItemLocally(
-    String uniqueId,
-    double qty,
-    String? batch,
-    String? sourceRack,
-    String? targetRack,
-    String? sWarehouse,
-    String? tWarehouse,
-    String? serial,
+    String uniqueId, double qty, String? batch,
+    String? sourceRack, String? targetRack,
+    String? sWarehouse, String? tWarehouse, String? serial,
   ) {
     final items = stockEntry.value?.items.toList() ?? [];
     final idx   = items.indexWhere((i) => i.name == uniqueId);
     if (idx == -1) return;
-
     final existing = items[idx];
     var updated = StockEntryItem(
       name:       existing.name,
@@ -550,13 +533,8 @@ class StockEntryFormController extends GetxController
   }
 
   void addItemLocally(
-    double qty,
-    String? batch,
-    String? sourceRack,
-    String? targetRack,
-    String? sWarehouse,
-    String? tWarehouse,
-    String? serial,
+    double qty, String? batch, String? sourceRack, String? targetRack,
+    String? sWarehouse, String? tWarehouse, String? serial,
   ) {
     final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
     var newItem = StockEntryItem(
@@ -583,23 +561,16 @@ class StockEntryFormController extends GetxController
 
   // ── addItem coordinator ───────────────────────────────────────────────────
 
-  /// Called by auto-submit timer and the Save button.
-  /// Delegates mutation to child controller, then triggers highlight + save.
   Future<void> addItem() async {
     _autoSubmitTimer?.cancel();
-
     final child = Get.find<StockEntryItemFormController>();
     await child.submit();
-
     final items = stockEntry.value?.items ?? [];
     final String highlightKey = child.editingItemName.value ??
         (items.lastOrNull?.name ?? '');
-
     barcodeController.clear();
     triggerHighlight(highlightKey);
-
     if (Get.isBottomSheetOpen == true) Get.back();
-
     if (mode == 'new') {
       saveStockEntry();
     } else {
@@ -614,7 +585,6 @@ class StockEntryFormController extends GetxController
     if (isItemSheetOpen.value) {
       if (Get.isBottomSheetOpen == true) Get.back();
     }
-
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
       message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
@@ -629,8 +599,10 @@ class StockEntryFormController extends GetxController
   }
 
   // ── Sheet lifecycle ───────────────────────────────────────────────────────
+  //
+  // Step-4: StockEntryItemFormSheet eliminated.
+  // DraggableScrollableSheet builder directly instantiates UniversalItemFormSheet.
 
-  /// Opens the item sheet for a NEW item (scan path).
   void _openNewItemSheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
@@ -663,7 +635,6 @@ class StockEntryFormController extends GetxController
     child.triggerAutoFill();
   }
 
-  /// Opens the item sheet for an EXISTING item (edit path).
   Future<void> editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
@@ -715,13 +686,28 @@ class StockEntryFormController extends GetxController
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
-        builder: (context, scrollController) {
-          return StockEntryItemFormSheet(
-            parentController: this,
-            itemController:   child,
-            scrollController: scrollController,
-          );
-        },
+        builder: (context, sc) => UniversalItemFormSheet(
+          key:              ValueKey(child.editingItemName.value ?? 'new'),
+          controller:       child,
+          scrollController: sc,
+          onSubmit:         addItem,
+          onScan:           null, // SE routes scans at doc level
+          itemSubtext:      currentVariantOf,
+          isSaveEnabled:    (stockEntry.value?.docstatus ?? 1) == 0,
+          customFields: [
+            // 1. Batch No (SE-specific widget with dual-balance chips)
+            BatchField(controller: child),
+
+            // 2. Invoice Serial No (POS Upload flow only)
+            SharedSerialField(
+              controller:  child,
+              accentColor: Colors.blueGrey,
+            ),
+
+            // 3. Source + Target Rack (SE dual-rack layout)
+            RackSection(controller: child),
+          ],
+        ),
       ),
       isScrollControlled: true,
     ).whenComplete(() {
@@ -831,10 +817,8 @@ class StockEntryFormController extends GetxController
     } catch (e) {
       if (stockEntryTypes.isEmpty) {
         stockEntryTypes.assignAll([
-          'Material Issue',
-          'Material Receipt',
-          'Material Transfer',
-          'Material Transfer for Manufacture',
+          'Material Issue', 'Material Receipt',
+          'Material Transfer', 'Material Transfer for Manufacture',
         ]);
       }
     } finally {
@@ -980,10 +964,7 @@ class StockEntryFormController extends GetxController
         if (e.response?.data is Map) {
           if (e.response!.data['exception'] != null) {
             msg = e.response!.data['exception']
-                .toString()
-                .split(':')
-                .last
-                .trim();
+                .toString().split(':').last.trim();
           } else if (e.response!.data['_server_messages'] != null) {
             msg = 'Validation Error: Check form details';
           }
@@ -1025,10 +1006,8 @@ class StockEntryFormController extends GetxController
       initial = DateTime.now();
     }
     final picked = await showDatePicker(
-      context:     context,
-      initialDate: initial,
-      firstDate:   DateTime(2000),
-      lastDate:    DateTime(2100),
+      context: context, initialDate: initial,
+      firstDate: DateTime(2000), lastDate: DateTime(2100),
     );
     if (picked != null) {
       stockEntry.update(
@@ -1051,8 +1030,7 @@ class StockEntryFormController extends GetxController
     } catch (_) {
       initial = TimeOfDay.now();
     }
-    final picked =
-        await showTimePicker(context: context, initialTime: initial);
+    final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked != null) {
       final dt = DateTime(0, 1, 1, picked.hour, picked.minute);
       stockEntry.update(

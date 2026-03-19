@@ -14,7 +14,6 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -22,6 +21,13 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 
 // Child sheet controller
 import 'controllers/delivery_note_item_form_controller.dart';
+
+// ── Step-4: sheet widget now inlined directly ────────────────────────────────
+import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_serial_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+// (delivery_note_item_form_sheet.dart is now a stub re-export)
 
 class DeliveryNoteFormController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -59,18 +65,11 @@ class DeliveryNoteFormController extends GetxController {
   final Map<String, GlobalKey> itemKeys = {};
 
   // ── Sheet-open + item-edit loading flags ──────────────────────────────────
-  /// True while the item bottom-sheet is open (used for scan routing).
-  var isItemSheetOpen = false.obs;
-
-  /// True while [editItem] is fetching batch balance before opening the sheet.
-  /// Consumed by DeliveryNoteFormScreen to hide the barcode scanner widget.
-  var isLoadingItemEdit = false.obs;
-
-  /// The `name` field of the item currently being loaded for editing.
-  /// Used by DeliveryNoteItemCard to show a per-row spinner.
+  var isItemSheetOpen    = false.obs;
+  var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ────────────────────────────────────────────────────────────
+  // ── Warehouse ─────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
@@ -78,13 +77,13 @@ class DeliveryNoteFormController extends GetxController {
   // ── Item warehouse (derived from rack — still needed by child controller) ──
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ─────────────────────────────────────────────────
+  // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
 
   // ── EAN-8 context for inside-sheet scan routing ───────────────────────────
   String currentScannedEan8 = '';
 
-  // ── Persistent scan worker (lives for entire controller lifetime) ─────────
+  // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
 
   @override
@@ -92,10 +91,6 @@ class DeliveryNoteFormController extends GetxController {
     super.onInit();
     fetchWarehouses();
     ever(setWarehouse, (_) => _checkForChanges());
-
-    // FIX: Subscribe to DataWedgeService at the controller level so scans
-    // are always routed — even while BarcodeInputWidget is off-screen/disposed
-    // (which happens when isItemSheetOpen=true hides the widget).
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
     log('[DN:onInit] _scanWorker registered on DataWedgeService.scannedCode',
         name: 'DN');
@@ -116,26 +111,19 @@ class DeliveryNoteFormController extends GetxController {
     super.onClose();
   }
 
-  // ── Raw scan entry point (replaces BarcodeInputWidget ever() worker) ──────
-  /// Called by the persistent [_scanWorker] every time DataWedge fires a code.
-  /// Guards:
-  ///   • empty / blank codes are ignored
-  ///   • only fires when the current route is DELIVERY_NOTE_FORM
+  // ── Raw scan entry point ───────────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
         name: 'DN');
-
     if (code.isEmpty) {
       log('[DN:_onRawScan] CHECKPOINT-1A empty code — ignored', name: 'DN');
       return;
     }
-
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) {
       log('[DN:_onRawScan] CHECKPOINT-1B wrong route (${Get.currentRoute}) — ignored',
           name: 'DN');
       return;
     }
-
     final clean = code.trim();
     log('[DN:_onRawScan] CHECKPOINT-2 forwarding clean="$clean" to scanBarcode',
         name: 'DN');
@@ -143,7 +131,7 @@ class DeliveryNoteFormController extends GetxController {
     scanBarcode(clean);
   }
 
-  // ── PopScope ────────────────────────────────────────────────────────────
+  // ── PopScope ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -153,12 +141,11 @@ class DeliveryNoteFormController extends GetxController {
     );
   }
 
-  // ── Dirty tracking ──────────────────────────────────────────────────────────
+  // ── Dirty tracking ────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
-
     final tempNote = DeliveryNote(
       name:        deliveryNote.value!.name,
       customer:    deliveryNote.value!.customer,
@@ -182,7 +169,7 @@ class DeliveryNoteFormController extends GetxController {
     isDirty.value = false;
   }
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
+  // ── Data fetching ─────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -248,7 +235,6 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  /// Reloads the document from the server. Consumed by [MainAppBar.onReload].
   Future<void> reloadDocument() => fetchDeliveryNote();
 
   Future<void> fetchPosUpload(String posName) async {
@@ -262,7 +248,11 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── Item sheet orchestration ──────────────────────────────────────────────────
+  // ── Item sheet orchestration ───────────────────────────────────────────────
+  //
+  // Step-4: DeliveryNoteItemBottomSheet is eliminated.
+  // The DraggableScrollableSheet builder now directly instantiates
+  // UniversalItemFormSheet with the DN-specific customFields inline.
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -303,8 +293,6 @@ class DeliveryNoteFormController extends GetxController {
       },
     );
 
-    // FIX: set the flag synchronously BEFORE showing the sheet so that any
-    // ScanCheck broadcast arriving while the sheet is visible sees true.
     isItemSheetOpen.value = true;
     log('[DN:_openItemSheet] CHECKPOINT-3 isItemSheetOpen → true', name: 'DN');
 
@@ -313,8 +301,31 @@ class DeliveryNoteFormController extends GetxController {
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
-        builder: (context, sc) =>
-            DeliveryNoteItemBottomSheet(scrollController: sc),
+        builder: (context, sc) => UniversalItemFormSheet(
+          controller:       child,
+          scrollController: sc,
+          onSubmit:         child.submit,
+          onScan:           (code) => scanBarcode(code),
+          customFields: [
+            // 1. Invoice Serial No — POS Upload flow only
+            SharedSerialField(
+              controller:  child,
+              accentColor: Colors.blueGrey,
+            ),
+            // 2. Batch No
+            SharedBatchField(
+              c:           child,
+              accentColor: Colors.purple,
+              editMode:    true,
+              fieldKey:    'dn_batch_field',
+            ),
+            // 3. Rack
+            SharedRackField(
+              c:           child,
+              accentColor: Colors.orange,
+            ),
+          ],
+        ),
       ),
       isScrollControlled: true,
     );
@@ -337,10 +348,8 @@ class DeliveryNoteFormController extends GetxController {
         String? targetWh = setWarehouse.value;
         if (item.rack != null && item.rack!.isNotEmpty) {
           try {
-            final rackRes =
-                await _apiProvider.getDocument('Rack', item.rack!);
-            if (rackRes.statusCode == 200 &&
-                rackRes.data['data'] != null) {
+            final rackRes = await _apiProvider.getDocument('Rack', item.rack!);
+            if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
               targetWh = rackRes.data['data']['warehouse'];
             }
           } catch (_) {}
@@ -350,8 +359,7 @@ class DeliveryNoteFormController extends GetxController {
           item.batchNo!,
           warehouse: targetWh,
         );
-        if (balRes.statusCode == 200 &&
-            balRes.data['message'] != null) {
+        if (balRes.statusCode == 200 && balRes.data['message'] != null) {
           final result = balRes.data['message']['result'];
           if (result is List && result.isNotEmpty) {
             fetchedQty =
@@ -443,7 +451,6 @@ class DeliveryNoteFormController extends GetxController {
     if (isSaving.value) return;
     isSaving.value      = true;
     customerError.value = null;
-
     try {
       final String docName = deliveryNote.value?.name ?? '';
       final bool   isNew   = docName == 'New Delivery Note' || docName.isEmpty;
@@ -488,15 +495,13 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── UX helpers ─────────────────────────────────────────────────────────────
+  // ── UX helpers ────────────────────────────────────────────────────────────
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value   = serial;
-
     if (serial != '0' && serial.isNotEmpty) {
       expandedInvoice.value = serial;
     }
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
         final item = deliveryNote.value?.items.firstWhereOrNull(
@@ -515,7 +520,6 @@ class DeliveryNoteFormController extends GetxController {
         }
       });
     });
-
     Future.delayed(const Duration(seconds: 2), () {
       recentlyAddedItemCode.value = '';
       recentlyAddedSerial.value   = '';
@@ -532,7 +536,7 @@ class DeliveryNoteFormController extends GetxController {
         expandedInvoice.value == key ? '' : key;
   }
 
-  // ── Scan routing ────────────────────────────────────────────────────────────
+  // ── Scan routing ──────────────────────────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
@@ -559,7 +563,7 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
+    // ── INSIDE-SHEET PATH ───────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
           name: 'DN');
@@ -594,8 +598,7 @@ class DeliveryNoteFormController extends GetxController {
         child.validateRack(result.rackId!);
       } else if (result.type == ScanType.batch || result.type == ScanType.item) {
         final candidateBatch = result.batchNo;
-        log('[DN:scanBarcode] CHECKPOINT-5F batch path: candidateBatch=$candidateBatch '
-            'batchController.hashCode=${child.batchController.hashCode}',
+        log('[DN:scanBarcode] CHECKPOINT-5F batch path: candidateBatch=$candidateBatch',
             name: 'DN');
         if (candidateBatch != null && candidateBatch.isNotEmpty) {
           child.batchController.text = candidateBatch;
@@ -603,11 +606,9 @@ class DeliveryNoteFormController extends GetxController {
               name: 'DN');
           child.validateBatch(candidateBatch);
         } else {
-          log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty — showing error snackbar',
-              name: 'DN');
+          log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty', name: 'DN');
           GlobalSnackbar.error(
-              message:
-                  'Scan the item EAN first, then scan the batch suffix.');
+              message: 'Scan the item EAN first, then scan the batch suffix.');
         }
       } else if (result.type == ScanType.error) {
         log('[DN:scanBarcode] CHECKPOINT-5I ScanType.error: ${result.message}',
@@ -620,7 +621,7 @@ class DeliveryNoteFormController extends GetxController {
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────
     log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
         name: 'DN');
     isScanning.value = true;
@@ -636,11 +637,11 @@ class DeliveryNoteFormController extends GetxController {
         } else {
           currentScannedEan8 = result.rawCode;
         }
-        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan8 set → "$currentScannedEan8"',
+        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan8 → "$currentScannedEan8"',
             name: 'DN');
 
         final itemData = result.itemData!;
-        double  maxQty         = 0.0;
+        double  maxQty          = 0.0;
         String? resolvedBatchNo = result.batchNo;
 
         try {
@@ -667,7 +668,7 @@ class DeliveryNoteFormController extends GetxController {
         isScanning.value = false;
         barcodeController.clear();
 
-        log('[DN:scanBarcode] CHECKPOINT-6C opening item sheet for ${itemData.itemCode} batchNo=$resolvedBatchNo maxQty=$maxQty',
+        log('[DN:scanBarcode] CHECKPOINT-6C opening item sheet for ${itemData.itemCode}',
             name: 'DN');
         await _openItemSheet(
           itemCode:      itemData.itemCode,
@@ -693,7 +694,7 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  // ── Grouped items + filter helpers ────────────────────────────────────────────
+  // ── Grouped items + filter helpers ────────────────────────────────────────
   Map<String, List<DeliveryNoteItem>> get groupedItems {
     if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
       return {};
