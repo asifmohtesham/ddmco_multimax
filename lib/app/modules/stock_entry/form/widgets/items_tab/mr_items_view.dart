@@ -97,7 +97,7 @@ class MrItemsView extends StatelessWidget {
                                         ?.docstatus ==
                                     0
                             ? () =>
-                                controller.deleteItem(realItem.name!)
+                                controller.confirmAndDeleteItem(realItem)
                             : null,
                       );
                     },

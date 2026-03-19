@@ -292,6 +292,8 @@ class DeliveryNoteFormController extends GetxController {
     child.setupAutoSubmit(
       enabled:      _storageService.getAutoSubmitEnabled(),
       delaySeconds: _storageService.getAutoSubmitDelay(),
+      isSheetOpen:  isItemSheetOpen,
+      isSubmittable: () => (deliveryNote.value?.docstatus ?? 1) == 0,
       onAutoSubmit: () async {
         isAddingItem.value = true;
         await Future.delayed(const Duration(milliseconds: 500));

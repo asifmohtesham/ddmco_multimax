@@ -649,6 +649,8 @@ class StockEntryFormController extends GetxController
     child.setupAutoSubmit(
       enabled:       _storageService.getAutoSubmitEnabled(),
       delaySeconds:  _storageService.getAutoSubmitDelay(),
+      isSheetOpen:   isItemSheetOpen,
+      isSubmittable: () => (stockEntry.value?.docstatus ?? 1) == 0,
       onAutoSubmit:  () async {
         isAddingItem.value = true;
         await Future.delayed(const Duration(milliseconds: 500));
@@ -688,6 +690,8 @@ class StockEntryFormController extends GetxController
       child.setupAutoSubmit(
         enabled:      _storageService.getAutoSubmitEnabled(),
         delaySeconds: _storageService.getAutoSubmitDelay(),
+        isSheetOpen:  isItemSheetOpen,
+        isSubmittable: () => (stockEntry.value?.docstatus ?? 1) == 0,
         onAutoSubmit: () async {
           isAddingItem.value = true;
           await Future.delayed(const Duration(milliseconds: 500));

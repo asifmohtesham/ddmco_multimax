@@ -40,9 +40,9 @@ class RackSection extends StatelessWidget {
                   label:          'Source Rack',
                   color:          Colors.orange,
                   onReset:        controller.resetSourceRackValidation,
-                  onValidate:     () => controller.validateRack(
+                  onValidate:     () => controller.validateDualRack(
                       controller.sourceRackController.text, true),
-                  onSubmitted:    (val) => controller.validateRack(val, true),
+                  onSubmitted:    (val) => controller.validateDualRack(val, true),
                 )),
           ),
           Obx(() => BalanceChip(
@@ -71,9 +71,9 @@ class RackSection extends StatelessWidget {
                   label:          'Target Rack',
                   color:          Colors.green,
                   onReset:        controller.resetTargetRackValidation,
-                  onValidate:     () => controller.validateRack(
+                  onValidate:     () => controller.validateDualRack(
                       controller.targetRackController.text, false),
-                  onSubmitted:    (val) => controller.validateRack(val, false),
+                  onSubmitted:    (val) => controller.validateDualRack(val, false),
                 )),
           ),
           DerivedWarehouseLabel(
