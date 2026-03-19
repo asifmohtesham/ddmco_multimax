@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'package:get/get.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
@@ -16,31 +17,34 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - PO-linking state lives here (poItem, poName, poQty, poRate)
 ///  - EAN-equals-batch guard (custom PR rule)
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
-  // ── Parent reference ─────────────────────────────────────────────────────
+  // ── Typed ApiProvider (Step 2.1 prep — replaces untyped `get api`) ────────
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+
+  // ── Parent reference ────────────────────────────────────────────────────
   late PurchaseReceiptFormController _parent;
 
-  // ── PR-specific state ────────────────────────────────────────────────────
+  // ── PR-specific state ───────────────────────────────────────────────────
 
   // PO linking
-  var poItemId   = ''.obs;   // Unique child-row ID (poi_xxxx)
-  var poDocName  = ''.obs;   // Parent PO name (PO-2023-001)
-  var poQty      = 0.0.obs;
-  var poRate     = 0.0.obs;
+  var poItemId  = ''.obs;
+  var poDocName = ''.obs;
+  var poQty     = 0.0.obs;
+  var poRate    = 0.0.obs;
 
-  // Batch read-only toggle (PR uses explicit Edit button like DN)
+  // Batch read-only toggle
   var isBatchReadOnly = false.obs;
 
   // EAN context for inside-sheet scan routing
   String currentScannedEan = '';
 
-  // Variant/UOM metadata
+  // Variant / UOM metadata
   var variantOf = ''.obs;
   var uom       = ''.obs;
 
   // Warehouse derived from rack (overrides setWarehouse when present)
   var itemWarehouse = RxnString();
 
-  // ── ItemSheetControllerBase contract ───────────────────────────────────────
+  // ── ItemSheetControllerBase contract ──────────────────────────────────────
 
   @override
   String? get resolvedWarehouse =>
@@ -71,7 +75,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     itemCode.value = code;
     itemName.value = name;
     variantOf.value = variantOfValue ?? '';
-    uom.value       = uomValue ?? '';
+    uom.value       = uomValue       ?? '';
 
     // Reset base state
     maxQty.value           = 0.0;
@@ -107,13 +111,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   void _loadExistingItem(PurchaseReceiptItem item) {
     editingItemName.value = item.name;
 
-    // Metadata
     itemOwner.value      = item.owner;
     itemCreation.value   = item.creation;
     itemModified.value   = item.modified;
     itemModifiedBy.value = item.modifiedBy;
 
-    // Fields
     batchController.text = item.batchNo ?? '';
     rackController.text  = item.rack    ?? '';
     qtyController.text   = item.qty.toString();
@@ -124,14 +126,12 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isBatchReadOnly.value = isBatchValid.value;
     isRackValid.value     = item.rack != null && item.rack!.isNotEmpty;
 
-    // Restore PO link from item
     poItemId.value  = item.purchaseOrderItem ?? '';
     poDocName.value = item.purchaseOrder     ?? '';
     if (poItemId.value.isNotEmpty) {
       poQty.value = _parent.getOrderedQty(poItemId.value);
     }
 
-    // EAN context from batch
     if (item.batchNo != null && item.batchNo!.contains('-')) {
       currentScannedEan = item.batchNo!.split('-').first;
     }
@@ -167,13 +167,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     final qty = double.tryParse(qtyController.text) ?? 0;
     bool valid = qty > 0;
 
-    // Batch: if entered, must have been validated (or accepted as new)
     if (batchController.text.isNotEmpty && !isBatchValid.value) valid = false;
-
-    // Rack is required for PR
     if (rackController.text.isEmpty || !isRackValid.value) valid = false;
 
-    // Dirty check
     isFormDirty.value = isFieldsDirty;
     if (editingItemName.value != null && !isFormDirty.value) valid = false;
 
@@ -184,7 +180,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // PR overrides validateBatch because:
   // 1. EAN == Batch suffix guard (unique to PR)
   // 2. Missing batch from API is OK (new batch creation flow)
-  // 3. Success snackbar messaging differs ("New Batch will be created")
+  // 3. Messaging differs ("New Batch will be created")
 
   @override
   Future<void> validateBatch(String batch) async {
@@ -205,7 +201,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
 
     try {
-      final response = await api.getDocumentList(
+      final response = await _apiProvider.getDocumentList(
         'Batch',
         filters: {'item': itemCode.value, 'name': batch},
         fields: ['name', 'custom_packaging_qty'],
@@ -213,7 +209,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
       final batchList = response.data['data'] as List? ?? [];
       if (batchList.isNotEmpty) {
-        // Existing batch found
         final batchData = batchList.first as Map<String, dynamic>;
         final double pkgQty =
             (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
@@ -231,7 +226,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       isBatchValid.value    = true;
       isBatchReadOnly.value = true;
       batchError.value      = null;
-
     } catch (e) {
       isBatchValid.value = false;
       batchError.value   = 'Error validating batch';
@@ -243,7 +237,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Rack validation override (PR derives warehouse from rack format) ─────────
+  // ── Rack validation override ──────────────────────────────────────────────
+  // PR derives warehouse from the rack code format: ZONE-WH-NUM → WH-NUM - ZONE
+
   @override
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
@@ -253,7 +249,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
     isValidatingRack.value = true;
 
-    // Derive warehouse from rack code format: ZONE-WH-NUM → WH-NUM - ZONE
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -262,10 +257,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
 
     try {
-      final response = await api.getDocument('Rack', rack);
+      final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         isRackValid.value = true;
-        GlobalSnackbar.success(message: 'Rack Validated');
         validateSheet();
       } else {
         isRackValid.value = false;
@@ -288,31 +282,30 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   void resetRack() {
-    isRackValid.value = false;
+    isRackValid.value   = false;
     itemWarehouse.value = null;
     validateSheet();
   }
 
-  // ── submit ──────────────────────────────────────────────────────────────────
+  // ── submit (Step 1.4: removed Get.back() — sheet closure is the parent's job) ─
 
   @override
   Future<void> submit() async {
     if (!_parent.isEditable) return;
 
-    final double qty   = double.tryParse(qtyController.text) ?? 0;
+    final double qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return;
 
-    final batch = batchController.text;
-    final rack  = rackController.text;
+    final batch          = batchController.text;
+    final rack           = rackController.text;
     final finalWarehouse = itemWarehouse.value ?? _parent.setWarehouse.value ?? '';
-    final uniqueId = editingItemName.value
+    final uniqueId       = editingItemName.value
         ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
 
     final currentItems = _parent.purchaseReceipt.value?.items.toList() ?? [];
     final editIndex    = currentItems.indexWhere((i) => i.name == uniqueId);
 
     if (editIndex != -1) {
-      // Update existing row
       final existing = currentItems[editIndex];
       currentItems[editIndex] = existing.copyWith(
         qty:       qty,
@@ -321,7 +314,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         warehouse: finalWarehouse.isNotEmpty ? finalWarehouse : existing.warehouse,
       );
     } else {
-      // Check for exact duplicate
       final dupIdx = currentItems.indexWhere((i) =>
           i.itemCode == itemCode.value &&
           (i.batchNo  ?? '') == batch &&
@@ -329,12 +321,10 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
           i.warehouse == finalWarehouse);
 
       if (dupIdx != -1) {
-        // Merge
         final existing = currentItems[dupIdx];
         currentItems[dupIdx] = existing.copyWith(qty: existing.qty + qty);
         editingItemName.value = existing.name;
       } else {
-        // Add new
         currentItems.add(PurchaseReceiptItem(
           name:              uniqueId,
           owner:             '',
@@ -379,19 +369,13 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     _parent.triggerHighlight(editingItemName.value ?? uniqueId);
     _parent.isDirty.value = true;
     await _parent.savePurchaseReceipt();
+    // Step 1.4: Do NOT call Get.back() here.
+    // Sheet closure is the exclusive responsibility of the parent's
+    // onAutoSubmit callback (Step 1.1), matching SE/DN responsibility
+    // boundaries. Manual save via the Save button in the sheet header
+    // should also not auto-close the sheet.
     if (_parent.mode != 'new') {
       GlobalSnackbar.success(message: 'Item updated');
     }
   }
-
-  // ── Expose ApiProvider for overrides ─────────────────────────────────────────
-  // The base class exposes _api as private; we need it in overrides.
-  // We re-expose via a protected getter by inheriting directly.
-  // (ItemSheetControllerBase._api is accessed via the inherited _api field;
-  //  for the overriding validateBatch/validateRack we use the inherited
-  //  _api field directly because the override lives in the same class tree.)
-  // Note: in Dart, private fields are library-private, not class-private,
-  // so _api in item_sheet_controller_base.dart is NOT accessible here.
-  // We use Get.find<ApiProvider>() as the cleanest solution.
-  get api => Get.find();
 }

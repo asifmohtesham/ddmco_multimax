@@ -11,8 +11,10 @@ import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
@@ -20,20 +22,22 @@ import 'widgets/purchase_receipt_item_form_sheet.dart';
 import 'controllers/purchase_receipt_item_form_controller.dart';
 
 class PurchaseReceiptFormController extends GetxController {
-  final PurchaseReceiptProvider _provider    = Get.find<PurchaseReceiptProvider>();
-  final PurchaseOrderProvider   _poProvider  = Get.find<PurchaseOrderProvider>();
-  final ApiProvider             _apiProvider = Get.find<ApiProvider>();
-  final ScanService             _scanService = Get.find<ScanService>();
+  final PurchaseReceiptProvider _provider       = Get.find<PurchaseReceiptProvider>();
+  final PurchaseOrderProvider   _poProvider     = Get.find<PurchaseOrderProvider>();
+  final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
+  final ScanService             _scanService    = Get.find<ScanService>();
   final StorageService          _storageService = Get.find<StorageService>();
+  // Step 1.2: persistent DataWedge worker
+  final DataWedgeService        _dataWedgeService = Get.find<DataWedgeService>();
 
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // ── Document-level state ──────────────────────────────────────────────────
-  var isLoading   = true.obs;
-  var isSaving    = false.obs;
-  var isDirty     = false.obs;
-  var isScanning  = false.obs;
+  // ── Document-level state ────────────────────────────────────────────────
+  var isLoading       = true.obs;
+  var isSaving        = false.obs;
+  var isDirty         = false.obs;
+  var isScanning      = false.obs;
   var isItemSheetOpen = false.obs;
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
@@ -46,22 +50,27 @@ class PurchaseReceiptFormController extends GetxController {
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Warehouse ────────────────────────────────────────────────────────────
+  // ── Warehouse ─────────────────────────────────────────────────────────────
   var setWarehouse         = RxnString();
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── PO linking cache ────────────────────────────────────────────────────
+  // ── PO linking cache ───────────────────────────────────────────────────
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
   // ── EAN context for inside-sheet scan routing ───────────────────────────
   String currentScannedEan = '';
 
-  // ── UI feedback ───────────────────────────────────────────────────────────
+  // ── UI feedback ──────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
 
+  // Step 1.2: persistent scan worker handle
+  Worker? _scanWorker;
+
   bool get isEditable => purchaseReceipt.value?.docstatus == 0;
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -71,6 +80,13 @@ class PurchaseReceiptFormController extends GetxController {
     postingDateController.addListener(_markDirty);
     postingTimeController.addListener(_markDirty);
     ever(setWarehouse, (_) => _markDirty());
+
+    // Step 1.2: subscribe to DataWedge at controller level so scans are
+    // always routed — even while BarcodeInputWidget is off-screen/disposed
+    // (which happens when isItemSheetOpen=true hides the widget).
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    log('[PR:onInit] _scanWorker registered on DataWedgeService.scannedCode',
+        name: 'PR');
 
     if (mode == 'new') {
       _initNewPurchaseReceipt();
@@ -85,6 +101,9 @@ class PurchaseReceiptFormController extends GetxController {
 
   @override
   void onClose() {
+    // Step 1.2: dispose persistent worker
+    _scanWorker?.dispose();
+    log('[PR:onClose] _scanWorker disposed', name: 'PR');
     supplierController.dispose();
     postingDateController.dispose();
     postingTimeController.dispose();
@@ -93,7 +112,7 @@ class PurchaseReceiptFormController extends GetxController {
     super.onClose();
   }
 
-  // ── PopScope ──────────────────────────────────────────────────────────────
+  // ── PopScope ────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -101,6 +120,20 @@ class PurchaseReceiptFormController extends GetxController {
         Get.back();
       },
     );
+  }
+
+  // ── Raw scan entry point (Step 1.2) ──────────────────────────────────────
+  /// Called by the persistent [_scanWorker] every time DataWedge fires.
+  /// Guards:
+  ///   • empty codes are ignored
+  ///   • only fires when the current route is PURCHASE_RECEIPT_FORM
+  void _onRawScan(String code) {
+    log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
+    if (code.isEmpty) return;
+    if (Get.currentRoute != AppRoutes.PURCHASE_RECEIPT_FORM) return;
+    final clean = code.trim();
+    barcodeController.text = clean;
+    scanBarcode(clean);
   }
 
   // ── Data fetching ─────────────────────────────────────────────────────────
@@ -215,7 +248,6 @@ class PurchaseReceiptFormController extends GetxController {
   /// Writes poItemId, poDocName, poQty, poRate into [child].
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
-    // Priority: pending lines first
     var match = _cachedPoItems.firstWhereOrNull((d) {
       final PurchaseOrderItem item = d['item'];
       return item.itemCode == itemCode && item.receivedQty < item.qty;
@@ -239,7 +271,7 @@ class PurchaseReceiptFormController extends GetxController {
     return poItemQuantities[poItemName] ?? 0.0;
   }
 
-  // ── Item sheet orchestration ───────────────────────────────────────────────
+  // ── Item sheet orchestration ──────────────────────────────────────────────
 
   void _openItemSheet({
     required String itemCode,
@@ -250,34 +282,35 @@ class PurchaseReceiptFormController extends GetxController {
     String?  uom,
     PurchaseReceiptItem? editingItem,
   }) {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
+
     final child = Get.put(PurchaseReceiptItemFormController());
     child.initialise(
-      parent:       this,
-      code:         itemCode,
-      name:         itemName,
-      batchNo:      batchNo,
-      scannedEan:   scannedEan,
+      parent:         this,
+      code:           itemCode,
+      name:           itemName,
+      batchNo:        batchNo,
+      scannedEan:     scannedEan,
       variantOfValue: variantOf,
-      uomValue:     uom,
-      editingItem:  editingItem,
+      uomValue:       uom,
+      editingItem:    editingItem,
     );
 
-    // Auto-submit wiring
-    ever(child.isSheetValid, (bool valid) {
-      if (valid && isItemSheetOpen.value &&
-          purchaseReceipt.value?.docstatus == 0 &&
-          _storageService.getAutoSubmitEnabled()) {
-        final delay = _storageService.getAutoSubmitDelay();
-        Future.delayed(Duration(seconds: delay), () async {
-          if (child.isSheetValid.value && isItemSheetOpen.value) {
-            await child.submit();
-            Get.back();
-          }
-        });
-      }
-    });
+    // Step 1.1: wire auto-submit via base class — owns the Worker, disposes
+    // it in onClose, evaluates isSheetOpen and isSubmittable live.
+    child.setupAutoSubmit(
+      enabled:      _storageService.getAutoSubmitEnabled(),
+      delaySeconds: _storageService.getAutoSubmitDelay(),
+      isSheetOpen:  isItemSheetOpen,
+      isSubmittable: () => purchaseReceipt.value?.docstatus == 0,
+      onAutoSubmit: () async {
+        await child.submit();
+        if (Get.isBottomSheetOpen == true) Get.back();
+      },
+    );
 
     isItemSheetOpen.value = true;
+    log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');
 
     Get.bottomSheet(
       DraggableScrollableSheet(
@@ -291,6 +324,7 @@ class PurchaseReceiptFormController extends GetxController {
     ).whenComplete(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         isItemSheetOpen.value = false;
+        log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
         barcodeController.clear();
         if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
           Get.delete<PurchaseReceiptItemFormController>();
@@ -299,7 +333,7 @@ class PurchaseReceiptFormController extends GetxController {
     });
   }
 
-  // ── Public entry points ───────────────────────────────────────────────────
+  // ── Public entry points ────────────────────────────────────────────────
 
   void openSheetForNewItem({
     required String itemCode,
@@ -329,29 +363,30 @@ class PurchaseReceiptFormController extends GetxController {
     );
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
-  void deleteItem(String uniqueName) {
+  // Step 1.3: rename deleteItem → confirmAndDeleteItem; take item object
+  // directly instead of looking it up by name string.
+  void confirmAndDeleteItem(PurchaseReceiptItem item) {
     if (!isEditable) return;
-    final item = purchaseReceipt.value?.items
-        .firstWhereOrNull((i) => i.name == uniqueName);
-    if (item == null) return;
+
+    // Close the sheet first if it happens to be open
+    if (isItemSheetOpen.value) {
+      if (Get.isBottomSheetOpen == true) Get.back();
+    }
 
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
       message: 'Remove ${item.itemCode} from the receipt?',
       onConfirm: () {
-        final currentItems =
-            purchaseReceipt.value?.items.toList() ?? [];
-        currentItems.removeWhere((i) => i.name == uniqueName);
-        purchaseReceipt.update(
-            (val) => val?.items.assignAll(currentItems));
+        final currentItems = purchaseReceipt.value?.items.toList() ?? [];
+        currentItems.removeWhere((i) => i.name == item.name);
+        purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
       },
     );
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -381,15 +416,13 @@ class PurchaseReceiptFormController extends GetxController {
           name = created['name'];
           mode = 'edit';
           await fetchPurchaseReceipt();
-          GlobalSnackbar.success(
-              message: 'Purchase Receipt created: $name');
+          GlobalSnackbar.success(message: 'Purchase Receipt created: $name');
         } else {
           GlobalSnackbar.error(message:
               'Failed to create: ${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
-        final response =
-            await _provider.updatePurchaseReceipt(name, data);
+        final response = await _provider.updatePurchaseReceipt(name, data);
         if (response.statusCode == 200) {
           GlobalSnackbar.success(message: 'Purchase Receipt updated');
           await fetchPurchaseReceipt();
@@ -412,7 +445,7 @@ class PurchaseReceiptFormController extends GetxController {
     }
   }
 
-  // ── UX helpers ────────────────────────────────────────────────────────────
+  // ── UX helpers ─────────────────────────────────────────────────────────────
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -432,7 +465,37 @@ class PurchaseReceiptFormController extends GetxController {
         const Duration(seconds: 2), () => recentlyAddedItemName.value = '');
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────
+  // ── Scan routing ────────────────────────────────────────────────────────────
+
+  // Step 1.2: inside-sheet scan routing extracted as a dedicated method.
+  // Called from both _onRawScan (DataWedge worker) and scanBarcode.
+  void _handleSheetScan(String barcode) async {
+    barcodeController.clear();
+    if (!Get.isRegistered<PurchaseReceiptItemFormController>()) {
+      log('[PR:_handleSheetScan] child not registered — scan dropped', name: 'PR');
+      return;
+    }
+
+    final child = Get.find<PurchaseReceiptItemFormController>();
+    final contextEan = child.currentScannedEan.isNotEmpty
+        ? child.currentScannedEan
+        : child.itemCode.value;
+
+    final result =
+        await _scanService.processScan(barcode, contextItemCode: contextEan);
+
+    if (result.type == ScanType.rack && result.rackId != null) {
+      child.rackController.text = result.rackId!;
+      child.validateRack(result.rackId!);
+    } else if (result.batchNo != null) {
+      child.batchController.text = result.batchNo!;
+      child.validateBatch(result.batchNo!);
+    } else {
+      GlobalSnackbar.error(
+          message: result.message ?? 'Invalid input for this field');
+    }
+  }
+
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
       GlobalSnackbar.warning(message: 'Document is submitted.');
@@ -440,31 +503,16 @@ class PurchaseReceiptFormController extends GetxController {
     }
     if (barcode.isEmpty) return;
 
-    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────
+    log('[PR:scanBarcode] barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}',
+        name: 'PR');
+
+    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
-      barcodeController.clear();
-      final child = Get.find<PurchaseReceiptItemFormController>();
-      final contextEan = child.currentScannedEan.isNotEmpty
-          ? child.currentScannedEan
-          : child.itemCode.value;
-
-      final result =
-          await _scanService.processScan(barcode, contextItemCode: contextEan);
-
-      if (result.type == ScanType.rack && result.rackId != null) {
-        child.rackController.text = result.rackId!;
-        child.validateRack(result.rackId!);
-      } else if (result.batchNo != null) {
-        child.batchController.text = result.batchNo!;
-        child.validateBatch(result.batchNo!);
-      } else {
-        GlobalSnackbar.error(
-            message: result.message ?? 'Invalid input for this field');
-      }
+      _handleSheetScan(barcode);
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────
     if (isScanning.value) return;
     isScanning.value = true;
 
@@ -473,11 +521,9 @@ class PurchaseReceiptFormController extends GetxController {
       if (isItemSheetOpen.value) return;
 
       if (result.isSuccess && result.itemData != null) {
-        // Capture EAN context
         if (result.rawCode.contains('-') &&
             !result.rawCode.startsWith('SHIPMENT')) {
-          currentScannedEan =
-              result.rawCode.split('-').first;
+          currentScannedEan = result.rawCode.split('-').first;
         } else {
           currentScannedEan = result.rawCode;
         }
@@ -509,8 +555,7 @@ class PurchaseReceiptFormController extends GetxController {
           uom:        itemData.stockUom,
         );
       } else {
-        GlobalSnackbar.error(
-            message: result.message ?? 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan failed: $e');
