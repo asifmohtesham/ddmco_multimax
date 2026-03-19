@@ -27,7 +27,6 @@ class PurchaseReceiptFormController extends GetxController {
   final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
   final ScanService             _scanService    = Get.find<ScanService>();
   final StorageService          _storageService = Get.find<StorageService>();
-  // Step 1.2: persistent DataWedge worker
   final DataWedgeService        _dataWedgeService = Get.find<DataWedgeService>();
 
   String name = Get.arguments['name'];
@@ -65,7 +64,7 @@ class PurchaseReceiptFormController extends GetxController {
   // ── UI feedback ──────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
 
-  // Step 1.2: persistent scan worker handle
+  // ── Persistent scan worker ──────────────────────────────────────────────
   Worker? _scanWorker;
 
   bool get isEditable => purchaseReceipt.value?.docstatus == 0;
@@ -81,9 +80,6 @@ class PurchaseReceiptFormController extends GetxController {
     postingTimeController.addListener(_markDirty);
     ever(setWarehouse, (_) => _markDirty());
 
-    // Step 1.2: subscribe to DataWedge at controller level so scans are
-    // always routed — even while BarcodeInputWidget is off-screen/disposed
-    // (which happens when isItemSheetOpen=true hides the widget).
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
     log('[PR:onInit] _scanWorker registered on DataWedgeService.scannedCode',
         name: 'PR');
@@ -101,7 +97,6 @@ class PurchaseReceiptFormController extends GetxController {
 
   @override
   void onClose() {
-    // Step 1.2: dispose persistent worker
     _scanWorker?.dispose();
     log('[PR:onClose] _scanWorker disposed', name: 'PR');
     supplierController.dispose();
@@ -122,11 +117,14 @@ class PurchaseReceiptFormController extends GetxController {
     );
   }
 
-  // ── Raw scan entry point (Step 1.2) ──────────────────────────────────────
+  // ── Step 2.2: reloadDocument ──────────────────────────────────────────────
+  /// Reloads the document from the server and resets dirty state.
+  /// Mirrors [DeliveryNoteFormController.reloadDocument].
+  /// Called by OptimisticLockingMixin (Phase 5.1) and pull-to-refresh.
+  Future<void> reloadDocument() => fetchPurchaseReceipt();
+
+  // ── Raw scan entry point ───────────────────────────────────────────────
   /// Called by the persistent [_scanWorker] every time DataWedge fires.
-  /// Guards:
-  ///   • empty codes are ignored
-  ///   • only fires when the current route is PURCHASE_RECEIPT_FORM
   void _onRawScan(String code) {
     log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
     if (code.isEmpty) return;
@@ -245,7 +243,6 @@ class PurchaseReceiptFormController extends GetxController {
   // ── PO linking (called by child controller) ────────────────────────────────
 
   /// Links [itemCode] to the best pending PO line.
-  /// Writes poItemId, poDocName, poQty, poRate into [child].
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
     var match = _cachedPoItems.firstWhereOrNull((d) {
@@ -296,8 +293,6 @@ class PurchaseReceiptFormController extends GetxController {
       editingItem:    editingItem,
     );
 
-    // Step 1.1: wire auto-submit via base class — owns the Worker, disposes
-    // it in onClose, evaluates isSheetOpen and isSubmittable live.
     child.setupAutoSubmit(
       enabled:      _storageService.getAutoSubmitEnabled(),
       delaySeconds: _storageService.getAutoSubmitDelay(),
@@ -363,12 +358,10 @@ class PurchaseReceiptFormController extends GetxController {
     );
   }
 
-  // Step 1.3: rename deleteItem → confirmAndDeleteItem; take item object
-  // directly instead of looking it up by name string.
+  // Step 1.3 (Phase 1): confirmAndDeleteItem takes item object directly.
   void confirmAndDeleteItem(PurchaseReceiptItem item) {
     if (!isEditable) return;
 
-    // Close the sheet first if it happens to be open
     if (isItemSheetOpen.value) {
       if (Get.isBottomSheetOpen == true) Get.back();
     }
@@ -467,8 +460,6 @@ class PurchaseReceiptFormController extends GetxController {
 
   // ── Scan routing ────────────────────────────────────────────────────────────
 
-  // Step 1.2: inside-sheet scan routing extracted as a dedicated method.
-  // Called from both _onRawScan (DataWedge worker) and scanBarcode.
   void _handleSheetScan(String barcode) async {
     barcodeController.clear();
     if (!Get.isRegistered<PurchaseReceiptItemFormController>()) {
@@ -506,13 +497,11 @@ class PurchaseReceiptFormController extends GetxController {
     log('[PR:scanBarcode] barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}',
         name: 'PR');
 
-    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       _handleSheetScan(barcode);
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────
     if (isScanning.value) return;
     isScanning.value = true;
 
@@ -530,7 +519,6 @@ class PurchaseReceiptFormController extends GetxController {
 
         final itemData = result.itemData!;
 
-        // Guard: item must be in linked PO (if PO is linked)
         if (_cachedPoItems.isNotEmpty) {
           final found = _cachedPoItems.any((d) {
             final PurchaseOrderItem pi = d['item'];

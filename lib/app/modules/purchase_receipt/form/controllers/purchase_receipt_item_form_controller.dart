@@ -16,8 +16,13 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - Batch validation accepts both existing AND new batches ("New Batch" flow)
 ///  - PO-linking state lives here (poItem, poName, poQty, poRate)
 ///  - EAN-equals-batch guard (custom PR rule)
+///
+/// Phase 2 changes:
+///  - Step 2.1: ApiProvider access via typed field (no more untyped getter)
+///  - Step 2.3: validateRack no longer emits a success snackbar (silent on
+///    success, matching SE/DN behaviour)
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
-  // ── Typed ApiProvider (Step 2.1 prep — replaces untyped `get api`) ────────
+  // ── Step 2.1: typed ApiProvider ────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   // ── Parent reference ────────────────────────────────────────────────────
@@ -56,6 +61,27 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => true;   // Target rack is mandatory for PR
 
+  // ── ItemSheetControllerBase abstract stubs ────────────────────────────────
+
+  @override
+  String? get qtyInfoText {
+    if (poQty.value > 0) {
+      return 'PO Qty: ${poQty.value % 1 == 0 ? poQty.value.toInt() : poQty.value}';
+    }
+    return null;
+  }
+
+  @override
+  Future<void> deleteCurrentItem() async {
+    if (editingItemName.value == null) return;
+    final items = _parent.purchaseReceipt.value?.items ?? [];
+    final item = items.firstWhere(
+      (i) => i.name == editingItemName.value,
+      orElse: () => throw StateError('Item not found'),
+    );
+    _parent.confirmAndDeleteItem(item);
+  }
+
   // ── Initialisation ─────────────────────────────────────────────────────────
 
   void initialise({
@@ -72,10 +98,13 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     currentScannedEan = scannedEan ?? '';
 
     // Core identity
-    itemCode.value = code;
-    itemName.value = name;
+    itemCode.value  = code;
+    itemName.value  = name;
     variantOf.value = variantOfValue ?? '';
     uom.value       = uomValue       ?? '';
+
+    // isAddMode (base field)
+    isAddMode = editingItem == null;
 
     // Reset base state
     maxQty.value           = 0.0;
@@ -239,6 +268,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   // ── Rack validation override ──────────────────────────────────────────────
   // PR derives warehouse from the rack code format: ZONE-WH-NUM → WH-NUM - ZONE
+  // Step 2.3: No success snackbar — silent on success, matching SE/DN.
 
   @override
   Future<void> validateRack(String rack) async {
@@ -249,6 +279,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
     isValidatingRack.value = true;
 
+    // Derive warehouse from rack code: ZONE-WH-NUM → WH-NUM - ZONE
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -260,6 +291,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       final response = await _apiProvider.getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data['data'] != null) {
         isRackValid.value = true;
+        // Step 2.3: success is silent — SE and DN emit no snackbar here.
         validateSheet();
       } else {
         isRackValid.value = false;
@@ -287,7 +319,10 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── submit (Step 1.4: removed Get.back() — sheet closure is the parent's job) ─
+  // ── submit ───────────────────────────────────────────────────────────────────
+  // Phase 1 Step 1.4: Get.back() removed from here.
+  // Sheet closure is the exclusive responsibility of the parent's
+  // onAutoSubmit callback, matching SE/DN responsibility boundaries.
 
   @override
   Future<void> submit() async {
@@ -369,11 +404,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     _parent.triggerHighlight(editingItemName.value ?? uniqueId);
     _parent.isDirty.value = true;
     await _parent.savePurchaseReceipt();
-    // Step 1.4: Do NOT call Get.back() here.
-    // Sheet closure is the exclusive responsibility of the parent's
-    // onAutoSubmit callback (Step 1.1), matching SE/DN responsibility
-    // boundaries. Manual save via the Save button in the sheet header
-    // should also not auto-close the sheet.
     if (_parent.mode != 'new') {
       GlobalSnackbar.success(message: 'Item updated');
     }
