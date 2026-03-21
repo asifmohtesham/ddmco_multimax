@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 
@@ -9,16 +10,16 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///
 /// ### `editMode: false` (default — SE style)
 /// Borderless [TextField], green check-circle when valid, clear + validate
-/// icons, per-rack stock tooltip.
+/// icons, per-rack stock tooltip. [BalanceChip] shown below the field
+/// displaying the selected rack's balance from [rackStockMap].
 ///
 /// ### `editMode: true` (PR / DN style)
 /// [OutlineInputBorder] [TextFormField], readOnly-when-valid, spinner →
-/// Edit-btn → forward-arrow suffix pattern.
+/// Edit-btn → forward-arrow suffix. [BalanceChip] shown below the field.
 ///
-/// P3-C: onChanged simplified to c.resetRack() — eliminates direct Rx reads
-///       outside a reactive context and avoids spurious rebuilds.
-/// P3-D: Per-rack stock tooltip added to _EditModeRack suffix row (was only
-///       in _SimpleRack). Shown next to the Edit button when isValid.
+/// P3-C: onChanged simplified — c.resetRack() replaces inline Rx read.
+/// P3-D: Per-rack stock tooltip in _EditModeRack suffix row.
+/// Balance chip: sources rackStockMap[rackController.text] for the balance.
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -49,6 +50,14 @@ class SharedRackField extends StatelessWidget {
     return accentColor.withOpacity(0.5);
   }
 
+  /// Returns the balance for the currently-typed rack from rackStockMap,
+  /// or 0.0 if the rack is not in the map.
+  double _rackBalance(ItemSheetControllerBase c) {
+    final rack = c.rackController.text.trim();
+    if (rack.isEmpty) return 0.0;
+    return c.rackStockMap[rack] ?? 0.0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return editMode ? _EditModeRack(this) : _SimpleRack(this);
@@ -69,6 +78,7 @@ class _SimpleRack extends StatelessWidget {
       final hasError   = c.rackError.value != null;
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
+      final rackBal    = w._rackBalance(c);
 
       final borderColor = hasError
           ? theme.colorScheme.error
@@ -76,71 +86,80 @@ class _SimpleRack extends StatelessWidget {
               ? Colors.green
               : w.accentColor;
 
-      return GlobalItemFormSheet.buildInputGroup(
-        label: w.label,
-        color: borderColor,
-        child: TextField(
-          controller: c.rackController,
-          focusNode:  c.rackFocusNode,
-          style:      theme.textTheme.bodyMedium,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (v) {
-            if (v.isNotEmpty) c.validateRack(v);
-          },
-          decoration: InputDecoration(
-            hintText:    w.hint,
-            border:      InputBorder.none,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            errorText:   c.rackError.value,
-            errorMaxLines: 2,
-            suffixIcon: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (validating)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
-                    child: SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                else if (isValid)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Icon(Icons.check_circle,
-                        color: Colors.green, size: 20),
-                  ),
-                if (c.rackStockTooltip.value != null)
-                  Tooltip(
-                    message: c.rackStockTooltip.value!,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Icon(Icons.inventory_2_outlined,
-                          color: w.accentColor, size: 20),
-                    ),
-                  ),
-                if (c.rackController.text.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.clear, size: 18),
-                    onPressed: () {
-                      c.rackController.clear();
-                      c.resetRack();
-                    },
-                  ),
-              ],
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GlobalItemFormSheet.buildInputGroup(
+            label: w.label,
+            color: borderColor,
+            child: TextField(
+              controller: c.rackController,
+              focusNode:  c.rackFocusNode,
+              style:      theme.textTheme.bodyMedium,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (v) {
+                if (v.isNotEmpty) c.validateRack(v);
+              },
+              decoration: InputDecoration(
+                hintText:    w.hint,
+                border:      InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                errorText:   c.rackError.value,
+                errorMaxLines: 2,
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (validating)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (isValid)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.check_circle,
+                            color: Colors.green, size: 20),
+                      ),
+                    if (c.rackStockTooltip.value != null)
+                      Tooltip(
+                        message: c.rackStockTooltip.value!,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(Icons.inventory_2_outlined,
+                              color: w.accentColor, size: 20),
+                        ),
+                      ),
+                    if (c.rackController.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          c.rackController.clear();
+                          c.resetRack();
+                        },
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+          // Rack balance chip — sources the typed rack's balance from rackStockMap.
+          BalanceChip(
+            balance:   rackBal,
+            isLoading: validating,
+            color:     w.accentColor,
+            prefix:    'Rack Balance:',
+          ),
+        ],
       );
     });
   }
 }
 
 // ── Edit-mode (OutlineInputBorder, readOnly-when-valid) ──────────────────────
-// P3-C: onChanged simplified — c.resetRack() already clears isRackValid and
-//       calls validateSheet, so no inner Rx read needed.
-// P3-D: stock tooltip added to the isValid suffix row next to Edit button.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -153,45 +172,55 @@ class _EditModeRack extends StatelessWidget {
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
       final hasError   = c.rackError.value != null;
+      final rackBal    = w._rackBalance(c);
 
-      return GlobalItemFormSheet.buildInputGroup(
-        label:   w.label,
-        color:   w.accentColor,
-        bgColor: isValid ? w._validFill : null,
-        child: TextFormField(
-          key:        const ValueKey('shared_rack_edit'),
-          controller: c.rackController,
-          readOnly:   isValid,
-          autofocus:  false,
-          decoration: InputDecoration(
-            hintText: w.hint,
-            helperText: c.rackError.value,
-            helperStyle: TextStyle(
-              color:      hasError ? Colors.red : Colors.grey,
-              fontWeight: hasError ? FontWeight.bold : FontWeight.normal,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GlobalItemFormSheet.buildInputGroup(
+            label:   w.label,
+            color:   w.accentColor,
+            bgColor: isValid ? w._validFill : null,
+            child: TextFormField(
+              key:        const ValueKey('shared_rack_edit'),
+              controller: c.rackController,
+              readOnly:   isValid,
+              autofocus:  false,
+              decoration: InputDecoration(
+                hintText: w.hint,
+                helperText: c.rackError.value,
+                helperStyle: TextStyle(
+                  color:      hasError ? Colors.red : Colors.grey,
+                  fontWeight: hasError ? FontWeight.bold : FontWeight.normal,
+                ),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                      color: hasError ? Colors.red : w._validBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide:
+                      BorderSide(color: w.accentColor, width: 2),
+                ),
+                filled:    true,
+                fillColor: isValid ? w._validFill : Colors.white,
+                suffixIcon: _suffixIcon(c, isValid, validating),
+              ),
+              onChanged: isValid ? null : (_) => c.resetRack(),
+              onFieldSubmitted: (val) => c.validateRack(val),
             ),
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                  color: hasError ? Colors.red : w._validBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide:
-                  BorderSide(color: w.accentColor, width: 2),
-            ),
-            filled:    true,
-            fillColor: isValid ? w._validFill : Colors.white,
-            suffixIcon: _suffixIcon(c, isValid, validating),
           ),
-          // P3-C: was `if (c.isRackValid.value) c.isRackValid.value = false`
-          // which read Rx outside a reactive scope. resetRack() is the
-          // canonical path: clears isRackValid + calls validateSheet.
-          onChanged: isValid ? null : (_) => c.resetRack(),
-          onFieldSubmitted: (val) => c.validateRack(val),
-        ),
+          // Rack balance chip — sources the typed rack's balance from rackStockMap.
+          BalanceChip(
+            balance:   rackBal,
+            isLoading: validating,
+            color:     w.accentColor,
+            prefix:    'Rack Balance:',
+          ),
+        ],
       );
     });
   }
@@ -212,7 +241,6 @@ class _EditModeRack extends StatelessWidget {
       );
     }
     if (isValid) {
-      // P3-D: stock tooltip present (matches _SimpleRack behaviour).
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
