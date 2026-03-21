@@ -33,10 +33,10 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 /// Concrete subclasses only need to implement the abstract members
 /// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
 abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ────────────────────────────────────────────────────
+  // ── Dependencies ─────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  // ── Form infrastructure ───────────────────────────────────────────────
+  // ── Form infrastructure ────────────────────────────────────────────────
   final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
   final ScrollController     sheetScrollController = ScrollController();
 
@@ -45,11 +45,11 @@ abstract class ItemSheetControllerBase extends GetxController {
   final TextEditingController rackController  = TextEditingController();
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ──────────────────────────────────────────────────
+  // ── Core item identity ────────────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
-  // ── Validation state ───────────────────────────────────────────────────
+  // ── Validation state ──────────────────────────────────────────────────
   var isBatchValid      = false.obs;
   var isRackValid       = false.obs;
   var isValidatingBatch = false.obs;
@@ -63,23 +63,23 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── Item metadata (for GlobalItemFormSheet footer) ───────────────────────
+  // ── Item metadata (for GlobalItemFormSheet footer) ────────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
   var itemModified   = RxnString();
   var itemModifiedBy = RxnString();
 
-  // ── Editing context ─────────────────────────────────────────────────
+  // ── Editing context ───────────────────────────────────────────────
   /// Non-null when editing an existing child-table row.
   var editingItemName = RxnString();
 
-  // ── Add / edit mode ───────────────────────────────────────────────────
+  // ── Add / edit mode ─────────────────────────────────────────────────
   /// Set by concrete [initialise] after determining edit vs. add.
   /// True  → new item (no editingItemName).
   /// False → editing existing row.
   bool isAddMode = true;
 
-  // ── Step-1: merged loading flag ──────────────────────────────────────────
+  // ── Step-1: merged loading flag ───────────────────────────────────────
   //
   // P2-A: isSheetLoading now also merges isValidatingRack.
   // Subclasses that have additional async validation paths (e.g. SE dual-rack)
@@ -98,15 +98,16 @@ abstract class ItemSheetControllerBase extends GetxController {
       isValidatingRack.value  ||
       isAddingItemFlag.value;
 
-  // ── Step-1: scan-bar state (promoted from DN parent) ─────────────────────
+  // ── Step-1: scan-bar state (promoted from DN parent) ───────────────────
   //
   // SE does not use the scan bar in the item sheet (it routes scans
   // through the document-level scanner).  DN does.  Both will bind to
   // these fields so GlobalItemFormSheet can use a single code path.
 
   /// Whether the embedded scan bar is actively scanning.
-  /// Set by the concrete subclass / parent during initialise.
-  final RxBool isScanning = false.obs;
+  /// Non-final so concrete subclasses can reassign to the parent’s observable:
+  ///   `isScanning = _parent.isScanning;`
+  RxBool isScanning = false.obs;
 
   /// TEC for the embedded barcode input inside the sheet.
   /// Concrete subclass assigns the parent's controller if it uses a scan bar:
@@ -114,7 +115,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Leave null (default) if DocType does not embed a scan bar.
   TextEditingController? sheetScanController;
 
-  // ── Step-1: abstract qty info text ───────────────────────────────────────
+  // ── Step-1: abstract qty info text ───────────────────────────────────
   //
   // Each DocType returns its own human-readable qty hint that appears
   // below the quantity field.
@@ -123,21 +124,21 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Return null to hide the hint.
   String? get qtyInfoText;
 
-  // ── Step-1: abstract delete dispatch ───────────────────────────────────────
+  // ── Step-1: abstract delete dispatch ──────────────────────────────────
 
   /// Deletes (or confirms deletion of) the item currently being edited.
   /// Only called when [editingItemName] is non-null.
   Future<void> deleteCurrentItem();
 
-  // ── Snapshot for dirty-checking ────────────────────────────────────────────
+  // ── Snapshot for dirty-checking ───────────────────────────────────────
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ───────────────────────────────────────────────────────
+  // ── Auto-submit worker ────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ───────────────────────────────────────────────────
+  // ── Abstract interface ───────────────────────────────────────────────
 
   /// The warehouse to use for stock/batch queries.
   /// Return null if not yet determined.
@@ -157,7 +158,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Commits the current field values back to the parent document controller.
   Future<void> submit();
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
@@ -170,7 +171,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     super.onClose();
   }
 
-  // ── Shared initialisation helper ───────────────────────────────────────────
+  // ── Shared initialisation helper ────────────────────────────────────────
 
   /// Call from concrete [initialise] after fields are populated.
   void initBaseListeners() {
@@ -192,7 +193,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Auto-submit wiring ──────────────────────────────────────────────────
+  // ── Auto-submit wiring ───────────────────────────────────────────────
 
   void setupAutoSubmit({
     required bool            enabled,
@@ -215,7 +216,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     });
   }
 
-  // ── Qty helpers ────────────────────────────────────────────────────────────
+  // ── Qty helpers ──────────────────────────────────────────────────────────
 
   void adjustQty(double delta) {
     double current = double.tryParse(qtyController.text) ?? 0;
@@ -227,19 +228,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── P2-A: Batch validation ──────────────────────────────────────────────────
-  //
-  // A batch that exists in ERPNext but has qty=0 is a VALID batch
-  // (the operator may be doing a correction, or stock was consumed
-  // between scanning and submitting).  Previously isBatchValid was set
-  // false in this case, locking the Save button entirely.
-  //
-  // New behaviour:
-  //   • batch found, qty >  0  → isBatchValid=true,  batchError=null      (green)
-  //   • batch found, qty == 0  → isBatchValid=true,  batchError='no stock' (orange warning)
-  //   • batch NOT found        → isBatchValid=false, batchError='invalid'   (red blocker)
-  //
-  // _focusRack is called in both found-cases so the UX flow is unchanged.
+  // ── P2-A: Batch validation ──────────────────────────────────────────────
 
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
@@ -261,8 +250,6 @@ abstract class ItemSheetControllerBase extends GetxController {
       final double pkgQty =
           (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
       if (pkgQty > 0 && qtyController.text.isEmpty) {
-        // Only auto-fill qty when field is empty to avoid clobbering
-        // an already-entered value (e.g. in edit mode).
         qtyController.text =
             pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
@@ -284,8 +271,6 @@ abstract class ItemSheetControllerBase extends GetxController {
 
       maxQty.value = fetchedQty;
 
-      // P2-A: batch is VALID whether qty is 0 or not.
-      // Zero-stock is a warning, not a hard blocker.
       isBatchValid.value = true;
 
       final sb = StringBuffer('Batch Stock: $fetchedQty');
@@ -299,7 +284,6 @@ abstract class ItemSheetControllerBase extends GetxController {
         GlobalSnackbar.info(
             message: 'Batch found — Stock: ${fetchedQty.toStringAsFixed(0)}');
       } else {
-        // Warn but do NOT block.
         batchError.value = 'Warning: Batch has 0 stock in current warehouse';
         GlobalSnackbar.warning(
             message: 'Batch has 0 stock in the selected warehouse');
@@ -327,7 +311,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Rack validation ──────────────────────────────────────────────────────────
+  // ── Rack validation ────────────────────────────────────────────────────────
 
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
@@ -362,15 +346,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── P2-C: Stock / rack-map fetching ──────────────────────────────────────────
-  //
-  // P2-C fix: the loop previously ran to `result.length - 1`, which skipped
-  // the last element of the list.  ERPNext includes a summary/total row as
-  // the final entry in some balance endpoints — that row has rack==null and
-  // is already filtered out by the `r != null && r.isNotEmpty` guard below.
-  // So the off-by-one subtraction was purely harmful: it silently dropped
-  // the last real rack row in any response where ERPNext does NOT append a
-  // total.  Changed to `result.length` with the null-guard kept.
+  // ── P2-C: Stock / rack-map fetching ───────────────────────────────────────
 
   Future<void> fetchAllRackStocks() async {
     final warehouse = resolvedWarehouse;
@@ -389,7 +365,6 @@ abstract class ItemSheetControllerBase extends GetxController {
           final Map<String, double> tempMap      = {};
           final List<String>        tooltipLines = [];
 
-          // P2-C: iterate ALL rows; null-guard filters the ERPNext totals row.
           for (int i = 0; i < result.length; i++) {
             final row = result[i];
             if (row is! Map) continue;
@@ -412,46 +387,29 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── P2-B: Base validation ────────────────────────────────────────────────────
-  //
-  // P2-B: The maxQty cap (qty > maxQty) is now mode-aware.
-  //
-  // ADD mode:  hard block — the operator should not submit more than the
-  //            available balance when creating a new row.
-  //
-  // EDIT mode: soft skip — the saved qty may legitimately exceed the current
-  //            fetched balance (stock was consumed after the row was first
-  //            saved, or the balance API returned 0 for a zero-stock batch
-  //            that P2-A now marks valid).  The excess is surfaced via
-  //            batchError / qtyInfoText; blocking save here would force the
-  //            operator to reduce qty just to change another field (e.g. rack).
+  // ── P2-B: Base validation ───────────────────────────────────────────────
 
   /// Returns true when all base rules pass.
   bool baseValidate() {
     rackError.value = null;
 
-    // Qty
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return false;
 
-    // P2-B: maxQty cap is enforced only in add-mode.
     if (isAddMode && maxQty.value > 0 && qty > maxQty.value) return false;
 
-    // Batch — required if declared, or invalid if partially entered
     if (requiresBatch) {
       if (batchController.text.isEmpty || !isBatchValid.value) return false;
     } else {
       if (batchController.text.isNotEmpty && !isBatchValid.value) return false;
     }
 
-    // Rack — required if declared, or invalid if partially entered
     if (requiresRack) {
       if (rackController.text.isEmpty || !isRackValid.value) return false;
     } else {
       if (rackController.text.isNotEmpty && !isRackValid.value) return false;
     }
 
-    // Rack-wise stock availability check (add-mode only — same rationale as P2-B)
     final selectedRack = rackController.text;
     if (isAddMode && selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
       final available = rackStockMap[selectedRack] ?? 0.0;
@@ -464,7 +422,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     return true;
   }
 
-  // ── Focus helpers ────────────────────────────────────────────────────────────
+  // ── Focus helpers ─────────────────────────────────────────────────────────
 
   void _focusRack() {
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -30,12 +30,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             status: controller.purchaseReceipt.value?.status,
             isDirty: controller.isDirty.value,
             actions: [
-              // Red Fix #3 (UX): SaveIconButton replaces the hand-rolled
-              // IconButton + inline spinner, matching SE/DN AppBar behaviour.
-              // Idle: faded save icon.
-              // Saving: animated CircularProgressIndicator.
-              // Success: animated tick for 2 seconds.
-              // Error: error glyph for 2 seconds.
               Obx(() {
                 if (controller.purchaseReceipt.value?.docstatus == 1) {
                   return const SizedBox.shrink();
@@ -45,7 +39,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 return SaveIconButton(
                   isSaving:   controller.isSaving.value,
                   saveResult: controller.saveResult.value,
-                  isEnabled:  canSave,
+                  isDirty:    canSave,
                   onPressed:  canSave
                       ? controller.savePurchaseReceipt
                       : null,
@@ -288,7 +282,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                       const SizedBox(height: 0),
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    // ensureItemKey moved to controller (mirrors SE pattern).
                     controller.ensureItemKey(item);
                     return Container(
                       key: item.name != null

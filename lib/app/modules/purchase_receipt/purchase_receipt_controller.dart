@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
@@ -50,7 +51,7 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
-  // ── Sorting / filtering ───────────────────────────────────────────────────
+  // ── Sorting / filtering ───────────────────────────────────────────────
 
   void setSort(String field, String order) {
     sortField.value = field;
@@ -73,7 +74,7 @@ class PurchaseReceiptController extends GetxController {
     fetchPurchaseReceipts(isLoadMore: false, clear: true);
   }
 
-  // ── List fetching ───────────────────────────────────────────────────────────
+  // ── List fetching ──────────────────────────────────────────────────────
 
   Future<void> fetchPurchaseReceipts(
       {bool isLoadMore = false, bool clear = false}) async {
@@ -124,7 +125,7 @@ class PurchaseReceiptController extends GetxController {
     }
   }
 
-  // ── Expanded-row detail cache ──────────────────────────────────────────────
+  // ── Expanded-row detail cache ────────────────────────────────────────────
 
   Future<void> _fetchAndCacheReceiptDetails(String name) async {
     if (_detailedReceiptsCache.containsKey(name)) return;
@@ -198,7 +199,7 @@ class PurchaseReceiptController extends GetxController {
     });
   }
 
-  // ── Create dialog ────────────────────────────────────────────────────────
+  // ── Create dialog ──────────────────────────────────────────────────────
 
   void openCreateDialog() {
     fetchPurchaseOrdersForSelection();
