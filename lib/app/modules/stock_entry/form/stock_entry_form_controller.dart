@@ -117,13 +117,17 @@ class StockEntryFormController extends GetxController
   var currentScannedEan8 = '';
 
   // ── Item feedback ─────────────────────────────────────────────────────────
-  var recentlyAddedItemCode = ''.obs;
+  // Fix #4: canonicalised to recentlyAddedItemName (matches PR)
+  var recentlyAddedItemName = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
   var itemFormKey = GlobalKey<FormState>();
   final ScrollController scrollController = ScrollController();
 
   Timer?  _autoSubmitTimer;
   Worker? _scanWorker;
+
+  // ── Fix #12: isEditable getter (safe default ?? 1 matches PR) ────────────
+  bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
   // ── Domain helpers ────────────────────────────────────────────────────────
 
@@ -600,8 +604,8 @@ class StockEntryFormController extends GetxController
 
   // ── Sheet lifecycle ───────────────────────────────────────────────────────
   //
-  // Step-4: StockEntryItemFormSheet eliminated.
-  // DraggableScrollableSheet builder directly instantiates UniversalItemFormSheet.
+  // Fix #5 / #8: _openItemSheet is now async; uses await instead of
+  // .whenComplete() so cleanup runs in a predictable, awaitable sequence.
 
   void _openNewItemSheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
@@ -622,7 +626,7 @@ class StockEntryFormController extends GetxController
       enabled:       _storageService.getAutoSubmitEnabled(),
       delaySeconds:  _storageService.getAutoSubmitDelay(),
       isSheetOpen:   isItemSheetOpen,
-      isSubmittable: () => (stockEntry.value?.docstatus ?? 1) == 0,
+      isSubmittable: () => isEditable,
       onAutoSubmit:  () async {
         isAddingItem.value = true;
         await Future.delayed(const Duration(milliseconds: 500));
@@ -662,7 +666,7 @@ class StockEntryFormController extends GetxController
         enabled:      _storageService.getAutoSubmitEnabled(),
         delaySeconds: _storageService.getAutoSubmitDelay(),
         isSheetOpen:  isItemSheetOpen,
-        isSubmittable: () => (stockEntry.value?.docstatus ?? 1) == 0,
+        isSubmittable: () => isEditable,
         onAutoSubmit: () async {
           isAddingItem.value = true;
           await Future.delayed(const Duration(milliseconds: 500));
@@ -679,13 +683,17 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  void _openItemSheet(StockEntryItemFormController child) {
+  // Fix #5 / #8: async + await replaces .whenComplete()
+  // Fix #11: expand: false added to DraggableScrollableSheet
+  // Fix #12: isSaveEnabled uses isEditable getter
+  Future<void> _openItemSheet(StockEntryItemFormController child) async {
     isItemSheetOpen.value = true;
-    Get.bottomSheet(
+    await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
+        expand:           false, // Fix #11
         builder: (context, sc) => UniversalItemFormSheet(
           key:              ValueKey(child.editingItemName.value ?? 'new'),
           controller:       child,
@@ -693,7 +701,7 @@ class StockEntryFormController extends GetxController
           onSubmit:         addItem,
           onScan:           null, // SE routes scans at doc level
           itemSubtext:      currentVariantOf,
-          isSaveEnabled:    (stockEntry.value?.docstatus ?? 1) == 0,
+          isSaveEnabled:    isEditable, // Fix #12
           customFields: [
             // 1. Batch No (SE-specific widget with dual-balance chips)
             BatchField(controller: child),
@@ -710,10 +718,10 @@ class StockEntryFormController extends GetxController
         ),
       ),
       isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-      Get.delete<StockEntryItemFormController>();
-    });
+    );
+    // Fix #5 / #8: explicit post-await cleanup (was .whenComplete)
+    isItemSheetOpen.value = false;
+    Get.delete<StockEntryItemFormController>();
   }
 
   // ── Scan routing ──────────────────────────────────────────────────────────
@@ -828,8 +836,9 @@ class StockEntryFormController extends GetxController
 
   // ── Feedback / scroll ─────────────────────────────────────────────────────
 
+  // Fix #4: uses recentlyAddedItemName (canonical name, matches PR)
   void triggerHighlight(String uniqueId) {
-    recentlyAddedItemCode.value = uniqueId;
+    recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
         final key = itemKeys[uniqueId];
@@ -844,7 +853,7 @@ class StockEntryFormController extends GetxController
       });
     });
     Future.delayed(const Duration(seconds: 2), () {
-      recentlyAddedItemCode.value = '';
+      recentlyAddedItemName.value = '';
     });
   }
 
@@ -981,8 +990,10 @@ class StockEntryFormController extends GetxController
 
   // ── Misc ──────────────────────────────────────────────────────────────────
 
+  // Fix #15: isEditable guard backported from PR — prevents dirty flag being
+  // set on submitted documents when warehouse / type observers fire on reload.
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value) isDirty.value = true;
+    if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
   }
 
   Future<void> confirmDiscard() async {
