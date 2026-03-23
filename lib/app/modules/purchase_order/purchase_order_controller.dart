@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class PurchaseOrderController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
@@ -183,10 +184,19 @@ class PurchaseOrderController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch Purchase Orders');
+        GlobalDialog.showError(
+          title: 'Could not load Purchase Orders',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
+          onRetry: () => fetchPurchaseOrders(isLoadMore: isLoadMore, clear: clear),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load Purchase Orders',
+        message: e.toString(),
+        onRetry: () => fetchPurchaseOrders(isLoadMore: isLoadMore, clear: clear),
+      );
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
