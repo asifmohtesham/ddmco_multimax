@@ -108,31 +108,15 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit,
-                                size: 20, color: Colors.blue),
-                            onPressed: () => controller.editItem(item),
-                          ),
-                          // Step 1.3: updated call site — pass item object
-                          // instead of item.name string.
-                          Obx(() {
-                            if ((controller.purchaseReceipt.value?.items
-                                        .length ?? 0) > 1) {
-                              return IconButton(
-                                icon: const Icon(Icons.delete,
-                                    size: 20, color: Colors.red),
-                                // Step 1.3: confirmAndDeleteItem(item)
-                                onPressed: () =>
-                                    controller.confirmAndDeleteItem(item),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          }),
-                        ],
-                      ),
+                      Obx(() {
+                        if (!controller.isEditable) return const SizedBox.shrink();
+                        return IconButton(
+                          icon:    Icon(Icons.delete_outline,
+                              size: 20, color: Colors.red.shade300),
+                          tooltip: 'Remove item',
+                          onPressed: () => controller.confirmAndDeleteItem(item),
+                        );
+                      }),
                     ],
                   ),
                 ),
