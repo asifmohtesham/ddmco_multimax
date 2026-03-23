@@ -311,29 +311,45 @@ class PurchaseOrderFormController extends GetxController {
   }
 
   // ---------------------------------------------------------------------------
-  // Item mutations — called by PurchaseOrderItemFormController
-  // ---------------------------------------------------------------------------
+// Item mutations — called by PurchaseOrderItemFormController.submitItem()
+// ---------------------------------------------------------------------------
 
-  /// Replaces the item list on the current PO and triggers an auto-save.
-  /// NOTE: This method is retained for backward compatibility in IT-D.
-  ///       IT-F will replace it with granular addItemLocally / updateItemLocally.
-  void applyItemsAndSave(List<PurchaseOrderItem> updatedItems) {
+  void addItemLocally(PurchaseOrderItem newItem) {
+    final items = purchaseOrder.value?.items.toList() ?? [];
+    items.add(newItem);
+    _applyItems(items);
+    ensureItemKey(newItem);
+    if (newItem.name != null) triggerHighlight(newItem.name!);
+    _checkForChanges();
+    savePurchaseOrder();
+  }
+
+  void updateItemLocally(PurchaseOrderItem updatedItem) {
+    final items = purchaseOrder.value?.items.toList() ?? [];
+    final idx = items.indexWhere((i) => i.name == updatedItem.name);
+    if (idx == -1) return;
+    items[idx] = updatedItem;
+    _applyItems(items);
+    _checkForChanges();
+    savePurchaseOrder();
+  }
+
+  void _applyItems(List<PurchaseOrderItem> items) {
     final old = purchaseOrder.value!;
     purchaseOrder.value = PurchaseOrder(
       name:            old.name,
       supplier:        supplierController.text,
       transactionDate: dateController.text,
-      grandTotal:      updatedItems.fold(0.0, (sum, i) => sum + i.amount),
+      grandTotal:      items.fold(0.0, (sum, i) => sum + i.amount),
       currency:        old.currency,
       status:          old.status,
       docstatus:       old.docstatus,
       modified:        old.modified,
       creation:        old.creation,
-      items:           updatedItems,
+      items:           items,
     );
-    _checkForChanges();
-    savePurchaseOrder();
   }
+
 
   // ---------------------------------------------------------------------------
   // Scan
@@ -430,7 +446,9 @@ class PurchaseOrderFormController extends GetxController {
       onConfirm: () {
         final items = purchaseOrder.value?.items.toList() ?? [];
         items.removeWhere((i) => i.name == item.name);
-        applyItemsAndSave(items);
+        _applyItems(items);
+        _checkForChanges();
+        savePurchaseOrder();
         GlobalSnackbar.success(message: 'Item removed');
       },
     );

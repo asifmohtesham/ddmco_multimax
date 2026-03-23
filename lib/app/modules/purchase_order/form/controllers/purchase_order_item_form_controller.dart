@@ -7,6 +7,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import '../purchase_order_form_controller.dart';
+import 'package:collection/collection.dart';
 
 class PurchaseOrderItemFormController extends GetxController {
   late PurchaseOrderFormController _parent;
@@ -140,7 +141,7 @@ class PurchaseOrderItemFormController extends GetxController {
       if (valid && _parent.isEditable && storage.getAutoSubmitEnabled()) {
         final delay = storage.getAutoSubmitDelay();
         _autoSubmitTimer = Timer(Duration(seconds: delay), () {
-          if (isSheetValid.value) submitItem();
+          if (isSheetValid.value) submit();
         });
       }
     });
@@ -178,69 +179,50 @@ class PurchaseOrderItemFormController extends GetxController {
     qtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
   }
 
-  void submitItem() {
-    final qty = double.tryParse(qtyController.text) ?? 0;
+  void submit() {
+    final qty          = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return;
-
-    final rate = double.tryParse(rateController.text) ?? 0;
+    final rate         = double.tryParse(rateController.text) ?? 0.0;
     final scheduleDate = scheduleDateController.text;
 
-    final currentItems = _parent.purchaseOrder.value?.items.toList() ?? [];
-
-    final newItem = PurchaseOrderItem(
-      name: currentItemNameKey.value,
-      itemCode: itemCode.value,
-      itemName: itemName.value,
-      qty: qty,
-      receivedQty: 0.0,
-      rate: rate,
-      amount: qty * rate,
-      uom: itemUom.value,
-      scheduleDate: scheduleDate,
-    );
-
     if (currentItemNameKey.value != null) {
-      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey.value);
-      if (index != -1) {
-        final existing = currentItems[index];
-        currentItems[index] = PurchaseOrderItem(
-          name: existing.name,
-          itemCode: existing.itemCode,
-          itemName: existing.itemName,
-          qty: qty,
-          receivedQty: existing.receivedQty,
-          rate: rate,
-          amount: qty * rate,
-          uom: existing.uom,
-          description: existing.description,
-          scheduleDate: scheduleDate,
-        );
-      }
+      // Edit path — preserve all server-side metadata fields
+      final existing = _parent.purchaseOrder.value?.items
+          .firstWhereOrNull((i) => i.name == currentItemNameKey.value);
+      if (existing == null) return;
+      final updated = PurchaseOrderItem(
+        name:         existing.name,
+        itemCode:     existing.itemCode,
+        itemName:     existing.itemName,
+        qty:          qty,
+        receivedQty:  existing.receivedQty,
+        rate:         rate,
+        amount:       qty * rate,
+        uom:          existing.uom,
+        description:  existing.description,
+        scheduleDate: scheduleDate,
+        owner:        existing.owner,
+        creation:     existing.creation,
+        modified:     existing.modified,
+        modifiedBy:   existing.modifiedBy,
+      );
+      _parent.updateItemLocally(updated);
     } else {
-      currentItems.add(newItem);
+      // Add path
+      final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      final newItem = PurchaseOrderItem(
+        name:         uniqueId,
+        itemCode:     itemCode.value,
+        itemName:     itemName.value,
+        qty:          qty,
+        receivedQty:  0.0,
+        rate:         rate,
+        amount:       qty * rate,
+        uom:          itemUom.value,
+        scheduleDate: scheduleDate,
+      );
+      _parent.addItemLocally(newItem);
     }
-
-    _parent.applyItemsAndSave(currentItems);
     Get.back();
-  }
-
-  void deleteItem() {
-    final key = currentItemNameKey.value;
-    if (key == null) return;
-
-    final item = _parent.purchaseOrder.value?.items.firstWhere((i) => i.name == key);
-    if (item == null) return;
-
-    GlobalDialog.showConfirmation(
-      title: 'Remove Item?',
-      message: 'Remove ${item.itemCode} from the order?',
-      onConfirm: () {
-        final currentItems = _parent.purchaseOrder.value?.items.toList() ?? [];
-        currentItems.removeWhere((i) => i.name == key);
-        _parent.applyItemsAndSave(currentItems);
-        Get.back();
-        GlobalSnackbar.success(message: 'Item removed');
-      },
-    );
   }
 }

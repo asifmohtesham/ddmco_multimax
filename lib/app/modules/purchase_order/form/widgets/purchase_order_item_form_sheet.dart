@@ -37,8 +37,15 @@ class PurchaseOrderItemFormSheet extends GetView<PurchaseOrderItemFormController
       onDecrement: () => controller.adjustQty(-1),
 
       isSaveEnabled: controller.isSheetValid.value,
-      onSubmit: controller.submitItem,
-      onDelete: isEditing ? controller.deleteItem : null,
+      onSubmit: controller.submit,
+      onDelete: isEditing
+          ? () => Get.find<PurchaseOrderFormController>()
+          .confirmAndDeleteItem(
+        Get.find<PurchaseOrderFormController>()
+            .purchaseOrder.value!.items
+            .firstWhere((i) => i.name == controller.currentItemNameKey.value),
+      )
+          : null,
 
       customFields: [
         // Reqd By Date
