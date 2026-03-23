@@ -190,6 +190,7 @@ class StockEntryController extends GetxController {
   }
 
   Future<void> fetchStockEntryTypes() async {
+    if (stockEntryTypes.isNotEmpty) return;
     isFetchingTypes.value = true;
     try {
       final response = await _provider.getStockEntryTypes();
@@ -272,7 +273,7 @@ class StockEntryController extends GetxController {
     }
   }
 
-  Future<void> fetchPendingPosUploads() async {
+  Future<void> fetchPosUploadsForSelection() async {
     isFetchingPosUploads.value = true;
     try {
       final kxFuture = _posUploadProvider.getPosUploads(
@@ -426,7 +427,7 @@ class StockEntryController extends GetxController {
   }
 
   void _showPosSelectionBottomSheet() {
-    fetchPendingPosUploads();
+    fetchPosUploadsForSelection();
     Get.bottomSheet(
       SafeArea(
         child: DraggableScrollableSheet(

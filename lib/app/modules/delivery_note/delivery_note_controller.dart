@@ -8,8 +8,10 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -17,6 +19,7 @@ class DeliveryNoteController extends GetxController {
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
   final CustomerProvider _customerProvider = Get.find<CustomerProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -33,26 +36,24 @@ class DeliveryNoteController extends GetxController {
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
-  // Search
   var searchQuery = ''.obs;
 
-  // POS Upload selection
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   var posUploadSearchQuery = ''.obs;
   List<PosUpload> _allFetchedPosUploads = [];
 
-  // Users for filter
   var users = <User>[].obs;
   var isFetchingUsers = false.obs;
 
-  // Warehouses for filter
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // Customers for filter
   var customers = <CustomerEntry>[].obs;
   var isFetchingCustomers = false.obs;
+
+  // Role-gated write access — mirrors StockEntryController
+  var writeRoles = <String>['System Manager'].obs;
 
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
@@ -63,6 +64,7 @@ class DeliveryNoteController extends GetxController {
     fetchUsers();
     fetchWarehouses();
     fetchCustomers();
+    fetchDocTypePermissions();
   }
 
   @override
@@ -70,6 +72,29 @@ class DeliveryNoteController extends GetxController {
     super.onReady();
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Permissions
+  // ---------------------------------------------------------------------------
+
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response = await _apiProvider.getDocument('DocType', 'Delivery Note');
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'};
+        for (var p in perms) {
+          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      print('Error fetching permissions: $e');
     }
   }
 
@@ -141,7 +166,7 @@ class DeliveryNoteController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
         final newNotes =
-            data.map((json) => DeliveryNote.fromJson(json)).toList();
+        data.map((json) => DeliveryNote.fromJson(json)).toList();
         if (newNotes.length < _limit) hasMore.value = false;
         if (isLoadMore) {
           deliveryNotes.addAll(newNotes);
@@ -150,10 +175,19 @@ class DeliveryNoteController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch delivery notes');
+        GlobalDialog.showError(
+          title: 'Could not load Delivery Notes',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
+          onRetry: () => fetchDeliveryNotes(isLoadMore: isLoadMore, clear: clear),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load Delivery Notes',
+        message: e.toString(),
+        onRetry: () => fetchDeliveryNotes(isLoadMore: isLoadMore, clear: clear),
+      );
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -172,8 +206,8 @@ class DeliveryNoteController extends GetxController {
         final List<dynamic> data = response.data['data'];
         users.value = data.map((json) => User.fromJson(json)).toList();
       }
-    } catch (e) {
-      print('Error fetching users: $e');
+    } catch (_) {
+      // non-fatal — picker shows empty list
     } finally {
       isFetchingUsers.value = false;
     }
@@ -188,8 +222,8 @@ class DeliveryNoteController extends GetxController {
         final List<dynamic> data = response.data['data'];
         warehouses.value = data.map((e) => e['name'].toString()).toList();
       }
-    } catch (e) {
-      print('Error fetching warehouses: $e');
+    } catch (_) {
+      // non-fatal — picker shows empty list
     } finally {
       isFetchingWarehouses.value = false;
     }
@@ -205,8 +239,8 @@ class DeliveryNoteController extends GetxController {
         customers.value =
             data.map((json) => CustomerEntry.fromJson(json)).toList();
       }
-    } catch (e) {
-      print('Error fetching customers: $e');
+    } catch (_) {
+      // non-fatal — picker shows empty list
     } finally {
       isFetchingCustomers.value = false;
     }
@@ -221,10 +255,19 @@ class DeliveryNoteController extends GetxController {
         final note = DeliveryNote.fromJson(response.data['data']);
         _detailedNotesCache[name] = note;
       } else {
-        Get.snackbar('Error', 'Failed to fetch note details');
+        GlobalDialog.showError(
+          title: 'Could not load DN details',
+          message: 'Failed to fetch details for $name. '
+              'Check your connection and try again.',
+          onRetry: () => _fetchAndCacheNoteDetails(name),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load DN details',
+        message: e.toString(),
+        onRetry: () => _fetchAndCacheNoteDetails(name),
+      );
     } finally {
       isLoadingDetails.value = false;
     }
@@ -259,6 +302,7 @@ class DeliveryNoteController extends GetxController {
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
       posUploadSearchQuery.value = '';
     } catch (e) {
+      // Selection sheet is still interactive — a snackbar is appropriate here.
       Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
@@ -273,9 +317,9 @@ class DeliveryNoteController extends GetxController {
       final q = query.toLowerCase();
       posUploadsForSelection.value = _allFetchedPosUploads
           .where((u) =>
-              u.name.toLowerCase().contains(q) ||
-              u.customer.toLowerCase().contains(q) ||
-              u.status.toLowerCase().contains(q))
+      u.name.toLowerCase().contains(q) ||
+          u.customer.toLowerCase().contains(q) ||
+          u.status.toLowerCase().contains(q))
           .toList();
     }
   }
@@ -284,7 +328,7 @@ class DeliveryNoteController extends GetxController {
     if (selectedPosUpload != null) {
       try {
         final existingDraft = deliveryNotes.firstWhereOrNull(
-            (n) => n.poNo == selectedPosUpload.name && n.docstatus == 0);
+                (n) => n.poNo == selectedPosUpload.name && n.docstatus == 0);
         if (existingDraft != null) {
           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
             'name': existingDraft.name,
@@ -373,7 +417,7 @@ class DeliveryNoteController extends GetxController {
                         filled: true,
                         fillColor: Colors.grey[100],
                         contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 16),
+                        const EdgeInsets.symmetric(horizontal: 16),
                       ),
                     ),
                   ),

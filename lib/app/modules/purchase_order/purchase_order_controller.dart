@@ -97,7 +97,7 @@ class PurchaseOrderController extends GetxController {
         users.value = data.map((json) => User.fromJson(json)).toList();
       }
     } catch (e) {
-      print('Error fetching users: $e');
+      // non-fatal — picker shows empty list
     } finally {
       isFetchingUsers.value = false;
     }
@@ -113,7 +113,7 @@ class PurchaseOrderController extends GetxController {
         warehouses.value = data.map((e) => e['name'].toString()).toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      // non-fatal — picker shows empty list
     } finally {
       isFetchingWarehouses.value = false;
     }
