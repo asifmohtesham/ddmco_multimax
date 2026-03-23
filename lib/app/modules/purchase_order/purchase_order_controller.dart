@@ -42,6 +42,7 @@ class PurchaseOrderController extends GetxController {
   }
 
   Future<void> fetchSuppliers() async {
+    if (suppliers.isNotEmpty) return;
     if (isFetchingSuppliers.value) return;
     isFetchingSuppliers.value = true;
     try {
