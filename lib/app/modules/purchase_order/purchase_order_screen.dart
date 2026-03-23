@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
+import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
   const PurchaseOrderScreen({super.key});
@@ -232,11 +233,14 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: controller.createNewPO,
-        icon: const Icon(Icons.add),
-        label: const Text('Create'),
-      ),
+      floatingActionButton: Obx(() => RoleGuard(
+        roles: controller.writeRoles.toList(),
+        child: FloatingActionButton.extended(
+          onPressed: controller.openCreateDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Create'),
+        ),
+      )),
     );
   }
 
@@ -316,13 +320,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.docstatus == 0)
-                FilledButton.tonalIcon(
-                  onPressed: () => Get.toNamed(
-                    AppRoutes.PURCHASE_ORDER_FORM,
-                    arguments: {'name': po.name, 'mode': 'edit'},
+                RoleGuard(
+                  roles: controller.writeRoles.toList(),
+                  fallback: const SizedBox.shrink(),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.PURCHASE_ORDER_FORM,
+                      arguments: {'name': po.name, 'mode': 'edit'},
+                    ),
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: const Text('Edit'),
                   ),
-                  icon: const Icon(Icons.edit, size: 18),
-                  label: const Text('Edit'),
                 )
               else
                 FilledButton.tonalIcon(

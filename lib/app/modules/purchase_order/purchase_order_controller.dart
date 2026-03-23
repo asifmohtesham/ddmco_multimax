@@ -62,6 +62,13 @@ class PurchaseOrderController extends GetxController {
     fetchDocTypePermissions();
   }
 
+  @override
+  void onReady() {
+    super.onReady();
+    // onReady fires after the first frame; safe place for deferred work.
+    // Reserved for future use (e.g. deep-link argument handling).
+  }
+
   Future<void> fetchSuppliers() async {
     if (suppliers.isNotEmpty) return;
     if (isFetchingSuppliers.value) return;
@@ -266,7 +273,7 @@ class PurchaseOrderController extends GetxController {
     }
   }
 
-  void createNewPO() {
+  void openCreateDialog() {
     Get.toNamed(AppRoutes.PURCHASE_ORDER_FORM, arguments: {'name': '', 'mode': 'new'});
   }
 }
