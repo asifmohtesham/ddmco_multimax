@@ -3,11 +3,16 @@ import 'package:multimax/app/data/models/supplier_model.dart';
 import 'package:multimax/app/data/providers/supplier_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PurchaseOrderController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
   final SupplierProvider _supplierProvider = Get.find<SupplierProvider>();
+  final UserProvider _userProvider = Get.find<UserProvider>();
+  final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -34,11 +39,21 @@ class PurchaseOrderController extends GetxController {
   var suppliers = <SupplierEntry>[].obs;
   var isFetchingSuppliers = false.obs;
 
+  // Users for filter
+  var users = <User>[].obs;
+  var isFetchingUsers = false.obs;
+
+  // Warehouses for filter
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+
   @override
   void onInit() {
     super.onInit();
     fetchPurchaseOrders();
     fetchSuppliers();
+    fetchUsers();
+    fetchWarehouses();
   }
 
   Future<void> fetchSuppliers() async {
@@ -59,6 +74,37 @@ class PurchaseOrderController extends GetxController {
     }
   }
 
+  Future<void> fetchUsers() async {
+    if (users.isNotEmpty) return;
+    isFetchingUsers.value = true;
+    try {
+      final response = await _userProvider.getUsers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        users.value = data.map((json) => User.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print('Error fetching users: $e');
+    } finally {
+      isFetchingUsers.value = false;
+    }
+  }
+
+  Future<void> fetchWarehouses() async {
+    if (warehouses.isNotEmpty) return;
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _warehouseProvider.getWarehouses();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        warehouses.value = data.map((e) => e['name'].toString()).toList();
+      }
+    } catch (e) {
+      print('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
+  }
 
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
