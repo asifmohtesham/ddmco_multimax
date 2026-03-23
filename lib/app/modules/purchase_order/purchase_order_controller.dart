@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/supplier_model.dart';
 import 'package:multimax/app/data/providers/supplier_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
@@ -14,6 +15,7 @@ class PurchaseOrderController extends GetxController {
   final SupplierProvider _supplierProvider = Get.find<SupplierProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -47,6 +49,8 @@ class PurchaseOrderController extends GetxController {
   // Warehouses for filter
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
+  // Role-gated write access — mirrors StockEntryController
+  var writeRoles = <String>['System Manager'].obs;
 
   @override
   void onInit() {
@@ -55,6 +59,7 @@ class PurchaseOrderController extends GetxController {
     fetchSuppliers();
     fetchUsers();
     fetchWarehouses();
+    fetchDocTypePermissions();
   }
 
   Future<void> fetchSuppliers() async {
@@ -104,6 +109,25 @@ class PurchaseOrderController extends GetxController {
       print('Error fetching warehouses: $e');
     } finally {
       isFetchingWarehouses.value = false;
+    }
+  }
+
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response = await _apiProvider.getDocument('DocType', 'Purchase Order');
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'};
+        for (var p in perms) {
+          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      print('Error fetching permissions: $e');
     }
   }
 
