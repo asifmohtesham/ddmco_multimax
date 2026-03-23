@@ -138,29 +138,67 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        controller: controller.postingDateController,
-                        readOnly: !isEditable,
-                        decoration: const InputDecoration(
-                          labelText: 'Posting Date',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.calendar_today),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 14),
+                      child: GestureDetector(
+                        onTap: isEditable
+                            ? () async {
+                          final now    = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: now,
+                            firstDate: DateTime(now.year - 5),
+                            lastDate:  DateTime(now.year + 5),
+                          );
+                          if (picked != null) {
+                            controller.postingDateController.text =
+                            '${picked.year.toString().padLeft(4, '0')}-'
+                                '${picked.month.toString().padLeft(2, '0')}-'
+                                '${picked.day.toString().padLeft(2, '0')}';
+                          }
+                        }
+                            : null,
+                        child: AbsorbPointer(
+                          child: TextFormField(
+                            controller: controller.postingDateController,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Posting Date',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.calendar_today),
+                              contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: TextFormField(
-                        controller: controller.postingTimeController,
-                        readOnly: !isEditable,
-                        decoration: const InputDecoration(
-                          labelText: 'Posting Time',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.access_time),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 14),
+                      child: GestureDetector(
+                        onTap: isEditable
+                            ? () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          );
+                          if (picked != null) {
+                            controller.postingTimeController.text =
+                            '${picked.hour.toString().padLeft(2, '0')}:'
+                                '${picked.minute.toString().padLeft(2, '0')}:00';
+                          }
+                        }
+                            : null,
+                        child: AbsorbPointer(
+                          child: TextFormField(
+                            controller: controller.postingTimeController,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Posting Time',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.access_time),
+                              contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -273,25 +311,71 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
         Expanded(
           child: items.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
-              : ListView.separated(
+              : ListView.builder(
                   controller: controller.scrollController,
                   padding:
                       const EdgeInsets.only(top: 8.0, bottom: 80.0),
                   itemCount: items.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 0),
                   itemBuilder: (context, index) {
                     final item = items[index];
                     controller.ensureItemKey(item);
-                    return Container(
-                      key: item.name != null
-                          ? controller.itemKeys[item.name]
-                          : null,
-                      child: PurchaseReceiptItemCard(
-                          item: item, index: index),
-                    );
+
+                    return Obx(() {
+                      final isLoadingThis =
+                          controller.isLoadingItemEdit.value &&
+                              controller.loadingForItemName.value == item.name;
+
+                      return Dismissible(
+                        key:       ValueKey(item.name ?? index),
+                        direction: controller.isEditable
+                            ? DismissDirection.endToStart
+                            : DismissDirection.none,
+                        confirmDismiss: (_) async {
+                          if (controller.isEditable) {
+                            controller.confirmAndDeleteItem(item);
+                          }
+                          return false;
+                        },
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding:   const EdgeInsets.only(right: 20),
+                          color:     Colors.red.shade400,
+                          child:     const Icon(Icons.delete_outline,
+                              color: Colors.white, size: 28),
+                        ),
+                        child: Stack(
+                          children: [
+                            Container(
+                              key: item.name != null
+                                  ? controller.itemKeys[item.name]
+                                  : null,
+                              child: PurchaseReceiptItemCard(
+                                item:  item,
+                                index: index,
+                              ),
+                            ),
+                            if (isLoadingThis)
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color:        Colors.white.withOpacity(0.65),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    });
                   },
-                ),
+          ),
         ),
         if (controller.isEditable)
           Obx(() => BarcodeInputWidget(
