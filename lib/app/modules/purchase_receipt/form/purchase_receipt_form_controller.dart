@@ -49,6 +49,8 @@ class PurchaseReceiptFormController extends GetxController
 
   // Sheet-level loading flag (separate from isSaving)
   var isAddingItem = false.obs;
+  var isLoadingItemEdit  = false.obs;
+  var loadingForItemName = RxnString();
 
   // ── Save result state machine (mirrors SE) ──────────────────────────────
   var saveResult      = SaveResult.idle.obs;
@@ -416,14 +418,22 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  void editItem(PurchaseReceiptItem item) {
-    _openItemSheet(
-      itemCode:    item.itemCode,
-      itemName:    item.itemName ?? '',
-      variantOf:   item.customVariantOf,
-      uom:         item.uom,
-      editingItem: item,
-    );
+  Future<void> editItem(PurchaseReceiptItem item) async {
+    if (!isEditable) return;
+    isLoadingItemEdit.value  = true;
+    loadingForItemName.value = item.name;
+    try {
+      await _openItemSheet(
+        itemCode:    item.itemCode,
+        itemName:    item.itemName ?? '',
+        variantOf:   item.customVariantOf,
+        uom:         item.uom,
+        editingItem: item,
+      );
+    } finally {
+      isLoadingItemEdit.value  = false;
+      loadingForItemName.value = null;
+    }
   }
 
   void confirmAndDeleteItem(PurchaseReceiptItem item) {
@@ -436,12 +446,13 @@ class PurchaseReceiptFormController extends GetxController
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
       message: 'Remove ${item.itemCode} from the receipt?',
-      onConfirm: () {
+      onConfirm: () async {
         final currentItems = purchaseReceipt.value?.items.toList() ?? [];
         currentItems.removeWhere((i) => i.name == item.name);
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
+        await savePurchaseReceipt();
       },
     );
   }
