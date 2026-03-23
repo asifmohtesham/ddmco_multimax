@@ -22,7 +22,7 @@ class PurchaseOrderController extends GetxController {
   final _detailedPoCache = <String, PurchaseOrder>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
-  var sortField = 'modified'.obs;
+  var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
   /// Local text-search query — mirrors the pattern in StockEntryController.

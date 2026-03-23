@@ -107,6 +107,7 @@ class StockEntryController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    searchQuery.value = '';
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
