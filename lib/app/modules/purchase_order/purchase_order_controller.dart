@@ -214,9 +214,20 @@ class PurchaseOrderController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final po = PurchaseOrder.fromJson(response.data['data']);
         _detailedPoCache[name] = po;
+      } else {
+        GlobalDialog.showError(
+          title: 'Could not load PO details',
+          message: 'Failed to fetch details for $name. '
+              'Check your connection and try again.',
+          onRetry: () => _fetchAndCachePoDetails(name),
+        );
       }
     } catch (e) {
-      print('Error details: $e');
+      GlobalDialog.showError(
+        title: 'Could not load PO details',
+        message: e.toString(),
+        onRetry: () => _fetchAndCachePoDetails(name),
+      );
     } finally {
       isLoadingDetails.value = false;
     }
