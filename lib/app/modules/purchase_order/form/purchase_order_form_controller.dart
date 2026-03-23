@@ -15,6 +15,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider       = Get.find<PurchaseOrderProvider>();
@@ -152,7 +153,7 @@ class PurchaseOrderFormController extends GetxController {
   void _onRawScan(String code) {
     if (code.isEmpty) return;
     // Only process scans when this route is active.
-    if (Get.currentRoute != '/purchase-order-form') return;
+    if (Get.currentRoute != AppRoutes.PURCHASE_ORDER_FORM) return;
     final clean = code.trim();
     barcodeController.text = clean;
     scanBarcode(clean);
