@@ -92,7 +92,26 @@ class PurchaseOrderItemCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Placeholder for future actions (Edit/Delete) if implemented in Controller
+                  Obx(() {
+                    final isLoadingThis =
+                        controller.isLoadingItemEdit.value &&
+                            controller.loadingForItemName.value == item.name;
+                    if (isLoadingThis) {
+                      return const SizedBox(
+                        width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+                    }
+                    if (controller.isEditable) {
+                      return IconButton(
+                        icon:    const Icon(Icons.delete_outline, size: 20),
+                        color:   Colors.red.shade300,
+                        tooltip: 'Remove item',
+                        onPressed: () => controller.confirmAndDeleteItem(item),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
                 ],
               ),
             ),

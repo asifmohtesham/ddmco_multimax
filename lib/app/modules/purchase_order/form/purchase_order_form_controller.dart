@@ -9,6 +9,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/purchase_order/form/controllers/purchase_order_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
@@ -64,6 +65,9 @@ class PurchaseOrderFormController extends GetxController {
   String _originalStatus = 'Draft';
 
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
+
+  var saveResult      = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
 
   // ---------------------------------------------------------------------------
   // Header field controllers
@@ -139,6 +143,7 @@ class PurchaseOrderFormController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
     supplierController.dispose();
     dateController.dispose();
     barcodeController.dispose();
@@ -257,8 +262,112 @@ class PurchaseOrderFormController extends GetxController {
   }
 
   // ---------------------------------------------------------------------------
+  // Supplier selection sheet — IT-G: moved from screen (SRP)
+  // ---------------------------------------------------------------------------
+
+  void openSupplierSelectionSheet() {
+    final searchController    = TextEditingController();
+    final filteredSuppliers   = RxList<String>(suppliers.toList());
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize:     0.5,
+          maxChildSize:     0.95,
+          expand:           false,
+          builder: (context, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color:        Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Supplier',
+                          style: Get.textTheme.titleLarge),
+                      IconButton(
+                          onPressed: () => Get.back(),
+                          icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    decoration: const InputDecoration(
+                      labelText:     'Search Suppliers',
+                      prefixIcon:    Icon(Icons.search),
+                      border:        OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      filteredSuppliers.assignAll(val.isEmpty
+                          ? suppliers
+                          : suppliers.where(
+                              (s) => s.toLowerCase().contains(val.toLowerCase())));
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (isFetchingSuppliers.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (filteredSuppliers.isEmpty) {
+                        return const Center(child: Text('No suppliers found'));
+                      }
+                      return ListView.separated(
+                        controller:    scrollController,
+                        itemCount:     filteredSuppliers.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final supplier  = filteredSuppliers[index];
+                          final isSelected =
+                              supplier == supplierController.text;
+                          return ListTile(
+                            title: Text(supplier,
+                                style: TextStyle(
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal)),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                color: Get.theme.primaryColor)
+                                : null,
+                            onTap: () {
+                              supplierController.text = supplier;
+                              Get.back();
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    ).whenComplete(searchController.dispose);
+  }
+
+  // ---------------------------------------------------------------------------
   // Dirty-check logic
   // ---------------------------------------------------------------------------
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
 
   void _checkForChanges() {
     if (purchaseOrder.value == null) return;
@@ -540,6 +649,7 @@ class PurchaseOrderFormController extends GetxController {
         purchaseOrder.value = saved;
         _updateOriginalState(saved);
         GlobalSnackbar.success(message: 'Purchase Order Saved');
+        _setSaveResult(SaveResult.success);
       } else {
         GlobalDialog.showError(
           title:   'Could not save Purchase Order',
@@ -547,6 +657,7 @@ class PurchaseOrderFormController extends GetxController {
               'Check your connection and try again.',
           onRetry: savePurchaseOrder,
         );
+        _setSaveResult(SaveResult.error);
       }
     } catch (e) {
       GlobalDialog.showError(
@@ -554,6 +665,7 @@ class PurchaseOrderFormController extends GetxController {
         message: e.toString(),
         onRetry: savePurchaseOrder,
       );
+      _setSaveResult(SaveResult.error);
     } finally {
       isSaving.value = false;
     }
