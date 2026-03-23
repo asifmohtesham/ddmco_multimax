@@ -195,3 +195,116 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
       GlobalKey? key,
       ) {
     return Obx(() {
+      // ── IT-G: highlight recently added/edited card ─────────────────────
+      final isHighlighted =
+          controller.recentlyAddedItemName.value == item.name;
+
+      // ── IT-G: per-item tap-loading indicator ───────────────────────────
+      final isLoadingThis =
+          controller.isLoadingItemEdit.value &&
+              controller.loadingForItemName.value == item.name;
+
+      return Dismissible(
+        // ── IT-G: swipe-to-delete — mirrors SE/DN ─────────────────────
+        key:       ValueKey(item.name ?? index),
+        direction: controller.isEditable
+            ? DismissDirection.endToStart
+            : DismissDirection.none,
+        confirmDismiss: (_) async {
+          bool confirmed = false;
+          await Future.microtask(() {
+            controller.confirmAndDeleteItem(item);
+            confirmed = false; // dialog owns the actual removal
+          });
+          return confirmed; // always false — dialog handles state
+        },
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding:   const EdgeInsets.only(right: 20),
+          color:     Colors.red.shade400,
+          child:     const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+        ),
+        child: AnimatedContainer(
+          key:      key,
+          duration: const Duration(milliseconds: 400),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isHighlighted
+                ? [
+              BoxShadow(
+                color:       Colors.blue.withOpacity(0.35),
+                blurRadius:  10,
+                spreadRadius: 2,
+              )
+            ]
+                : [],
+          ),
+          child: Stack(
+            children: [
+              InkWell(
+                onTap: controller.isEditable
+                    ? () => controller.editItem(item)
+                    : null,
+                child: PurchaseOrderItemCard(
+                  item:  item,
+                  index: index,
+                ),
+              ),
+
+              // ── IT-G: per-item loading overlay ─────────────────────────
+              if (isLoadingThis)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color:        Colors.white.withOpacity(0.65),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 24, height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────
+
+  Widget _buildInfoRow(
+      String label,
+      String value, {
+        IconData? icon,
+        bool isBold = false,
+      }) {
+    return Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 20, color: Colors.grey),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize:   16,
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
