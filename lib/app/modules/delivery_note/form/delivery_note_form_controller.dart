@@ -19,12 +19,15 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/controller_feedback_mixin.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 // Child sheet controller
 import 'controllers/delivery_note_item_form_controller.dart';
 
-// ── Step-4: sheet widget now inlined directly ────────────────────────────────
+// ── Step-4: sheet widget now inlined directly ────────────────────────────────────────────
+class DeliveryNoteFormController extends GetxController
+    with OptimisticLockingMixin, ControllerFeedbackMixin {
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_serial_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
@@ -32,7 +35,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
 // (delivery_note_item_form_sheet.dart is now a stub re-export)
 
 class DeliveryNoteFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, ControllerFeedbackMixin {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -46,7 +49,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ──────────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -54,7 +57,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine (mirrors SE/PR) ─────────────────────────────
+  // ── Save result state machine (mirrors SE/PR) ─────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -79,12 +82,12 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ──────────────────────────────────
+  // ── Sheet-open + item-edit loading flags ─────────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ─────────────────────────────────────────────────────────────
+  // ── Warehouse ────────────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
@@ -92,15 +95,13 @@ class DeliveryNoteFormController extends GetxController
   // ── Item warehouse (derived from rack — still needed by child controller) ──
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ──────────────────────────────────────────────────
+  // ── Customer-level error ─────────────────────────────────────────────────────
   var customerError = RxnString();
 
-  // ── S1: EAN scan context for inside-sheet scan routing ────────────────────
-  // Renamed from currentScannedEan8 → currentScannedEan to match the base
-  // field name promoted in ItemSheetControllerBase (Standardisation S1).
+  // ── S1: EAN scan context for inside-sheet scan routing ────────────────────────
   String currentScannedEan = '';
 
-  // ── Persistent scan worker ────────────────────────────────────────────────
+  // ── Persistent scan worker ────────────────────────────────────────────────────
   Worker? _scanWorker;
 
   @override
@@ -123,13 +124,14 @@ class DeliveryNoteFormController extends GetxController
   void onClose() {
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
+    disposeFeedback(); // ControllerFeedbackMixin — cancels auto-dismiss timer
     log('[DN:onClose] _scanWorker disposed', name: 'DN');
     barcodeController.dispose();
     scrollController.dispose();
     super.onClose();
   }
 
-  // ── Raw scan entry point ───────────────────────────────────────────────────
+  // ── Raw scan entry point ──────────────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
         name: 'DN');
@@ -149,7 +151,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ──────────────────────────────────────────────────────────────
+  // ── PopScope ────────────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -159,7 +161,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Dirty tracking ────────────────────────────────────────────────────────
+  // ── Dirty tracking ───────────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -187,7 +189,7 @@ class DeliveryNoteFormController extends GetxController
     isDirty.value = false;
   }
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
+  // ── Data fetching ───────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -244,21 +246,24 @@ class DeliveryNoteFormController extends GetxController
           await fetchPosUpload(note.poNo!);
         }
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch delivery note');
+        // Post-load error: overlay may not be live — use InlineBanner.
+        showBanner('Failed to fetch delivery note', type: BannerType.error);
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load data: $e');
+      // Post-load error: overlay may not be live — use InlineBanner.
+      showBanner('Failed to load data: $e', type: BannerType.error);
     } finally {
       isLoading.value = false;
     }
   }
 
-  // ── OptimisticLockingMixin contract ───────────────────────────────────────
+  // ── OptimisticLockingMixin contract ───────────────────────────────────────────────
   @override
   Future<void> reloadDocument() async {
     await fetchDeliveryNote();
     isStale.value = false;
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    // Fires after fetchDeliveryNote() completes — route is fully settled.
+    showBanner('Document reloaded successfully', type: BannerType.success);
   }
 
   Future<void> fetchPosUpload(String posName) async {
@@ -272,30 +277,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Item sheet orchestration ───────────────────────────────────────────────
-  //
-  // Step-4: DeliveryNoteItemBottomSheet is eliminated.
-  // P1-B:  onSubmit lambda now owns the full save coordinator:
-  //          child.submitWithFeedback()  →  isDirty  →  saveDeliveryNote()
-  //        child.submit() itself no longer calls saveDeliveryNote().
-  //
-  // Fix (Navigator.pop): Get.back() after saveDeliveryNote() caused the
-  // "No Overlay widget found" crash because GetX's SnackbarController
-  // looks up the overlay after Get.back() has already popped the route.
-  // Instead we capture the DraggableScrollableSheet builder context and
-  // call Navigator.of(sheetContext).pop() — this dismisses only the
-  // bottom-sheet route without disturbing GetX's overlay chain, so the
-  // subsequent GlobalSnackbar.success() always finds a live overlay.
-  //
-  // Fix (LateInitializationError on auto-submit): The auto-submit path
-  // previously called Get.back() after saveDeliveryNote(). Get.back()
-  // internally calls GetNavigation.closeCurrentSnackbar() which accesses
-  // SnackbarController.controller — a `late` field that is never
-  // initialised when a prior snackbar failed to attach to the overlay
-  // (e.g. right after the POS Upload sheet closes). This produced:
-  //   LateInitializationError: Field 'controller1647359576' has not been initialized
-  // Fix: use Get.key.currentState?.pop() (root navigator) guarded by
-  // canPop(), which bypasses GetX snackbar machinery entirely.
+  // ── Item sheet orchestration ──────────────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -305,9 +287,9 @@ class DeliveryNoteFormController extends GetxController
   }) async {
     if (editingItem != null) {
       if (editingItem.batchNo != null && editingItem.batchNo!.contains('-')) {
-        currentScannedEan = editingItem.batchNo!.split('-').first; // S1
+        currentScannedEan = editingItem.batchNo!.split('-').first;
       } else {
-        currentScannedEan = ''; // S1
+        currentScannedEan = '';
       }
     }
 
@@ -319,7 +301,7 @@ class DeliveryNoteFormController extends GetxController
       batchNo:       batchNo,
       initialMaxQty: initialMaxQty,
       editingItem:   editingItem,
-      scannedEan8:   currentScannedEan, // S1
+      scannedEan8:   currentScannedEan,
     );
 
     child.setupAutoSubmit(
@@ -328,11 +310,6 @@ class DeliveryNoteFormController extends GetxController
       isSheetOpen:  isItemSheetOpen,
       isSubmittable: () => (deliveryNote.value?.docstatus ?? 1) == 0,
       onAutoSubmit: () async {
-        // FIX (LateInitializationError): replaced Get.back() with a direct
-        // root-navigator pop guarded by canPop(). Get.back() calls
-        // closeCurrentSnackbar() which dereferences a `late` AnimationController
-        // inside SnackbarController that was never initialised when a previous
-        // snackbar failed to attach to the overlay.
         isAddingItem.value = true;
         try {
           await child.submit();
@@ -341,7 +318,6 @@ class DeliveryNoteFormController extends GetxController
         } finally {
           isAddingItem.value = false;
         }
-        // Safe pop: bypasses GetX snackbar machinery entirely.
         final nav = Get.key.currentState;
         if (nav != null && nav.canPop()) {
           nav.pop();
@@ -358,11 +334,6 @@ class DeliveryNoteFormController extends GetxController
         minChildSize:     0.4,
         maxChildSize:     0.95,
         builder: (context, sc) {
-          // ── P1-B: onSubmit coordinator ───────────────────────────────────
-          // submitWithFeedback() drives idle→loading→success animation (700 ms)
-          // then returns true. Navigator.of(context).pop() is called only on
-          // success, after the animation delay, so the overlay is fully settled
-          // before any snackbar fires.
           Future<void> onSubmit() async {
             isAddingItem.value = true;
             try {
@@ -370,8 +341,6 @@ class DeliveryNoteFormController extends GetxController
               if (saved) {
                 isDirty.value = true;
                 await saveDeliveryNote();
-                // Use Navigator.of(context).pop() instead of Get.back() to
-                // avoid the "No Overlay widget found" snackbar crash.
                 if (context.mounted) {
                   Navigator.of(context).pop();
                 }
@@ -387,19 +356,16 @@ class DeliveryNoteFormController extends GetxController
             onSubmit:         onSubmit,
             onScan:           (code) => scanBarcode(code),
             customFields: [
-              // 1. Invoice Serial No — POS Upload flow only
               SharedSerialField(
                 controller:  child,
                 accentColor: Colors.blueGrey,
               ),
-              // 2. Batch No
               SharedBatchField(
                 c:           child,
                 accentColor: Colors.purple,
                 editMode:    true,
                 fieldKey:    'dn_batch_field',
               ),
-              // 3. Rack
               SharedRackField(
                 c:           child,
                 accentColor: Colors.orange,
@@ -419,7 +385,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Public entry points ────────────────────────────────────────────────────
+  // ── Public entry points ───────────────────────────────────────────────────────────
   Future<void> editItem(DeliveryNoteItem item) async {
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
@@ -464,7 +430,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ──────────────────────────────────────────────────────────────
+  // ── Item CRUD ──────────────────────────────────────────────────────────────────────
   void updateItemLocally(
       String itemNameID, double qty, String rack,
       String? batchNo, String? invoiceSerial) {
@@ -527,10 +493,11 @@ class DeliveryNoteFormController extends GetxController
     items.remove(item);
     deliveryNote.update((val) => val?.items.assignAll(items));
     _checkForChanges();
-    GlobalSnackbar.success(message: 'Item removed');
+    // Fires in Scaffold body context — use InlineBanner (overlay not guaranteed).
+    showBanner('Item removed', type: BannerType.success);
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -559,22 +526,26 @@ class DeliveryNoteFormController extends GetxController
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
         _setSaveResult(SaveResult.success);
-        GlobalSnackbar.success(message: 'Delivery Note Saved');
+        // Fires after Navigator.of(context).pop() has closed the item sheet.
+        // The overlay subtree is deactivated at this point — InlineBanner only.
+        showBanner('Delivery Note Saved', type: BannerType.success);
       } else {
         _setSaveResult(SaveResult.error);
-        GlobalSnackbar.error(message:
-            'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
+        showBanner(
+          'Failed to save: ${response.data['exception'] ?? 'Unknown error'}',
+          type: BannerType.error,
+        );
       }
     } on DioException catch (e) {
       if (handleVersionConflict(e)) {
-        // handled by OptimisticLockingMixin
+        // Handled by OptimisticLockingMixin — shows GlobalDialog, not a banner.
       } else {
         _setSaveResult(SaveResult.error);
         final msg = e.response?.data.toString() ?? e.message ?? '';
         if (msg.contains('Customer') && msg.contains('not found')) {
           customerError.value = 'Customer not found in the system';
         }
-        GlobalSnackbar.error(message: 'Save failed: ${e.message}');
+        showBanner('Save failed: ${e.message}', type: BannerType.error);
       }
     } catch (e) {
       _setSaveResult(SaveResult.error);
@@ -582,13 +553,13 @@ class DeliveryNoteFormController extends GetxController
       if (msg.contains('Customer') && msg.contains('not found')) {
         customerError.value = 'Customer not found in the system';
       }
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      showBanner('Save failed: $e', type: BannerType.error);
     } finally {
       isSaving.value = false;
     }
   }
 
-  // ── UX helpers ────────────────────────────────────────────────────────────
+  // ── UX helpers ───────────────────────────────────────────────────────────────────
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value   = serial;
@@ -629,15 +600,17 @@ class DeliveryNoteFormController extends GetxController
         expandedInvoice.value == key ? '' : key;
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────
+  // ── Scan routing ──────────────────────────────────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
+      // Sheet is not open here — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(
           message: 'Missing Customer: Please select a customer before scanning.');
       return false;
     }
     if (customerError.value != null) {
+      // Sheet is not open here — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(
           message: 'Invalid Customer: ${customerError.value}');
       return false;
@@ -656,7 +629,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── INSIDE-SHEET PATH ───────────────────────────────────────────────────
+    // ── INSIDE-SHEET PATH ────────────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
           name: 'DN');
@@ -674,7 +647,6 @@ class DeliveryNoteFormController extends GetxController
       }
 
       final child = Get.find<DeliveryNoteItemFormController>();
-      // S1: renamed currentScannedEan8 → currentScannedEan (base field)
       final String? contextEan =
           child.currentScannedEan.isNotEmpty ? child.currentScannedEan : null;
 
@@ -701,12 +673,14 @@ class DeliveryNoteFormController extends GetxController
           child.validateBatch(candidateBatch);
         } else {
           log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty', name: 'DN');
+          // Sheet is open — overlay is live — GlobalSnackbar is safe.
           GlobalSnackbar.error(
               message: 'Scan the item EAN first, then scan the batch suffix.');
         }
       } else if (result.type == ScanType.error) {
         log('[DN:scanBarcode] CHECKPOINT-5I ScanType.error: ${result.message}',
             name: 'DN');
+        // Sheet is open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       } else {
         log('[DN:scanBarcode] CHECKPOINT-5J unhandled type=${result.type}',
@@ -715,7 +689,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ──────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────────────
     log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
         name: 'DN');
     isScanning.value = true;
@@ -725,7 +699,6 @@ class DeliveryNoteFormController extends GetxController
           name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
-        // S1: renamed currentScannedEan8 → currentScannedEan (base field)
         if (result.rawCode.contains('-') &&
             !result.rawCode.startsWith('SHIPMENT')) {
           currentScannedEan = result.rawCode.split('-').first;
@@ -773,15 +746,18 @@ class DeliveryNoteFormController extends GetxController
         );
       } else if (result.type == ScanType.multiple) {
         log('[DN:scanBarcode] CHECKPOINT-6D ScanType.multiple', name: 'DN');
+        // Sheet is not open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.warning(
             message: 'Multiple items found. Please search manually.');
       } else {
         log('[DN:scanBarcode] CHECKPOINT-6E no item found: ${result.message}',
             name: 'DN');
+        // Sheet is not open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       log('[DN:scanBarcode] CHECKPOINT-6F exception: $e', name: 'DN');
+      // Sheet is not open — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
@@ -789,7 +765,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Grouped items + filter helpers ────────────────────────────────────────
+  // ── Grouped items + filter helpers ──────────────────────────────────────────────────
   Map<String, List<DeliveryNoteItem>> get groupedItems {
     if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
       return {};
