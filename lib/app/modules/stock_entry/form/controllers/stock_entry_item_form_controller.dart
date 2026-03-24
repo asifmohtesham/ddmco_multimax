@@ -36,6 +36,11 @@ import '../stock_entry_form_controller.dart';
 ///       (isValidatingSourceRack / isValidatingTargetRack) so the Save button
 ///       is correctly disabled while rack network calls are in-flight.
 ///
+/// Standardisation S1:
+///   • [isBatchReadOnly]     — removed local field; use base.
+///   • [currentScannedEan]   — removed local currentScannedEan8; use base field.
+///   • [validateBatchOnInit] — removed local duplicate; use base method.
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
 ///   sheet closes → Get.delete<StockEntryItemFormController>()
@@ -71,10 +76,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var validationMaxQty      = 0.0.obs; // MR cap
   var isLoadingBatchBalance = false.obs;
   var isLoadingRackBalance  = false.obs;
-  var isBatchReadOnly       = false.obs;
+  // isBatchReadOnly → promoted to base (S1)
 
-  // ── Scan context ──────────────────────────────────────────────────────────
-  String currentScannedEan8 = '';
+  // currentScannedEan8 → promoted to base as currentScannedEan (S1)
 
   // ── SE dirty-check snapshots (source + target rack extend base) ───────────
   String _snapshotSourceRack = '';
@@ -95,12 +99,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
 
   // ── P1-C: isSheetLoading override ────────────────────────────────────────
-  //
-  // Base merges: isValidatingBatch || isAddingItemFlag.
-  // SE also validates source + target rack via separate network calls,
-  // neither of which was reflected in the base getter.
-  // Adding both flags here ensures the Save button is disabled while any
-  // of the four async validation paths is in-flight.
 
   @override
   bool get isSheetLoading =>
@@ -154,11 +152,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     List<Map<String, dynamic>> mrReferenceItems = const [],
   }) {
     _parent = parent;
-    currentScannedEan8 = scannedEan8;
+    currentScannedEan = scannedEan8; // S1: base field (was currentScannedEan8)
 
-    // ── Step-2: wire isAddingItemFlag to parent ──────────────────────────
-    // isScanning and sheetScanController are intentionally NOT set —
-    // SE routes all scans at the document level, not inside the item sheet.
     isAddingItemFlag = _parent.isAddingItem;
 
     itemCode.value = code;
@@ -183,7 +178,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validationMaxQty.value       = 0.0;
     isLoadingBatchBalance.value  = false;
     isLoadingRackBalance.value   = false;
-    isBatchReadOnly.value        = false;
+    isBatchReadOnly.value        = false; // S1: base field
     sourceRackController.clear();
     targetRackController.clear();
 
@@ -252,7 +247,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     isBatchValid.value        = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value     = isBatchValid.value;
+    isBatchReadOnly.value     = isBatchValid.value; // S1: base field
     isSourceRackValid.value   = item.rack    != null && item.rack!.isNotEmpty;
     isTargetRackValid.value   = item.toRack  != null && item.toRack!.isNotEmpty;
     itemSourceWarehouse.value = item.sWarehouse;
@@ -261,7 +256,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     derivedTargetWarehouse.value = item.tWarehouse;
 
     if (item.batchNo != null && item.batchNo!.contains('-')) {
-      currentScannedEan8 = item.batchNo!.split('-').first;
+      currentScannedEan = item.batchNo!.split('-').first; // S1: base field
     }
 
     log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
@@ -284,10 +279,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     isBatchValid.value    = batchNo != null && batchNo.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value;
+    isBatchReadOnly.value = isBatchValid.value; // S1: base field
 
     if (isBatchValid.value) {
-      validateBatchOnInit(batchNo!);
+      validateBatchOnInit(batchNo!); // S1: base method
     }
 
     log('[SE:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
@@ -424,6 +419,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateBatch (SE-specific override) ──────────────────────────────────
+  // validateBatchOnInit → removed; use base method (S1)
 
   @override
   Future<void> validateBatch(String batch) async {
@@ -433,8 +429,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (batch.contains('-')) {
       final parts = batch.split('-');
       if (parts.length >= 2 && parts[0] == parts[1]) {
-        isBatchValid.value = false;
-        batchError.value   = 'Invalid Batch: Batch ID cannot match EAN';
+        isBatchValid.value    = false;
+        isBatchReadOnly.value = false; // S1: base field
+        batchError.value      = 'Invalid Batch: Batch ID cannot match EAN';
         validateSheet();
         return;
       }
@@ -453,7 +450,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           (response.data['data'] as List).isNotEmpty) {
         final batchData = response.data['data'][0];
         isBatchValid.value    = true;
-        isBatchReadOnly.value = true;
+        isBatchReadOnly.value = true; // S1: base field
         final double pkgQty =
             (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
@@ -479,11 +476,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
                   '${batchBalance.value.toStringAsFixed(0)} in warehouse');
         }
       } else {
-        isBatchValid.value = false;
+        isBatchValid.value    = false;
+        isBatchReadOnly.value = false; // S1: base field
         GlobalSnackbar.error(message: 'Batch not found for this item');
       }
     } catch (e) {
-      isBatchValid.value = false;
+      isBatchValid.value    = false;
+      isBatchReadOnly.value = false; // S1: base field
       GlobalSnackbar.error(message: 'Failed to validate batch: $e');
     } finally {
       isValidatingBatch.value = false;
@@ -491,13 +490,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  void validateBatchOnInit(String batch) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => validateBatch(batch));
-  }
-
   void resetBatchValidation() {
     isBatchValid.value    = false;
-    isBatchReadOnly.value = false;
+    isBatchReadOnly.value = false; // S1: base field
     batchError.value      = null;
     validateSheet();
   }
