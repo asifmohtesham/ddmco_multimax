@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -22,44 +24,48 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
-            title: Obx(() {
-              final slip = controller.packingSlip.value;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(slip?.name ?? 'Loading...', style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                  if (slip?.customPoNo != null)
-                    Text(slip!.customPoNo!, style: const TextStyle(fontSize: 16)),
-                ],
-              );
-            }),
-            bottom: const TabBar(
-              tabs: [
-                Tab(text: 'Details'),
-                Tab(text: 'Items'),
+          appBar: Obx(() {
+            final slip = controller.packingSlip.value;
+
+            // Two-line title: doc name (small) above PO number (bold)
+            final titleWidget = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  slip?.name ?? 'Loading...',
+                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                ),
+                if (slip?.customPoNo != null)
+                  Text(
+                    slip!.customPoNo!,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
               ],
-            ),
-            actions: [
-              Obx(() {
-                if (controller.isSaving.value) {
-                  return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)))
-                  );
-                }
+            );
 
-                // Enable Save button only if Draft AND Dirty
-                final bool isDraft = controller.packingSlip.value?.docstatus == 0;
-                final bool isDirty = controller.isDirty.value;
-
-                return IconButton(
-                  icon: Icon(Icons.save, color: (isDraft && isDirty) ? Colors.white : Colors.white54),
-                  onPressed: (isDraft && isDirty) ? controller.savePackingSlip : null,
-                );
-              }),
-            ],
-          ),
+            return MainAppBar(
+              title: slip?.name ?? 'Packing Slip',
+              titleWidget: titleWidget,
+              status: slip?.status,
+              isDirty: controller.isDirty.value,
+              isSaving: controller.isSaving.value,
+              saveResult: SaveResult.idle,
+              onSave: (slip?.docstatus == 0 && controller.isDirty.value)
+                  ? controller.savePackingSlip
+                  : null,
+              onReload: (controller.mode != 'new' &&
+                      !controller.isDirty.value)
+                  ? controller.reloadDocument
+                  : null,
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'Details'),
+                  Tab(text: 'Items'),
+                ],
+              ),
+            );
+          }),
           body: Obx(() {
             if (controller.isLoading.value) {
               return const Center(child: CircularProgressIndicator());
@@ -178,7 +184,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -227,11 +235,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               itemBuilder: (context, index) {
                 final serial = visibleGroups[index];
 
-                // Data for Header
                 final totalRequired = controller.getTotalDnQtyForSerial(serial);
-                final globalPacked = controller.getGlobalPackedQty(serial);
+                final globalPacked  = controller.getGlobalPackedQty(serial);
 
-                // Get Header Name from POS Upload
                 String itemName = controller.getPosItemName(serial);
                 if (itemName.isEmpty) {
                   final dnItems = controller.getDnItemsForSerial(serial);
@@ -239,24 +245,22 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   else itemName = 'Unknown Item';
                 }
 
-                // Get All DN Items for this section (checklist)
                 final sectionItems = controller.getDnItemsForSerial(serial);
 
                 return Obx(() {
                   final isExpanded = controller.expandedInvoice.value == serial;
                   return ItemGroupCard(
                     isExpanded: isExpanded,
-                    serialNo: int.tryParse(serial) ?? 0,
-                    itemName: itemName,
-                    rate: 0.0,
-                    totalQty: totalRequired,
+                    serialNo:   int.tryParse(serial) ?? 0,
+                    itemName:   itemName,
+                    rate:       0.0,
+                    totalQty:   totalRequired,
                     scannedQty: globalPacked,
-                    onToggle: () => controller.toggleInvoiceExpand(serial),
+                    onToggle:   () => controller.toggleInvoiceExpand(serial),
                     children: sectionItems.map((dnItem) {
-                      final reqQty = dnItem.qty;
-                      final packedQty = controller.getPackedQtyForDnItem(dnItem.name);
+                      final reqQty         = dnItem.qty;
+                      final packedQty      = controller.getPackedQtyForDnItem(dnItem.name);
                       final currentSlipItem = controller.getCurrentSlipItem(dnItem.name);
-
                       return _buildChecklistRow(dnItem, reqQty, packedQty, currentSlipItem);
                     }).toList(),
                   );
@@ -269,18 +273,23 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         // 3. Scanner
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
-            onScan: (code) => controller.scanBarcode(code),
-            isLoading: controller.isScanning.value,
-            hintText: 'Scan Item / Batch',
-            controller: controller.barcodeController,
+            onScan:      (code) => controller.scanBarcode(code),
+            isLoading:   controller.isScanning.value,
+            hintText:    'Scan Item / Batch',
+            controller:  controller.barcodeController,
             activeRoute: AppRoutes.PACKING_SLIP_FORM,
           )),
       ],
     );
   }
 
-  Widget _buildChecklistRow(dynamic dnItem, double reqQty, double packedQty, PackingSlipItem? currentItem) {
-    final bool isComplete = packedQty >= reqQty;
+  Widget _buildChecklistRow(
+    dynamic dnItem,
+    double reqQty,
+    double packedQty,
+    PackingSlipItem? currentItem,
+  ) {
+    final bool isComplete    = packedQty >= reqQty;
     final bool isInCurrentSlip = currentItem != null;
 
     return InkWell(
@@ -288,8 +297,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         if (isInCurrentSlip) {
           controller.editItem(currentItem);
         } else {
-          // If not in current slip, open add sheet for this DN item
-          // This allows manual "picking" from the list
           if (controller.packingSlip.value?.docstatus == 0) {
             controller.prepareSheetForAdd(dnItem);
           }
@@ -299,17 +306,21 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
           children: [
-            // Status Icon
+            // Status icon
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isComplete ? Colors.green.shade50 : (packedQty > 0 ? Colors.orange.shade50 : Colors.grey.shade100),
+                color: isComplete
+                    ? Colors.green.shade50
+                    : (packedQty > 0 ? Colors.orange.shade50 : Colors.grey.shade100),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isComplete ? Icons.check : Icons.inventory_2_outlined,
                 size: 16,
-                color: isComplete ? Colors.green.shade700 : (packedQty > 0 ? Colors.orange.shade700 : Colors.grey),
+                color: isComplete
+                    ? Colors.green.shade700
+                    : (packedQty > 0 ? Colors.orange.shade700 : Colors.grey),
               ),
             ),
             const SizedBox(width: 12),
@@ -338,7 +349,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               ),
             ),
 
-            // Progress Text
+            // Progress
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -356,7 +367,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               ],
             ),
 
-            // Edit Chevron if editable
+            // Edit chevron
             if (controller.packingSlip.value?.docstatus == 0)
               const Padding(
                 padding: EdgeInsets.only(left: 8.0),
@@ -373,9 +384,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       label: Text('$label ($count)'),
       selected: controller.itemFilter.value == label,
       onSelected: (bool selected) {
-        if (selected) {
-          controller.setFilter(label);
-        }
+        if (selected) controller.setFilter(label);
       },
     );
   }
