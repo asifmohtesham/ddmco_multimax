@@ -25,34 +25,32 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: MainAppBar(
-            title: controller.purchaseReceipt.value?.name ?? 'Loading...',
-            status: controller.purchaseReceipt.value?.status,
-            isDirty: controller.isDirty.value,
-            actions: [
-              Obx(() {
-                if (controller.purchaseReceipt.value?.docstatus == 1) {
-                  return const SizedBox.shrink();
-                }
-                final canSave =
-                    controller.isDirty.value && controller.isEditable;
-                return SaveIconButton(
-                  isSaving:   controller.isSaving.value,
-                  saveResult: controller.saveResult.value,
-                  isDirty:    canSave,
-                  onPressed:  canSave
-                      ? controller.savePurchaseReceipt
-                      : null,
-                );
-              }),
-            ],
-            bottom: const TabBar(
-              tabs: [
-                Tab(text: 'Details'),
-                Tab(text: 'Items'),
-              ],
-            ),
-          ),
+          // F9: wrap in Obx so status/dirty/saving all rebuild the app bar
+          appBar: Obx(() {
+            final receipt = controller.purchaseReceipt.value;
+            return MainAppBar(
+              title:      receipt?.name ?? 'Loading...',
+              status:     receipt?.status,
+              isDirty:    controller.isDirty.value,
+              isSaving:   controller.isSaving.value,
+              saveResult: controller.saveResult.value,
+              // F9: onSave wired via standardised param (replaces manual actions: list)
+              onSave: (receipt?.docstatus == 0 && controller.isDirty.value)
+                  ? controller.savePurchaseReceipt
+                  : null,
+              // F9: onReload wired — was missing entirely
+              onReload: (controller.mode != 'new' &&
+                      !controller.isDirty.value)
+                  ? controller.reloadDocument
+                  : null,
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'Details'),
+                  Tab(text: 'Items'),
+                ],
+              ),
+            );
+          }),
           body: Obx(() {
             if (controller.isLoading.value) {
               return const Center(child: CircularProgressIndicator());
@@ -60,7 +58,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
 
             final receipt = controller.purchaseReceipt.value;
             if (receipt == null) {
-              return const Center(child: Text('Purchase receipt not found.'));
+              return const Center(
+                  child: Text('Purchase receipt not found.'));
             }
 
             return SafeArea(
@@ -76,6 +75,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       ),
     ));
   }
+
+  // ── Details tab ───────────────────────────────────────────────────────
 
   Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
     final bool isEditable = controller.isEditable;
@@ -141,20 +142,20 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                       child: GestureDetector(
                         onTap: isEditable
                             ? () async {
-                          final now    = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: now,
-                            firstDate: DateTime(now.year - 5),
-                            lastDate:  DateTime(now.year + 5),
-                          );
-                          if (picked != null) {
-                            controller.postingDateController.text =
-                            '${picked.year.toString().padLeft(4, '0')}-'
-                                '${picked.month.toString().padLeft(2, '0')}-'
-                                '${picked.day.toString().padLeft(2, '0')}';
-                          }
-                        }
+                                final now    = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: now,
+                                  firstDate: DateTime(now.year - 5),
+                                  lastDate:  DateTime(now.year + 5),
+                                );
+                                if (picked != null) {
+                                  controller.postingDateController.text =
+                                      '${picked.year.toString().padLeft(4, '0')}-'
+                                      '${picked.month.toString().padLeft(2, '0')}-'
+                                      '${picked.day.toString().padLeft(2, '0')}';
+                                }
+                              }
                             : null,
                         child: AbsorbPointer(
                           child: TextFormField(
@@ -164,8 +165,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                               labelText: 'Posting Date',
                               border: OutlineInputBorder(),
                               suffixIcon: Icon(Icons.calendar_today),
-                              contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 14),
                             ),
                           ),
                         ),
@@ -176,16 +177,16 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                       child: GestureDetector(
                         onTap: isEditable
                             ? () async {
-                          final picked = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.now(),
-                          );
-                          if (picked != null) {
-                            controller.postingTimeController.text =
-                            '${picked.hour.toString().padLeft(2, '0')}:'
-                                '${picked.minute.toString().padLeft(2, '0')}:00';
-                          }
-                        }
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay.now(),
+                                );
+                                if (picked != null) {
+                                  controller.postingTimeController.text =
+                                      '${picked.hour.toString().padLeft(2, '0')}:'
+                                      '${picked.minute.toString().padLeft(2, '0')}:00';
+                                }
+                              }
                             : null,
                         child: AbsorbPointer(
                           child: TextFormField(
@@ -195,8 +196,8 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                               labelText: 'Posting Time',
                               border: OutlineInputBorder(),
                               suffixIcon: Icon(Icons.access_time),
-                              contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 14),
                             ),
                           ),
                         ),
@@ -234,18 +235,19 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
             ),
             const SizedBox(height: 16),
             _buildSectionCard(
-                title: 'Summary',
-                children: [
-                  _buildSummaryRow('Total Quantity',
-                      '${receipt.totalQty.toStringAsFixed(2)} Items'),
-                  const Divider(),
-                  _buildSummaryRow(
-                    'Grand Total',
-                    '${FormattingHelper.getCurrencySymbol(receipt.currency)} '
-                        '${receipt.grandTotal.toStringAsFixed(2)}',
-                    isBold: true,
-                  ),
-                ]),
+              title: 'Summary',
+              children: [
+                _buildSummaryRow('Total Quantity',
+                    '${receipt.totalQty.toStringAsFixed(2)} Items'),
+                const Divider(),
+                _buildSummaryRow(
+                  'Grand Total',
+                  '${FormattingHelper.getCurrencySymbol(receipt.currency)} '
+                      '${receipt.grandTotal.toStringAsFixed(2)}',
+                  isBold: true,
+                ),
+              ],
+            ),
             const SizedBox(height: 80),
           ],
         ),
@@ -253,11 +255,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
+  // ── Shared helpers ──────────────────────────────────────────────────────
+
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
     return Card(
       elevation: 0,
-      margin: EdgeInsets.zero,
+      margin:    EdgeInsets.zero,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: Colors.grey.shade200)),
@@ -287,21 +291,21 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style:
-                  const TextStyle(color: Colors.grey, fontSize: 14)),
+              style: const TextStyle(color: Colors.grey, fontSize: 14)),
           Text(
             value,
             style: TextStyle(
-              fontWeight:
-                  isBold ? FontWeight.bold : FontWeight.w500,
-              fontSize: isBold ? 16 : 14,
-              color: isBold ? Colors.black87 : Colors.black54,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+              fontSize:   isBold ? 16 : 14,
+              color:      isBold ? Colors.black87 : Colors.black54,
             ),
           ),
         ],
       ),
     );
   }
+
+  // ── Items tab ─────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(BuildContext context, PurchaseReceipt receipt) {
     final items = receipt.items;
@@ -313,8 +317,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
               ? const Center(child: Text('No items in this receipt.'))
               : ListView.builder(
                   controller: controller.scrollController,
-                  padding:
-                      const EdgeInsets.only(top: 8.0, bottom: 80.0),
+                  padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
@@ -323,7 +326,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                     return Obx(() {
                       final isLoadingThis =
                           controller.isLoadingItemEdit.value &&
-                              controller.loadingForItemName.value == item.name;
+                          controller.loadingForItemName.value == item.name;
 
                       return Dismissible(
                         key:       ValueKey(item.name ?? index),
@@ -358,14 +361,15 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                               Positioned.fill(
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color:        Colors.white.withOpacity(0.65),
+                                    color: Colors.white.withOpacity(0.65),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: const Center(
                                     child: SizedBox(
-                                      width: 24,
+                                      width:  24,
                                       height: 24,
-                                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                                      child:  CircularProgressIndicator(
+                                          strokeWidth: 2.5),
                                     ),
                                   ),
                                 ),
@@ -375,13 +379,13 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                       );
                     });
                   },
-          ),
+                ),
         ),
         if (controller.isEditable)
           Obx(() => BarcodeInputWidget(
-                onScan: (code) => controller.scanBarcode(code),
-                isLoading: controller.isScanning.value,
-                controller: controller.barcodeController,
+                onScan:      (code) => controller.scanBarcode(code),
+                isLoading:   controller.isScanning.value,
+                controller:  controller.barcodeController,
                 activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
               )),
       ],
