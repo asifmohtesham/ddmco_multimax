@@ -286,6 +286,16 @@ class DeliveryNoteFormController extends GetxController
   // call Navigator.of(sheetContext).pop() — this dismisses only the
   // bottom-sheet route without disturbing GetX's overlay chain, so the
   // subsequent GlobalSnackbar.success() always finds a live overlay.
+  //
+  // Fix (LateInitializationError on auto-submit): The auto-submit path
+  // previously called Get.back() after saveDeliveryNote(). Get.back()
+  // internally calls GetNavigation.closeCurrentSnackbar() which accesses
+  // SnackbarController.controller — a `late` field that is never
+  // initialised when a prior snackbar failed to attach to the overlay
+  // (e.g. right after the POS Upload sheet closes). This produced:
+  //   LateInitializationError: Field 'controller1647359576' has not been initialized
+  // Fix: use Get.key.currentState?.pop() (root navigator) guarded by
+  // canPop(), which bypasses GetX snackbar machinery entirely.
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -318,8 +328,11 @@ class DeliveryNoteFormController extends GetxController
       isSheetOpen:  isItemSheetOpen,
       isSubmittable: () => (deliveryNote.value?.docstatus ?? 1) == 0,
       onAutoSubmit: () async {
-        // Auto-submit coordinator — sheet context not available here,
-        // so Get.back() is acceptable (snackbar fires after pop completes).
+        // FIX (LateInitializationError): replaced Get.back() with a direct
+        // root-navigator pop guarded by canPop(). Get.back() calls
+        // closeCurrentSnackbar() which dereferences a `late` AnimationController
+        // inside SnackbarController that was never initialised when a previous
+        // snackbar failed to attach to the overlay.
         isAddingItem.value = true;
         try {
           await child.submit();
@@ -328,7 +341,11 @@ class DeliveryNoteFormController extends GetxController
         } finally {
           isAddingItem.value = false;
         }
-        Get.back();
+        // Safe pop: bypasses GetX snackbar machinery entirely.
+        final nav = Get.key.currentState;
+        if (nav != null && nav.canPop()) {
+          nav.pop();
+        }
       },
     );
 
