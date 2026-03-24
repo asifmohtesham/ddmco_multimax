@@ -21,17 +21,14 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/controller_feedback_mixin.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
-
-// Child sheet controller
-import 'controllers/delivery_note_item_form_controller.dart';
-
-// ── Step-4: sheet widget now inlined directly ────────────────────────────────────────────
-class DeliveryNoteFormController extends GetxController
-    with OptimisticLockingMixin, ControllerFeedbackMixin {
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_serial_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+
+// Child sheet controller
+import 'controllers/delivery_note_item_form_controller.dart';
+
 // (delivery_note_item_form_sheet.dart is now a stub re-export)
 
 class DeliveryNoteFormController extends GetxController
@@ -246,11 +243,9 @@ class DeliveryNoteFormController extends GetxController
           await fetchPosUpload(note.poNo!);
         }
       } else {
-        // Post-load error: overlay may not be live — use InlineBanner.
         showBanner('Failed to fetch delivery note', type: BannerType.error);
       }
     } catch (e) {
-      // Post-load error: overlay may not be live — use InlineBanner.
       showBanner('Failed to load data: $e', type: BannerType.error);
     } finally {
       isLoading.value = false;
@@ -262,7 +257,6 @@ class DeliveryNoteFormController extends GetxController
   Future<void> reloadDocument() async {
     await fetchDeliveryNote();
     isStale.value = false;
-    // Fires after fetchDeliveryNote() completes — route is fully settled.
     showBanner('Document reloaded successfully', type: BannerType.success);
   }
 
@@ -493,7 +487,6 @@ class DeliveryNoteFormController extends GetxController
     items.remove(item);
     deliveryNote.update((val) => val?.items.assignAll(items));
     _checkForChanges();
-    // Fires in Scaffold body context — use InlineBanner (overlay not guaranteed).
     showBanner('Item removed', type: BannerType.success);
   }
 
@@ -526,8 +519,6 @@ class DeliveryNoteFormController extends GetxController
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
         _setSaveResult(SaveResult.success);
-        // Fires after Navigator.of(context).pop() has closed the item sheet.
-        // The overlay subtree is deactivated at this point — InlineBanner only.
         showBanner('Delivery Note Saved', type: BannerType.success);
       } else {
         _setSaveResult(SaveResult.error);
@@ -604,13 +595,11 @@ class DeliveryNoteFormController extends GetxController
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
-      // Sheet is not open here — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(
           message: 'Missing Customer: Please select a customer before scanning.');
       return false;
     }
     if (customerError.value != null) {
-      // Sheet is not open here — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(
           message: 'Invalid Customer: ${customerError.value}');
       return false;
@@ -673,14 +662,12 @@ class DeliveryNoteFormController extends GetxController
           child.validateBatch(candidateBatch);
         } else {
           log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty', name: 'DN');
-          // Sheet is open — overlay is live — GlobalSnackbar is safe.
           GlobalSnackbar.error(
               message: 'Scan the item EAN first, then scan the batch suffix.');
         }
       } else if (result.type == ScanType.error) {
         log('[DN:scanBarcode] CHECKPOINT-5I ScanType.error: ${result.message}',
             name: 'DN');
-        // Sheet is open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       } else {
         log('[DN:scanBarcode] CHECKPOINT-5J unhandled type=${result.type}',
@@ -746,18 +733,15 @@ class DeliveryNoteFormController extends GetxController
         );
       } else if (result.type == ScanType.multiple) {
         log('[DN:scanBarcode] CHECKPOINT-6D ScanType.multiple', name: 'DN');
-        // Sheet is not open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.warning(
             message: 'Multiple items found. Please search manually.');
       } else {
         log('[DN:scanBarcode] CHECKPOINT-6E no item found: ${result.message}',
             name: 'DN');
-        // Sheet is not open — overlay is live — GlobalSnackbar is safe.
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       log('[DN:scanBarcode] CHECKPOINT-6F exception: $e', name: 'DN');
-      // Sheet is not open — overlay is live — GlobalSnackbar is safe.
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
