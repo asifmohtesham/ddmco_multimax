@@ -95,8 +95,10 @@ class DeliveryNoteFormController extends GetxController
   // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
 
-  // ── EAN-8 context for inside-sheet scan routing ───────────────────────────
-  String currentScannedEan8 = '';
+  // ── S1: EAN scan context for inside-sheet scan routing ────────────────────
+  // Renamed from currentScannedEan8 → currentScannedEan to match the base
+  // field name promoted in ItemSheetControllerBase (Standardisation S1).
+  String currentScannedEan = '';
 
   // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
@@ -285,9 +287,9 @@ class DeliveryNoteFormController extends GetxController
   }) async {
     if (editingItem != null) {
       if (editingItem.batchNo != null && editingItem.batchNo!.contains('-')) {
-        currentScannedEan8 = editingItem.batchNo!.split('-').first;
+        currentScannedEan = editingItem.batchNo!.split('-').first; // S1
       } else {
-        currentScannedEan8 = '';
+        currentScannedEan = ''; // S1
       }
     }
 
@@ -299,7 +301,7 @@ class DeliveryNoteFormController extends GetxController
       batchNo:       batchNo,
       initialMaxQty: initialMaxQty,
       editingItem:   editingItem,
-      scannedEan8:   currentScannedEan8,
+      scannedEan8:   currentScannedEan, // S1
     );
 
     // ── P1-B: onSubmit coordinator ─────────────────────────────────────────
@@ -628,12 +630,13 @@ class DeliveryNoteFormController extends GetxController
       }
 
       final child = Get.find<DeliveryNoteItemFormController>();
-      final String? contextEan8 =
-          child.currentScannedEan8.isNotEmpty ? child.currentScannedEan8 : null;
+      // S1: renamed currentScannedEan8 → currentScannedEan (base field)
+      final String? contextEan =
+          child.currentScannedEan.isNotEmpty ? child.currentScannedEan : null;
 
-      log('[DN:scanBarcode] CHECKPOINT-5C contextEan8=$contextEan8', name: 'DN');
+      log('[DN:scanBarcode] CHECKPOINT-5C contextEan=$contextEan', name: 'DN');
       final result =
-          await _scanService.processScan(barcode, contextItemCode: contextEan8);
+          await _scanService.processScan(barcode, contextItemCode: contextEan);
 
       log('[DN:scanBarcode] CHECKPOINT-5D result: type=${result.type} batchNo=${result.batchNo}',
           name: 'DN');
@@ -678,13 +681,14 @@ class DeliveryNoteFormController extends GetxController
           name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
+        // S1: renamed currentScannedEan8 → currentScannedEan (base field)
         if (result.rawCode.contains('-') &&
             !result.rawCode.startsWith('SHIPMENT')) {
-          currentScannedEan8 = result.rawCode.split('-').first;
+          currentScannedEan = result.rawCode.split('-').first;
         } else {
-          currentScannedEan8 = result.rawCode;
+          currentScannedEan = result.rawCode;
         }
-        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan8 → "$currentScannedEan8"',
+        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan → "$currentScannedEan"',
             name: 'DN');
 
         final itemData = result.itemData!;
