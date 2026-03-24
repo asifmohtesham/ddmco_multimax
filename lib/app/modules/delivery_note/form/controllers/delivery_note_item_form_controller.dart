@@ -86,7 +86,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   String? get qtyInfoText {
     final max = maxQty.value;
     if (max <= 0) return null;
-    return 'Max Available: \${max % 1 == 0 ? max.toInt() : max}';
+    return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
   }
 
   // ── Step-2: deleteCurrentItem ─────────────────────────────────────────
