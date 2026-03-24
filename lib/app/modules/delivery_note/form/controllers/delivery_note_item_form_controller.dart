@@ -43,9 +43,11 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [resetRack]      — overridden; calls super, explicit extension point
 ///                        for future DN-specific rack state.
 ///
-/// Sheet-close fix:
-///   • submit() now calls Get.back() after delegating to parent, so the
-///     bottom sheet dismisses immediately on confirm (mirrors PO pattern).
+/// Sheet-close responsibility:
+///   • submit() does NOT call Get.back().
+///   • Sheet dismissal is owned exclusively by the parent coordinator
+///     (_openItemSheet onSubmit lambda), matching the SRP boundary
+///     established in Phase-1 (commit f2aeb9a).
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
@@ -84,7 +86,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   String? get qtyInfoText {
     final max = maxQty.value;
     if (max <= 0) return null;
-    return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
+    return 'Max Available: \${max % 1 == 0 ? max.toInt() : max}';
   }
 
   // ── Step-2: deleteCurrentItem ─────────────────────────────────────────
@@ -175,7 +177,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
-    log('[DN:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
+    log('[DN:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo} rack=\${item.rack}',
         name: 'DN:ItemSheet');
   }
 
@@ -200,7 +202,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       validateBatchOnInit(batchNo); // S1: base method
     }
 
-    log('[DN:ItemSheet] new item code=${itemCode.value} batch=$batchNo batchValid=${isBatchValid.value}',
+    log('[DN:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo batchValid=\${isBatchValid.value}',
         name: 'DN:ItemSheet');
   }
 
@@ -241,10 +243,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── P1-B: submit — delegates to parent, then closes sheet ─────────────────
-  //
-  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
-  // immediately after the item is committed — matches PO pattern.
+  // ── P1-B: submit — delegates to parent only (sheet close owned by parent coordinator)
 
   @override
   Future<void> submit() async {
@@ -258,7 +257,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } else {
       _parent.addItemLocally(itemCode.value, itemName.value, qty, rack, batch, serial);
     }
-    Get.back(); // close the item form sheet
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────

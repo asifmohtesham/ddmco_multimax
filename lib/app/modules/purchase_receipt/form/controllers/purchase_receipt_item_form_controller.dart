@@ -36,9 +36,11 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 /// Standardisation S1 (base):
 ///  - isBatchReadOnly, currentScannedEan, validateBatchOnInit in base.
 ///
-/// Sheet-close fix:
-///  - submit() now calls Get.back() after delegating to parent, so the
-///    bottom sheet dismisses immediately on confirm (mirrors PO pattern).
+/// Sheet-close responsibility:
+///  - submit() does NOT call Get.back().
+///  - Sheet dismissal is owned exclusively by the parent coordinator
+///    (_openItemSheet onSubmit lambda), matching the SRP boundary
+///    established in Phase-1 (commit f2aeb9a).
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // ── Step 2.1: typed ApiProvider ─────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -78,7 +80,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   String? get qtyInfoText {
     if (poQty.value > 0) {
-      return 'PO Qty: ${poQty.value % 1 == 0 ? poQty.value.toInt() : poQty.value}';
+      return 'PO Qty: \${poQty.value % 1 == 0 ? poQty.value.toInt() : poQty.value}';
     }
     return null;
   }
@@ -178,7 +180,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
-    log('[PR:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
+    log('[PR:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo} rack=\${item.rack}',
         name: 'PR:ItemSheet');
   }
 
@@ -198,7 +200,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       validateBatchOnInit(batchNo); // S1: base method
     }
 
-    log('[PR:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
+    log('[PR:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo',
         name: 'PR:ItemSheet');
   }
 
@@ -255,7 +257,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
-        batchInfoTooltip.value = pkgQty > 0 ? 'Packaging Qty: $pkgQty' : null;
+        batchInfoTooltip.value = pkgQty > 0 ? 'Packaging Qty: \$pkgQty' : null;
         GlobalSnackbar.success(message: 'Existing Batch found');
       } else {
         GlobalSnackbar.info(message: 'New Batch will be created');
@@ -269,14 +271,14 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       isBatchReadOnly.value = false;
       batchError.value      = 'Error validating batch';
       GlobalSnackbar.error(message: 'Error validating batch');
-      log('[PR:ItemSheet] validateBatch error: $e', name: 'PR:ItemSheet');
+      log('[PR:ItemSheet] validateBatch error: \$e', name: 'PR:ItemSheet');
     } finally {
       isValidatingBatch.value = false;
       validateSheet();
     }
   }
 
-  // ── Rack validation override ────────────────────────────────────────────────
+  // ── Rack validation override ────────────────────────────────────────────
 
   @override
   Future<void> validateRack(String rack) async {
@@ -290,7 +292,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        itemWarehouse.value = '${parts[1]}-${parts[2]} - ${parts[0]}';
+        itemWarehouse.value = '\${parts[1]}-\${parts[2]} - \${parts[0]}';
       }
     }
 
@@ -325,10 +327,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── S4: submit — delegates to parent, then closes sheet ───────────────────────
-  //
-  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
-  // immediately after the item is committed — matches PO pattern.
+  // ── S4: submit — delegates to parent only (sheet close owned by parent coordinator)
 
   @override
   Future<void> submit() async {
@@ -351,6 +350,5 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         poRate:    poRate.value,
       );
     }
-    Get.back(); // close the item form sheet
   }
 }

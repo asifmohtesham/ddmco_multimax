@@ -41,9 +41,11 @@ import '../stock_entry_form_controller.dart';
 ///   • [currentScannedEan]   — removed local currentScannedEan8; use base field.
 ///   • [validateBatchOnInit] — removed local duplicate; use base method.
 ///
-/// Sheet-close fix:
-///   • submit() now calls Get.back() after delegating to parent, so the
-///     bottom sheet dismisses immediately on confirm (mirrors PO pattern).
+/// Sheet-close responsibility:
+///   • submit() does NOT call Get.back().
+///   • Sheet dismissal is owned exclusively by the parent coordinator
+///     (_openItemSheet onSubmit lambda), matching the SRP boundary
+///     established in Phase-1 (commit f2aeb9a).
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
@@ -117,11 +119,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final effectiveMax = effectiveMaxQty;
     final maxMr        = validationMaxQty.value;
     if (effectiveMax < 999999.0 && maxMr > 0) {
-      return 'Avail: ${effectiveMax.toStringAsFixed(0)} • MR max: ${maxMr.toStringAsFixed(0)}';
+      return 'Avail: \${effectiveMax.toStringAsFixed(0)} • MR max: \${maxMr.toStringAsFixed(0)}';
     } else if (effectiveMax < 999999.0) {
-      return 'Available: ${effectiveMax.toStringAsFixed(0)}';
+      return 'Available: \${effectiveMax.toStringAsFixed(0)}';
     } else if (maxMr > 0) {
-      return 'MR max: ${maxMr.toStringAsFixed(0)}';
+      return 'MR max: \${maxMr.toStringAsFixed(0)}';
     }
     return null;
   }
@@ -263,7 +265,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       currentScannedEan = item.batchNo!.split('-').first; // S1: base field
     }
 
-    log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
+    log('[SE:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo}',
         name: 'SE:ItemSheet');
   }
 
@@ -289,7 +291,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       validateBatchOnInit(batchNo!); // S1: base method
     }
 
-    log('[SE:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
+    log('[SE:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo',
         name: 'SE:ItemSheet');
   }
 
@@ -326,10 +328,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit — delegates to parent, then closes sheet ───────────────────────
-  //
-  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
-  // immediately after the item is committed — matches PO pattern.
+  // ── submit — delegates to parent only (sheet close owned by parent coordinator)
 
   @override
   Future<void> submit() async {
@@ -353,7 +352,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       _parent.addItemLocally(
           qty, batch, sourceRack, targetRack, sWh, tWh, serial);
     }
-    Get.back(); // close the item form sheet
   }
 
   // ── Computed max qty ──────────────────────────────────────────────────────
@@ -477,11 +475,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
           batchError.value =
-              'Qty ($enteredQty) exceeds Batch balance '
-              '(${batchBalance.value.toStringAsFixed(0)}) in warehouse';
+              'Qty (\$enteredQty) exceeds Batch balance '
+              '(\${batchBalance.value.toStringAsFixed(0)}) in warehouse';
           GlobalSnackbar.error(
               message: 'Entered qty exceeds available Batch balance of '
-                  '${batchBalance.value.toStringAsFixed(0)} in warehouse');
+                  '\${batchBalance.value.toStringAsFixed(0)} in warehouse');
         }
       } else {
         isBatchValid.value    = false;
@@ -491,7 +489,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     } catch (e) {
       isBatchValid.value    = false;
       isBatchReadOnly.value = false; // S1: base field
-      GlobalSnackbar.error(message: 'Failed to validate batch: $e');
+      GlobalSnackbar.error(message: 'Failed to validate batch: \$e');
     } finally {
       isValidatingBatch.value = false;
       validateSheet();
@@ -523,7 +521,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
+        final wh = '\${parts[1]}-\${parts[2]} - \${parts[0]}';
         if (isSource) {
           derivedSourceWarehouse.value = wh;
           itemSourceWarehouse.value    = wh;
@@ -546,11 +544,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
           if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
             batchError.value =
-                'Qty ($enteredQty) exceeds Batch balance '
-                '(${batchBalance.value.toStringAsFixed(0)}) in warehouse';
+                'Qty (\$enteredQty) exceeds Batch balance '
+                '(\${batchBalance.value.toStringAsFixed(0)}) in warehouse';
             GlobalSnackbar.error(
                 message: 'Entered qty exceeds available Batch balance of '
-                    '${batchBalance.value.toStringAsFixed(0)} in warehouse');
+                    '\${batchBalance.value.toStringAsFixed(0)} in warehouse');
           } else {
             if (batchError.value != null &&
                 batchError.value!.contains('Batch balance')) {
@@ -638,15 +636,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
         if (rack.isNotEmpty && rackBal <= 0) {
           rackError.value =
-              'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)';
+              'Insufficient stock in Rack: \$rack (Warehouse: \$effectiveWh)';
           GlobalSnackbar.error(
               message:
-                  'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)');
+                  'Insufficient stock in Rack: \$rack (Warehouse: \$effectiveWh)');
           isSourceRackValid.value = false;
         }
       }
     } catch (e) {
-      log('[SE:ItemSheet] _updateAvailableStock error: $e', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] _updateAvailableStock error: \$e', name: 'SE:ItemSheet');
     } finally {
       isLoadingRackBalance.value = false;
     }
@@ -684,7 +682,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       }
     } catch (e) {
       batchBalance.value = 0.0;
-      log('[SE:ItemSheet] _updateBatchBalance error: $e', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] _updateBatchBalance error: \$e', name: 'SE:ItemSheet');
     } finally {
       isLoadingBatchBalance.value = false;
     }
@@ -723,11 +721,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       if (map.isEmpty || sourceRackController.text.isNotEmpty) return;
 
       final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-      log('[SE:ItemSheet] auto-fill source rack="$best"', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] auto-fill source rack="\$best"', name: 'SE:ItemSheet');
       sourceRackController.text = best;
       await validateDualRack(best, true);
     } catch (e) {
-      log('[SE:ItemSheet] _autoFillBestSourceRack error (non-fatal): $e',
+      log('[SE:ItemSheet] _autoFillBestSourceRack error (non-fatal): \$e',
           name: 'SE:ItemSheet');
     }
   }
@@ -762,11 +760,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       if (map.isEmpty || targetRackController.text.isNotEmpty) return;
 
       final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-      log('[SE:ItemSheet] auto-fill target rack="$best"', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] auto-fill target rack="\$best"', name: 'SE:ItemSheet');
       targetRackController.text = best;
       await validateDualRack(best, false);
     } catch (e) {
-      log('[SE:ItemSheet] _autoFillBestTargetRack error (non-fatal): $e',
+      log('[SE:ItemSheet] _autoFillBestTargetRack error (non-fatal): \$e',
           name: 'SE:ItemSheet');
     }
   }
