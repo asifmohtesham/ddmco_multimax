@@ -18,11 +18,14 @@ import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
+// F4: canonical sheet-controller tag — matches 'po_item_sheet' used in the sheet widget.
+const _kPoSheetTag = 'po_item_sheet';
+
 class PurchaseOrderFormController extends GetxController {
-  final PurchaseOrderProvider _provider       = Get.find<PurchaseOrderProvider>();
-  final ApiProvider           _apiProvider    = Get.find<ApiProvider>();
-  final ScanService           _scanService    = Get.find<ScanService>();
-  final StorageService        _storageService = Get.find<StorageService>();
+  final PurchaseOrderProvider _provider         = Get.find<PurchaseOrderProvider>();
+  final ApiProvider           _apiProvider      = Get.find<ApiProvider>();
+  final ScanService           _scanService      = Get.find<ScanService>();
+  final StorageService        _storageService   = Get.find<StorageService>();
   final DataWedgeService      _dataWedgeService = Get.find<DataWedgeService>();
 
   // ---------------------------------------------------------------------------
@@ -50,13 +53,13 @@ class PurchaseOrderFormController extends GetxController {
   // Document state
   // ---------------------------------------------------------------------------
 
-  var isLoading         = true.obs;
-  var isSaving          = false.obs;
-  var isScanning        = false.obs;
-  var isDirty           = false.obs;
-  var isAddingItem      = false.obs;
-  var isItemSheetOpen   = false.obs;
-  var isLoadingItemEdit = false.obs;
+  var isLoading          = true.obs;
+  var isSaving           = false.obs;
+  var isScanning         = false.obs;
+  var isDirty            = false.obs;
+  var isAddingItem       = false.obs;
+  var isItemSheetOpen    = false.obs;
+  var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
   var purchaseOrder = Rx<PurchaseOrder?>(null);
@@ -66,7 +69,7 @@ class PurchaseOrderFormController extends GetxController {
 
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
 
-  var saveResult      = SaveResult.idle.obs;
+  var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
   // ---------------------------------------------------------------------------
@@ -84,7 +87,7 @@ class PurchaseOrderFormController extends GetxController {
   // Item feedback / scroll
   // ---------------------------------------------------------------------------
 
-  var recentlyAddedItemName          = ''.obs;
+  var recentlyAddedItemName             = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
   final ScrollController scrollController = ScrollController();
 
@@ -157,7 +160,6 @@ class PurchaseOrderFormController extends GetxController {
 
   void _onRawScan(String code) {
     if (code.isEmpty) return;
-    // Only process scans when this route is active.
     if (Get.currentRoute != AppRoutes.PURCHASE_ORDER_FORM) return;
     final clean = code.trim();
     barcodeController.text = clean;
@@ -192,7 +194,7 @@ class PurchaseOrderFormController extends GetxController {
             .toList();
       }
     } catch (_) {
-      // non-fatal — supplier picker shows empty list
+      // non-fatal
     } finally {
       isFetchingSuppliers.value = false;
     }
@@ -229,9 +231,9 @@ class PurchaseOrderFormController extends GetxController {
       final response = await _provider.getPurchaseOrder(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final po = PurchaseOrder.fromJson(response.data['data']);
-        purchaseOrder.value    = po;
+        purchaseOrder.value     = po;
         supplierController.text = po.supplier;
-        dateController.text    = po.transactionDate;
+        dateController.text     = po.transactionDate;
         _updateOriginalState(po);
       } else {
         GlobalDialog.showError(
@@ -252,7 +254,6 @@ class PurchaseOrderFormController extends GetxController {
     }
   }
 
-  /// Reload from server — e.g. after an optimistic-lock conflict.
   Future<void> reloadDocument() => fetchPO();
 
   void _updateOriginalState(PurchaseOrder po) {
@@ -262,12 +263,12 @@ class PurchaseOrderFormController extends GetxController {
   }
 
   // ---------------------------------------------------------------------------
-  // Supplier selection sheet — IT-G: moved from screen (SRP)
+  // Supplier selection sheet
   // ---------------------------------------------------------------------------
 
   void openSupplierSelectionSheet() {
-    final searchController    = TextEditingController();
-    final filteredSuppliers   = RxList<String>(suppliers.toList());
+    final searchController  = TextEditingController();
+    final filteredSuppliers = RxList<String>(suppliers.toList());
 
     Get.bottomSheet(
       SafeArea(
@@ -278,7 +279,7 @@ class PurchaseOrderFormController extends GetxController {
           expand:           false,
           builder: (context, scrollController) {
             return Container(
-              padding: const EdgeInsets.all(16.0),
+              padding:    const EdgeInsets.all(16.0),
               decoration: const BoxDecoration(
                 color:        Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
@@ -299,9 +300,9 @@ class PurchaseOrderFormController extends GetxController {
                   TextField(
                     controller: searchController,
                     decoration: const InputDecoration(
-                      labelText:     'Search Suppliers',
-                      prefixIcon:    Icon(Icons.search),
-                      border:        OutlineInputBorder(),
+                      labelText:      'Search Suppliers',
+                      prefixIcon:     Icon(Icons.search),
+                      border:         OutlineInputBorder(),
                       contentPadding: EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
@@ -321,13 +322,12 @@ class PurchaseOrderFormController extends GetxController {
                         return const Center(child: Text('No suppliers found'));
                       }
                       return ListView.separated(
-                        controller:    scrollController,
-                        itemCount:     filteredSuppliers.length,
+                        controller:       scrollController,
+                        itemCount:        filteredSuppliers.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
-                          final supplier  = filteredSuppliers[index];
-                          final isSelected =
-                              supplier == supplierController.text;
+                          final supplier   = filteredSuppliers[index];
+                          final isSelected = supplier == supplierController.text;
                           return ListTile(
                             title: Text(supplier,
                                 style: TextStyle(
@@ -336,7 +336,7 @@ class PurchaseOrderFormController extends GetxController {
                                         : FontWeight.normal)),
                             trailing: isSelected
                                 ? Icon(Icons.check_circle,
-                                color: Get.theme.primaryColor)
+                                    color: Get.theme.primaryColor)
                                 : null,
                             onTap: () {
                               supplierController.text = supplier;
@@ -420,8 +420,8 @@ class PurchaseOrderFormController extends GetxController {
   }
 
   // ---------------------------------------------------------------------------
-// Item mutations — called by PurchaseOrderItemFormController.submitItem()
-// ---------------------------------------------------------------------------
+  // Item mutations — called by PurchaseOrderItemFormController.submit()
+  // ---------------------------------------------------------------------------
 
   void addItemLocally(PurchaseOrderItem newItem) {
     final items = purchaseOrder.value?.items.toList() ?? [];
@@ -435,7 +435,7 @@ class PurchaseOrderFormController extends GetxController {
 
   void updateItemLocally(PurchaseOrderItem updatedItem) {
     final items = purchaseOrder.value?.items.toList() ?? [];
-    final idx = items.indexWhere((i) => i.name == updatedItem.name);
+    final idx   = items.indexWhere((i) => i.name == updatedItem.name);
     if (idx == -1) return;
     items[idx] = updatedItem;
     _applyItems(items);
@@ -459,7 +459,6 @@ class PurchaseOrderFormController extends GetxController {
     );
   }
 
-
   // ---------------------------------------------------------------------------
   // Scan
   // ---------------------------------------------------------------------------
@@ -471,8 +470,6 @@ class PurchaseOrderFormController extends GetxController {
       return;
     }
     if (barcode.isEmpty) return;
-
-    // If item sheet is open, ignore outer scan.
     if (isItemSheetOpen.value) return;
 
     isScanning.value = true;
@@ -545,7 +542,7 @@ class PurchaseOrderFormController extends GetxController {
   }
 
   // ---------------------------------------------------------------------------
-  // Delete item — public entry point from item card / IT-F
+  // Delete item
   // ---------------------------------------------------------------------------
 
   void confirmAndDeleteItem(PurchaseOrderItem item) {
@@ -565,9 +562,13 @@ class PurchaseOrderFormController extends GetxController {
 
   // ---------------------------------------------------------------------------
   // Open item bottom sheet
+  //
+  // F4: renamed private helper to _openItemSheet (was already _openItemSheet;
+  //     now uses await + explicit cleanup matching SE's Fix #5/#8 pattern).
+  // F5: maxChildSize 0.9 → 0.95 — matches SE/DN/PR for full-height sheet.
   // ---------------------------------------------------------------------------
 
-  void _openItemSheet({
+  Future<void> _openItemSheet({
     required String code,
     required String name,
     required String uom,
@@ -579,17 +580,16 @@ class PurchaseOrderFormController extends GetxController {
     String? creation,
     String? modified,
     String? modifiedBy,
-  }) {
+  }) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     Get.lazyPut<PurchaseOrderItemFormController>(
-          () => PurchaseOrderItemFormController(),
-      tag:   'po_item_sheet',
+      () => PurchaseOrderItemFormController(),
+      tag:   _kPoSheetTag,
       fenix: true,
     );
 
-    final sheetCtrl =
-    Get.find<PurchaseOrderItemFormController>(tag: 'po_item_sheet');
+    final sheetCtrl = Get.find<PurchaseOrderItemFormController>(tag: _kPoSheetTag);
     sheetCtrl.initialise(
       parentController: this,
       code:         code,
@@ -606,11 +606,12 @@ class PurchaseOrderFormController extends GetxController {
     );
 
     isItemSheetOpen.value = true;
-    Get.bottomSheet(
+    // F4: await + explicit cleanup (mirrors SE Fix #5/#8 — no .whenComplete)
+    await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
         minChildSize:     0.4,
-        maxChildSize:     0.9,
+        maxChildSize:     0.95, // F5: was 0.9
         expand:           false,
         builder: (context, scrollController) {
           return PurchaseOrderItemFormSheet(
@@ -618,10 +619,10 @@ class PurchaseOrderFormController extends GetxController {
         },
       ),
       isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-      Get.delete<PurchaseOrderItemFormController>(tag: 'po_item_sheet');
-    });
+    );
+    // F4: post-await cleanup — runs predictably unlike .whenComplete()
+    isItemSheetOpen.value = false;
+    Get.delete<PurchaseOrderItemFormController>(tag: _kPoSheetTag);
   }
 
   // ---------------------------------------------------------------------------
@@ -661,7 +662,7 @@ class PurchaseOrderFormController extends GetxController {
       }
     } catch (e) {
       GlobalDialog.showError(
-        title:   'Could not save Purchase Order',
+        title:   'Could not load Purchase Order',
         message: e.toString(),
         onRetry: savePurchaseOrder,
       );
