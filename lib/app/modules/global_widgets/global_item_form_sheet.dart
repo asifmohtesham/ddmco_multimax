@@ -5,6 +5,149 @@ import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.d
 import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+
+// ---------------------------------------------------------------------------
+// _AnimatedSaveButton
+//
+// Private widget that owns the three-state animated save button:
+//   idle    — FilledButton with save icon; tappable.
+//   loading — orange; spinner; not tappable.
+//   success — green; check_circle; not tappable (sheet closing in 700 ms).
+//   error   — red; error_outline; not tappable (resets to idle after 1.5 s).
+//
+// All colour and icon transitions use AnimatedContainer + AnimatedSwitcher
+// so there is no explicit AnimationController needed.
+// ---------------------------------------------------------------------------
+class _AnimatedSaveButton extends StatelessWidget {
+  final Rx<SaveButtonState> saveButtonState;
+  final bool isSaveEnabled;
+  final RxBool? isSaveEnabledRx;
+  final bool isLoading;
+  final String title;
+  final Future<void> Function() onSubmit;
+  final GlobalKey<FormState> formKey;
+  final String sheetTag;
+
+  const _AnimatedSaveButton({
+    required this.saveButtonState,
+    required this.isSaveEnabled,
+    this.isSaveEnabledRx,
+    required this.isLoading,
+    required this.title,
+    required this.onSubmit,
+    required this.formKey,
+    required this.sheetTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final state        = saveButtonState.value;
+      final rxEnabled    = isSaveEnabledRx?.value ?? true;
+      final canTap       = isSaveEnabled &&
+                           rxEnabled &&
+                           !isLoading &&
+                           state == SaveButtonState.idle;
+
+      // ── Colour per state ─────────────────────────────────────────────────────
+      final Color bgColor;
+      switch (state) {
+        case SaveButtonState.loading:
+          bgColor = Colors.orange.shade700;
+        case SaveButtonState.success:
+          bgColor = Colors.green.shade600;
+        case SaveButtonState.error:
+          bgColor = Colors.red.shade600;
+        case SaveButtonState.idle:
+          bgColor = canTap
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.surfaceContainerHighest;
+      }
+
+      // ── Icon / content per state ───────────────────────────────────────────
+      final Widget child;
+      switch (state) {
+        case SaveButtonState.loading:
+          child = const SizedBox(
+            key: ValueKey('loading'),
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2.5,
+            ),
+          );
+        case SaveButtonState.success:
+          child = const Icon(
+            key: ValueKey('success'),
+            Icons.check_circle_outline,
+            color: Colors.white,
+            size: 24,
+          );
+        case SaveButtonState.error:
+          child = const Icon(
+            key: ValueKey('error'),
+            Icons.error_outline,
+            color: Colors.white,
+            size: 24,
+          );
+        case SaveButtonState.idle:
+          child = Row(
+            key: const ValueKey('idle'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.save_outlined,
+                color: canTap ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: canTap ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          );
+      }
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: canTap
+                ? () async {
+                    if (formKey.currentState!.validate()) {
+                      FocusScope.of(context).unfocus();
+                      await onSubmit();
+                    }
+                  }
+                : null,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
 
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
@@ -28,6 +171,10 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isLoading;
+
+  // Option-3: animated save button state.
+  // Defaults to idle so callers not yet wired still compile.
+  final Rx<SaveButtonState> saveButtonState;
 
   // Metadata
   final String? owner;
@@ -61,6 +208,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.isSaveEnabled = true,
     this.isSaveEnabledRx,
     this.isLoading = false,
+    Rx<SaveButtonState>? saveButtonState,
     this.owner,
     this.creation,
     this.modified,
@@ -68,10 +216,10 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
-  }) {
+  })  : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
     _sheetTag = key != null
         ? key.toString()
-        : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
+        : 'sheet_\${DateTime.now().microsecondsSinceEpoch}';
   }
 
   // ---------------------------------------------------------------------------
@@ -120,61 +268,6 @@ class GlobalItemFormSheet extends StatelessWidget {
   static void _popSheet(BuildContext context) =>
       Navigator.of(context).pop();
 
-  Widget _buildSaveButton(BuildContext context, bool enabled) {
-    final ctrl = _sheetCtrl;
-
-    return Obx(() {
-      final showLoading = isLoading || ctrl.isSubmitting.value;
-      final canPress = enabled && !showLoading;
-      final colorScheme = Theme.of(context).colorScheme;
-
-      return FilledButton(
-        onPressed: canPress
-            ? () async {
-                if (formKey.currentState!.validate()) {
-                  FocusScope.of(context).unfocus();
-                  ctrl.isSubmitting.value = true;
-                  await Future.delayed(const Duration(milliseconds: 300));
-                  try {
-                    final result = onSubmit();
-                    if (result is Future) await result;
-                  } catch (e) {
-                    debugPrint('GlobalItemFormSheet submit error: $e');
-                  } finally {
-                    if (Get.isRegistered<ItemFormSheetController>(
-                        tag: _sheetTag)) {
-                      ctrl.isSubmitting.value = false;
-                    }
-                  }
-                }
-              }
-            : null,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: showLoading
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: colorScheme.onPrimary,
-                  strokeWidth: 2.5,
-                ),
-              )
-            : Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-      );
-    });
-  }
-
   Widget _buildMetadataHeader(BuildContext context) {
     if (owner == null &&
         creation == null &&
@@ -209,7 +302,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 if (creation != null)
                   Text(
-                    'Created ${FormattingHelper.getRelativeTime(creation)}',
+                    'Created \${FormattingHelper.getRelativeTime(creation)}',
                     style: style,
                   ),
               ],
@@ -234,7 +327,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 if (modified != null)
                   Text(
-                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                    'Modified \${FormattingHelper.getRelativeTime(modified)}',
                     style: style,
                   ),
               ],
@@ -280,8 +373,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '$itemCode'
-                    '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
+                    '\$itemCode'
+                    '\${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • \$itemSubtext' : ''}',
                     style: theme.textTheme.labelMedium?.copyWith(
                       fontFamily: 'ShureTechMono',
                       fontSize: 16,
@@ -336,12 +429,19 @@ class GlobalItemFormSheet extends StatelessWidget {
 
       const SizedBox(height: 32),
 
-      SizedBox(
-        width: double.infinity,
-        child: isSaveEnabledRx != null
-            ? Obx(() =>
-                _buildSaveButton(context, isSaveEnabledRx!.value))
-            : _buildSaveButton(context, isSaveEnabled),
+      // Option-3: animated save button.
+      _AnimatedSaveButton(
+        saveButtonState:  saveButtonState,
+        isSaveEnabled:    isSaveEnabled,
+        isSaveEnabledRx:  isSaveEnabledRx,
+        isLoading:        isLoading,
+        title:            title,
+        onSubmit:         () async {
+          final result = onSubmit();
+          if (result is Future) await result;
+        },
+        formKey:          formKey,
+        sheetTag:         _sheetTag,
       ),
 
       if (onDelete != null) ...[
@@ -379,7 +479,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     final topPadding = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
-    // ── Drag handle ───────────────────────────────────────────────────────────
+    // ── Drag handle ────────────────────────────────────────────────────────
     final dragHandle = Container(
       color: colorScheme.surface,
       width: double.infinity,
@@ -395,7 +495,7 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
     );
 
-    // ── Scan bar (optional, always below form) ──────────────────────────────
+    // ── Scan bar (optional, always below form) ──────────────────────────
     final scanBar = onScan != null
         ? Container(
             decoration: BoxDecoration(
@@ -423,7 +523,7 @@ class GlobalItemFormSheet extends StatelessWidget {
           )
         : null;
 
-    // ───────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────
     // LAYOUT SWITCH
     //
     // scrollController != null → DraggableScrollableSheet path
@@ -437,10 +537,10 @@ class GlobalItemFormSheet extends StatelessWidget {
     //   Expanded here would crash with "RenderFlex children have non-zero flex
     //   but incoming height constraints are unbounded".
     //   Use Column(mainAxisSize: min) + direct children instead.
-    // ───────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────
 
     if (scrollController != null) {
-      // ── Bounded-height path (Stock Entry, Delivery Note) ─────────────────
+      // ── Bounded-height path (Stock Entry, Delivery Note) ──────────────────
       return Container(
         margin: EdgeInsets.only(top: topPadding + 12),
         decoration: BoxDecoration(
@@ -469,7 +569,7 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       );
     } else {
-      // ── Unbounded / content-hugging path (Material Request) ─────────────
+      // ── Unbounded / content-hugging path (Material Request) ───────────────
       // No top margin or outer radius here — the parent Material widget in
       // openItemSheet() already provides the surface colour and border radius.
       return Form(
