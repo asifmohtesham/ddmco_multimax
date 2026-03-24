@@ -17,7 +17,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
@@ -135,7 +135,7 @@ class PurchaseReceiptFormController extends GetxController
     await fetchPurchaseReceipt();
     isStale.value    = false;
     isScanning.value = false;
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    AppNotification.success(message: 'Document reloaded successfully');
   }
 
   Future<void> confirmDiscard() async {
@@ -232,10 +232,10 @@ class PurchaseReceiptFormController extends GetxController
 
         if (poNames.isNotEmpty) await _fetchLinkedPurchaseOrders(poNames);
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch purchase receipt');
+        AppNotification.error(message: 'Failed to fetch purchase receipt');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       isLoading.value = false;
       isDirty.value   = false;
@@ -297,10 +297,6 @@ class PurchaseReceiptFormController extends GetxController
   }
 
   // ── S4: addItemLocally / updateItemLocally ─────────────────────────────────
-  //
-  // All model-construction and duplicate-merge logic extracted from the old
-  // child submit() method into the parent, matching the SE/DN pattern.
-  // The child submit() is now a thin 6-line delegate.
 
   void addItemLocally(
     String itemCode,
@@ -320,7 +316,6 @@ class PurchaseReceiptFormController extends GetxController
 
     final currentItems = purchaseReceipt.value?.items.toList() ?? [];
 
-    // Duplicate-merge: same item + batch + rack + warehouse
     final dupIdx = currentItems.indexWhere((i) =>
         i.itemCode == itemCode &&
         (i.batchNo  ?? '') == batch &&
@@ -548,7 +543,7 @@ class PurchaseReceiptFormController extends GetxController
         currentItems.removeWhere((i) => i.name == item.name);
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
-        GlobalSnackbar.success(message: 'Item removed');
+        AppNotification.success(message: 'Item removed');
         await savePurchaseReceipt();
       },
     );
@@ -589,10 +584,10 @@ class PurchaseReceiptFormController extends GetxController
           mode = 'edit';
           await fetchPurchaseReceipt();
           _setSaveResult(SaveResult.success);
-          GlobalSnackbar.success(message: 'Purchase Receipt created: $name');
+          AppNotification.success(message: 'Purchase Receipt created: $name');
         } else {
           _setSaveResult(SaveResult.error);
-          GlobalSnackbar.error(
+          AppNotification.error(
               message: 'Failed to create: '
                   '${response.data['exception'] ?? 'Unknown error'}');
         }
@@ -603,7 +598,7 @@ class PurchaseReceiptFormController extends GetxController
           await fetchPurchaseReceipt();
         } else {
           _setSaveResult(SaveResult.error);
-          GlobalSnackbar.error(
+          AppNotification.error(
               message: 'Failed to update: '
                   '${response.data['exception'] ?? 'Unknown error'}');
         }
@@ -622,11 +617,11 @@ class PurchaseReceiptFormController extends GetxController
             msg = 'Validation Error: Check form details';
           }
         }
-        GlobalSnackbar.error(message: msg);
+        AppNotification.error(message: msg);
       }
     } catch (e) {
       _setSaveResult(SaveResult.error);
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      AppNotification.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }
@@ -675,14 +670,14 @@ class PurchaseReceiptFormController extends GetxController
       child.batchController.text = result.batchNo!;
       child.validateBatch(result.batchNo!);
     } else {
-      GlobalSnackbar.error(
+      AppNotification.error(
           message: result.message ?? 'Invalid input for this field');
     }
   }
 
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
-      GlobalSnackbar.warning(message: 'Document is submitted.');
+      AppNotification.warning(message: 'Document is submitted.');
       return;
     }
     if (barcode.isEmpty) return;
@@ -718,7 +713,7 @@ class PurchaseReceiptFormController extends GetxController
             return pi.itemCode == itemData.itemCode;
           });
           if (!found) {
-            GlobalSnackbar.error(message:
+            AppNotification.error(message:
                 'Item ${itemData.itemCode} is not in the linked Purchase Order');
             return;
           }
@@ -736,10 +731,10 @@ class PurchaseReceiptFormController extends GetxController
           uom:        itemData.stockUom,
         );
       } else {
-        GlobalSnackbar.error(message: result.message ?? 'Item not found');
+        AppNotification.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Scan failed: $e');
+      AppNotification.error(message: 'Scan failed: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();

@@ -5,7 +5,7 @@ import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/app_notification.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_po_selection_sheet.dart';
 
 class PurchaseReceiptController extends GetxController {
@@ -112,10 +112,10 @@ class PurchaseReceiptController extends GetxController {
         }
         _currentPage++;
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch purchase receipts');
+        AppNotification.error(message: 'Failed to fetch purchase receipts');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -136,10 +136,10 @@ class PurchaseReceiptController extends GetxController {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
         _detailedReceiptsCache[name] = receipt;
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch receipt details');
+        AppNotification.error(message: 'Failed to fetch receipt details');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       isLoadingDetails.value = false;
     }
@@ -172,7 +172,7 @@ class PurchaseReceiptController extends GetxController {
         purchaseOrdersForSelection.value = _allFetchedPOs;
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to fetch Purchase Orders');
+      AppNotification.error(message: 'Failed to fetch Purchase Orders');
     } finally {
       isFetchingPOs.value = false;
     }
