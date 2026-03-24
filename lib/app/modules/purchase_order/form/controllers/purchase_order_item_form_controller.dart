@@ -4,66 +4,50 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import '../purchase_order_form_controller.dart';
+import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:collection/collection.dart';
+import '../purchase_order_form_controller.dart';
 
-class PurchaseOrderItemFormController extends GetxController {
+class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   late PurchaseOrderFormController _parent;
 
-  // --- Form Key ---
-  var itemFormKey = GlobalKey<FormState>();
-
-  // --- Text Controllers ---
-  final qtyController = TextEditingController();
-  final rateController = TextEditingController();
+  // ── PO-specific field controllers ─────────────────────────────────────────
+  final rateController         = TextEditingController();
   final scheduleDateController = TextEditingController();
 
-  // --- Item Identity ---
-  var itemCode = ''.obs;
-  var itemName = ''.obs;
-  var itemUom = ''.obs;
-  var currentItemNameKey = RxnString(); // null = new item, non-null = editing
-
-  // --- Metadata ---
-  var itemOwner = RxnString();
-  var itemCreation = RxnString();
-  var itemModified = RxnString();
-  var itemModifiedBy = RxnString();
-
-  // --- Computed Rx ---
-  var sheetQty = 0.0.obs;
+  // ── PO-specific Rx ───────────────────────────────────────────────────────
   var sheetRate = 0.0.obs;
-  double get sheetAmount => sheetQty.value * sheetRate.value;
+  double get sheetAmount => (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
 
-  // --- Validation ---
-  var isSheetValid = false.obs;
-
-  // --- Dirty tracking snapshot ---
-  double _initialQty = 0.0;
+  // ── Dirty-check snapshot ─────────────────────────────────────────────────
+  double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
 
-  // --- Auto-submit ---
-  Timer? _autoSubmitTimer;
+  // ── ItemSheetControllerBase overrides ─────────────────────────────────────
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
+  @override
+  String? get resolvedWarehouse => null; // PO has no warehouse concept
+
+  @override
+  bool get requiresBatch => false;
+
+  @override
+  bool get requiresRack => false;
+
+  @override
+  String? get qtyInfoText => null; // no stock context on outbound orders
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
-    _autoSubmitTimer?.cancel();
-    qtyController.dispose();
     rateController.dispose();
     scheduleDateController.dispose();
-    super.onClose();
+    super.onClose(); // disposes qtyController + base controllers
   }
 
-  // ---------------------------------------------------------------------------
-  // Initialise — called by parent after creating this controller
-  // ---------------------------------------------------------------------------
+  // ── Initialise — called by parent _openItemSheet() ────────────────────────
 
   void initialise({
     required PurchaseOrderFormController parentController,
@@ -81,76 +65,65 @@ class PurchaseOrderItemFormController extends GetxController {
   }) {
     _parent = parentController;
 
-    // Refresh form key every open so validators reset cleanly.
-    itemFormKey = GlobalKey<FormState>();
+    // ── Base: add-mode flag & editing context ──────────────────────────────
+    editingItemName.value = rowId;
+    isAddMode             = rowId == null;
 
-    // Identity
+    // ── Base: item identity ────────────────────────────────────────────────
     itemCode.value = code;
     itemName.value = name;
-    itemUom.value = uom;
-    currentItemNameKey.value = rowId;
 
-    // Metadata
-    itemOwner.value = owner;
-    itemCreation.value = creation;
-    itemModified.value = modified;
+    // ── Base: metadata footer ──────────────────────────────────────────────
+    itemOwner.value      = owner;
+    itemCreation.value   = creation;
+    itemModified.value   = modified;
     itemModifiedBy.value = modifiedBy;
 
-    // Field values
-    qtyController.text = qty.toStringAsFixed(0);
-    rateController.text = rate.toStringAsFixed(2);
+    // ── Base: parent saving flag ───────────────────────────────────────────
+    isAddingItemFlag = _parent.isAddingItem;
+
+    // ── PO-specific fields ─────────────────────────────────────────────────
+    qtyController.text          = qty.toStringAsFixed(0);
+    rateController.text         = rate.toStringAsFixed(2);
     scheduleDateController.text =
         scheduleDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    sheetQty.value = qty;
     sheetRate.value = rate;
 
-    // Snapshot for dirty check
-    _initialQty = qty;
+    // ── Dirty-check snapshot ───────────────────────────────────────────────
+    _initialQty  = qty;
     _initialRate = rate;
     _initialDate = scheduleDateController.text;
 
-    // Wire listeners
-    qtyController.addListener(_onQtyChanged);
-    rateController.addListener(_onRateChanged);
+    // ── Base: wire shared qty listener + capture snapshot ─────────────────
+    initBaseListeners();
     scheduleDateController.addListener(validateSheet);
+    rateController.addListener(_onRateChanged);
+    captureSnapshot();
 
-    _setupAutoSubmit();
+    // ── Auto-submit ────────────────────────────────────────────────────────
+    final storage = Get.find<StorageService>();
+    setupAutoSubmit(
+      enabled:       storage.getAutoSubmitEnabled(),
+      delaySeconds:  storage.getAutoSubmitDelay(),
+      isSheetOpen:   _parent.isItemSheetOpen,
+      isSubmittable: () => _parent.isEditable,
+      onAutoSubmit:  submit,
+    );
+
     validateSheet();
   }
 
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  void _onQtyChanged() {
-    sheetQty.value = double.tryParse(qtyController.text) ?? 0.0;
-    validateSheet();
-  }
+  // ── Private helpers ───────────────────────────────────────────────────────
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
   }
 
-  void _setupAutoSubmit() {
-    final storage = Get.find<StorageService>();
+  // ── ItemSheetControllerBase: validateSheet ────────────────────────────────
 
-    ever(isSheetValid, (bool valid) {
-      _autoSubmitTimer?.cancel();
-      if (valid && _parent.isEditable && storage.getAutoSubmitEnabled()) {
-        final delay = storage.getAutoSubmitDelay();
-        _autoSubmitTimer = Timer(Duration(seconds: delay), () {
-          if (isSheetValid.value) submit();
-        });
-      }
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
+  @override
   void validateSheet() {
     if (!_parent.isEditable) {
       isSheetValid.value = false;
@@ -160,35 +133,44 @@ class PurchaseOrderItemFormController extends GetxController {
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) { isSheetValid.value = false; return; }
     if (scheduleDateController.text.isEmpty) { isSheetValid.value = false; return; }
+    if ((double.tryParse(rateController.text) ?? -1) < 0) { isSheetValid.value = false; return; }
 
-    // Dirty check: editing an existing item requires at least one field to have changed.
-    if (currentItemNameKey.value != null) {
+    // Edit mode: require at least one field to have changed.
+    if (!isAddMode) {
       final currentRate = double.tryParse(rateController.text) ?? 0;
       final dirty = qty != _initialQty ||
           currentRate != _initialRate ||
           scheduleDateController.text != _initialDate;
       isSheetValid.value = dirty;
     } else {
-      isSheetValid.value = true; // New items are always submittable once valid.
+      isSheetValid.value = true;
     }
   }
 
-  void adjustQty(double delta) {
-    final current = double.tryParse(qtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(0.0, 999999.0);
-    qtyController.text = newVal == 0 ? '' : newVal.toStringAsFixed(0);
+  // ── ItemSheetControllerBase: deleteCurrentItem ────────────────────────────
+
+  @override
+  Future<void> deleteCurrentItem() async {
+    if (editingItemName.value == null) return;
+    final item = _parent.purchaseOrder.value?.items
+        .firstWhereOrNull((i) => i.name == editingItemName.value);
+    if (item == null) return;
+    _parent.confirmAndDeleteItem(item);
   }
 
-  void submit() {
-    final qty          = double.tryParse(qtyController.text) ?? 0;
+  // ── ItemSheetControllerBase: submit ───────────────────────────────────────
+
+  @override
+  Future<void> submit() async {
+    final qty  = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return;
     final rate         = double.tryParse(rateController.text) ?? 0.0;
     final scheduleDate = scheduleDateController.text;
 
-    if (currentItemNameKey.value != null) {
-      // Edit path — preserve all server-side metadata fields
+    if (!isAddMode && editingItemName.value != null) {
+      // Edit path — preserve all server-side metadata fields.
       final existing = _parent.purchaseOrder.value?.items
-          .firstWhereOrNull((i) => i.name == currentItemNameKey.value);
+          .firstWhereOrNull((i) => i.name == editingItemName.value);
       if (existing == null) return;
       final updated = PurchaseOrderItem(
         name:         existing.name,
@@ -208,7 +190,7 @@ class PurchaseOrderItemFormController extends GetxController {
       );
       _parent.updateItemLocally(updated);
     } else {
-      // Add path
+      // Add path.
       final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = PurchaseOrderItem(
         name:         uniqueId,
@@ -218,7 +200,7 @@ class PurchaseOrderItemFormController extends GetxController {
         receivedQty:  0.0,
         rate:         rate,
         amount:       qty * rate,
-        uom:          itemUom.value,
+        uom:          '',
         scheduleDate: scheduleDate,
       );
       _parent.addItemLocally(newItem);
