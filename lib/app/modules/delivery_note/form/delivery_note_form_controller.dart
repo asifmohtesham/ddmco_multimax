@@ -276,8 +276,16 @@ class DeliveryNoteFormController extends GetxController
   //
   // Step-4: DeliveryNoteItemBottomSheet is eliminated.
   // P1-B:  onSubmit lambda now owns the full save coordinator:
-  //          child.submit()  →  isDirty  →  saveDeliveryNote()
+  //          child.submitWithFeedback()  →  isDirty  →  saveDeliveryNote()
   //        child.submit() itself no longer calls saveDeliveryNote().
+  //
+  // Fix (Navigator.pop): Get.back() after saveDeliveryNote() caused the
+  // "No Overlay widget found" crash because GetX's SnackbarController
+  // looks up the overlay after Get.back() has already popped the route.
+  // Instead we capture the DraggableScrollableSheet builder context and
+  // call Navigator.of(sheetContext).pop() — this dismisses only the
+  // bottom-sheet route without disturbing GetX's overlay chain, so the
+  // subsequent GlobalSnackbar.success() always finds a live overlay.
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -304,28 +312,22 @@ class DeliveryNoteFormController extends GetxController
       scannedEan8:   currentScannedEan, // S1
     );
 
-    // ── P1-B: onSubmit coordinator ─────────────────────────────────────────
-    // child.submit() performs the local mutation only.
-    // isDirty + saveDeliveryNote() are the parent's responsibility.
-    Future<void> onSubmit() async {
-      isAddingItem.value = true;
-      try {
-        await child.submit();
-        isDirty.value = true;
-        await saveDeliveryNote();
-      } finally {
-        isAddingItem.value = false;
-      }
-    }
-
     child.setupAutoSubmit(
       enabled:      _storageService.getAutoSubmitEnabled(),
       delaySeconds: _storageService.getAutoSubmitDelay(),
       isSheetOpen:  isItemSheetOpen,
       isSubmittable: () => (deliveryNote.value?.docstatus ?? 1) == 0,
       onAutoSubmit: () async {
-        // Auto-submit uses the same coordinator path.
-        await onSubmit();
+        // Auto-submit coordinator — sheet context not available here,
+        // so Get.back() is acceptable (snackbar fires after pop completes).
+        isAddingItem.value = true;
+        try {
+          await child.submit();
+          isDirty.value = true;
+          await saveDeliveryNote();
+        } finally {
+          isAddingItem.value = false;
+        }
         Get.back();
       },
     );
@@ -338,31 +340,56 @@ class DeliveryNoteFormController extends GetxController
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
-        builder: (context, sc) => UniversalItemFormSheet(
-          controller:       child,
-          scrollController: sc,
-          onSubmit:         onSubmit,
-          onScan:           (code) => scanBarcode(code),
-          customFields: [
-            // 1. Invoice Serial No — POS Upload flow only
-            SharedSerialField(
-              controller:  child,
-              accentColor: Colors.blueGrey,
-            ),
-            // 2. Batch No
-            SharedBatchField(
-              c:           child,
-              accentColor: Colors.purple,
-              editMode:    true,
-              fieldKey:    'dn_batch_field',
-            ),
-            // 3. Rack
-            SharedRackField(
-              c:           child,
-              accentColor: Colors.orange,
-            ),
-          ],
-        ),
+        builder: (context, sc) {
+          // ── P1-B: onSubmit coordinator ───────────────────────────────────
+          // submitWithFeedback() drives idle→loading→success animation (700 ms)
+          // then returns true. Navigator.of(context).pop() is called only on
+          // success, after the animation delay, so the overlay is fully settled
+          // before any snackbar fires.
+          Future<void> onSubmit() async {
+            isAddingItem.value = true;
+            try {
+              final bool saved = await child.submitWithFeedback();
+              if (saved) {
+                isDirty.value = true;
+                await saveDeliveryNote();
+                // Use Navigator.of(context).pop() instead of Get.back() to
+                // avoid the "No Overlay widget found" snackbar crash.
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              }
+            } finally {
+              isAddingItem.value = false;
+            }
+          }
+
+          return UniversalItemFormSheet(
+            controller:       child,
+            scrollController: sc,
+            onSubmit:         onSubmit,
+            onScan:           (code) => scanBarcode(code),
+            customFields: [
+              // 1. Invoice Serial No — POS Upload flow only
+              SharedSerialField(
+                controller:  child,
+                accentColor: Colors.blueGrey,
+              ),
+              // 2. Batch No
+              SharedBatchField(
+                c:           child,
+                accentColor: Colors.purple,
+                editMode:    true,
+                fieldKey:    'dn_batch_field',
+              ),
+              // 3. Rack
+              SharedRackField(
+                c:           child,
+                accentColor: Colors.orange,
+              ),
+            ],
+          );
+        },
       ),
       isScrollControlled: true,
     );
