@@ -27,7 +27,6 @@ class GlobalItemFormSheet extends StatelessWidget {
   // State driven by parent DocType controller
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
-  final bool isSaving;
   final bool isLoading;
 
   // Metadata
@@ -61,7 +60,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onDelete,
     this.isSaveEnabled = true,
     this.isSaveEnabledRx,
-    this.isSaving = false,
     this.isLoading = false,
     this.owner,
     this.creation,
@@ -126,7 +124,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     final ctrl = _sheetCtrl;
 
     return Obx(() {
-      final showLoading = isSaving || isLoading || ctrl.isSubmitting.value;
+      final showLoading = isLoading || ctrl.isSubmitting.value;
       final canPress = enabled && !showLoading;
       final colorScheme = Theme.of(context).colorScheme;
 
