@@ -40,10 +40,8 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 /// Standardisation S7:
 ///   • [applyRackScan]  — added; delegates to rackController + validateRack,
 ///                        matching PR pattern for scan-bar rack routing.
-///   • [resetRack]      — overridden; clears base flags. DN has no derived
-///                        warehouse from rack (unlike PR), so no extra field
-///                        to clear, but the explicit override ensures any
-///                        future DN-specific rack state is handled here.
+///   • [resetRack]      — overridden; calls super, explicit extension point
+///                        for future DN-specific rack state.
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
@@ -212,12 +210,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── S7: applyRackScan ──────────────────────────────────────────────────────
   //
-  // DN has a single target rack, so scan routing is trivial:
-  // populate rackController and trigger validation, matching the PR pattern.
+  // DN has a single target rack. Routes an external scan into rackController
+  // and triggers network validation — matches PR pattern.
   // SE has its own applyRackScan with source/target routing logic.
 
-  /// Routes an external rack scan into the DN sheet's rack field and
-  /// triggers network validation.
   void applyRackScan(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
@@ -225,11 +221,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── S7: resetRack override ─────────────────────────────────────────────────
   //
-  // DN does not derive a warehouse from the rack (unlike PR which sets
-  // itemWarehouse from the rack suffix).  The base resetRack() already
-  // clears isRackValid + rackError, so we only need to call super here.
-  // The explicit override exists as an extension point for future DN-
-  // specific rack state and mirrors the PR/SE override pattern.
+  // DN has no derived warehouse from rack (unlike PR which sets itemWarehouse).
+  // Calls super to clear isRackValid + rackError. Explicit override as
+  // an extension point for any future DN-specific rack state.
 
   @override
   void resetRack() {
