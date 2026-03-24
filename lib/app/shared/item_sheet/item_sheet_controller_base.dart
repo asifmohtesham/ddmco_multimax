@@ -25,7 +25,12 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   // ─── Form ──────────────────────────────────────────────────────────────────
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  final TextEditingController qtyController   = TextEditingController();
+
+  /// Wrapped in Rx so that QuantityInputWidget's Obx always binds the
+  /// live instance. If GetX disposes and recreates this controller mid-rebuild,
+  /// the Rx emits, Obx re-runs, and TextFormField receives the new TEC
+  /// instead of calling addListener on the already-disposed one.
+  final qtyController   = TextEditingController().obs;
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
 
@@ -96,7 +101,7 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   @override
   void onClose() {
-    qtyController.dispose();
+    qtyController.value.dispose(); // dispose the inner TEC; Rx is handled by GetX
     batchController.dispose();
     rackController.dispose();
     rackFocusNode.dispose();
@@ -110,7 +115,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Base validation rules shared by every DocType.
   /// Returns true when the core fields are in a valid state.
   bool baseValidate() {
-    final qty = double.tryParse(qtyController.text) ?? 0;
+    final qty = double.tryParse(qtyController.value.text) ?? 0;
     if (qty <= 0) return false;
     if (maxQty.value > 0 && qty > maxQty.value) return false;
     if (requiresBatch && batchController.text.isEmpty) return false;
@@ -122,11 +127,11 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   /// Adjusts qty by [delta], clamped to [0, maxQty].
   void adjustQty(double delta) {
-    double current = double.tryParse(qtyController.text) ?? 0;
+    double current = double.tryParse(qtyController.value.text) ?? 0;
     double next    = current + delta;
     if (next < 0) next = 0;
     if (maxQty.value > 0 && next > maxQty.value) next = maxQty.value;
-    qtyController.text = next % 1 == 0 ? next.toInt().toString() : next.toString();
+    qtyController.value.text = next % 1 == 0 ? next.toInt().toString() : next.toString();
     validateSheet();
   }
 
@@ -187,7 +192,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       final double pkgQty =
           (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
       if (pkgQty > 0) {
-        qtyController.text =
+        qtyController.value.text =
             pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
       }
 
@@ -345,7 +350,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     itemName.value = '';
     itemOwner.value = itemCreation.value =
         itemModified.value = itemModifiedBy.value = null;
-    qtyController.text   = '';
+    qtyController.value.text = '';
     batchController.text = '';
     rackController.text  = '';
     isBatchValid.value      = false;
