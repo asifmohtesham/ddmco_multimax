@@ -24,19 +24,17 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
         length: 2,
         child: Scaffold(
           appBar: MainAppBar(
-            title: controller.purchaseOrder.value?.name ?? 'Loading...',
-            status: controller.purchaseOrder.value?.status,
-            actions: [
-              // ── IT-G: SaveIconButton replaces raw spinner + IconButton ──
-              Obx(() => SaveIconButton(
-                isSaving:   controller.isSaving.value,
-                isDirty:    controller.isDirty.value && controller.isEditable,
-                saveResult: controller.saveResult.value,
-                onPressed:  (controller.isDirty.value && controller.isEditable)
-                    ? controller.savePurchaseOrder
-                    : null,
-              )),
-            ],
+            title:      controller.purchaseOrder.value?.name ?? 'Loading...',
+            status:     controller.purchaseOrder.value?.status,
+            isDirty:    controller.isDirty.value,
+            isSaving:   controller.isSaving.value,
+            saveResult: controller.saveResult.value,
+            onSave: (controller.isDirty.value && controller.isEditable)
+                ? controller.savePurchaseOrder
+                : null,
+            onReload: (controller.mode != 'new' && !controller.isDirty.value)
+                ? controller.reloadDocument
+                : null,
             bottom: const TabBar(
               tabs: [
                 Tab(text: 'Details'),
@@ -84,7 +82,6 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           ),
           const Divider(height: 24),
 
-          // ── IT-G: GestureDetector delegates entirely to controller ──────
           GestureDetector(
             onTap: isEditable
                 ? () => controller.openSupplierSelectionSheet()
@@ -105,24 +102,23 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
 
           const SizedBox(height: 16),
 
-          // ── IT-G: Date field gains showDatePicker ──────────────────────
           GestureDetector(
             onTap: isEditable
                 ? () async {
-              final now  = DateTime.now();
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: now,
-                firstDate: DateTime(now.year - 5),
-                lastDate:  DateTime(now.year + 5),
-              );
-              if (picked != null) {
-                controller.dateController.text =
-                '${picked.year.toString().padLeft(4, '0')}-'
-                    '${picked.month.toString().padLeft(2, '0')}-'
-                    '${picked.day.toString().padLeft(2, '0')}';
-              }
-            }
+                    final now    = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: now,
+                      firstDate:   DateTime(now.year - 5),
+                      lastDate:    DateTime(now.year + 5),
+                    );
+                    if (picked != null) {
+                      controller.dateController.text =
+                          '${picked.year.toString().padLeft(4, '0')}-'
+                          '${picked.month.toString().padLeft(2, '0')}-'
+                          '${picked.day.toString().padLeft(2, '0')}';
+                    }
+                  }
                 : null,
             child: AbsorbPointer(
               child: TextFormField(
@@ -161,20 +157,16 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           child: po.items.isEmpty
               ? const Center(child: Text('No items in this order.'))
               : ListView.builder(
-            // ── IT-G: use controller scrollController ─────────────
-            controller: controller.scrollController,
-            padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
-            itemCount: po.items.length,
-            itemBuilder: (context, index) {
-              final item = po.items[index];
-
-              // Register GlobalKey for scroll-to-highlight
-              controller.ensureItemKey(item);
-              final key = controller.itemKeys[item.name];
-
-              return _buildItemRow(context, item, index, key);
-            },
-          ),
+                  controller: controller.scrollController,
+                  padding:    const EdgeInsets.only(top: 8.0, bottom: 80.0),
+                  itemCount:  po.items.length,
+                  itemBuilder: (context, index) {
+                    final item = po.items[index];
+                    controller.ensureItemKey(item);
+                    final key = controller.itemKeys[item.name];
+                    return _buildItemRow(context, item, index, key);
+                  },
+                ),
         ),
         if (controller.isEditable)
           Obx(() => BarcodeInputWidget(
@@ -189,23 +181,19 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   }
 
   Widget _buildItemRow(
-      BuildContext context,
-      dynamic item,
-      int index,
-      GlobalKey? key,
-      ) {
+    BuildContext context,
+    dynamic item,
+    int index,
+    GlobalKey? key,
+  ) {
     return Obx(() {
-      // ── IT-G: highlight recently added/edited card ─────────────────────
       final isHighlighted =
           controller.recentlyAddedItemName.value == item.name;
-
-      // ── IT-G: per-item tap-loading indicator ───────────────────────────
       final isLoadingThis =
           controller.isLoadingItemEdit.value &&
-              controller.loadingForItemName.value == item.name;
+          controller.loadingForItemName.value == item.name;
 
       return Dismissible(
-        // ── IT-G: swipe-to-delete — mirrors SE/DN ─────────────────────
         key:       ValueKey(item.name ?? index),
         direction: controller.isEditable
             ? DismissDirection.endToStart
@@ -214,9 +202,9 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           bool confirmed = false;
           await Future.microtask(() {
             controller.confirmAndDeleteItem(item);
-            confirmed = false; // dialog owns the actual removal
+            confirmed = false;
           });
-          return confirmed; // always false — dialog handles state
+          return confirmed;
         },
         background: Container(
           alignment: Alignment.centerRight,
@@ -231,12 +219,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             borderRadius: BorderRadius.circular(12),
             boxShadow: isHighlighted
                 ? [
-              BoxShadow(
-                color:       Colors.blue.withOpacity(0.35),
-                blurRadius:  10,
-                spreadRadius: 2,
-              )
-            ]
+                    BoxShadow(
+                      color:        Colors.blue.withOpacity(0.35),
+                      blurRadius:   10,
+                      spreadRadius: 2,
+                    )
+                  ]
                 : [],
           ),
           child: Stack(
@@ -250,8 +238,6 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                   index: index,
                 ),
               ),
-
-              // ── IT-G: per-item loading overlay ─────────────────────────
               if (isLoadingThis)
                 Positioned.fill(
                   child: Container(
@@ -277,11 +263,11 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildInfoRow(
-      String label,
-      String value, {
-        IconData? icon,
-        bool isBold = false,
-      }) {
+    String label,
+    String value, {
+    IconData? icon,
+    bool isBold = false,
+  }) {
     return Row(
       children: [
         if (icon != null) ...[
