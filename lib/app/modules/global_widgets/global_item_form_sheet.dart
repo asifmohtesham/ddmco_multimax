@@ -373,8 +373,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '\$itemCode'
-                    '\${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • \$itemSubtext' : ''}',
+                    '$itemCode'
+                    '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
                     style: theme.textTheme.labelMedium?.copyWith(
                       fontFamily: 'ShureTechMono',
                       fontSize: 16,
