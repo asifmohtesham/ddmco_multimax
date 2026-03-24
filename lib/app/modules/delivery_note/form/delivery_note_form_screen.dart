@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -28,14 +29,26 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 title: controller.deliveryNote.value?.name ?? 'Loading...',
                 status: controller.deliveryNote.value?.status,
                 isDirty: controller.isDirty.value,
-                isSaving: controller.isSaving.value,
-                onSave: controller.deliveryNote.value?.docstatus == 0
-                    ? controller.saveDeliveryNote
-                    : null,
                 onReload: (controller.mode != 'new' &&
                         !controller.isDirty.value)
                     ? controller.reloadDocument
                     : null,
+                actions: [
+                  Obx(() {
+                    if (controller.deliveryNote.value?.docstatus == 1) {
+                      return const SizedBox.shrink();
+                    }
+                    final canSave =
+                        controller.isDirty.value &&
+                        (controller.deliveryNote.value?.docstatus == 0);
+                    return SaveIconButton(
+                      isSaving:   controller.isSaving.value,
+                      saveResult: controller.saveResult.value,
+                      isDirty:    canSave,
+                      onPressed:  canSave ? controller.saveDeliveryNote : null,
+                    );
+                  }),
+                ],
                 bottom: const TabBar(
                   tabs: [
                     Tab(text: 'Details'),
@@ -306,7 +319,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               final posUpload          = controller.posUpload.value;
               final deliveryNoteItems  =
                   controller.deliveryNote.value?.items ?? [];
-              // Currency threaded down to ItemGroupCard for rate display
               final currency =
                   controller.deliveryNote.value?.currency;
 
@@ -329,7 +341,33 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                         !controller.itemKeys.containsKey(item.name)) {
                       controller.itemKeys[item.name!] = GlobalKey();
                     }
-                    return DeliveryNoteItemCard(item: item);
+                    return Dismissible(
+                      key: ValueKey(item.name ?? index),
+                      direction:
+                          controller.deliveryNote.value?.docstatus == 0
+                              ? DismissDirection.endToStart
+                              : DismissDirection.none,
+                      confirmDismiss: (_) async {
+                        if (controller.deliveryNote.value?.docstatus ==
+                            0) {
+                          await controller.confirmAndDeleteItem(item);
+                        }
+                        return false;
+                      },
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        color: Colors.red.shade400,
+                        child: const Icon(Icons.delete_outline,
+                            color: Colors.white, size: 28),
+                      ),
+                      child: Container(
+                        key: item.name != null
+                            ? controller.itemKeys[item.name]
+                            : null,
+                        child: DeliveryNoteItemCard(item: item),
+                      ),
+                    );
                   },
                 );
               }
