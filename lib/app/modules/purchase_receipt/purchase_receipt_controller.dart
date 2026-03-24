@@ -5,7 +5,7 @@ import 'package:multimax/app/data/providers/purchase_receipt_provider.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_po_selection_sheet.dart';
 
 class PurchaseReceiptController extends GetxController {

@@ -3,7 +3,7 @@ import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
-import 'package:multimax/app/utils/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 
 class PosUploadController extends GetxController {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();

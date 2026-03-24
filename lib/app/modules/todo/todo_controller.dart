@@ -1,7 +1,7 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
-import 'package:multimax/app/utils/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 
 class ToDoController extends GetxController {
   final ToDoProvider _provider = Get.find<ToDoProvider>();

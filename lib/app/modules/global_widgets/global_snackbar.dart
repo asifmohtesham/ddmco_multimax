@@ -1,4 +1,4 @@
-import 'package:ddmco_multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:flutter/services.dart';
 
 /// A backwards-compatible façade over [AppNotification].

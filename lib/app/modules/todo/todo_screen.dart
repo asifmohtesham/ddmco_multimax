@@ -6,7 +6,7 @@ import 'package:multimax/app/modules/todo/widgets/todo_list_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
-import 'package:multimax/app/utils/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});

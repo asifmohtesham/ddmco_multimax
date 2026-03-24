@@ -17,7 +17,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
-import 'package:multimax/app/modules/global_widgets/app_notification.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
