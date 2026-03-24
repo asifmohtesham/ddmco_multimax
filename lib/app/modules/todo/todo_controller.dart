@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
+import 'package:multimax/app/utils/app_notification.dart';
 
 class ToDoController extends GetxController {
   final ToDoProvider _provider = Get.find<ToDoProvider>();
@@ -33,7 +34,7 @@ class ToDoController extends GetxController {
 
   ToDo? get detailedTodo => _detailedTodosCache[expandedTodoName.value];
 
-  // ── Filter / Sort API ───────────────────────────────────────────────────
+  // ── Filter / Sort API ─────────────────────────────────────────────────────
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = Map.from(filters);
@@ -58,7 +59,7 @@ class ToDoController extends GetxController {
     fetchTodos(isLoadMore: false, clear: true);
   }
 
-  // ── Local search ───────────────────────────────────────────────────────
+  // ── Local search ────────────────────────────────────────────────────────
 
   void onSearchChanged(String query) {
     searchQuery.value = query;
@@ -78,7 +79,7 @@ class ToDoController extends GetxController {
     }
   }
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  // ── Fetch ───────────────────────────────────────────────────────────────────
 
   Future<void> fetchTodos({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
@@ -116,10 +117,10 @@ class ToDoController extends GetxController {
         _applyLocalSearch();
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch ToDos');
+        AppNotification.error(message: 'Failed to fetch ToDos');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -129,7 +130,7 @@ class ToDoController extends GetxController {
     }
   }
 
-  // ── Detail expand ───────────────────────────────────────────────────────
+  // ── Detail expand ───────────────────────────────────────────────────────────
 
   Future<void> _fetchAndCacheTodoDetails(String name) async {
     if (_detailedTodosCache.containsKey(name)) return;
@@ -139,10 +140,10 @@ class ToDoController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         _detailedTodosCache[name] = ToDo.fromJson(response.data['data']);
       } else {
-        Get.snackbar('Error', 'Failed to fetch ToDo details');
+        AppNotification.error(message: 'Failed to fetch ToDo details');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       isLoadingDetails.value = false;
     }

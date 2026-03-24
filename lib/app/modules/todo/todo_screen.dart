@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/todo/widgets/todo_list_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/utils/app_notification.dart';
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});
@@ -62,10 +63,10 @@ class _ToDoScreenState extends State<ToDoScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Header: AppBar + SearchBar + filter chips ───────────────
+            // ── Header: AppBar + SearchBar + filter chips ───────────────────
             const ToDoListAppBar(),
 
-            // ── List content ───────────────────────────────────────
+            // ── List content ────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.todos.isEmpty) {
@@ -217,7 +218,7 @@ class ToDoCard extends StatelessWidget {
 
         return Column(
           children: [
-            // ── Summary row ───────────────────────────────────────
+            // ── Summary row ───────────────────────────────────────────
             InkWell(
               onTap: () => controller.toggleExpand(todo.name),
               child: Padding(
@@ -318,7 +319,7 @@ class ToDoCard extends StatelessWidget {
               ),
             ),
 
-            // ── Expanded detail ───────────────────────────────────
+            // ── Expanded detail ─────────────────────────────────────────
             AnimatedSize(
               duration: const Duration(milliseconds: 280),
               curve: Curves.easeInOut,
@@ -374,8 +375,9 @@ class ToDoCard extends StatelessWidget {
                               children: [
                                 if (detailed.status == 'Open') ...[
                                   OutlinedButton(
-                                    onPressed: () => Get.snackbar(
-                                        'ToDo', 'Close ToDo — TODO'),
+                                    // TODO: implement close ToDo action
+                                    onPressed: () => AppNotification.info(
+                                        message: 'Close ToDo coming soon'),
                                     child: const Text('Close'),
                                   ),
                                   const SizedBox(width: 8),
