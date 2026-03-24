@@ -37,6 +37,14 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [validateBatchOnInit] — removed local duplicate; use base method.
 ///   • [isBatchReadOnly]    — wired in _loadExistingItem (lock on existing batch).
 ///
+/// Standardisation S7:
+///   • [applyRackScan]  — added; delegates to rackController + validateRack,
+///                        matching PR pattern for scan-bar rack routing.
+///   • [resetRack]      — overridden; clears base flags. DN has no derived
+///                        warehouse from rack (unlike PR), so no extra field
+///                        to clear, but the explicit override ensures any
+///                        future DN-specific rack state is handled here.
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
@@ -45,8 +53,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── Parent reference ────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // currentScannedEan8 → removed; use base field currentScannedEan (S1)
-  // validateBatchOnInit → removed; use base method (S1)
+  // currentScannedEan8  → base field currentScannedEan (S1)
+  // validateBatchOnInit → base method (S1)
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
@@ -61,6 +69,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   bool get requiresRack => false;
 
   // ── P2-D: isSheetLoading override ─────────────────────────────────────────
+  //
+  // Base already covers isValidatingBatch + isValidatingRack + isAddingItemFlag.
+  // Override kept as an explicit extension point for future DN-specific flags.
 
   @override
   bool get isSheetLoading => super.isSheetLoading;
@@ -106,9 +117,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String scannedEan8 = '',
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan8; // S1: base field (was currentScannedEan8)
+    currentScannedEan = scannedEan8; // S1: base field
 
-    // ── Step-2: wire base loading / scan flags to parent ───────────────────
     isAddingItemFlag    = _parent.isAddingItem;
     isScanning          = _parent.isScanning;
     sheetScanController = _parent.barcodeController;
@@ -156,18 +166,16 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     selectedSerial.value = item.customInvoiceSerialNumber;
 
     isBatchValid.value    = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value; // S1: lock batch field on existing batch
+    isBatchReadOnly.value = isBatchValid.value; // S1
     isRackValid.value     = item.rack != null && item.rack!.isNotEmpty;
 
     if (item.batchNo != null && item.batchNo!.contains('-')) {
-      currentScannedEan = item.batchNo!.split('-').first; // S1: base field
+      currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
     log('[DN:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
         name: 'DN:ItemSheet');
   }
-
-  // ── P1-A: _loadNewItem ────────────────────────────────────────────────
 
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
@@ -183,7 +191,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     selectedSerial.value = null;
 
     isBatchValid.value    = batchNo != null && batchNo.isNotEmpty;
-    isBatchReadOnly.value = false; // S1: new item — batch field must remain unlocked
+    isBatchReadOnly.value = false; // S1: new item — batch field unlocked
     isRackValid.value     = false;
 
     if (batchNo != null && batchNo.isNotEmpty) {
@@ -194,12 +202,38 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── AutoFillRackMixin override ─────────────────────────────────────────────
+  // ── AutoFillRackMixin override ────────────────────────────────────────────
 
   @override
   Future<void> fetchAllRackStocks() async {
     await super.fetchAllRackStocks();
     autoFillBestRack();
+  }
+
+  // ── S7: applyRackScan ──────────────────────────────────────────────────────
+  //
+  // DN has a single target rack, so scan routing is trivial:
+  // populate rackController and trigger validation, matching the PR pattern.
+  // SE has its own applyRackScan with source/target routing logic.
+
+  /// Routes an external rack scan into the DN sheet's rack field and
+  /// triggers network validation.
+  void applyRackScan(String rackId) {
+    rackController.text = rackId;
+    validateRack(rackId);
+  }
+
+  // ── S7: resetRack override ─────────────────────────────────────────────────
+  //
+  // DN does not derive a warehouse from the rack (unlike PR which sets
+  // itemWarehouse from the rack suffix).  The base resetRack() already
+  // clears isRackValid + rackError, so we only need to call super here.
+  // The explicit override exists as an extension point for future DN-
+  // specific rack state and mirrors the PR/SE override pattern.
+
+  @override
+  void resetRack() {
+    super.resetRack();
   }
 
   // ── validateSheet ─────────────────────────────────────────────────────────
