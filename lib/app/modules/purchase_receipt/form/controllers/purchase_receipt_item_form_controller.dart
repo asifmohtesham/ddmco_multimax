@@ -35,6 +35,10 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///
 /// Standardisation S1 (base):
 ///  - isBatchReadOnly, currentScannedEan, validateBatchOnInit in base.
+///
+/// Sheet-close fix:
+///  - submit() now calls Get.back() after delegating to parent, so the
+///    bottom sheet dismisses immediately on confirm (mirrors PO pattern).
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // ── Step 2.1: typed ApiProvider ─────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -321,11 +325,10 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── S4: submit — delegates to parent (mirrors SE/DN) ─────────────────────────
+  // ── S4: submit — delegates to parent, then closes sheet ───────────────────────
   //
-  // Model construction and duplicate-merge logic now lives in the parent
-  // form controller (addItemLocally / updateItemLocally), keeping this
-  // controller a thin coordinator — identical responsibility boundary to SE/DN.
+  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
+  // immediately after the item is committed — matches PO pattern.
 
   @override
   Future<void> submit() async {
@@ -348,5 +351,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         poRate:    poRate.value,
       );
     }
+    Get.back(); // close the item form sheet
   }
 }

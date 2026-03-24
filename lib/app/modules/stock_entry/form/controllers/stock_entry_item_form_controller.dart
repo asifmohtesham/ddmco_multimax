@@ -41,6 +41,10 @@ import '../stock_entry_form_controller.dart';
 ///   • [currentScannedEan]   — removed local currentScannedEan8; use base field.
 ///   • [validateBatchOnInit] — removed local duplicate; use base method.
 ///
+/// Sheet-close fix:
+///   • submit() now calls Get.back() after delegating to parent, so the
+///     bottom sheet dismisses immediately on confirm (mirrors PO pattern).
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
 ///   sheet closes → Get.delete<StockEntryItemFormController>()
@@ -322,7 +326,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────
+  // ── submit — delegates to parent, then closes sheet ───────────────────────
+  //
+  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
+  // immediately after the item is committed — matches PO pattern.
 
   @override
   Future<void> submit() async {
@@ -346,6 +353,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       _parent.addItemLocally(
           qty, batch, sourceRack, targetRack, sWh, tWh, serial);
     }
+    Get.back(); // close the item form sheet
   }
 
   // ── Computed max qty ──────────────────────────────────────────────────────

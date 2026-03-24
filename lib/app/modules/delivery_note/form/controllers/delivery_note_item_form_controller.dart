@@ -43,6 +43,10 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [resetRack]      — overridden; calls super, explicit extension point
 ///                        for future DN-specific rack state.
 ///
+/// Sheet-close fix:
+///   • submit() now calls Get.back() after delegating to parent, so the
+///     bottom sheet dismisses immediately on confirm (mirrors PO pattern).
+///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
@@ -209,10 +213,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── S7: applyRackScan ──────────────────────────────────────────────────────
-  //
-  // DN has a single target rack. Routes an external scan into rackController
-  // and triggers network validation — matches PR pattern.
-  // SE has its own applyRackScan with source/target routing logic.
 
   void applyRackScan(String rackId) {
     rackController.text = rackId;
@@ -220,10 +220,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── S7: resetRack override ─────────────────────────────────────────────────
-  //
-  // DN has no derived warehouse from rack (unlike PR which sets itemWarehouse).
-  // Calls super to clear isRackValid + rackError. Explicit override as
-  // an extension point for any future DN-specific rack state.
 
   @override
   void resetRack() {
@@ -245,7 +241,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── P1-B: submit ───────────────────────────────────────────────────────────
+  // ── P1-B: submit — delegates to parent, then closes sheet ─────────────────
+  //
+  // Sheet-close fix: Get.back() added so the bottom sheet dismisses
+  // immediately after the item is committed — matches PO pattern.
 
   @override
   Future<void> submit() async {
@@ -259,6 +258,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } else {
       _parent.addItemLocally(itemCode.value, itemName.value, qty, rack, batch, serial);
     }
+    Get.back(); // close the item form sheet
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
