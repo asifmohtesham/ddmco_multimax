@@ -25,32 +25,33 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          // F9: wrap in Obx so status/dirty/saving all rebuild the app bar
-          appBar: Obx(() {
-            final receipt = controller.purchaseReceipt.value;
-            return MainAppBar(
-              title:      receipt?.name ?? 'Loading...',
-              status:     receipt?.status,
-              isDirty:    controller.isDirty.value,
-              isSaving:   controller.isSaving.value,
-              saveResult: controller.saveResult.value,
-              // F9: onSave wired via standardised param (replaces manual actions: list)
-              onSave: (receipt?.docstatus == 0 && controller.isDirty.value)
-                  ? controller.savePurchaseReceipt
-                  : null,
-              // F9: onReload wired — was missing entirely
-              onReload: (controller.mode != 'new' &&
-                      !controller.isDirty.value)
-                  ? controller.reloadDocument
-                  : null,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Details'),
-                  Tab(text: 'Items'),
-                ],
-              ),
-            );
-          }),
+          // S3: Obx wrapped in PreferredSize — Obx alone is not a PreferredSizeWidget
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(kToolbarHeight + kTextTabBarHeight),
+            child: Obx(() {
+              final receipt = controller.purchaseReceipt.value;
+              return MainAppBar(
+                title:      receipt?.name ?? 'Loading...',
+                status:     receipt?.status,
+                isDirty:    controller.isDirty.value,
+                isSaving:   controller.isSaving.value,
+                saveResult: controller.saveResult.value,
+                onSave: (receipt?.docstatus == 0 && controller.isDirty.value)
+                    ? controller.savePurchaseReceipt
+                    : null,
+                onReload: (controller.mode != 'new' &&
+                        !controller.isDirty.value)
+                    ? controller.reloadDocument
+                    : null,
+                bottom: const TabBar(
+                  tabs: [
+                    Tab(text: 'Details'),
+                    Tab(text: 'Items'),
+                  ],
+                ),
+              );
+            }),
+          ),
           body: Obx(() {
             if (controller.isLoading.value) {
               return const Center(child: CircularProgressIndicator());
@@ -76,7 +77,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     ));
   }
 
-  // ── Details tab ───────────────────────────────────────────────────────
+  // ── Details tab ──────────────────────────────────────────────────────
 
   Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
     final bool isEditable = controller.isEditable;
@@ -255,7 +256,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  // ── Shared helpers ──────────────────────────────────────────────────────
+  // ── Shared helpers ───────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
@@ -305,7 +306,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  // ── Items tab ─────────────────────────────────────────────────────────────
+  // ── Items tab ──────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(BuildContext context, PurchaseReceipt receipt) {
     final items = receipt.items;
