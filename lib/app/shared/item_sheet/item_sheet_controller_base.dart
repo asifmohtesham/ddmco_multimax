@@ -6,6 +6,14 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
+/// Drives the visual state of the animated Save button in the item sheet.
+///
+/// idle    — button is ready; shows save icon in blue/grey.
+/// loading — API call in progress; shows spinner in orange.
+/// success — save confirmed; shows green check for 700 ms then sheet closes.
+/// error   — save failed; shows red error icon for 1 500 ms then resets to idle.
+enum SaveButtonState { idle, loading, success, error }
+
 /// Abstract base controller for every DocType item-sheet.
 ///
 /// Owns all state that is identical across Stock Entry, Delivery Note,
@@ -35,6 +43,14 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 ///   • [currentScannedEan]  — promoted from PR/SE/DN (was named currentScannedEan8 in SE/DN).
 ///   • [validateBatchOnInit] — promoted from PR/SE/DN; identical post-frame helper.
 ///   All three child declarations are now dead code and should be removed.
+///
+/// Option-3 (animated save button):
+///   • [saveButtonState]     — drives icon/colour of the Save button widget.
+///   • [submitWithFeedback]  — wraps submit() with idle→loading→success/error flow.
+///                             Returns true on success; parent coordinator guards
+///                             Get.back() on this return value (fixes overlay crash).
+///   • [_resetSaveStateOnEdit] — resets saveButtonState to idle when user edits
+///                               any field after a success or error result.
 ///
 /// Concrete subclasses only need to implement the abstract members
 /// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
@@ -106,9 +122,20 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// False → editing existing row.
   bool isAddMode = true;
 
+  // ── Option-3: animated save button state ──────────────────────────────
+  //
+  // Drives the Save button widget in GlobalItemFormSheet.
+  // Transitions: idle → loading (on tap) → success (API ok) → [sheet closes]
+  //                                       → error   (API fail) → idle (after 1.5 s)
+  //
+  // Parent coordinators call [submitWithFeedback] instead of [submit] directly.
+  // The sheet is closed by the coordinator only when [submitWithFeedback] returns true.
+  var saveButtonState = SaveButtonState.idle.obs;
+
   // ── Step-1: merged loading flag ───────────────────────────────────────
   //
   // P2-A: isSheetLoading now also merges isValidatingRack.
+  // Option-3: also blocks while saveButtonState == loading (prevents double-submit).
   // Subclasses that have additional async validation paths (e.g. SE dual-rack)
   // override this getter to OR-in their own flags.
 
@@ -118,12 +145,13 @@ abstract class ItemSheetControllerBase extends GetxController {
   RxBool isAddingItemFlag = false.obs;
 
   /// Single merged loading state for UniversalItemFormSheet.
-  /// True when batch-validation, rack-validation, or parent save is in progress.
-  /// P2-A: isValidatingRack added.
+  /// True when batch-validation, rack-validation, parent save, or
+  /// the save-button animation is in progress.
   bool get isSheetLoading =>
       isValidatingBatch.value ||
       isValidatingRack.value  ||
-      isAddingItemFlag.value;
+      isAddingItemFlag.value  ||
+      saveButtonState.value == SaveButtonState.loading;
 
   // ── Step-1: scan-bar state (promoted from DN parent) ───────────────────
   //
@@ -183,7 +211,38 @@ abstract class ItemSheetControllerBase extends GetxController {
   void validateSheet();
 
   /// Commits the current field values back to the parent document controller.
+  /// Do NOT call this directly from the UI — call [submitWithFeedback] instead.
   Future<void> submit();
+
+  // ── Option-3: submitWithFeedback ──────────────────────────────────────
+  //
+  // Called by the parent coordinator's onSubmit lambda instead of submit().
+  // Drives saveButtonState through the full animation cycle and returns
+  // true on success so the coordinator knows it is safe to call Get.back().
+  //
+  // This is the fix for Bug #1: Get.back() now only fires after the success
+  // animation delay, by which time the sheet overlay is already settled,
+  // so SnackbarController can never find a torn-down overlay context.
+
+  /// Wraps [submit] with the animated-button feedback cycle.
+  ///
+  /// Returns true  → save succeeded; coordinator should call Get.back().
+  /// Returns false → save failed;    sheet stays open, button resets to idle.
+  Future<bool> submitWithFeedback() async {
+    saveButtonState.value = SaveButtonState.loading;
+    try {
+      await submit();
+      saveButtonState.value = SaveButtonState.success;
+      await Future.delayed(const Duration(milliseconds: 700));
+      return true;
+    } catch (e) {
+      log('[ItemSheet] submitWithFeedback error: $e', name: 'ItemSheet');
+      saveButtonState.value = SaveButtonState.error;
+      await Future.delayed(const Duration(milliseconds: 1500));
+      saveButtonState.value = SaveButtonState.idle;
+      return false;
+    }
+  }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -201,10 +260,25 @@ abstract class ItemSheetControllerBase extends GetxController {
   // ── Shared initialisation helper ────────────────────────────────────────
 
   /// Call from concrete [initialise] after fields are populated.
+  ///
+  /// Wires validateSheet AND _resetSaveStateOnEdit to all three field TECs.
   void initBaseListeners() {
     qtyController.addListener(validateSheet);
     batchController.addListener(validateSheet);
     rackController.addListener(validateSheet);
+
+    qtyController.addListener(_resetSaveStateOnEdit);
+    batchController.addListener(_resetSaveStateOnEdit);
+    rackController.addListener(_resetSaveStateOnEdit);
+  }
+
+  /// Resets [saveButtonState] to idle when the user edits any field after
+  /// a success or error result, so the button is ready for the next save.
+  void _resetSaveStateOnEdit() {
+    if (saveButtonState.value == SaveButtonState.success ||
+        saveButtonState.value == SaveButtonState.error) {
+      saveButtonState.value = SaveButtonState.idle;
+    }
   }
 
   /// Capture current field values as the "clean" baseline for dirty checking.
