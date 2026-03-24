@@ -23,7 +23,7 @@ class QuantityInputWidget extends StatelessWidget {
   final Color color;
   final Function(String)? onChanged;
 
-  const QuantityInputWidget({
+  QuantityInputWidget({
     super.key,
     required this.controller,
     required this.onIncrement,
