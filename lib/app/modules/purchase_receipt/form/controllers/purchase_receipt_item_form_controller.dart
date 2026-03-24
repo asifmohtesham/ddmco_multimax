@@ -30,11 +30,17 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - The parent coordinator (_openItemSheet.onSubmit) is responsible for
 ///    calling savePurchaseReceipt() after child.submit() completes.
 ///
-/// Red Fix #2 (isAddingItemFlag):
-///  - isAddingItemFlag now wired to _parent.isAddingItem (sheet-level flag),
-///    NOT _parent.isSaving (document-level flag).
-///  - isSheetLoading reflects sheet-specific work only, keeping the Save
-///    button spinner semantically correct.
+/// Standardisation S2:
+///  - isScanning is now a proper Rx bind (`isScanning = _parent.isScanning`)
+///    instead of a value copy.  The scan bar now reacts live to parent state.
+///
+/// Standardisation S3:
+///  - deleteCurrentItem uses firstWhereOrNull + silent early-return,
+///    matching SE/DN.  No longer throws StateError on missing item.
+///
+/// Standardisation S1 (base):
+///  - isBatchReadOnly, currentScannedEan, validateBatchOnInit promoted to base.
+///  - Own declarations removed; resetBatch() and resetRack() call base.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // ── Step 2.1: typed ApiProvider ─────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -49,12 +55,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   var poDocName = ''.obs;
   var poQty     = 0.0.obs;
   var poRate    = 0.0.obs;
-
-  // Batch read-only toggle
-  var isBatchReadOnly = false.obs;
-
-  // EAN context for inside-sheet scan routing
-  String currentScannedEan = '';
 
   // Variant / UOM metadata
   var variantOf = ''.obs;
@@ -85,15 +85,16 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     return null;
   }
 
+  // ── S3: null-safe deleteCurrentItem (matches SE/DN pattern) ───────────────
   @override
   Future<void> deleteCurrentItem() async {
     if (editingItemName.value == null) return;
     final items = _parent.purchaseReceipt.value?.items ?? [];
-    final item = items.firstWhere(
-      (i) => i.name == editingItemName.value,
-      orElse: () => throw StateError('Item not found'),
+    final item  = items.cast<PurchaseReceiptItem?>().firstWhere(
+      (i) => i?.name == editingItemName.value,
+      orElse: () => null,
     );
-    _parent.confirmAndDeleteItem(item);
+    if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
   // ── Initialisation ─────────────────────────────────────────────────────────────
@@ -109,13 +110,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     PurchaseReceiptItem? editingItem,
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan ?? '';
+    currentScannedEan = scannedEan ?? ''; // S1: base field
 
-    // ── Red Fix #2: wire isAddingItemFlag to sheet-level flag ────────────────
-    // _parent.isAddingItem is the dedicated sheet spinner flag.
-    // _parent.isSaving drives the AppBar SaveIconButton — separate concerns.
+    // ── S2: proper Rx bind so scan bar reacts live ────────────────────────
     isAddingItemFlag    = _parent.isAddingItem;
-    isScanning.value    = _parent.isScanning.value;
+    isScanning          = _parent.isScanning;          // S2: was .value copy
     sheetScanController = _parent.barcodeController;
 
     // Core identity
@@ -173,7 +172,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     itemWarehouse.value  = item.warehouse;
 
     isBatchValid.value    = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value;
+    isBatchReadOnly.value = isBatchValid.value; // S1: base field
     isRackValid.value     = item.rack != null && item.rack!.isNotEmpty;
 
     poItemId.value  = item.purchaseOrderItem ?? '';
@@ -182,6 +181,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       poQty.value = _parent.getOrderedQty(poItemId.value);
     }
 
+    // S1: base field — extract EAN from batch no when present
     if (item.batchNo != null && item.batchNo!.contains('-')) {
       currentScannedEan = item.batchNo!.split('-').first;
     }
@@ -189,8 +189,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     log('[PR:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
         name: 'PR:ItemSheet');
   }
-
-  // ── Step 5.2: _loadNewItem + validateBatchOnInit ──────────────────────────────
 
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
@@ -205,20 +203,15 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     qtyController.clear();
 
     isBatchValid.value    = false;
-    isBatchReadOnly.value = false;
+    isBatchReadOnly.value = false; // S1: base field
     isRackValid.value     = false;
 
     if (batchNo != null && batchNo.isNotEmpty) {
-      validateBatchOnInit(batchNo);
+      validateBatchOnInit(batchNo); // S1: base method
     }
 
     log('[PR:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
         name: 'PR:ItemSheet');
-  }
-
-  void validateBatchOnInit(String batch) {
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => validateBatch(batch));
   }
 
   // ── validateSheet ──────────────────────────────────────────────────────────────
@@ -251,6 +244,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       if (parts.length >= 2 && parts[0] == parts[1]) {
         batchError.value        = 'Invalid Batch: Batch ID cannot match EAN';
         isBatchValid.value      = false;
+        isBatchReadOnly.value   = false; // S1
         isValidatingBatch.value = false;
         validateSheet();
         return;
@@ -283,11 +277,12 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       }
 
       isBatchValid.value    = true;
-      isBatchReadOnly.value = true;
+      isBatchReadOnly.value = true; // S1
       batchError.value      = null;
     } catch (e) {
-      isBatchValid.value = false;
-      batchError.value   = 'Error validating batch';
+      isBatchValid.value    = false;
+      isBatchReadOnly.value = false; // S1
+      batchError.value      = 'Error validating batch';
       GlobalSnackbar.error(message: 'Error validating batch');
       log('[PR:ItemSheet] validateBatch error: $e', name: 'PR:ItemSheet');
     } finally {
@@ -334,36 +329,27 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   /// Delegate applyRackScan to the rack controller (mirrors SE/DN pattern).
-  /// Called by parent's _handleSheetScan when a rack barcode is scanned
-  /// inside the sheet — keeps parent ignorant of internal TEC details.
   void applyRackScan(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
   }
 
-  void resetBatch() {
-    isBatchValid.value    = false;
-    isBatchReadOnly.value = false;
-    batchError.value      = null;
-    validateSheet();
-  }
-
+  // ── resetRack override: also clears derived warehouse ─────────────────────
+  @override
   void resetRack() {
     isRackValid.value   = false;
     itemWarehouse.value = null;
+    rackError.value     = null;
     validateSheet();
   }
 
   // ── submit ──────────────────────────────────────────────────────────────────────────
   //
-  // Red Fix #1: submit() is now a PURE IN-MEMORY MUTATOR.
+  // Red Fix #1: submit() is a PURE IN-MEMORY MUTATOR.
   //   - Updates PurchaseReceipt.items
   //   - Sets _parent.isDirty = true
   //   - Calls _parent.triggerHighlight
   //   - Does NOT call savePurchaseReceipt()
-  //
-  // The parent coordinator (_openItemSheet.onSubmit) calls savePurchaseReceipt()
-  // after this method returns, maintaining the SE/DN responsibility boundary.
 
   @override
   Future<void> submit() async {
