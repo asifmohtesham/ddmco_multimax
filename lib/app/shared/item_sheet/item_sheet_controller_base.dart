@@ -391,7 +391,6 @@ abstract class ItemSheetControllerBase extends GetxController {
             message: 'Batch has 0 stock in the selected warehouse');
       }
 
-      _focusRack();
       await fetchAllRackStocks();
 
     } catch (e) {
@@ -539,15 +538,5 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
 
     return true;
-  }
-
-  // ── Focus helpers ─────────────────────────────────────────────────────────
-
-  void _focusRack() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (rackFocusNode.canRequestFocus) {
-        rackFocusNode.requestFocus();
-      }
-    });
   }
 }
