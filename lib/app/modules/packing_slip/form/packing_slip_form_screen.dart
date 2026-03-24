@@ -24,45 +24,49 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: Obx(() {
-            final slip = controller.packingSlip.value;
-            final titleWidget = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  slip?.name ?? 'Loading...',
-                  style: const TextStyle(fontSize: 13, color: Colors.white70),
-                ),
-                if (slip?.customPoNo != null)
+          // S3: Obx wrapped in PreferredSize — Obx alone is not a PreferredSizeWidget
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(kToolbarHeight + kTextTabBarHeight),
+            child: Obx(() {
+              final slip = controller.packingSlip.value;
+              final titleWidget = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    slip!.customPoNo!,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                    slip?.name ?? 'Loading...',
+                    style: const TextStyle(fontSize: 13, color: Colors.white70),
                   ),
-              ],
-            );
-            return MainAppBar(
-              title:      slip?.name ?? 'Packing Slip',
-              titleWidget: titleWidget,
-              status:     slip?.status,
-              isDirty:    controller.isDirty.value,
-              isSaving:   controller.isSaving.value,
-              saveResult: SaveResult.idle,
-              onSave: (slip?.docstatus == 0 && controller.isDirty.value)
-                  ? controller.savePackingSlip
-                  : null,
-              onReload: (controller.mode != 'new' &&
-                      !controller.isDirty.value)
-                  ? controller.reloadDocument
-                  : null,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Details'),
-                  Tab(text: 'Items'),
+                  if (slip?.customPoNo != null)
+                    Text(
+                      slip!.customPoNo!,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                 ],
-              ),
-            );
-          }),
+              );
+              return MainAppBar(
+                title:       slip?.name ?? 'Packing Slip',
+                titleWidget: titleWidget,
+                status:      slip?.status,
+                isDirty:     controller.isDirty.value,
+                isSaving:    controller.isSaving.value,
+                saveResult:  controller.saveResult.value,
+                onSave: (slip?.docstatus == 0 && controller.isDirty.value)
+                    ? controller.savePackingSlip
+                    : null,
+                onReload: (controller.mode != 'new' &&
+                        !controller.isDirty.value)
+                    ? controller.reloadDocument
+                    : null,
+                bottom: const TabBar(
+                  tabs: [
+                    Tab(text: 'Details'),
+                    Tab(text: 'Items'),
+                  ],
+                ),
+              );
+            }),
+          ),
           body: Obx(() {
             if (controller.isLoading.value) {
               return const Center(child: CircularProgressIndicator());
