@@ -18,6 +18,8 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 // Child sheet controller
 import 'controllers/delivery_note_item_form_controller.dart';
@@ -29,7 +31,8 @@ import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
 // (delivery_note_item_form_sheet.dart is now a stub re-export)
 
-class DeliveryNoteFormController extends GetxController {
+class DeliveryNoteFormController extends GetxController
+    with OptimisticLockingMixin {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -50,6 +53,18 @@ class DeliveryNoteFormController extends GetxController {
   var isSaving     = false.obs;
   var isDirty      = false.obs;
   String _originalJson = '';
+
+  // ── Save result state machine (mirrors SE/PR) ─────────────────────────────
+  var saveResult     = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
 
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload    = Rx<PosUpload?>(null);
@@ -105,6 +120,7 @@ class DeliveryNoteFormController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
     log('[DN:onClose] _scanWorker disposed', name: 'DN');
     barcodeController.dispose();
     scrollController.dispose();
@@ -235,7 +251,13 @@ class DeliveryNoteFormController extends GetxController {
     }
   }
 
-  Future<void> reloadDocument() => fetchDeliveryNote();
+  // ── OptimisticLockingMixin contract ───────────────────────────────────────
+  @override
+  Future<void> reloadDocument() async {
+    await fetchDeliveryNote();
+    isStale.value = false;
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
 
   Future<void> fetchPosUpload(String posName) async {
     try {
@@ -447,7 +469,10 @@ class DeliveryNoteFormController extends GetxController {
     GlobalDialog.showConfirmation(
       title:   'Delete Item?',
       message: 'Remove ${item.itemCode} from this note?',
-      onConfirm: () => _deleteItemLocally(item),
+      onConfirm: () async {
+        _deleteItemLocally(item);
+        await saveDeliveryNote();
+      },
     );
   }
 
@@ -462,6 +487,7 @@ class DeliveryNoteFormController extends GetxController {
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
+    if (checkStaleAndBlock()) return;
     isSaving.value      = true;
     customerError.value = null;
     try {
@@ -486,18 +512,26 @@ class DeliveryNoteFormController extends GetxController {
         deliveryNote.value = savedNote;
         _updateOriginalState(savedNote);
         if (isNew) mode = 'edit';
+        _setSaveResult(SaveResult.success);
         GlobalSnackbar.success(message: 'Delivery Note Saved');
       } else {
+        _setSaveResult(SaveResult.error);
         GlobalSnackbar.error(message:
             'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
       }
     } on DioException catch (e) {
-      final msg = e.response?.data.toString() ?? e.message ?? '';
-      if (msg.contains('Customer') && msg.contains('not found')) {
-        customerError.value = 'Customer not found in the system';
+      if (handleVersionConflict(e)) {
+        // handled by OptimisticLockingMixin
+      } else {
+        _setSaveResult(SaveResult.error);
+        final msg = e.response?.data.toString() ?? e.message ?? '';
+        if (msg.contains('Customer') && msg.contains('not found')) {
+          customerError.value = 'Customer not found in the system';
+        }
+        GlobalSnackbar.error(message: 'Save failed: ${e.message}');
       }
-      GlobalSnackbar.error(message: 'Save failed: ${e.message}');
     } catch (e) {
+      _setSaveResult(SaveResult.error);
       final msg = e.toString();
       if (msg.contains('Customer') && msg.contains('not found')) {
         customerError.value = 'Customer not found in the system';
