@@ -18,29 +18,23 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - PO-linking state lives here (poItem, poName, poQty, poRate)
 ///  - EAN-equals-batch guard (custom PR rule)
 ///
-/// Phase 2 changes:
-///  - Step 2.1: ApiProvider access via typed field (no more untyped getter)
-///  - Step 2.3: validateRack no longer emits a success snackbar (silent on
-///    success, matching SE/DN behaviour)
-///
 /// Red Fix #1 (SRP — save ownership):
 ///  - submit() no longer calls savePurchaseReceipt() directly.
-///  - submit() is a pure in-memory mutator: updates PurchaseReceipt.items
-///    and sets _parent.isDirty = true.
-///  - The parent coordinator (_openItemSheet.onSubmit) is responsible for
-///    calling savePurchaseReceipt() after child.submit() completes.
+///  - The parent coordinator (_openItemSheet.onSubmit) owns saving.
 ///
 /// Standardisation S2:
-///  - isScanning is now a proper Rx bind (`isScanning = _parent.isScanning`)
-///    instead of a value copy.  The scan bar now reacts live to parent state.
+///  - isScanning is a proper Rx bind (not a value copy).
 ///
 /// Standardisation S3:
-///  - deleteCurrentItem uses firstWhereOrNull + silent early-return,
-///    matching SE/DN.  No longer throws StateError on missing item.
+///  - deleteCurrentItem uses firstWhereOrNull + silent early-return.
+///
+/// Standardisation S4:
+///  - submit() delegates to parent.addItemLocally / updateItemLocally,
+///    matching the SE/DN pattern.  All model-construction logic lives in
+///    the parent form controller, not in the child item controller.
 ///
 /// Standardisation S1 (base):
-///  - isBatchReadOnly, currentScannedEan, validateBatchOnInit promoted to base.
-///  - Own declarations removed; resetBatch() and resetRack() call base.
+///  - isBatchReadOnly, currentScannedEan, validateBatchOnInit in base.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // ── Step 2.1: typed ApiProvider ─────────────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -85,13 +79,14 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     return null;
   }
 
-  // ── S3: null-safe deleteCurrentItem (matches SE/DN pattern) ───────────────
+  // ── S3: null-safe deleteCurrentItem ─────────────────────────────────────────
   @override
   Future<void> deleteCurrentItem() async {
-    if (editingItemName.value == null) return;
+    final name = editingItemName.value;
+    if (name == null) return;
     final items = _parent.purchaseReceipt.value?.items ?? [];
     final item  = items.cast<PurchaseReceiptItem?>().firstWhere(
-      (i) => i?.name == editingItemName.value,
+      (i) => i?.name == name,
       orElse: () => null,
     );
     if (item != null) _parent.confirmAndDeleteItem(item);
@@ -112,9 +107,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     _parent = parent;
     currentScannedEan = scannedEan ?? ''; // S1: base field
 
-    // ── S2: proper Rx bind so scan bar reacts live ────────────────────────
+    // S2: proper Rx bind so scan bar reacts live
     isAddingItemFlag    = _parent.isAddingItem;
-    isScanning          = _parent.isScanning;          // S2: was .value copy
+    isScanning          = _parent.isScanning;
     sheetScanController = _parent.barcodeController;
 
     // Core identity
@@ -123,7 +118,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     variantOf.value = variantOfValue ?? '';
     uom.value       = uomValue       ?? '';
 
-    // isAddMode (base field)
     isAddMode = editingItem == null;
 
     // Reset base state
@@ -147,13 +141,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       _loadNewItem(batchNo);
     }
 
-    // Link to PO
     _parent.linkToPurchaseOrder(itemCode.value, this);
-
-    // Base listeners
     initBaseListeners();
     captureSnapshot();
-
     validateSheet();
   }
 
@@ -169,10 +159,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     rackController.text  = item.rack    ?? '';
     qtyController.text   = item.qty.toString();
 
-    itemWarehouse.value  = item.warehouse;
-
+    itemWarehouse.value   = item.warehouse;
     isBatchValid.value    = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value; // S1: base field
+    isBatchReadOnly.value = isBatchValid.value; // S1
     isRackValid.value     = item.rack != null && item.rack!.isNotEmpty;
 
     poItemId.value  = item.purchaseOrderItem ?? '';
@@ -181,9 +170,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       poQty.value = _parent.getOrderedQty(poItemId.value);
     }
 
-    // S1: base field — extract EAN from batch no when present
     if (item.batchNo != null && item.batchNo!.contains('-')) {
-      currentScannedEan = item.batchNo!.split('-').first;
+      currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
     log('[PR:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
@@ -192,18 +180,14 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   void _loadNewItem(String? batchNo) {
     editingItemName.value = null;
-
-    itemOwner.value      = null;
-    itemCreation.value   = null;
-    itemModified.value   = null;
-    itemModifiedBy.value = null;
+    itemOwner.value = itemCreation.value = itemModified.value = itemModifiedBy.value = null;
 
     batchController.text = batchNo ?? '';
     rackController.clear();
     qtyController.clear();
 
     isBatchValid.value    = false;
-    isBatchReadOnly.value = false; // S1: base field
+    isBatchReadOnly.value = false; // S1
     isRackValid.value     = false;
 
     if (batchNo != null && batchNo.isNotEmpty) {
@@ -238,13 +222,12 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     batchError.value        = null;
     isValidatingBatch.value = true;
 
-    // PR-specific guard: batch ID must not equal EAN-8
     if (batch.contains('-')) {
       final parts = batch.split('-');
       if (parts.length >= 2 && parts[0] == parts[1]) {
         batchError.value        = 'Invalid Batch: Batch ID cannot match EAN';
         isBatchValid.value      = false;
-        isBatchReadOnly.value   = false; // S1
+        isBatchReadOnly.value   = false;
         isValidatingBatch.value = false;
         validateSheet();
         return;
@@ -268,20 +251,18 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
-        batchInfoTooltip.value =
-            pkgQty > 0 ? 'Packaging Qty: $pkgQty' : null;
+        batchInfoTooltip.value = pkgQty > 0 ? 'Packaging Qty: $pkgQty' : null;
         GlobalSnackbar.success(message: 'Existing Batch found');
       } else {
-        // Batch not in system — allowed for PR (new batch creation)
         GlobalSnackbar.info(message: 'New Batch will be created');
       }
 
       isBatchValid.value    = true;
-      isBatchReadOnly.value = true; // S1
+      isBatchReadOnly.value = true;
       batchError.value      = null;
     } catch (e) {
       isBatchValid.value    = false;
-      isBatchReadOnly.value = false; // S1
+      isBatchReadOnly.value = false;
       batchError.value      = 'Error validating batch';
       GlobalSnackbar.error(message: 'Error validating batch');
       log('[PR:ItemSheet] validateBatch error: $e', name: 'PR:ItemSheet');
@@ -302,7 +283,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
     isValidatingRack.value = true;
 
-    // Derive warehouse from rack code: ZONE-WH-NUM → WH-NUM - ZONE
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
@@ -328,13 +308,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  /// Delegate applyRackScan to the rack controller (mirrors SE/DN pattern).
   void applyRackScan(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
   }
 
-  // ── resetRack override: also clears derived warehouse ─────────────────────
   @override
   void resetRack() {
     isRackValid.value   = false;
@@ -343,94 +321,32 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── submit ──────────────────────────────────────────────────────────────────────────
+  // ── S4: submit — delegates to parent (mirrors SE/DN) ─────────────────────────
   //
-  // Red Fix #1: submit() is a PURE IN-MEMORY MUTATOR.
-  //   - Updates PurchaseReceipt.items
-  //   - Sets _parent.isDirty = true
-  //   - Calls _parent.triggerHighlight
-  //   - Does NOT call savePurchaseReceipt()
+  // Model construction and duplicate-merge logic now lives in the parent
+  // form controller (addItemLocally / updateItemLocally), keeping this
+  // controller a thin coordinator — identical responsibility boundary to SE/DN.
 
   @override
   Future<void> submit() async {
-    if (!_parent.isEditable) return;
+    final qty      = double.tryParse(qtyController.text) ?? 0;
+    final batch    = batchController.text;
+    final rack     = rackController.text;
+    final warehouse = itemWarehouse.value ?? _parent.setWarehouse.value ?? '';
 
-    final double qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) return;
-
-    final batch          = batchController.text;
-    final rack           = rackController.text;
-    final finalWarehouse = itemWarehouse.value ?? _parent.setWarehouse.value ?? '';
-    final uniqueId       = editingItemName.value
-        ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-
-    final currentItems = _parent.purchaseReceipt.value?.items.toList() ?? [];
-    final editIndex    = currentItems.indexWhere((i) => i.name == uniqueId);
-
-    if (editIndex != -1) {
-      final existing = currentItems[editIndex];
-      currentItems[editIndex] = existing.copyWith(
-        qty:       qty,
-        batchNo:   batch,
-        rack:      rack,
-        warehouse: finalWarehouse.isNotEmpty ? finalWarehouse : existing.warehouse,
-      );
+    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
+      _parent.updateItemLocally(
+        editingItemName.value!, qty, batch, rack, warehouse);
     } else {
-      final dupIdx = currentItems.indexWhere((i) =>
-          i.itemCode == itemCode.value &&
-          (i.batchNo  ?? '') == batch &&
-          (i.rack     ?? '') == rack &&
-          i.warehouse == finalWarehouse);
-
-      if (dupIdx != -1) {
-        final existing = currentItems[dupIdx];
-        currentItems[dupIdx] = existing.copyWith(qty: existing.qty + qty);
-        editingItemName.value = existing.name;
-      } else {
-        currentItems.add(PurchaseReceiptItem(
-          name:              uniqueId,
-          owner:             '',
-          creation:          DateTime.now().toString(),
-          itemCode:          itemCode.value,
-          qty:               qty,
-          itemName:          itemName.value,
-          batchNo:           batch.isNotEmpty ? batch : null,
-          rack:              rack.isNotEmpty  ? rack  : null,
-          warehouse:         finalWarehouse,
-          uom:               uom.value,
-          stockUom:          uom.value,
-          customVariantOf:   variantOf.value,
-          purchaseOrderItem: poItemId.value.isNotEmpty  ? poItemId.value  : null,
-          purchaseOrder:     poDocName.value.isNotEmpty ? poDocName.value : null,
-          purchaseOrderQty:  poQty.value > 0            ? poQty.value     : null,
-          rate:              poRate.value,
-          idx:               currentItems.length + 1,
-        ));
-      }
+      _parent.addItemLocally(
+        itemCode.value, itemName.value, qty, batch, rack, warehouse,
+        uom: uom.value,
+        variantOf: variantOf.value,
+        poItemId:  poItemId.value,
+        poDocName: poDocName.value,
+        poQty:     poQty.value,
+        poRate:    poRate.value,
+      );
     }
-
-    // Rebuild receipt with updated items
-    final old = _parent.purchaseReceipt.value!;
-    _parent.purchaseReceipt.value = PurchaseReceipt(
-      name:         old.name,
-      postingDate:  old.postingDate,
-      modified:     old.modified,
-      creation:     old.creation,
-      status:       old.status,
-      docstatus:    old.docstatus,
-      owner:        old.owner,
-      postingTime:  old.postingTime,
-      setWarehouse: old.setWarehouse,
-      supplier:     old.supplier,
-      currency:     old.currency,
-      totalQty:     old.totalQty,
-      grandTotal:   old.grandTotal,
-      items:        currentItems,
-    );
-
-    _parent.triggerHighlight(editingItemName.value ?? uniqueId);
-    _parent.isDirty.value = true;
-    // NOTE: savePurchaseReceipt() is NOT called here.
-    // The parent coordinator is responsible for persistence.
   }
 }
