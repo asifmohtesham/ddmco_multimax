@@ -12,6 +12,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/utils/app_notification.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
@@ -302,8 +303,7 @@ class DeliveryNoteController extends GetxController {
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
       posUploadSearchQuery.value = '';
     } catch (e) {
-      // Selection sheet is still interactive — a snackbar is appropriate here.
-      Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
+      AppNotification.error(message: 'Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
     }

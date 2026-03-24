@@ -8,6 +8,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/utils/app_notification.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
@@ -122,10 +123,10 @@ class PackingSlipController extends GetxController {
         _fetchAssociatedCustomers(newSlips);
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch packing slips');
+        AppNotification.error(message: 'Failed to fetch packing slips');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -237,7 +238,7 @@ class PackingSlipController extends GetxController {
         deliveryNotesForSelection.value = _allFetchedDNs;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch Delivery Notes');
+      AppNotification.error(message: 'Failed to fetch Delivery Notes');
     } finally {
       isFetchingDNs.value = false;
     }

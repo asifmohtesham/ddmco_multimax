@@ -3,6 +3,7 @@ import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/utils/app_notification.dart';
 
 class PosUploadController extends GetxController {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -132,10 +133,10 @@ class PosUploadController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch POS uploads');
+        AppNotification.error(message: 'Failed to fetch POS uploads');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      AppNotification.error(message: e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
