@@ -26,8 +26,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         child: Scaffold(
           appBar: Obx(() {
             final slip = controller.packingSlip.value;
-
-            // Two-line title: doc name (small) above PO number (bold)
             final titleWidget = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -43,13 +41,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   ),
               ],
             );
-
             return MainAppBar(
-              title: slip?.name ?? 'Packing Slip',
+              title:      slip?.name ?? 'Packing Slip',
               titleWidget: titleWidget,
-              status: slip?.status,
-              isDirty: controller.isDirty.value,
-              isSaving: controller.isSaving.value,
+              status:     slip?.status,
+              isDirty:    controller.isDirty.value,
+              isSaving:   controller.isSaving.value,
               saveResult: SaveResult.idle,
               onSave: (slip?.docstatus == 0 && controller.isDirty.value)
                   ? controller.savePackingSlip
@@ -70,12 +67,10 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             if (controller.isLoading.value) {
               return const Center(child: CircularProgressIndicator());
             }
-
             final slip = controller.packingSlip.value;
             if (slip == null) {
               return const Center(child: Text('Document not found'));
             }
-
             return SafeArea(
               child: TabBarView(
                 children: [
@@ -90,6 +85,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     ));
   }
 
+  // ── Details tab ──────────────────────────────────────────────────────────
+
   Widget _buildDetailsView(PackingSlip slip) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
@@ -102,28 +99,31 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(child: Text(slip.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                    Expanded(
+                        child: Text(slip.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16))),
                     StatusPill(status: slip.status),
                   ],
                 ),
                 const Divider(height: 24),
               ],
               TextFormField(
-                key: ValueKey(slip.customer),
+                key:          ValueKey(slip.customer),
                 initialValue: slip.customer ?? '',
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'Customer',
-                  border: OutlineInputBorder(),
+                readOnly:     true,
+                decoration:   const InputDecoration(
+                  labelText:  'Customer',
+                  border:     OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
-                  filled: true,
-                  fillColor: Colors.white,
+                  filled:     true,
+                  fillColor:  Colors.white,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-
           _buildSectionCard(
             title: 'Package Details',
             children: [
@@ -133,7 +133,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     child: TextFormField(
                       initialValue: slip.fromCaseNo?.toString() ?? '',
                       readOnly: true,
-                      decoration: const InputDecoration(labelText: 'From Case No', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                          labelText: 'From Case No',
+                          border: OutlineInputBorder()),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -141,36 +143,36 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     child: TextFormField(
                       initialValue: slip.toCaseNo?.toString() ?? '',
                       readOnly: true,
-                      decoration: const InputDecoration(labelText: 'To Case No', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                          labelText: 'To Case No',
+                          border: OutlineInputBorder()),
                     ),
                   ),
                 ],
               ),
             ],
           ),
-
           const SizedBox(height: 16),
-
           _buildSectionCard(
             title: 'References',
             children: [
               TextFormField(
                 initialValue: slip.deliveryNote,
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'Delivery Note',
+                readOnly:     true,
+                decoration:   const InputDecoration(
+                  labelText:  'Delivery Note',
                   prefixIcon: Icon(Icons.description_outlined),
-                  border: OutlineInputBorder(),
+                  border:     OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 initialValue: slip.customPoNo ?? '',
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'PO Number',
+                readOnly:     true,
+                decoration:   const InputDecoration(
+                  labelText:  'PO Number',
                   prefixIcon: Icon(Icons.receipt_long),
-                  border: OutlineInputBorder(),
+                  border:     OutlineInputBorder(),
                 ),
               ),
             ],
@@ -180,10 +182,11 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+  Widget _buildSectionCard(
+      {required String title, required List<Widget> children}) {
     return Card(
       elevation: 0,
-      margin: EdgeInsets.zero,
+      margin:    EdgeInsets.zero,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: Colors.grey.shade200)),
@@ -192,7 +195,11 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87)),
             const SizedBox(height: 16),
             ...children,
           ],
@@ -201,54 +208,54 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
+  // ── Items tab ─────────────────────────────────────────────────────────────
+
   Widget _buildItemsView(PackingSlip slip) {
     return Column(
       children: [
-        // 1. Filters
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16.0, vertical: 8.0),
           child: Obx(() => Row(
             children: [
-              _buildFilterChip('All', controller.allCount),
+              _buildFilterChip('All',       controller.allCount),
               const SizedBox(width: 8),
-              _buildFilterChip('Pending', controller.pendingCount),
+              _buildFilterChip('Pending',   controller.pendingCount),
               const SizedBox(width: 8),
               _buildFilterChip('Completed', controller.completedCount),
             ],
           )),
         ),
         const Divider(height: 1),
-
-        // 2. List
         Expanded(
           child: Obx(() {
             final visibleGroups = controller.visibleGroupKeys;
-
             if (visibleGroups.isEmpty) {
               return const Center(child: Text('No items to display.'));
             }
-
             return ListView.builder(
-              padding: const EdgeInsets.only(top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
+              padding: const EdgeInsets.only(
+                  top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
               itemCount: visibleGroups.length,
               itemBuilder: (context, index) {
-                final serial = visibleGroups[index];
-
+                final serial        = visibleGroups[index];
                 final totalRequired = controller.getTotalDnQtyForSerial(serial);
                 final globalPacked  = controller.getGlobalPackedQty(serial);
 
                 String itemName = controller.getPosItemName(serial);
                 if (itemName.isEmpty) {
                   final dnItems = controller.getDnItemsForSerial(serial);
-                  if (dnItems.isNotEmpty) itemName = dnItems.first.itemName ?? '';
-                  else itemName = 'Unknown Item';
+                  itemName = dnItems.isNotEmpty
+                      ? (dnItems.first.itemName ?? '')
+                      : 'Unknown Item';
                 }
 
                 final sectionItems = controller.getDnItemsForSerial(serial);
 
                 return Obx(() {
-                  final isExpanded = controller.expandedInvoice.value == serial;
+                  final isExpanded =
+                      controller.expandedInvoice.value == serial;
                   return ItemGroupCard(
                     isExpanded: isExpanded,
                     serialNo:   int.tryParse(serial) ?? 0,
@@ -258,10 +265,11 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     scannedQty: globalPacked,
                     onToggle:   () => controller.toggleInvoiceExpand(serial),
                     children: sectionItems.map((dnItem) {
-                      final reqQty         = dnItem.qty;
-                      final packedQty      = controller.getPackedQtyForDnItem(dnItem.name);
+                      final reqQty          = dnItem.qty;
+                      final packedQty       = controller.getPackedQtyForDnItem(dnItem.name);
                       final currentSlipItem = controller.getCurrentSlipItem(dnItem.name);
-                      return _buildChecklistRow(dnItem, reqQty, packedQty, currentSlipItem);
+                      return _buildChecklistRow(
+                          dnItem, reqQty, packedQty, currentSlipItem);
                     }).toList(),
                   );
                 });
@@ -269,8 +277,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             );
           }),
         ),
-
-        // 3. Scanner
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
             onScan:      (code) => controller.scanBarcode(code),
@@ -283,105 +289,174 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
+  // ── Checklist row with F6 Dismissible + F7 loading overlay ──────────────────
+
   Widget _buildChecklistRow(
     dynamic dnItem,
     double reqQty,
     double packedQty,
     PackingSlipItem? currentItem,
   ) {
-    final bool isComplete    = packedQty >= reqQty;
+    final bool isComplete      = packedQty >= reqQty;
     final bool isInCurrentSlip = currentItem != null;
+    final bool canEdit         = controller.packingSlip.value?.docstatus == 0;
 
-    return InkWell(
-      onTap: () {
-        if (isInCurrentSlip) {
-          controller.editItem(currentItem);
-        } else {
-          if (controller.packingSlip.value?.docstatus == 0) {
-            controller.prepareSheetForAdd(dnItem);
+    // F7: wrap in Obx so loading flag is reactive
+    return Obx(() {
+      final isLoadingThis =
+          controller.isLoadingItemEdit.value &&
+          controller.loadingForItemName.value == (currentItem?.name ?? '');
+
+      // F6: Dismissible only when the item exists in the current slip
+      //     and the document is editable. Non-slip rows are plain InkWell.
+      final inner = InkWell(
+        onTap: () {
+          if (isInCurrentSlip) {
+            controller.isLoadingItemEdit.value  = true;
+            controller.loadingForItemName.value = currentItem!.name;
+            controller.editItem(currentItem);
+            controller.isLoadingItemEdit.value  = false;
+            controller.loadingForItemName.value = null;
+          } else {
+            if (canEdit) controller.prepareSheetForAdd(dnItem);
           }
-        }
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          children: [
-            // Status icon
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isComplete
-                    ? Colors.green.shade50
-                    : (packedQty > 0 ? Colors.orange.shade50 : Colors.grey.shade100),
-                shape: BoxShape.circle,
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16.0, vertical: 12.0),
+          child: Row(
+            children: [
+              // Status icon
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isComplete
+                      ? Colors.green.shade50
+                      : (packedQty > 0
+                          ? Colors.orange.shade50
+                          : Colors.grey.shade100),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isComplete
+                      ? Icons.check
+                      : Icons.inventory_2_outlined,
+                  size:  16,
+                  color: isComplete
+                      ? Colors.green.shade700
+                      : (packedQty > 0
+                          ? Colors.orange.shade700
+                          : Colors.grey),
+                ),
               ),
-              child: Icon(
-                isComplete ? Icons.check : Icons.inventory_2_outlined,
-                size: 16,
-                color: isComplete
-                    ? Colors.green.shade700
-                    : (packedQty > 0 ? Colors.orange.shade700 : Colors.grey),
-              ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            // Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      dnItem.itemCode,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    Text(
+                      dnItem.itemName,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (dnItem.batchNo != null)
+                      Text(
+                        'Batch: ${dnItem.batchNo}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade700),
+                      ),
+                  ],
+                ),
+              ),
+
+              // Progress
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    dnItem.itemCode,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    '${FormattingHelper.formatQty(packedQty)} / ${FormattingHelper.formatQty(reqQty)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isComplete
+                          ? Colors.green.shade700
+                          : Colors.black87,
+                    ),
                   ),
                   Text(
-                    dnItem.itemName,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    dnItem.uom,
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.grey),
                   ),
-                  if (dnItem.batchNo != null)
-                    Text(
-                      'Batch: ${dnItem.batchNo}',
-                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
-                    ),
                 ],
               ),
-            ),
 
-            // Progress
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${FormattingHelper.formatQty(packedQty)} / ${FormattingHelper.formatQty(reqQty)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isComplete ? Colors.green.shade700 : Colors.black87,
-                  ),
+              // Edit chevron
+              if (canEdit)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Icon(Icons.chevron_right,
+                      size: 18, color: Colors.grey),
                 ),
-                Text(
-                  dnItem.uom,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
-            ),
-
-            // Edit chevron
-            if (controller.packingSlip.value?.docstatus == 0)
-              const Padding(
-                padding: EdgeInsets.only(left: 8.0),
-                child: Icon(Icons.chevron_right, size: 18, color: Colors.grey),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
+      );
+
+      // F6: Dismissible wraps only items already in the slip
+      final Widget rowWidget = (isInCurrentSlip && canEdit)
+          ? Dismissible(
+              key:       ValueKey(currentItem!.name),
+              direction: DismissDirection.endToStart,
+              confirmDismiss: (_) async {
+                controller.confirmAndDeleteItem(currentItem);
+                return false; // dialog owns the actual removal
+              },
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding:   const EdgeInsets.only(right: 20),
+                color:     Colors.red.shade400,
+                child:     const Icon(Icons.delete_outline,
+                    color: Colors.white, size: 28),
+              ),
+              child: inner,
+            )
+          : inner;
+
+      // F7: per-item loading overlay
+      if (!isLoadingThis) return rowWidget;
+      return Stack(
+        children: [
+          rowWidget,
+          Positioned.fill(
+            child: Container(
+              color: Colors.white.withOpacity(0.65),
+              child: const Center(
+                child: SizedBox(
+                  width: 22, height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    });
   }
 
   Widget _buildFilterChip(String label, int count) {
     return ChoiceChip(
-      label: Text('$label ($count)'),
+      label:    Text('$label ($count)'),
       selected: controller.itemFilter.value == label,
       onSelected: (bool selected) {
         if (selected) controller.setFilter(label);
