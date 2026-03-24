@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
@@ -17,7 +18,8 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
-  final MaterialRequestProvider _materialRequestProvider = Get.find<MaterialRequestProvider>();
+  final MaterialRequestProvider _materialRequestProvider =
+      Get.find<MaterialRequestProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -51,17 +53,16 @@ class StockEntryController extends GetxController {
   var stockEntryTypes = <String>[].obs;
   var isFetchingTypes = false.obs;
 
-  // Users for filter
   var users = <User>[].obs;
   var isFetchingUsers = false.obs;
 
-  // Warehouses for filter
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
   var writeRoles = <String>['System Manager'].obs;
 
-  StockEntry? get detailedEntry => _detailedEntriesCache[expandedEntryName.value];
+  StockEntry? get detailedEntry =>
+      _detailedEntriesCache[expandedEntryName.value];
 
   @override
   void onInit() {
@@ -83,13 +84,15 @@ class StockEntryController extends GetxController {
 
   Future<void> fetchDocTypePermissions() async {
     try {
-      final response = await _apiProvider.getDocument('DocType', 'Stock Entry');
+      final response =
+          await _apiProvider.getDocument('DocType', 'Stock Entry');
       if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         final List<dynamic> perms = data['permissions'] ?? [];
         final newRoles = <String>{'System Manager'};
         for (var p in perms) {
-          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
+          if (p['write'] == 1 &&
+              (p['permlevel'] == 0 || p['permlevel'] == null)) {
             newRoles.add(p['role']);
           }
         }
@@ -131,7 +134,8 @@ class StockEntryController extends GetxController {
     });
   }
 
-  Future<void> fetchStockEntries({bool isLoadMore = false, bool clear = false}) async {
+  Future<void> fetchStockEntries(
+      {bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
@@ -158,7 +162,8 @@ class StockEntryController extends GetxController {
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newEntries = data.map((json) => StockEntry.fromJson(json)).toList();
+        final newEntries =
+            data.map((json) => StockEntry.fromJson(json)).toList();
         if (newEntries.length < _limit) hasMore.value = false;
         if (isLoadMore) {
           stockEntries.addAll(newEntries);
@@ -171,14 +176,16 @@ class StockEntryController extends GetxController {
           title: 'Could not load Stock Entries',
           message: 'The server returned an unexpected response. '
               'Check your connection and try again.',
-          onRetry: () => fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
+          onRetry: () =>
+              fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
         );
       }
     } catch (e) {
       GlobalDialog.showError(
         title: 'Could not load Stock Entries',
         message: e.toString(),
-        onRetry: () => fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
+        onRetry: () =>
+            fetchStockEntries(isLoadMore: isLoadMore, clear: clear),
       );
     } finally {
       if (isLoadMore) {
@@ -196,7 +203,8 @@ class StockEntryController extends GetxController {
       final response = await _provider.getStockEntryTypes();
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        stockEntryTypes.value = data.map((e) => e['name'].toString()).toList();
+        stockEntryTypes.value =
+            data.map((e) => e['name'].toString()).toList();
       }
     } catch (e) {
       print('Error fetching stock entry types: $e');
@@ -228,7 +236,8 @@ class StockEntryController extends GetxController {
       final response = await _warehouseProvider.getWarehouses();
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        warehouses.value = data.map((e) => e['name'].toString()).toList();
+        warehouses.value =
+            data.map((e) => e['name'].toString()).toList();
       }
     } catch (e) {
       print('Error fetching warehouses: $e');
@@ -279,14 +288,20 @@ class StockEntryController extends GetxController {
       final kxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
           filters: {
-            'status': ['in', ['Pending', 'In Progress']],
+            'status': [
+              'in',
+              ['Pending', 'In Progress']
+            ],
             'name': ['like', 'KX%']
           },
           orderBy: 'modified desc');
       final mxFuture = _posUploadProvider.getPosUploads(
           limit: 50,
           filters: {
-            'status': ['in', ['Pending', 'In Progress']],
+            'status': [
+              'in',
+              ['Pending', 'In Progress']
+            ],
             'name': ['like', 'MX%']
           },
           orderBy: 'modified desc');
@@ -304,8 +319,9 @@ class StockEntryController extends GetxController {
       _allFetchedPosUploads = sortedList;
       posUploadsForSelection.value = _allFetchedPosUploads;
     } catch (e) {
-      // Selection sheet is still interactive — a snackbar is appropriate here.
-      Get.snackbar('Error', 'Failed to fetch POS Uploads: $e');
+      // Selection sheet is still interactive — a non-blocking notification
+      // is appropriate here rather than a blocking dialog.
+      AppNotification.error('Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
     }
@@ -342,8 +358,9 @@ class StockEntryController extends GetxController {
         materialRequestsForSelection.value = _allFetchedMaterialRequests;
       }
     } catch (e) {
-      // Selection sheet is still interactive — a snackbar is appropriate here.
-      Get.snackbar('Error', 'Failed to fetch Material Requests: $e');
+      // Selection sheet is still interactive — a non-blocking notification
+      // is appropriate here rather than a blocking dialog.
+      AppNotification.error('Failed to fetch Material Requests: $e');
     } finally {
       isFetchingMaterialRequests.value = false;
     }
@@ -438,7 +455,8 @@ class StockEntryController extends GetxController {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -470,11 +488,13 @@ class StockEntryController extends GetxController {
                   Expanded(
                     child: Obx(() {
                       if (isFetchingPosUploads.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
                       if (posUploadsForSelection.isEmpty) {
                         return const Center(
-                            child: Text('No matching POS Uploads found.'));
+                            child:
+                                Text('No matching POS Uploads found.'));
                       }
                       return ListView.separated(
                         controller: scrollController,
@@ -487,11 +507,13 @@ class StockEntryController extends GetxController {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey.shade200)),
+                                side: BorderSide(
+                                    color: Colors.grey.shade200)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
-                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                                Get.toNamed(
+                                    AppRoutes.STOCK_ENTRY_FORM,
                                     arguments: {
                                       'name': '',
                                       'mode': 'new',
@@ -503,7 +525,8 @@ class StockEntryController extends GetxController {
                               child: Padding(
                                 padding: const EdgeInsets.all(12.0),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       mainAxisAlignment:
@@ -514,20 +537,22 @@ class StockEntryController extends GetxController {
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 16)),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(
+                                          padding: const EdgeInsets
+                                              .symmetric(
                                               horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
                                               color: Colors.orange.shade50,
                                               borderRadius:
-                                                  BorderRadius.circular(8),
+                                                  BorderRadius.circular(
+                                                      8),
                                               border: Border.all(
-                                                  color:
-                                                      Colors.orange.shade200)),
+                                                  color: Colors
+                                                      .orange.shade200)),
                                           child: Text(pos.status,
                                               style: TextStyle(
                                                   fontSize: 11,
-                                                  color:
-                                                      Colors.orange.shade800,
+                                                  color: Colors
+                                                      .orange.shade800,
                                                   fontWeight:
                                                       FontWeight.bold)),
                                         )
@@ -556,7 +581,8 @@ class StockEntryController extends GetxController {
                                               '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
                                               style: const TextStyle(
                                                   fontSize: 12,
-                                                  fontWeight: FontWeight.bold),
+                                                  fontWeight:
+                                                      FontWeight.bold),
                                             ),
                                           ],
                                         ),
@@ -597,7 +623,8 @@ class StockEntryController extends GetxController {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -629,12 +656,13 @@ class StockEntryController extends GetxController {
                   Expanded(
                     child: Obx(() {
                       if (isFetchingMaterialRequests.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
                       if (materialRequestsForSelection.isEmpty) {
                         return const Center(
-                            child:
-                                Text('No matching Material Requests found.'));
+                            child: Text(
+                                'No matching Material Requests found.'));
                       }
                       return ListView.separated(
                         controller: scrollController,
@@ -643,12 +671,14 @@ class StockEntryController extends GetxController {
                             const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final mr = materialRequestsForSelection[index];
-                          final String seType = mapMrTypeToSeType(mr.materialRequestType);
+                          final String seType =
+                              mapMrTypeToSeType(mr.materialRequestType);
                           return Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey.shade200)),
+                                side: BorderSide(
+                                    color: Colors.grey.shade200)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
@@ -660,7 +690,8 @@ class StockEntryController extends GetxController {
                                           'material_request_item': i.name,
                                         })
                                     .toList();
-                                Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+                                Get.toNamed(
+                                    AppRoutes.STOCK_ENTRY_FORM,
                                     arguments: {
                                       'name': '',
                                       'mode': 'new',
@@ -673,7 +704,8 @@ class StockEntryController extends GetxController {
                               child: Padding(
                                 padding: const EdgeInsets.all(12.0),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       mainAxisAlignment:
@@ -687,7 +719,8 @@ class StockEntryController extends GetxController {
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text('Type: ${mr.materialRequestType}',
+                                    Text(
+                                        'Type: ${mr.materialRequestType}',
                                         style: const TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w500)),
@@ -701,14 +734,16 @@ class StockEntryController extends GetxController {
                                         Row(
                                           children: [
                                             const Icon(Icons.date_range,
-                                                size: 14, color: Colors.grey),
+                                                size: 14,
+                                                color: Colors.grey),
                                             const SizedBox(width: 4),
                                             Text(mr.transactionDate,
                                                 style: const TextStyle(
                                                     fontSize: 12)),
                                           ],
                                         ),
-                                        Text('Items: ${mr.items.length}',
+                                        Text(
+                                            'Items: ${mr.items.length}',
                                             style: const TextStyle(
                                                 fontSize: 12,
                                                 color: Colors.grey)),
@@ -735,8 +770,9 @@ class StockEntryController extends GetxController {
 
   /// Maps a Frappe Material Request type to its corresponding Stock Entry type.
   ///
-  /// Exposed as package-visible (no leading underscore) so it can be unit-tested
-  /// directly in test/unit/stock_entry/mr_type_mapping_test.dart.
+  /// Exposed as package-visible (no leading underscore) so it can be
+  /// unit-tested directly in
+  /// test/unit/stock_entry/mr_type_mapping_test.dart.
   String mapMrTypeToSeType(String mrType) {
     switch (mrType) {
       case 'Material Transfer':
