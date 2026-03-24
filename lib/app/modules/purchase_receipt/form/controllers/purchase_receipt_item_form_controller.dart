@@ -80,7 +80,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   String? get qtyInfoText {
     if (poQty.value > 0) {
-      return 'PO Qty: \${poQty.value % 1 == 0 ? poQty.value.toInt() : poQty.value}';
+      return 'PO Qty: ${poQty.value % 1 == 0 ? poQty.value.toInt() : poQty.value}';
     }
     return null;
   }
@@ -180,7 +180,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
-    log('[PR:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo} rack=\${item.rack}',
+    log('[PR:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
         name: 'PR:ItemSheet');
   }
 
@@ -200,7 +200,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       validateBatchOnInit(batchNo); // S1: base method
     }
 
-    log('[PR:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo',
+    log('[PR:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
         name: 'PR:ItemSheet');
   }
 
@@ -292,7 +292,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        itemWarehouse.value = '\${parts[1]}-\${parts[2]} - \${parts[0]}';
+        itemWarehouse.value = '${parts[1]}-${parts[2]} - ${parts[0]}';
       }
     }
 

@@ -219,7 +219,7 @@ class GlobalItemFormSheet extends StatelessWidget {
   })  : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
     _sheetTag = key != null
         ? key.toString()
-        : 'sheet_\${DateTime.now().microsecondsSinceEpoch}';
+        : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
   }
 
   // ---------------------------------------------------------------------------
@@ -302,7 +302,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 if (creation != null)
                   Text(
-                    'Created \${FormattingHelper.getRelativeTime(creation)}',
+                    'Created ${FormattingHelper.getRelativeTime(creation)}',
                     style: style,
                   ),
               ],
@@ -327,7 +327,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 if (modified != null)
                   Text(
-                    'Modified \${FormattingHelper.getRelativeTime(modified)}',
+                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
                     style: style,
                   ),
               ],

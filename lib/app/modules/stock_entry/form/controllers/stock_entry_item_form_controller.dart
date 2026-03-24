@@ -119,11 +119,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final effectiveMax = effectiveMaxQty;
     final maxMr        = validationMaxQty.value;
     if (effectiveMax < 999999.0 && maxMr > 0) {
-      return 'Avail: \${effectiveMax.toStringAsFixed(0)} • MR max: \${maxMr.toStringAsFixed(0)}';
+      return 'Avail: ${effectiveMax.toStringAsFixed(0)} • MR max: ${maxMr.toStringAsFixed(0)}';
     } else if (effectiveMax < 999999.0) {
-      return 'Available: \${effectiveMax.toStringAsFixed(0)}';
+      return 'Available: ${effectiveMax.toStringAsFixed(0)}';
     } else if (maxMr > 0) {
-      return 'MR max: \${maxMr.toStringAsFixed(0)}';
+      return 'MR max: ${maxMr.toStringAsFixed(0)}';
     }
     return null;
   }
@@ -265,7 +265,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       currentScannedEan = item.batchNo!.split('-').first; // S1: base field
     }
 
-    log('[SE:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo}',
+    log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
         name: 'SE:ItemSheet');
   }
 
@@ -291,7 +291,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       validateBatchOnInit(batchNo!); // S1: base method
     }
 
-    log('[SE:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo',
+    log('[SE:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
         name: 'SE:ItemSheet');
   }
 
@@ -475,11 +475,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
           batchError.value =
-              'Qty (\$enteredQty) exceeds Batch balance '
-              '(\${batchBalance.value.toStringAsFixed(0)}) in warehouse';
+              'Qty ($enteredQty) exceeds Batch balance '
+              '(${batchBalance.value.toStringAsFixed(0)}) in warehouse';
           GlobalSnackbar.error(
               message: 'Entered qty exceeds available Batch balance of '
-                  '\${batchBalance.value.toStringAsFixed(0)} in warehouse');
+                  '${batchBalance.value.toStringAsFixed(0)} in warehouse');
         }
       } else {
         isBatchValid.value    = false;
@@ -521,7 +521,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (rack.contains('-')) {
       final parts = rack.split('-');
       if (parts.length >= 3) {
-        final wh = '\${parts[1]}-\${parts[2]} - \${parts[0]}';
+        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
         if (isSource) {
           derivedSourceWarehouse.value = wh;
           itemSourceWarehouse.value    = wh;
@@ -544,11 +544,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
           if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
             batchError.value =
-                'Qty (\$enteredQty) exceeds Batch balance '
-                '(\${batchBalance.value.toStringAsFixed(0)}) in warehouse';
+                'Qty ($enteredQty) exceeds Batch balance '
+                '(${batchBalance.value.toStringAsFixed(0)}) in warehouse';
             GlobalSnackbar.error(
                 message: 'Entered qty exceeds available Batch balance of '
-                    '\${batchBalance.value.toStringAsFixed(0)} in warehouse');
+                    '${batchBalance.value.toStringAsFixed(0)} in warehouse');
           } else {
             if (batchError.value != null &&
                 batchError.value!.contains('Batch balance')) {

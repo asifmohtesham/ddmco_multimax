@@ -177,7 +177,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       currentScannedEan = item.batchNo!.split('-').first; // S1
     }
 
-    log('[DN:ItemSheet] loaded existing item=\${item.name} batch=\${item.batchNo} rack=\${item.rack}',
+    log('[DN:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
         name: 'DN:ItemSheet');
   }
 
@@ -202,7 +202,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       validateBatchOnInit(batchNo); // S1: base method
     }
 
-    log('[DN:ItemSheet] new item code=\${itemCode.value} batch=\$batchNo batchValid=\${isBatchValid.value}',
+    log('[DN:ItemSheet] new item code=${itemCode.value} batch=$batchNo batchValid=${isBatchValid.value}',
         name: 'DN:ItemSheet');
   }
 
