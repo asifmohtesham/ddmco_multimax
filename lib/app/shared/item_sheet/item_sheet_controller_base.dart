@@ -52,12 +52,20 @@ enum SaveButtonState { idle, loading, success, error }
 ///   • [_resetSaveStateOnEdit] — resets saveButtonState to idle when user edits
 ///                               any field after a success or error result.
 ///
-/// B-2 fix:
-///   • onClose() now calls removeListener() on all three TECs for both
-///     validateSheet and _resetSaveStateOnEdit BEFORE dispose().
-///     This prevents the 'TextEditingController used after dispose' crash
-///     that occurred when Get.delete fired during the bottom-sheet close
-///     animation while the TextFormField tree was still mounted.
+/// B-2 fix (revised):
+///   • onClose() removes all TEC listeners synchronously (prevents any
+///     in-flight notifications on the current frame from reaching the
+///     already-logically-closed controller).
+///   • dispose() calls for all TECs, FocusNode, and ScrollController are
+///     deferred to a post-frame callback.  This is critical: GetX calls
+///     onClose() synchronously during Get.delete(), which may fire while
+///     Flutter's layout/draw pipeline is still mid-flight (the bottom-sheet
+///     overlay entry may still be mounted).  If we dispose synchronously,
+///     _AnimatedState.didUpdateWidget on the next sub-frame calls
+///     ChangeNotifier.addListener() on the now-disposed TEC and throws:
+///       "TextEditingController used after being disposed"
+///     Deferring to addPostFrameCallback guarantees the sheet's render
+///     subtree is fully deactivated before any dispose() call executes.
 ///
 /// Concrete subclasses only need to implement the abstract members
 /// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
@@ -168,14 +176,10 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   @override
   void onClose() {
-    // B-2 fix: remove listeners BEFORE dispose().
-    // When Get.delete fires during the bottom-sheet close animation the
-    // TextFormField tree may still be mounted.  Flutter calls
-    // ChangeNotifier.notifyListeners() on the next frame, which would
-    // reach into an already-disposed TEC and throw:
-    //   "TextEditingController used after dispose"
-    // Detaching the listeners here prevents that notification from
-    // ever reaching the disposed controller.
+    // Step 1 — remove all listeners synchronously.
+    // This prevents any in-flight TEC notifications on the current frame
+    // from reaching validateSheet / _resetSaveStateOnEdit after the
+    // controller is logically closed.
     qtyController.removeListener(validateSheet);
     qtyController.removeListener(_resetSaveStateOnEdit);
     batchController.removeListener(validateSheet);
@@ -183,12 +187,35 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.removeListener(validateSheet);
     rackController.removeListener(_resetSaveStateOnEdit);
 
-    qtyController.dispose();
-    batchController.dispose();
-    rackController.dispose();
-    rackFocusNode.dispose();
-    sheetScrollController.dispose();
-    _autoSubmitWorker?.dispose();
+    // Step 2 — dispose() is deferred to a post-frame callback.
+    //
+    // WHY: GetX calls onClose() synchronously during Get.delete(), which
+    // fires while Flutter's layout/draw pipeline may still be mid-flight
+    // (confirmed by crash stack frames #218-252: PipelineOwner.flushLayout
+    // → _RenderLayoutBuilder → BuildOwner.buildScope). The bottom-sheet
+    // overlay entry is still mounted at this point. On the next sub-frame
+    // _AnimatedState.didUpdateWidget fires on the TextFormField, calls
+    // ChangeNotifier.addListener() on the TEC — if already disposed, this
+    // throws: "TextEditingController used after being disposed".
+    //
+    // addPostFrameCallback fires after RendererBinding.drawFrame() completes
+    // and after the deactivation sweep, guaranteeing the sheet subtree is
+    // fully unmounted before any dispose() call executes.
+    final qtc   = qtyController;
+    final btc   = batchController;
+    final rtc   = rackController;
+    final rfn   = rackFocusNode;
+    final ssc   = sheetScrollController;
+    final asw   = _autoSubmitWorker;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      qtc.dispose();
+      btc.dispose();
+      rtc.dispose();
+      rfn.dispose();
+      ssc.dispose();
+      asw?.dispose();
+    });
+
     super.onClose();
   }
 
