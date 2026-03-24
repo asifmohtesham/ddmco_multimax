@@ -30,6 +30,12 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 /// P2-B: baseValidate: maxQty cap is a soft guard in edit-mode only.
 /// P2-C: fetchAllRackStocks: loop runs to result.length (was length-1).
 ///
+/// Standardisation S1:
+///   • [isBatchReadOnly]    — promoted from PR/SE; locks batch field after scan/validation.
+///   • [currentScannedEan]  — promoted from PR/SE/DN (was named currentScannedEan8 in SE/DN).
+///   • [validateBatchOnInit] — promoted from PR/SE/DN; identical post-frame helper.
+///   All three child declarations are now dead code and should be removed.
+///
 /// Concrete subclasses only need to implement the abstract members
 /// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
 abstract class ItemSheetControllerBase extends GetxController {
@@ -63,6 +69,27 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
+  // ── S1: Batch read-only toggle (promoted from PR + SE) ────────────────
+  //
+  // Controls whether the Batch field is locked after a successful scan
+  // or validation.  Previously each child declared its own RxBool;
+  // it lives here so SharedBatchField and resetBatch() share one source.
+  //
+  // Subclass [_loadExistingItem] sets: `isBatchReadOnly.value = isBatchValid.value;`
+  // Subclass [validateBatch] sets:     `isBatchReadOnly.value = true;` on success.
+  // Subclass [resetBatch] calls:        `super.resetBatch()` which also clears it.
+  var isBatchReadOnly = false.obs;
+
+  // ── S1: EAN-8 scan context (promoted from PR/SE/DN) ───────────────────
+  //
+  // Previously named [currentScannedEan] in PR and [currentScannedEan8]
+  // in SE and DN.  Unified here so any shared scan-routing logic in a
+  // future base mixin can reference a single field name.
+  //
+  // Set by concrete [initialise]  and [_loadExistingItem] whenever the
+  // editing item's batchNo contains a '-' separator.
+  String currentScannedEan = '';
+
   // ── Item metadata (for GlobalItemFormSheet footer) ────────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
@@ -85,7 +112,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   // Subclasses that have additional async validation paths (e.g. SE dual-rack)
   // override this getter to OR-in their own flags.
 
-  /// Parent-level “saving in progress” flag.
+  /// Parent-level "saving in progress" flag.
   /// Concrete subclass sets this in [initialise]:
   ///   `isAddingItemFlag = _parent.isAddingItem;`
   RxBool isAddingItemFlag = false.obs;
@@ -105,7 +132,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   // these fields so GlobalItemFormSheet can use a single code path.
 
   /// Whether the embedded scan bar is actively scanning.
-  /// Non-final so concrete subclasses can reassign to the parent’s observable:
+  /// Non-final so concrete subclasses can reassign to the parent's observable:
   ///   `isScanning = _parent.isScanning;`
   RxBool isScanning = false.obs;
 
@@ -180,7 +207,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.addListener(validateSheet);
   }
 
-  /// Capture current field values as the “clean” baseline for dirty checking.
+  /// Capture current field values as the "clean" baseline for dirty checking.
   void captureSnapshot() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
@@ -271,7 +298,8 @@ abstract class ItemSheetControllerBase extends GetxController {
 
       maxQty.value = fetchedQty;
 
-      isBatchValid.value = true;
+      isBatchValid.value    = true;
+      isBatchReadOnly.value = true; // S1: lock after successful validation
 
       final sb = StringBuffer('Batch Stock: $fetchedQty');
       if (rackStockTooltip.value != null) {
@@ -294,6 +322,7 @@ abstract class ItemSheetControllerBase extends GetxController {
 
     } catch (e) {
       isBatchValid.value     = false;
+      isBatchReadOnly.value  = false; // S1: unlock on failure
       batchError.value       = 'Invalid Batch';
       maxQty.value           = 0.0;
       batchInfoTooltip.value = null;
@@ -305,9 +334,25 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
+  // ── S1: validateBatchOnInit (promoted from PR/SE/DN) ─────────────────────
+  //
+  // All three child controllers declared this method identically.
+  // The post-frame delay ensures the sheet's widget tree is fully built
+  // before the first async validation call fires.
+
+  /// Schedules [validateBatch] for the next frame.
+  /// Call from [_loadNewItem] whenever a pre-filled batch is supplied.
+  void validateBatchOnInit(String batch) {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => validateBatch(batch));
+  }
+
+  /// Clears batch validity state and unlocks the batch field.
+  /// S1: also clears [isBatchReadOnly] (was omitted in the base previously).
   void resetBatch() {
-    isBatchValid.value = false;
-    batchError.value   = null;
+    isBatchValid.value    = false;
+    isBatchReadOnly.value = false; // S1
+    batchError.value      = null;
     validateSheet();
   }
 
