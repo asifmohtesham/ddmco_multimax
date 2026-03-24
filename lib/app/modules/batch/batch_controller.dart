@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -127,7 +128,7 @@ class BatchController extends GetxController {
         _currentPage++;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch batches: $e');
+      AppNotification.error('Failed to fetch batches: $e');
     } finally {
       isLoading.value = false;
       isFetchingMore.value = false;
