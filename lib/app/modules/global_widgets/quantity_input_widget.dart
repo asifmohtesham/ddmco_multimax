@@ -5,9 +5,12 @@ import 'package:get/get.dart';
 
 /// A quantity input row with press-and-hold increment / decrement buttons.
 ///
-/// Pure [StatelessWidget] – mutable repeat-timer state is kept in an
-/// auto-created / auto-deleted [_QtyRepeatController] scoped per widget
-/// instance via a unique GetX tag.
+/// [QuantityInputWidget] is a pure [StatelessWidget]; mutable repeat-timer
+/// state lives in a [_QtyRepeatController] that is scoped per button via
+/// [GetWidget].  GetWidget ties the controller lifecycle to its own
+/// [UniqueKey], so the controller is created once and deleted automatically
+/// when the button leaves the tree — regardless of how many times the
+/// parent rebuilds.
 class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
@@ -32,18 +35,21 @@ class QuantityInputWidget extends StatelessWidget {
     this.onChanged,
   });
 
+  // Stable UniqueKeys — created once per QuantityInputWidget instance.
+  // Because these are final fields (not computed in build()), the same
+  // key objects survive every rebuild, keeping GetWidget's tag stable.
+  final UniqueKey _decKey = UniqueKey();
+  final UniqueKey _incKey = UniqueKey();
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
-    final borderColor = Colors.grey.shade300;
-    // Unique tag per widget instance so controllers don't clash.
-    final String decTag = '${hashCode}_dec';
-    final String incTag = '${hashCode}_inc';
+    final borderColor  = Colors.grey.shade300;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header Row: Label + Info Badge
+        // ── Header Row: Label + Info Badge ────────────────────────────
         if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
@@ -60,8 +66,8 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
                 if (infoText != null && infoText!.isNotEmpty)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
@@ -109,8 +115,9 @@ class QuantityInputWidget extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color:
-                        isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                    color: isReadOnly
+                        ? Colors.grey.shade600
+                        : Colors.black87,
                   ),
                   onChanged: onChanged,
                   inputFormatters: [
@@ -133,14 +140,13 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
               ),
 
-              // Buttons Group (Right Side)
+              // ── Buttons Group (Right Side) ───────────────────────────
               if (!isReadOnly) ...[
-                // Vertical Divider
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
 
-                // Decrement Button
                 _QtyActionButton(
-                  tag: decTag,
+                  key: _decKey,
                   icon: Icons.remove,
                   onPressed: onDecrement,
                   color: Colors.grey.shade700,
@@ -148,9 +154,8 @@ class QuantityInputWidget extends StatelessWidget {
                 Container(
                     width: 1, height: 32, color: Colors.grey.shade200),
 
-                // Increment Button
                 _QtyActionButton(
-                  tag: incTag,
+                  key: _incKey,
                   icon: Icons.add,
                   onPressed: onIncrement,
                   color: primaryColor,
@@ -167,7 +172,7 @@ class QuantityInputWidget extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// GetxController that owns the repeat Timer for a single button
+// GetxController: owns the repeat Timer for a single button.
 // ---------------------------------------------------------------------------
 class _QtyRepeatController extends GetxController {
   Timer? _repeatTimer;
@@ -175,8 +180,8 @@ class _QtyRepeatController extends GetxController {
   void startRepeat(VoidCallback action) {
     action();
     _repeatTimer?.cancel();
-    _repeatTimer =
-        Timer.periodic(const Duration(milliseconds: 150), (_) => action());
+    _repeatTimer = Timer.periodic(
+        const Duration(milliseconds: 150), (_) => action());
   }
 
   void stopRepeat() {
@@ -192,17 +197,26 @@ class _QtyRepeatController extends GetxController {
 }
 
 // ---------------------------------------------------------------------------
-// Stateless press-and-hold action button backed by _QtyRepeatController
+// GetWidget-based press-and-hold button.
+//
+// GetWidget<T> is the correct GetX idiom for widget-scoped controllers:
+//   • It calls Get.put() exactly once, keyed on instanceKey (the widget key).
+//   • It calls Get.delete() automatically when the widget leaves the tree.
+//   • The controller is never re-created on parent rebuilds — only on a
+//     genuine unmount/remount, which is the desired behaviour here.
+//
+// The widget receives a UniqueKey from QuantityInputWidget (final field,
+// created once per parent instance), so the key — and therefore the
+// GetX tag — is stable for the entire lifetime of the parent widget.
 // ---------------------------------------------------------------------------
-class _QtyActionButton extends StatelessWidget {
-  final String tag;
+class _QtyActionButton extends GetWidget<_QtyRepeatController> {
   final IconData icon;
   final VoidCallback onPressed;
   final Color color;
   final BorderRadius? borderRadius;
 
   const _QtyActionButton({
-    required this.tag,
+    required super.key,  // UniqueKey from parent — drives GetWidget.instanceKey
     required this.icon,
     required this.onPressed,
     required this.color,
@@ -211,19 +225,16 @@ class _QtyActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // GetX creates and caches the controller for the lifetime of this widget.
-    final ctrl = Get.put(_QtyRepeatController(), tag: tag, permanent: false);
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
         onTapDown: (_) {
           HapticFeedback.lightImpact();
-          ctrl.startRepeat(onPressed);
+          controller.startRepeat(onPressed);
         },
-        onTapUp: (_) => ctrl.stopRepeat(),
-        onTapCancel: () => ctrl.stopRepeat(),
+        onTapUp: (_) => controller.stopRepeat(),
+        onTapCancel: () => controller.stopRepeat(),
         child: SizedBox(
           width: 56,
           height: double.infinity,
