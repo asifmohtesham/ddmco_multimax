@@ -52,13 +52,20 @@ enum SaveButtonState { idle, loading, success, error }
 ///   • [_resetSaveStateOnEdit] — resets saveButtonState to idle when user edits
 ///                               any field after a success or error result.
 ///
+/// B-2 fix:
+///   • onClose() now calls removeListener() on all three TECs for both
+///     validateSheet and _resetSaveStateOnEdit BEFORE dispose().
+///     This prevents the 'TextEditingController used after dispose' crash
+///     that occurred when Get.delete fired during the bottom-sheet close
+///     animation while the TextFormField tree was still mounted.
+///
 /// Concrete subclasses only need to implement the abstract members
 /// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
 abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ─────────────────────────────────────────────────
+  // ── Dependencies ─────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  // ── Form infrastructure ────────────────────────────────────────────────
+  // ── Form infrastructure ────────────────────────────────────────────
   final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
   final ScrollController     sheetScrollController = ScrollController();
 
@@ -67,11 +74,11 @@ abstract class ItemSheetControllerBase extends GetxController {
   final TextEditingController rackController  = TextEditingController();
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ────────────────────────────────────────────────
+  // ── Core item identity ───────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
-  // ── Validation state ──────────────────────────────────────────────────
+  // ── Validation state ────────────────────────────────────────────
   var isBatchValid      = false.obs;
   var isRackValid       = false.obs;
   var isValidatingBatch = false.obs;
@@ -85,149 +92,62 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── S1: Batch read-only toggle (promoted from PR + SE) ────────────────
-  //
-  // Controls whether the Batch field is locked after a successful scan
-  // or validation.  Previously each child declared its own RxBool;
-  // it lives here so SharedBatchField and resetBatch() share one source.
-  //
-  // Subclass [_loadExistingItem] sets: `isBatchReadOnly.value = isBatchValid.value;`
-  // Subclass [validateBatch] sets:     `isBatchReadOnly.value = true;` on success.
-  // Subclass [resetBatch] calls:        `super.resetBatch()` which also clears it.
+  // ── S1: Batch read-only toggle (promoted from PR + SE) ─────────────────
   var isBatchReadOnly = false.obs;
 
   // ── S1: EAN-8 scan context (promoted from PR/SE/DN) ───────────────────
-  //
-  // Previously named [currentScannedEan] in PR and [currentScannedEan8]
-  // in SE and DN.  Unified here so any shared scan-routing logic in a
-  // future base mixin can reference a single field name.
-  //
-  // Set by concrete [initialise]  and [_loadExistingItem] whenever the
-  // editing item's batchNo contains a '-' separator.
   String currentScannedEan = '';
 
-  // ── Item metadata (for GlobalItemFormSheet footer) ────────────────────
+  // ── Item metadata (for GlobalItemFormSheet footer) ───────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
   var itemModified   = RxnString();
   var itemModifiedBy = RxnString();
 
-  // ── Editing context ───────────────────────────────────────────────
-  /// Non-null when editing an existing child-table row.
+  // ── Editing context ─────────────────────────────────────────────
   var editingItemName = RxnString();
 
-  // ── Add / edit mode ─────────────────────────────────────────────────
-  /// Set by concrete [initialise] after determining edit vs. add.
-  /// True  → new item (no editingItemName).
-  /// False → editing existing row.
+  // ── Add / edit mode ─────────────────────────────────────────────
   bool isAddMode = true;
 
-  // ── Option-3: animated save button state ──────────────────────────────
-  //
-  // Drives the Save button widget in GlobalItemFormSheet.
-  // Transitions: idle → loading (on tap) → success (API ok) → [sheet closes]
-  //                                       → error   (API fail) → idle (after 1.5 s)
-  //
-  // Parent coordinators call [submitWithFeedback] instead of [submit] directly.
-  // The sheet is closed by the coordinator only when [submitWithFeedback] returns true.
+  // ── Option-3: animated save button state ────────────────────────────
   var saveButtonState = SaveButtonState.idle.obs;
 
-  // ── Step-1: merged loading flag ───────────────────────────────────────
-  //
-  // P2-A: isSheetLoading now also merges isValidatingRack.
-  // Option-3: also blocks while saveButtonState == loading (prevents double-submit).
-  // Subclasses that have additional async validation paths (e.g. SE dual-rack)
-  // override this getter to OR-in their own flags.
-
-  /// Parent-level "saving in progress" flag.
-  /// Concrete subclass sets this in [initialise]:
-  ///   `isAddingItemFlag = _parent.isAddingItem;`
+  // ── Step-1: merged loading flag ──────────────────────────────────────
   RxBool isAddingItemFlag = false.obs;
 
-  /// Single merged loading state for UniversalItemFormSheet.
-  /// True when batch-validation, rack-validation, parent save, or
-  /// the save-button animation is in progress.
   bool get isSheetLoading =>
       isValidatingBatch.value ||
       isValidatingRack.value  ||
       isAddingItemFlag.value  ||
       saveButtonState.value == SaveButtonState.loading;
 
-  // ── Step-1: scan-bar state (promoted from DN parent) ───────────────────
-  //
-  // SE does not use the scan bar in the item sheet (it routes scans
-  // through the document-level scanner).  DN does.  Both will bind to
-  // these fields so GlobalItemFormSheet can use a single code path.
-
-  /// Whether the embedded scan bar is actively scanning.
-  /// Non-final so concrete subclasses can reassign to the parent's observable:
-  ///   `isScanning = _parent.isScanning;`
+  // ── Step-1: scan-bar state (promoted from DN parent) ──────────────────
   RxBool isScanning = false.obs;
-
-  /// TEC for the embedded barcode input inside the sheet.
-  /// Concrete subclass assigns the parent's controller if it uses a scan bar:
-  ///   `sheetScanController = _parent.barcodeController;`
-  /// Leave null (default) if DocType does not embed a scan bar.
   TextEditingController? sheetScanController;
 
-  // ── Step-1: abstract qty info text ───────────────────────────────────
-  //
-  // Each DocType returns its own human-readable qty hint that appears
-  // below the quantity field.
-
-  /// Human-readable qty hint shown below the Quantity field.
-  /// Return null to hide the hint.
+  // ── Step-1: abstract qty info text ──────────────────────────────────
   String? get qtyInfoText;
 
-  // ── Step-1: abstract delete dispatch ──────────────────────────────────
-
-  /// Deletes (or confirms deletion of) the item currently being edited.
-  /// Only called when [editingItemName] is non-null.
+  // ── Step-1: abstract delete dispatch ────────────────────────────────
   Future<void> deleteCurrentItem();
 
-  // ── Snapshot for dirty-checking ───────────────────────────────────────
+  // ── Snapshot for dirty-checking ──────────────────────────────────────
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ────────────────────────────────────────────────
+  // ── Auto-submit worker ────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ───────────────────────────────────────────────
-
-  /// The warehouse to use for stock/batch queries.
-  /// Return null if not yet determined.
+  // ── Abstract interface ─────────────────────────────────────────────
   String? get resolvedWarehouse;
-
-  /// Whether this DocType requires a valid batch before the sheet can be saved.
-  /// Enforced by [baseValidate].
   bool get requiresBatch;
-
-  /// Whether this DocType requires a non-empty rack entry before saving.
-  /// Enforced by [baseValidate].
   bool get requiresRack;
-
-  /// DocType-specific validation rules applied ON TOP of [baseValidate].
   void validateSheet();
-
-  /// Commits the current field values back to the parent document controller.
-  /// Do NOT call this directly from the UI — call [submitWithFeedback] instead.
   Future<void> submit();
 
-  // ── Option-3: submitWithFeedback ──────────────────────────────────────
-  //
-  // Called by the parent coordinator's onSubmit lambda instead of submit().
-  // Drives saveButtonState through the full animation cycle and returns
-  // true on success so the coordinator knows it is safe to call Get.back().
-  //
-  // This is the fix for Bug #1: Get.back() now only fires after the success
-  // animation delay, by which time the sheet overlay is already settled,
-  // so SnackbarController can never find a torn-down overlay context.
-
-  /// Wraps [submit] with the animated-button feedback cycle.
-  ///
-  /// Returns true  → save succeeded; coordinator should call Get.back().
-  /// Returns false → save failed;    sheet stays open, button resets to idle.
+  // ── Option-3: submitWithFeedback ────────────────────────────────────
   Future<bool> submitWithFeedback() async {
     saveButtonState.value = SaveButtonState.loading;
     try {
@@ -244,10 +164,25 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────
 
   @override
   void onClose() {
+    // B-2 fix: remove listeners BEFORE dispose().
+    // When Get.delete fires during the bottom-sheet close animation the
+    // TextFormField tree may still be mounted.  Flutter calls
+    // ChangeNotifier.notifyListeners() on the next frame, which would
+    // reach into an already-disposed TEC and throw:
+    //   "TextEditingController used after dispose"
+    // Detaching the listeners here prevents that notification from
+    // ever reaching the disposed controller.
+    qtyController.removeListener(validateSheet);
+    qtyController.removeListener(_resetSaveStateOnEdit);
+    batchController.removeListener(validateSheet);
+    batchController.removeListener(_resetSaveStateOnEdit);
+    rackController.removeListener(validateSheet);
+    rackController.removeListener(_resetSaveStateOnEdit);
+
     qtyController.dispose();
     batchController.dispose();
     rackController.dispose();
@@ -257,11 +192,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     super.onClose();
   }
 
-  // ── Shared initialisation helper ────────────────────────────────────────
+  // ── Shared initialisation helper ─────────────────────────────────────
 
-  /// Call from concrete [initialise] after fields are populated.
-  ///
-  /// Wires validateSheet AND _resetSaveStateOnEdit to all three field TECs.
   void initBaseListeners() {
     qtyController.addListener(validateSheet);
     batchController.addListener(validateSheet);
@@ -272,8 +204,6 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.addListener(_resetSaveStateOnEdit);
   }
 
-  /// Resets [saveButtonState] to idle when the user edits any field after
-  /// a success or error result, so the button is ready for the next save.
   void _resetSaveStateOnEdit() {
     if (saveButtonState.value == SaveButtonState.success ||
         saveButtonState.value == SaveButtonState.error) {
@@ -281,20 +211,18 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  /// Capture current field values as the "clean" baseline for dirty checking.
   void captureSnapshot() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
     _snapshotQty   = qtyController.text;
   }
 
-  /// Returns true when any tracked field has changed from its snapshot.
   bool get isFieldsDirty =>
       batchController.text != _snapshotBatch ||
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Auto-submit wiring ───────────────────────────────────────────────
+  // ── Auto-submit wiring ────────────────────────────────────────────
 
   void setupAutoSubmit({
     required bool            enabled,
@@ -317,7 +245,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     });
   }
 
-  // ── Qty helpers ──────────────────────────────────────────────────────────
+  // ── Qty helpers ──────────────────────────────────────────────────────
 
   void adjustQty(double delta) {
     double current = double.tryParse(qtyController.text) ?? 0;
@@ -329,7 +257,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── P2-A: Batch validation ──────────────────────────────────────────────
+  // ── P2-A: Batch validation ──────────────────────────────────────────
 
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
@@ -407,21 +335,13 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── S1: validateBatchOnInit (promoted from PR/SE/DN) ─────────────────────
-  //
-  // All three child controllers declared this method identically.
-  // The post-frame delay ensures the sheet's widget tree is fully built
-  // before the first async validation call fires.
+  // ── S1: validateBatchOnInit (promoted from PR/SE/DN) ───────────────────
 
-  /// Schedules [validateBatch] for the next frame.
-  /// Call from [_loadNewItem] whenever a pre-filled batch is supplied.
   void validateBatchOnInit(String batch) {
     WidgetsBinding.instance
         .addPostFrameCallback((_) => validateBatch(batch));
   }
 
-  /// Clears batch validity state and unlocks the batch field.
-  /// S1: also clears [isBatchReadOnly] (was omitted in the base previously).
   void resetBatch() {
     isBatchValid.value    = false;
     isBatchReadOnly.value = false; // S1
@@ -429,7 +349,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Rack validation ────────────────────────────────────────────────────────
+  // ── Rack validation ──────────────────────────────────────────────────
 
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
@@ -464,7 +384,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── P2-C: Stock / rack-map fetching ───────────────────────────────────────
+  // ── P2-C: Stock / rack-map fetching ──────────────────────────────────────
 
   Future<void> fetchAllRackStocks() async {
     final warehouse = resolvedWarehouse;
@@ -505,9 +425,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── P2-B: Base validation ───────────────────────────────────────────────
+  // ── P2-B: Base validation ─────────────────────────────────────────────
 
-  /// Returns true when all base rules pass.
   bool baseValidate() {
     rackError.value = null;
 
