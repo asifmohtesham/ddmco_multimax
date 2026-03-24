@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
@@ -82,6 +83,18 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ));
   }
 
+  // ── Shared banner binding ───────────────────────────────────────────────────────────
+  // Extracted into a single helper so both tab views reference one Obx,
+  // keeping the binding DRY and ensuring the banner is always visible
+  // regardless of which tab is active when it fires.
+  Widget _buildBanner() {
+    return Obx(() => InlineBanner(
+          visible: controller.bannerVisible.value,
+          message: controller.bannerMessage.value,
+          type:    controller.bannerType.value,
+        ));
+  }
+
   Widget _buildDetailsView(DeliveryNote note) {
     final bool isEditable = note.docstatus == 0;
 
@@ -90,6 +103,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // InlineBanner at top — collapses to zero height when not visible.
+          _buildBanner(),
           _buildSectionCard(
             title: 'General Information',
             children: [
@@ -289,6 +304,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
       return Column(
         children: [
+          // InlineBanner at top of Items tab — above filters, collapses when
+          // not visible so filter chips are not displaced.
+          _buildBanner(),
+
           // 1. Filters
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
