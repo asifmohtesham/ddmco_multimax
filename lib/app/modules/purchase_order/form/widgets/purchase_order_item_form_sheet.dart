@@ -19,6 +19,14 @@ import 'package:multimax/app/data/utils/app_constants.dart';
 /// [isSaveEnabled] — derived from [PurchaseOrderFormController.isEditable] —
 /// re-evaluates reactively whenever [purchaseOrder] changes (e.g. after a
 /// save/submit that alters docstatus).
+///
+/// ## Spacing contract
+///
+/// [GlobalItemFormSheet._formChildren()] wraps every element of [customFields]
+/// in `Padding(bottom: 20)` automatically. Do NOT add manual [SizedBox]
+/// spacers between custom fields — they stack on top of the automatic
+/// padding and produce double the intended gap (36 px instead of 20 px),
+/// which is inconsistent with every other DocType item sheet.
 class PurchaseOrderItemFormSheet extends StatelessWidget {
   final ScrollController? scrollController;
 
@@ -42,7 +50,10 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
       },
       onScan: null,
       customFields: [
-        // ── Reqd By Date ───────────────────────────────────────────────────
+        // ── Reqd By Date ─────────────────────────────────────────────────────
+        // NOTE: no SizedBox spacers between fields.
+        // GlobalItemFormSheet wraps each customField in Padding(bottom: 20)
+        // automatically — adding manual spacers would double the gap.
         GlobalItemFormSheet.buildInputGroup(
           label: 'Reqd by Date',
           color: Colors.orange,
@@ -73,9 +84,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 16),
-
-        // ── Rate ───────────────────────────────────────────────────────────
+        // ── Rate ──────────────────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Rate',
           color: Colors.grey,
@@ -96,9 +105,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 16),
-
-        // ── Running Amount tile ──────────────────────────────────────────
+        // ── Running Amount tile ──────────────────────────────────────────────
         Obx(() => Container(
           padding:    const EdgeInsets.all(12),
           decoration: BoxDecoration(
