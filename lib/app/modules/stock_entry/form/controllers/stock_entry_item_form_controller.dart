@@ -33,18 +33,12 @@ import '../stock_entry_form_controller.dart';
 /// AutoFillRackMixin wiring:
 ///   • [isAddMode] set before listener attachment.
 ///   • [initAutoFillListener] called in initialise() after initBaseListeners().
-///     Fires [autoFillRackForQty] once the operator enters qty > 0 and the
-///     SOURCE rack field ([rackController], mapped to sourceRackController) is
-///     still empty. Constrained to [resolvedWarehouse] — the effective source
-///     warehouse for Material Issue.
 ///   • [disposeAutoFillListener] called in onClose() before super.onClose().
-///
-/// Note: AutoFillRackMixin operates on [rackController] (the base TEC).
-/// For SE, [rackController] is aliased to [sourceRackController] via the
-/// override of [resolvedWarehouse] which already reflects the source side.
-/// The mixin autofill only applies to Material Issue (source-rack only).
-/// Target-rack autofill (Material Receipt) is out of scope and has been
-/// removed; it can be addressed in a future commit if required.
+///   • [autoFillRackController] overridden → sourceRackController.
+///     The mixin writes the selected rack name to sourceRackController, not
+///     the base rackController, so it reaches the correct SE rack field.
+///   • [onAutoFillRackSelected] overridden → validateDualRack(rack, true).
+///     Triggers SE's dual-rack validation pipeline for the source side.
 ///
 /// Step-2 additions:
 ///   • [isAddingItemFlag]   wired to _parent.isAddingItem
@@ -77,8 +71,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   late StockEntryFormController _parent;
 
   /// Public read-only access to the parent document controller.
-  /// Used by widgets (e.g. RackSection) that need parent state without
-  /// accessing the private field directly.
   StockEntryFormController get parent => _parent;
 
   // ── SE-specific extra TECs ────────────────────────────────────────────────
@@ -104,12 +96,23 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var isLoadingBatchBalance = false.obs;
   var isLoadingRackBalance  = false.obs;
   // isBatchReadOnly → promoted to base (S1)
-
   // currentScannedEan8 → promoted to base as currentScannedEan (S1)
 
   // ── SE dirty-check snapshots (source + target rack extend base) ───────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
+
+  // ── AutoFillRackMixin hooks ───────────────────────────────────────────────
+
+  /// Routes autofill writes to the SE source-rack TEC, not the base
+  /// rackController which is unused by SE's submission / validation path.
+  @override
+  TextEditingController get autoFillRackController => sourceRackController;
+
+  /// Triggers SE's dual-rack validation pipeline for the source side after
+  /// the mixin writes the selected rack name to sourceRackController.
+  @override
+  void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
@@ -125,9 +128,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get requiresBatch => true;
 
   @override
-  bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
+  bool get requiresRack => false; // dual-rack rules handled in isValidRacks()
 
-  // ── P1-C: isSheetLoading override ───────────────────────────────────────
+  // ── P1-C: isSheetLoading override ────────────────────────────────────────
 
   @override
   bool get isSheetLoading =>
@@ -135,7 +138,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isValidatingSourceRack.value ||
       isValidatingTargetRack.value;
 
-  // ── Step-2: qtyInfoText ───────────────────────────────────────────────
+  // ── Step-2: qtyInfoText ───────────────────────────────────────────────────
 
   @override
   String? get qtyInfoText {
@@ -151,7 +154,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return null;
   }
 
-  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────
+  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -162,12 +165,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── PosSerialMixin contract ────────────────────────────────────────────
+  // ── PosSerialMixin contract ────────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
-  // ── Initialisation ───────────────────────────────────────────────────
+  // ── Initialisation ────────────────────────────────────────────────────────
 
   void initialise({
     required StockEntryFormController parent,
@@ -181,13 +184,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     List<Map<String, dynamic>> mrReferenceItems = const [],
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan8; // S1: base field (was currentScannedEan8)
+    currentScannedEan = scannedEan8; // S1: base field
 
     isAddingItemFlag = _parent.isAddingItem;
 
-    itemCode.value = code;
+    itemCode.value      = code;
     this.itemName.value = itemName;
-    maxQty.value   = 0.0;
+    maxQty.value        = 0.0;
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
@@ -231,7 +234,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isAddMode = editingItem == null;
 
     initBaseListeners();
-    initAutoFillListener(); // AutoFillRackMixin: attach qty → source-rack autofill trigger
+    initAutoFillListener(); // AutoFillRackMixin: qty → sourceRackController autofill
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
@@ -278,12 +281,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       selectedSerial.value = '0';
     }
 
-    isBatchValid.value        = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value     = isBatchValid.value; // S1: base field
-    isSourceRackValid.value   = item.rack    != null && item.rack!.isNotEmpty;
-    isTargetRackValid.value   = item.toRack  != null && item.toRack!.isNotEmpty;
-    itemSourceWarehouse.value = item.sWarehouse;
-    itemTargetWarehouse.value = item.tWarehouse;
+    isBatchValid.value           = item.batchNo != null && item.batchNo!.isNotEmpty;
+    isBatchReadOnly.value        = isBatchValid.value; // S1: base field
+    isSourceRackValid.value      = item.rack   != null && item.rack!.isNotEmpty;
+    isTargetRackValid.value      = item.toRack != null && item.toRack!.isNotEmpty;
+    itemSourceWarehouse.value    = item.sWarehouse;
+    itemTargetWarehouse.value    = item.tWarehouse;
     derivedSourceWarehouse.value = item.sWarehouse;
     derivedTargetWarehouse.value = item.tWarehouse;
 
@@ -354,7 +357,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit — delegates to parent only (sheet close owned by parent coordinator)
+  // ── submit ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -380,7 +383,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Computed max qty ────────────────────────────────────────────────────
+  // ── Computed max qty ──────────────────────────────────────────────────────
 
   double get effectiveMaxQty {
     double limit = 999999.0;
@@ -393,7 +396,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return limit;
   }
 
-  // ── Rack rule helper ───────────────────────────────────────────────────
+  // ── Rack rule helper ──────────────────────────────────────────────────────
 
   bool isValidRacks() {
     final type = _parent.selectedStockEntryType.value;
@@ -450,7 +453,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return true;
   }
 
-  // ── validateBatch (SE-specific override) ────────────────────────────────
+  // ── validateBatch (SE-specific override) ──────────────────────────────────
   // validateBatchOnInit → removed; use base method (S1)
 
   @override
@@ -493,10 +496,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         await _updateAvailableStock();
         await _updateBatchBalance();
 
-        // Source-rack autofill is now driven by AutoFillRackMixin via the
-        // qty-field listener. The previous unawaited(_autoFillBestSourceRack())
-        // call has been removed — autofill now fires when the operator
-        // explicitly sets a positive qty after batch validation completes.
+        // Source-rack autofill is driven by AutoFillRackMixin via the qty-field
+        // listener. The previous unawaited(_autoFillBestSourceRack()) call has
+        // been removed — autofill fires when the operator explicitly enters a
+        // positive qty after batch validation completes.
 
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
@@ -529,7 +532,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── validateDualRack ───────────────────────────────────────────────────
+  // ── validateDualRack ──────────────────────────────────────────────────────
 
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
@@ -609,7 +612,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── Stock / batch balance fetchers ──────────────────────────────────────────
+  // ── Stock / batch balance fetchers ────────────────────────────────────────
 
   Future<void> _updateAvailableStock() async {
     final type = _parent.selectedStockEntryType.value;

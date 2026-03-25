@@ -10,7 +10,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 /// Autofill fires once, on the first transition of the qty field from
 /// blank / zero → a positive value, provided:
 ///   • [isAddMode] is true
-///   • [rackController] is still empty (operator hasn't typed a rack)
+///   • [autoFillRackController] is still empty (operator hasn't typed a rack)
 ///   • [rackStockMap] has been populated (via [fetchAllRackStocks])
 ///   • [resolvedWarehouse] is non-null / non-empty
 ///
@@ -40,15 +40,28 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 ///    warning snackbar so the operator is informed.
 /// 4. [resolvedWarehouse] is null / empty  →  skip silently.
 ///
+/// ## DocType hook overrides
+/// By default the mixin writes to [rackController] and calls [validateRack]
+/// — correct for Delivery Note, Purchase Receipt, Purchase Order.
+///
+/// DocTypes with a separate rack TEC (e.g. Stock Entry's sourceRackController)
+/// must override the two protected hooks:
+///
+///   [autoFillRackController] — return the TEC to fill (default: rackController)
+///   [onAutoFillRackSelected] — perform post-fill validation
+///                              (default: validateRack(rack))
+///
 /// ## Usage
 /// ```dart
+/// // Simple DocType (DN, PR, PO) — no overrides needed:
 /// class MyItemFormController extends ItemSheetControllerBase
 ///     with AutoFillRackMixin {
 ///
 ///   void initialise(...) {
 ///     ...
+///     isAddMode = editingItem == null;
 ///     initBaseListeners();
-///     initAutoFillListener(); // attach qty listener
+///     initAutoFillListener();
 ///     ...
 ///   }
 ///
@@ -58,10 +71,39 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 ///     super.onClose();
 ///   }
 /// }
+///
+/// // DocType with separate source-rack TEC (SE):
+/// class StockEntryItemFormController extends ItemSheetControllerBase
+///     with AutoFillRackMixin {
+///
+///   final TextEditingController sourceRackController = TextEditingController();
+///
+///   @override
+///   TextEditingController get autoFillRackController => sourceRackController;
+///
+///   @override
+///   void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
+/// }
 /// ```
 mixin AutoFillRackMixin on ItemSheetControllerBase {
   // ── Internal listener reference ──────────────────────────────────────────
   VoidCallback? _autoFillQtyListener;
+
+  // ── Protected hooks (override in DocTypes with separate rack TECs) ───────
+
+  /// The TEC that autofill writes the selected rack name into.
+  ///
+  /// Default: [rackController] — correct for DN, PR, PO.
+  /// SE override: [sourceRackController].
+  TextEditingController get autoFillRackController => rackController;
+
+  /// Called immediately after the rack name is written to
+  /// [autoFillRackController].  Perform whatever validation the DocType
+  /// requires for the newly set rack.
+  ///
+  /// Default: calls [validateRack(rack)] — correct for DN, PR, PO.
+  /// SE override: calls [validateDualRack(rack, true)].
+  void onAutoFillRackSelected(String rack) => validateRack(rack);
 
   // ── Rack-name → warehouse derivation ────────────────────────────────────
 
@@ -81,7 +123,8 @@ mixin AutoFillRackMixin on ItemSheetControllerBase {
   // ── Listener lifecycle ───────────────────────────────────────────────────
 
   /// Attaches the qty-field listener that drives autofill.
-  /// Call this from [initialise] after [initBaseListeners].
+  /// Call this from [initialise] after [isAddMode] is set and after
+  /// [initBaseListeners].
   void initAutoFillListener() {
     _autoFillQtyListener = _onQtyChangedForAutoFill;
     qtyController.addListener(_autoFillQtyListener!);
@@ -99,7 +142,7 @@ mixin AutoFillRackMixin on ItemSheetControllerBase {
 
   void _onQtyChangedForAutoFill() {
     if (!isAddMode) return;
-    if (rackController.text.isNotEmpty) return; // operator already typed
+    if (autoFillRackController.text.isNotEmpty) return; // operator already typed
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
     if (rackStockMap.isEmpty) return;
@@ -116,7 +159,7 @@ mixin AutoFillRackMixin on ItemSheetControllerBase {
   /// [resolvedWarehouse].  See class-level doc for selection order.
   void autoFillRackForQty(double qty) {
     if (!isAddMode) return;
-    if (rackController.text.isNotEmpty) return;
+    if (autoFillRackController.text.isNotEmpty) return;
     if (rackStockMap.isEmpty) return;
 
     final targetWh = resolvedWarehouse;
@@ -150,13 +193,13 @@ mixin AutoFillRackMixin on ItemSheetControllerBase {
     matchingEntries.sort((a, b) => b.value.compareTo(a.value));
 
     // Decision 1: prefer a rack with qty >= requested.
-    final sufficient =
-        matchingEntries.where((e) => e.value >= qty).toList();
+    final sufficient = matchingEntries.where((e) => e.value >= qty).toList();
 
     final String best;
     if (sufficient.isNotEmpty) {
-      best = sufficient.first.key; // highest qty that still covers the request
-      log('[AutoFillRack] auto-filling rack="$best" (qty=${matchingEntries.firstWhere((e) => e.key == best).value} >= $qty)',
+      best = sufficient.first.key;
+      log('[AutoFillRack] auto-filling rack="$best" '
+          '(qty=${matchingEntries.firstWhere((e) => e.key == best).value} >= $qty)',
           name: 'ItemSheet');
     } else {
       // Decision 2: fall back to best available, warn about insufficient stock.
@@ -166,13 +209,12 @@ mixin AutoFillRackMixin on ItemSheetControllerBase {
           '(available=$available < requested=$qty)',
           name: 'ItemSheet');
       GlobalSnackbar.warning(
-        message:
-            'Insufficient stock in rack "$best" (available: $available). '
+        message: 'Insufficient stock in rack "$best" (available: $available). '
             'Please verify before saving.',
       );
     }
 
-    rackController.text = best;
-    validateRack(best);
+    autoFillRackController.text = best;
+    onAutoFillRackSelected(best);
   }
 }
