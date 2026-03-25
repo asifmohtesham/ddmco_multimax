@@ -604,9 +604,6 @@ class StockEntryFormController extends GetxController
   }
 
   // ── Sheet lifecycle ──────────────────────────────────────────────────────────
-  //
-  // Fix #5 / #8: _openItemSheet is now async; uses await instead of
-  // .whenComplete() so cleanup runs in a predictable, awaitable sequence.
 
   void _openNewItemSheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
@@ -636,8 +633,11 @@ class StockEntryFormController extends GetxController
       },
     );
 
+    // Autofill is driven by AutoFillRackMixin's qty-field listener, which is
+    // attached inside child.initialise() via initAutoFillListener().
+    // The previous child.triggerAutoFill() call has been removed.
+
     _openItemSheet(child);
-    child.triggerAutoFill();
   }
 
   Future<void> editItem(StockEntryItem item) async {
@@ -684,9 +684,6 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // Fix #5 / #8: async + await replaces .whenComplete()
-  // Fix #11: expand: false added to DraggableScrollableSheet
-  // Fix #12: isSaveEnabled uses isEditable getter
   Future<void> _openItemSheet(StockEntryItemFormController child) async {
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
@@ -694,33 +691,27 @@ class StockEntryFormController extends GetxController
         initialChildSize: 0.6,
         minChildSize:     0.4,
         maxChildSize:     0.95,
-        expand:           false, // Fix #11
+        expand:           false,
         builder: (context, sc) => UniversalItemFormSheet(
           key:              ValueKey(child.editingItemName.value ?? 'new'),
           controller:       child,
           scrollController: sc,
           onSubmit:         addItem,
-          onScan:           null, // SE routes scans at doc level
+          onScan:           null,
           itemSubtext:      currentVariantOf,
-          isSaveEnabled:    isEditable, // Fix #12
+          isSaveEnabled:    isEditable,
           customFields: [
-            // 1. Batch No (SE-specific widget with dual-balance chips)
             BatchField(controller: child),
-
-            // 2. Invoice Serial No (POS Upload flow only)
             SharedSerialField(
               controller:  child,
               accentColor: Colors.blueGrey,
             ),
-
-            // 3. Source + Target Rack (SE dual-rack layout)
             RackSection(controller: child),
           ],
         ),
       ),
       isScrollControlled: true,
     );
-    // Fix #5 / #8: explicit post-await cleanup (was .whenComplete)
     isItemSheetOpen.value = false;
     Get.delete<StockEntryItemFormController>();
   }
@@ -775,7 +766,7 @@ class StockEntryFormController extends GetxController
   void _handleSheetScan(String barcode) async {
     barcodeController.clear();
     final child = Get.find<StockEntryItemFormController>();
-    // S1: renamed child.currentScannedEan8 → child.currentScannedEan (2 occurrences)
+    // S1: renamed child.currentScannedEan8 → child.currentScannedEan
     final contextItem = child.currentScannedEan.isNotEmpty
         ? child.currentScannedEan
         : currentItemCode;
@@ -839,7 +830,6 @@ class StockEntryFormController extends GetxController
 
   // ── Feedback / scroll ────────────────────────────────────────────────────────
 
-  // Fix #4: uses recentlyAddedItemName (canonical name, matches PR)
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -993,8 +983,6 @@ class StockEntryFormController extends GetxController
 
   // ── Misc ───────────────────────────────────────────────────────────────────
 
-  // Fix #15: isEditable guard backported from PR — prevents dirty flag being
-  // set on submitted documents when warehouse / type observers fire on reload.
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
   }
