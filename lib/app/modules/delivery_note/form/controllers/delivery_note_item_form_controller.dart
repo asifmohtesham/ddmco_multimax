@@ -18,7 +18,8 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///
 /// Extends [ItemSheetControllerBase] and mixes in:
 ///   • [PosSerialMixin]    — invoice serial-number selector (POS Upload flow)
-///   • [AutoFillRackMixin] — auto-selects the best-stock rack in add-mode
+///   • [AutoFillRackMixin] — auto-selects the best-fit rack once the operator
+///                           enters a positive qty in add-mode
 ///
 /// Step-2 additions:
 ///   • [isAddingItemFlag]    wired to _parent.isAddingItem
@@ -42,6 +43,14 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///                        matching PR pattern for scan-bar rack routing.
 ///   • [resetRack]      — overridden; calls super, explicit extension point
 ///                        for future DN-specific rack state.
+///
+/// Rack autofill (AutoFillRackMixin):
+///   • [initAutoFillListener] called in initialise() after initBaseListeners().
+///     Fires [autoFillRackForQty] once the operator enters qty > 0 and the
+///     rack field is still empty.  Constrained to [resolvedWarehouse].
+///   • [disposeAutoFillListener] called in onClose() — removes qty TEC listener.
+///   • fetchAllRackStocks() is NOT overridden here; the base populates
+///     rackStockMap independently of autofill.
 ///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
@@ -142,16 +151,19 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo);
     }
 
+    // isAddMode must be set before initAutoFillListener() so the mixin
+    // guard reads the correct value when the qty listener first fires.
+    isAddMode = editingItem == null;
+
     initBaseListeners();
+    initAutoFillListener(); // AutoFillRackMixin: attach qty → autofill trigger
     ever(selectedSerial, (_) => validateSheet());
 
     captureSnapshot();
     captureSerialSnapshot();
 
-    isAddMode = editingItem == null;
-
     validateSheet();
-    fetchAllRackStocks();
+    fetchAllRackStocks(); // populates rackStockMap for tooltip/dropdown
   }
 
   void _loadExistingItem(DeliveryNoteItem item) {
@@ -206,14 +218,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── AutoFillRackMixin override ────────────────────────────────────────────
-
-  @override
-  Future<void> fetchAllRackStocks() async {
-    await super.fetchAllRackStocks();
-    autoFillBestRack();
-  }
-
   // ── S7: applyRackScan ──────────────────────────────────────────────────────
 
   void applyRackScan(String rackId) {
@@ -263,6 +267,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   void onClose() {
+    disposeAutoFillListener(); // AutoFillRackMixin: remove qty TEC listener
     super.onClose();
   }
 }
