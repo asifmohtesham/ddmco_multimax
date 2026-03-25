@@ -17,8 +17,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-
-const _kPoSheetTag = 'po_item_sheet';
+import 'package:multimax/app/data/utils/app_constants.dart';
 
 class PurchaseOrderFormController extends GetxController {
   final PurchaseOrderProvider _provider         = Get.find<PurchaseOrderProvider>();
@@ -124,11 +123,6 @@ class PurchaseOrderFormController extends GetxController {
 
   // ---------------------------------------------------------------------------
   // Listener helpers
-  //
-  // Suspending listeners around controller write-backs prevents _checkForChanges
-  // from firing while _originalJson is still '' and sibling fields are partially
-  // written — which was the root cause of the spurious 'Not Saved' status on
-  // a clean Draft document.
   // ---------------------------------------------------------------------------
 
   void _addListeners() {
@@ -251,16 +245,11 @@ class PurchaseOrderFormController extends GetxController {
         final po = PurchaseOrder.fromJson(response.data['data']);
         purchaseOrder.value = po;
 
-        // Suspend listeners so that assigning text values does not trigger
-        // _checkForChanges before _originalJson has been captured. Without
-        // this guard, the first .text assignment fires the listener while
-        // _originalJson is still '' — making the document appear dirty and
-        // instantly showing 'Not Saved' on a clean Draft.
         _removeListeners();
         supplierController.text = po.supplier;
         dateController.text     = po.transactionDate;
-        _updateOriginalState(po); // sets _originalJson + isDirty=false
-        _addListeners();          // re-attach only after snapshot is ready
+        _updateOriginalState(po);
+        _addListeners();
       } else {
         GlobalDialog.showError(
           title:   'Could not load Purchase Order',
@@ -607,11 +596,11 @@ class PurchaseOrderFormController extends GetxController {
 
     Get.lazyPut<PurchaseOrderItemFormController>(
       () => PurchaseOrderItemFormController(),
-      tag:   _kPoSheetTag,
+      tag:   kPoItemSheetTag,
       fenix: true,
     );
 
-    final sheetCtrl = Get.find<PurchaseOrderItemFormController>(tag: _kPoSheetTag);
+    final sheetCtrl = Get.find<PurchaseOrderItemFormController>(tag: kPoItemSheetTag);
     sheetCtrl.initialise(
       parentController: this,
       code:         code,
@@ -642,7 +631,7 @@ class PurchaseOrderFormController extends GetxController {
       isScrollControlled: true,
     );
     isItemSheetOpen.value = false;
-    Get.delete<PurchaseOrderItemFormController>(tag: _kPoSheetTag);
+    Get.delete<PurchaseOrderItemFormController>(tag: kPoItemSheetTag);
   }
 
   // ---------------------------------------------------------------------------

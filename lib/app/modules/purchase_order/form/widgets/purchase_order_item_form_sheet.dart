@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_con
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/data/utils/app_constants.dart';
 
 /// Item bottom-sheet for Purchase Order.
 ///
@@ -13,7 +14,7 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 /// PO-specific fields — Rate, Reqd By Date, and the running Amount tile —
 /// are passed via [customFields].
 ///
-/// The controller is registered under tag 'po_item_sheet' by the parent.
+/// The controller is registered under [kPoItemSheetTag] by the parent.
 class PurchaseOrderItemFormSheet extends StatelessWidget {
   final ScrollController? scrollController;
 
@@ -21,7 +22,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ctrl     = Get.find<PurchaseOrderItemFormController>(tag: 'po_item_sheet');
+    final ctrl     = Get.find<PurchaseOrderItemFormController>(tag: kPoItemSheetTag);
     final formCtrl = Get.find<PurchaseOrderFormController>();
 
     return UniversalItemFormSheet(
@@ -31,7 +32,6 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
       onSubmit: () async {
         await ctrl.submit();
       },
-      // PO does not use an embedded scan bar in the item sheet.
       onScan: null,
       customFields: [
         // ── Reqd By Date ──────────────────────────────────────────────────────
