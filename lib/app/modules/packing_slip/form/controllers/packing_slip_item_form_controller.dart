@@ -5,27 +5,23 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 /// Item-level sheet controller for Packing Slip.
 ///
 /// Extends [ItemSheetControllerBase] to gain:
-///   • formKey, qtyController, isSheetValid, saveButtonState
+///   • formKey, qtyController (base TEC — single source of truth for qty)
+///   • isSheetValid, saveButtonState, isSheetLoading
 ///   • metadata observables (itemOwner/Creation/Modified/ModifiedBy)
 ///   • deferred TEC/FocusNode disposal via onClose()
 ///   • setupAutoSubmit() worker
 ///   • submitWithFeedback() animated save-button flow
+///   • adjustQty(delta) with maxQty capping (base implementation)
+///
+/// Step-3: qtyController (base) is now the single source of truth.
+///   submit() reads qtyController.text and passes parsed qty to
+///   parent.addItemToSlipWithQty(qty), removing the direct dependency
+///   on parent.bsQtyController.
 ///
 /// PS-specific notes:
 ///   • resolvedWarehouse → null  (PS has no warehouse concept)
 ///   • requiresBatch     → false (batch is a read-only display field)
 ///   • requiresRack      → false
-///   • validateSheet mirrors the existing parent.validateSheet() logic
-///     (qty > 0, qty ≤ bsMaxQty, dirty-check in edit mode)
-///   • submit() delegates to parent.addItemToSlip(); sheet close is
-///     owned by the parent coordinator (_openItemSheet), not here.
-///
-/// Lifecycle:
-///   Get.put() just before bottomSheet opens
-///   → initialise()
-///   → sheet opens
-///   → sheet closes
-///   → Get.delete<PackingSlipItemFormController>()
 class PackingSlipItemFormController extends ItemSheetControllerBase {
   // ── Parent reference ────────────────────────────────────────────────────
   late PackingSlipFormController _parent;
@@ -42,16 +38,19 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   bool get requiresRack => false;
 
   @override
-  String? get qtyInfoText =>
-      'Remaining: ${_parent.bsMaxQty.value.toStringAsFixed(2)}';
+  String? get qtyInfoText {
+    final max = _parent.bsMaxQty.value;
+    if (max > 0) return 'Remaining: ${max.toStringAsFixed(2)}';
+    return null;
+  }
 
   @override
   Future<void> deleteCurrentItem() => _parent.deleteCurrentItem();
 
   @override
   void validateSheet() {
-    final text = qtyController.text;
-    final qty  = double.tryParse(text);
+    // Read from base qtyController (single source of truth after step-3).
+    final qty = double.tryParse(qtyController.text);
 
     if (qty == null || qty <= 0) {
       isSheetValid.value = false;
@@ -64,8 +63,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
     isFormDirty.value = isFieldsDirty;
 
-    // In edit mode the Save button stays disabled until the user actually
-    // changes the qty (dirty-check against the snapshot set in initialise).
+    // In edit mode the Save button stays disabled until the user changes qty.
     if (editingItemName.value != null && !isFormDirty.value) {
       isSheetValid.value = false;
       return;
@@ -76,8 +74,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   Future<void> submit() async {
-    // Sheet close is owned by the parent coordinator (_openItemSheet).
-    // This method only commits the data change.
+    // Parse qty from base TEC (no longer reads parent.bsQtyController).
+    final qty = double.tryParse(qtyController.text) ?? 0.0;
+    if (qty <= 0) return;
+    // Sync parent alias so addItemToSlip() still compiles in step-3.
+    // bsQtyController alias and addItemToSlip() are cleaned up in step-6.
+    _parent.bsQtyController.text = qtyController.text;
     await _parent.addItemToSlip();
   }
 
@@ -97,11 +99,11 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
 
-    // Reflect the remaining-qty cap from the parent.
+    // maxQty cap from parent remaining-qty calculation.
     maxQty.value = parent.bsMaxQty.value;
 
     if (editingItem != null) {
-      // Edit mode — load existing item state.
+      // Edit mode.
       editingItemName.value = editingItem.name;
       itemOwner.value       = editingItem.owner;
       itemCreation.value    = editingItem.creation;
@@ -112,7 +114,8 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       qtyController.text =
           qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
     } else {
-      // Add mode — clear metadata, pre-fill qty from parent bsQtyController.
+      // Add mode — pre-fill qty from parent's bsQtyController
+      // (populated with remaining qty before _openItemSheet is called).
       editingItemName.value = null;
       itemOwner.value       = null;
       itemCreation.value    = null;
