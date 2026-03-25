@@ -17,7 +17,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
-import 'package:multimax/app/modules/packing_slip/form/controllers/packing_slip_item_form_controller.dart';
+import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
 
