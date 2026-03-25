@@ -25,6 +25,8 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_serial_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
 // Child sheet controller
 import 'controllers/delivery_note_item_form_controller.dart';
@@ -46,7 +48,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ─────────────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -54,7 +56,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine (mirrors SE/PR) ─────────────────────────────────
+  // ── Save result state machine (mirrors SE/PR) ────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -79,12 +81,12 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ─────────────────────────────────────
+  // ── Sheet-open + item-edit loading flags ───────────────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ────────────────────────────────────────────────────────────────────
+  // ── Warehouse ───────────────────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
@@ -92,13 +94,13 @@ class DeliveryNoteFormController extends GetxController
   // ── Item warehouse (derived from rack — still needed by child controller) ──
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ─────────────────────────────────────────────────────
+  // ── Customer-level error ────────────────────────────────────────────────────────────
   var customerError = RxnString();
 
   // ── S1: EAN scan context for inside-sheet scan routing ────────────────────────
   String currentScannedEan = '';
 
-  // ── Persistent scan worker ────────────────────────────────────────────────────
+  // ── Persistent scan worker ───────────────────────────────────────────────────────
   Worker? _scanWorker;
 
   @override
@@ -128,7 +130,7 @@ class DeliveryNoteFormController extends GetxController
     super.onClose();
   }
 
-  // ── Raw scan entry point ──────────────────────────────────────────────────────
+  // ── Raw scan entry point ───────────────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
         name: 'DN');
@@ -148,7 +150,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ────────────────────────────────────────────────────────────────────
+  // ── PopScope ───────────────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -158,7 +160,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Dirty tracking ───────────────────────────────────────────────────────────────
+  // ── Dirty tracking ──────────────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -271,7 +273,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Item sheet orchestration ──────────────────────────────────────────────────────
+  // ── Item sheet orchestration ────────────────────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -328,6 +330,42 @@ class DeliveryNoteFormController extends GetxController
         minChildSize:     0.4,
         maxChildSize:     0.95,
         builder: (context, sc) {
+          // ── Rack picker helper ─────────────────────────────────────────────────────────
+          // Opens RackPickerSheet for the DN rack field.
+          // Unique tag isolates this picker from any other that may be
+          // open concurrently (e.g. if the sheet is rapidly re-opened).
+          Future<void> openRackPicker() async {
+            final tag =
+                'rack_picker_dn_${DateTime.now().microsecondsSinceEpoch}';
+            final pickerCtrl =
+                Get.put(RackPickerController(), tag: tag);
+
+            unawaited(pickerCtrl.load(
+              itemCode:     child.itemCode.value,
+              batchNo:      child.batchController.text,
+              warehouse:    child.resolvedWarehouse ?? '',
+              requestedQty:
+                  double.tryParse(child.qtyController.text) ?? 0.0,
+              currentRack:  child.rackController.text,
+              fallbackMap:  child.rackStockMap,
+            ));
+
+            await Get.bottomSheet(
+              RackPickerSheet(
+                pickerTag: tag,
+                onSelected: (rack) {
+                  child.rackController.text = rack;
+                  child.validateRack(rack);
+                },
+              ),
+              isScrollControlled: true,
+            );
+
+            if (Get.isRegistered<RackPickerController>(tag: tag)) {
+              Get.delete<RackPickerController>(tag: tag);
+            }
+          }
+
           Future<void> onSubmit() async {
             isAddingItem.value = true;
             try {
@@ -363,6 +401,8 @@ class DeliveryNoteFormController extends GetxController
               SharedRackField(
                 c:           child,
                 accentColor: Colors.orange,
+                editMode:    true,
+                onPickerTap: openRackPicker,
               ),
             ],
           );
@@ -379,7 +419,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Public entry points ───────────────────────────────────────────────────────────
+  // ── Public entry points ───────────────────────────────────────────────────────────────
   Future<void> editItem(DeliveryNoteItem item) async {
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
@@ -424,7 +464,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ──────────────────────────────────────────────────────────────────────
+  // ── Item CRUD ───────────────────────────────────────────────────────────────────────
   void updateItemLocally(
       String itemNameID, double qty, String rack,
       String? batchNo, String? invoiceSerial) {
@@ -490,7 +530,7 @@ class DeliveryNoteFormController extends GetxController
     showBanner('Item removed', type: BannerType.success);
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────────────
+  // ── Save ────────────────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -550,7 +590,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── UX helpers ───────────────────────────────────────────────────────────────────
+  // ── UX helpers ───────────────────────────────────────────────────────────────────────
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value   = serial;
@@ -591,7 +631,7 @@ class DeliveryNoteFormController extends GetxController
         expandedInvoice.value == key ? '' : key;
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────────────
+  // ── Scan routing ──────────────────────────────────────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
@@ -618,7 +658,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── INSIDE-SHEET PATH ────────────────────────────────────────────────────────────
+    // ── INSIDE-SHEET PATH ───────────────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
           name: 'DN');
@@ -676,7 +716,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────────────────
     log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
         name: 'DN');
     isScanning.value = true;
@@ -749,7 +789,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Grouped items + filter helpers ──────────────────────────────────────────────────
+  // ── Grouped items + filter helpers ────────────────────────────────────────────────────
   Map<String, List<DeliveryNoteItem>> get groupedItems {
     if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
       return {};
