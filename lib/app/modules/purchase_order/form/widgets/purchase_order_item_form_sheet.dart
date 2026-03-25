@@ -15,6 +15,11 @@ import 'package:multimax/app/data/utils/app_constants.dart';
 /// are passed via [customFields].
 ///
 /// The controller is registered under [kPoItemSheetTag] by the parent.
+///
+/// The entire [UniversalItemFormSheet] is wrapped in an [Obx] so that
+/// [isSaveEnabled] — derived from [PurchaseOrderFormController.isEditable] —
+/// re-evaluates reactively whenever [purchaseOrder] changes (e.g. after a
+/// save/submit that alters docstatus).
 class PurchaseOrderItemFormSheet extends StatelessWidget {
   final ScrollController? scrollController;
 
@@ -25,16 +30,20 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
     final ctrl     = Get.find<PurchaseOrderItemFormController>(tag: kPoItemSheetTag);
     final formCtrl = Get.find<PurchaseOrderFormController>();
 
-    return UniversalItemFormSheet(
+    // Obx wraps the entire sheet so that isSaveEnabled — read from
+    // formCtrl.isEditable — is re-evaluated whenever purchaseOrder changes.
+    return Obx(() => UniversalItemFormSheet(
       controller:       ctrl,
       scrollController: scrollController,
-      isSaveEnabled:    formCtrl.purchaseOrder.value?.docstatus == 0,
+      // isEditable reads purchaseOrder.value?.docstatus == 0 reactively
+      // because we are inside an Obx scope.
+      isSaveEnabled:    formCtrl.isEditable,
       onSubmit: () async {
         await ctrl.submit();
       },
       onScan: null,
       customFields: [
-        // ── Reqd By Date ──────────────────────────────────────────────────────
+        // ── Reqd By Date ────────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Reqd by Date',
           color: Colors.orange,
@@ -65,13 +74,13 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // ── Rate ────────────────────────────────────────────────────────────
+        // ── Rate ──────────────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Rate',
           color: Colors.grey,
           child: TextFormField(
-            key:        const ValueKey('po_rate_field'),
-            controller: ctrl.rateController,
+            key:          const ValueKey('po_rate_field'),
+            controller:   ctrl.rateController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               prefixIcon:     Icon(Icons.attach_money, size: 18),
@@ -88,7 +97,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // ── Running Amount tile ────────────────────────────────────────────
+        // ── Running Amount tile ──────────────────────────────────────────
         Obx(() => Container(
           padding:    const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -116,6 +125,6 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
           ),
         )),
       ],
-    );
+    ));
   }
 }
