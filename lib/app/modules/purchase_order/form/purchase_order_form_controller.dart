@@ -10,7 +10,7 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
-import 'package:multimax/app/modules/purchase_order/form/controllers/purchase_order_item_form_controller.dart';
+import 'purchase_order_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
