@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/purchase_order/form/controllers/purchase_order_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -37,19 +36,19 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
       scrollController: scrollController,
       // isEditable reads purchaseOrder.value?.docstatus == 0 reactively
       // because we are inside an Obx scope.
-      isSaveEnabled:    formCtrl.isEditable,
+      isSaveEnabled: formCtrl.isEditable,
       onSubmit: () async {
         await ctrl.submit();
       },
       onScan: null,
       customFields: [
-        // ── Reqd By Date ────────────────────────────────────────────────────
+        // ── Reqd By Date ───────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Reqd by Date',
           color: Colors.orange,
           child: TextFormField(
             controller: ctrl.scheduleDateController,
-            readOnly: true,
+            readOnly:   true,
             decoration: const InputDecoration(
               prefixIcon:     Icon(Icons.calendar_today, size: 18),
               border:         OutlineInputBorder(),
@@ -57,14 +56,16 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
             ),
             onTap: () async {
               final DateTime? picked = await showDatePicker(
-                context: context,
+                context:     context,
                 initialDate: DateTime.now(),
                 firstDate:   DateTime.now(),
                 lastDate:    DateTime.now().add(const Duration(days: 365)),
               );
               if (picked != null) {
+                // FormattingHelper.formatDate() — single yyyy-MM-dd format
+                // instance shared across the whole app (no per-tap allocation).
                 ctrl.scheduleDateController.text =
-                    DateFormat('yyyy-MM-dd').format(picked);
+                    FormattingHelper.formatDate(picked);
               }
             },
             validator: (value) =>
@@ -74,7 +75,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // ── Rate ──────────────────────────────────────────────────────────
+        // ── Rate ───────────────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Rate',
           color: Colors.grey,
@@ -114,8 +115,10 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
                     fontWeight: FontWeight.bold),
               ),
               Text(
+                // FormattingHelper.formatAmount() — shared NumberFormat
+                // instance; no allocation on each Obx rebuild.
                 '${FormattingHelper.getCurrencySymbol(formCtrl.purchaseOrder.value?.currency ?? 'AED')} '
-                '${NumberFormat('#,##0.00').format(ctrl.sheetAmount)}',
+                '${FormattingHelper.formatAmount(ctrl.sheetAmount)}',
                 style: TextStyle(
                     color:      Colors.blue.shade900,
                     fontWeight: FontWeight.bold,

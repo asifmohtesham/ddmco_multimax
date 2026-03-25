@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:collection/collection.dart';
 import '../purchase_order_form_controller.dart';
@@ -49,7 +49,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   void _initPOListeners() {
     scheduleDateController.addListener(validateSheet);
     scheduleDateController.addListener(_resetSaveStateOnEdit);
-    rateController.addListener(_onRateChanged);      // updates sheetRate + validateSheet
+    rateController.addListener(_onRateChanged);       // updates sheetRate + validateSheet
     rateController.addListener(_resetSaveStateOnEdit);
   }
 
@@ -60,9 +60,9 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     rateController.removeListener(_resetSaveStateOnEdit);
   }
 
-  // _resetSaveStateOnEdit is defined in ItemSheetControllerBase but is private
-  // there. We expose a thin forwarder so _initPOListeners can reference it.
-  // This avoids duplicating the reset logic.
+  // _resetSaveStateOnEdit is private in ItemSheetControllerBase.
+  // We expose a thin local override so _initPOListeners can reference it
+  // without duplicating the reset logic.
   void _resetSaveStateOnEdit() {
     if (saveButtonState.value == SaveButtonState.success ||
         saveButtonState.value == SaveButtonState.error) {
@@ -133,8 +133,10 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     // ── PO-specific fields ─────────────────────────────────────────────────────────
     qtyController.text          = qty.toStringAsFixed(0);
     rateController.text         = rate.toStringAsFixed(2);
+    // FormattingHelper.formatDate() — single yyyy-MM-dd format instance
+    // shared across the whole app (no per-call allocation).
     scheduleDateController.text =
-        scheduleDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+        scheduleDate ?? FormattingHelper.formatDate(DateTime.now());
 
     sheetRate.value = rate;
 
@@ -178,9 +180,9 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
 
     final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0)                                          { isSheetValid.value = false; return; }
-    if (scheduleDateController.text.isEmpty)               { isSheetValid.value = false; return; }
-    if ((double.tryParse(rateController.text) ?? -1) < 0)  { isSheetValid.value = false; return; }
+    if (qty <= 0)                                         { isSheetValid.value = false; return; }
+    if (scheduleDateController.text.isEmpty)              { isSheetValid.value = false; return; }
+    if ((double.tryParse(rateController.text) ?? -1) < 0) { isSheetValid.value = false; return; }
 
     // Edit mode: require at least one field to have changed.
     if (!isAddMode) {

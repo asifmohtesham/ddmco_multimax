@@ -1,5 +1,11 @@
 import 'package:intl/intl.dart';
 
+// Top-level format instances — created once, reused on every call.
+// NumberFormat and DateFormat are not const-constructible, so a
+// top-level final is the lightest allocation strategy.
+final _amountFmt = NumberFormat('#,##0.00');
+final _dateFmt   = DateFormat('yyyy-MM-dd');
+
 class FormattingHelper {
   /// Returns the currency symbol for the given currency code (e.g., 'USD' -> '$').
   static String getCurrencySymbol(String currency) {
@@ -66,4 +72,17 @@ class FormattingHelper {
     if (qty == null) return '0';
     return qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
   }
+
+  /// Formats a monetary amount as #,##0.00 (e.g. 1234.5 → "1,234.50").
+  ///
+  /// Uses a shared [NumberFormat] instance so no allocation occurs on
+  /// repeated calls (e.g. inside an Obx rebuild loop).
+  static String formatAmount(double amount) => _amountFmt.format(amount);
+
+  /// Formats a [DateTime] to the server-expected date string yyyy-MM-dd.
+  ///
+  /// This is the canonical date format used in all ERPNext DocType fields
+  /// (transaction_date, schedule_date, etc.). Centralised here so a
+  /// single change propagates everywhere if the format ever needs to change.
+  static String formatDate(DateTime date) => _dateFmt.format(date);
 }
