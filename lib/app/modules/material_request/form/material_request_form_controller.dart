@@ -34,6 +34,11 @@ class MaterialRequestFormController extends GetxController
 
   /// Drives the animated Save button state — identical to the pattern used
   /// in StockEntryFormController / SaveIconButton across all DocTypes.
+  ///
+  /// SaveResult has three values: idle | success | error.
+  /// The in-flight spinner is driven by isSaving: true (not a SaveResult
+  /// member), so saveResult stays idle during the API call and is set to
+  /// success or error when the call completes.
   var saveResult = SaveResult.idle.obs;
 
   var materialRequest = Rx<MaterialRequest?>(null);
@@ -480,8 +485,9 @@ class MaterialRequestFormController extends GetxController
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
 
+    // isSaving drives the spinner in SaveIconButton; saveResult is set to
+    // success or error only after the API call completes.
     isSaving.value = true;
-    saveResult.value = SaveResult.saving;
 
     final data = {
       'material_request_type': selectedType.value,
