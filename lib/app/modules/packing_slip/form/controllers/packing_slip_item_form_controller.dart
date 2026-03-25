@@ -13,10 +13,10 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 ///   • submitWithFeedback() animated save-button flow
 ///   • adjustQty(delta) with maxQty capping (base implementation)
 ///
-/// Step-3: qtyController (base) is now the single source of truth.
-///   submit() reads qtyController.text and passes parsed qty to
-///   parent.addItemToSlipWithQty(qty), removing the direct dependency
-///   on parent.bsQtyController.
+/// Step-1: Full implementation of all ItemSheetControllerBase abstract members.
+///   submit() delegates to parent.addItemToSlip() via a bsQtyController sync
+///   shim; the shim and addItemToSlip() are replaced in step-3 and removed
+///   in step-6 once qty ownership fully migrates to the child controller.
 ///
 /// PS-specific notes:
 ///   • resolvedWarehouse → null  (PS has no warehouse concept)
@@ -40,7 +40,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   String? get qtyInfoText {
     final max = _parent.bsMaxQty.value;
-    if (max > 0) return 'Remaining: ${max.toStringAsFixed(2)}';
+    if (max > 0) return 'Remaining: \${max.toStringAsFixed(2)}';
     return null;
   }
 
@@ -49,7 +49,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   void validateSheet() {
-    // Read from base qtyController (single source of truth after step-3).
+    // Read from base qtyController — single source of truth for qty.
     final qty = double.tryParse(qtyController.text);
 
     if (qty == null || qty <= 0) {
@@ -63,7 +63,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
     isFormDirty.value = isFieldsDirty;
 
-    // In edit mode the Save button stays disabled until the user changes qty.
+    // In edit mode the Save button stays disabled until qty actually changes.
     if (editingItemName.value != null && !isFormDirty.value) {
       isSheetValid.value = false;
       return;
@@ -74,11 +74,9 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   Future<void> submit() async {
-    // Parse qty from base TEC (no longer reads parent.bsQtyController).
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
-    // Sync parent alias so addItemToSlip() still compiles in step-3.
-    // bsQtyController alias and addItemToSlip() are cleaned up in step-6.
+    // Sync parent alias so addItemToSlip() still compiles until step-6 cleanup.
     _parent.bsQtyController.text = qtyController.text;
     await _parent.addItemToSlip();
   }
@@ -103,7 +101,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     maxQty.value = parent.bsMaxQty.value;
 
     if (editingItem != null) {
-      // Edit mode.
+      // Edit mode — restore existing qty and metadata.
       editingItemName.value = editingItem.name;
       itemOwner.value       = editingItem.owner;
       itemCreation.value    = editingItem.creation;
@@ -114,8 +112,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       qtyController.text =
           qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
     } else {
-      // Add mode — pre-fill qty from parent's bsQtyController
-      // (populated with remaining qty before _openItemSheet is called).
+      // Add mode — pre-fill qty with remaining qty from parent.
       editingItemName.value = null;
       itemOwner.value       = null;
       itemCreation.value    = null;
