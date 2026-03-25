@@ -14,6 +14,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/modules/packing_slip/form/controllers/packing_slip_item_form_controller.dart';
@@ -27,6 +28,7 @@ class PackingSlipFormController extends GetxController
   final PosUploadProvider    _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider          _apiProvider       = Get.find<ApiProvider>();
   final StorageService       _storageService    = Get.find<StorageService>();
+  final DataWedgeService     _dataWedgeService  = Get.find<DataWedgeService>();
 
   var itemFormKey = GlobalKey<FormState>();
   String name = Get.arguments['name'];
@@ -82,6 +84,9 @@ class PackingSlipFormController extends GetxController
   var bsItemModified   = RxnString();
   var bsItemModifiedBy = RxnString();
 
+  // DataWedge hardware-scan worker — subscribed in onInit, disposed in onClose.
+  Worker? _scanWorker;
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -90,6 +95,18 @@ class PackingSlipFormController extends GetxController
   void onInit() {
     super.onInit();
     bsQtyController.addListener(_validateSheetShim);
+
+    // Wire DataWedge hardware-scan events directly to scanBarcode().
+    // BarcodeInputWidget handles manual keyboard input only; hardware scans
+    // from the DataWedge EventChannel must be subscribed here, mirroring the
+    // pattern used in StockEntryFormController._initDependencies().
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isNotEmpty) {
+        log('[PackingSlipForm] DataWedge scan received: $code', name: 'Scan');
+        scanBarcode(code);
+      }
+    });
+
     if (mode == 'new') {
       _initNewPackingSlip();
     } else {
@@ -108,6 +125,7 @@ class PackingSlipFormController extends GetxController
 
   @override
   void onClose() {
+    _scanWorker?.dispose();
     barcodeController.dispose();
     bsQtyController.dispose();
     super.onClose();
