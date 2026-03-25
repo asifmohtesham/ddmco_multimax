@@ -40,7 +40,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   String? get qtyInfoText {
     final max = _parent.bsMaxQty.value;
-    if (max > 0) return 'Remaining: \${max.toStringAsFixed(2)}';
+    if (max > 0) return 'Remaining: ${max.toStringAsFixed(2)}';
     return null;
   }
 
