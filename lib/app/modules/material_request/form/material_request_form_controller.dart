@@ -8,6 +8,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -125,12 +126,9 @@ class MaterialRequestFormController extends GetxController
   void _onRawScan(String code) {
     log('[MR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'MR');
     if (code.isEmpty) return;
-    // Only handle scans when this form is the active route.
     if (Get.currentRoute != AppRoutes.MATERIAL_REQUEST_FORM) return;
     final clean = code.trim();
     barcodeController.text = clean;
-    // If the item sheet is open, route directly to scanBarcode so the
-    // sheet's field interactions are handled correctly.
     scanBarcode(clean);
   }
 
@@ -217,7 +215,6 @@ class MaterialRequestFormController extends GetxController
   }
 
   void _markDirty() {
-    // Guard: do not dirty-flag a submitted document.
     if (!isLoading.value && !isDirty.value && isEditable) {
       isDirty.value = true;
     }
@@ -252,73 +249,19 @@ class MaterialRequestFormController extends GetxController
   // ── Warehouse picker ────────────────────────────────────────────────────────────
 
   void showWarehousePicker({bool forItem = false}) {
-    final searchCtrl = TextEditingController();
-    final filteredList = warehouses.toList().obs;
-
     Get.bottomSheet(
-      Container(
-        height: Get.height * 0.7,
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: Column(
-          children: [
-            const Text('Select Warehouse',
-                style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: searchCtrl,
-              decoration: const InputDecoration(
-                hintText: 'Search...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              ),
-              onChanged: (val) {
-                if (val.isEmpty) {
-                  filteredList.assignAll(warehouses);
-                } else {
-                  filteredList.assignAll(warehouses.where((w) =>
-                      w.toLowerCase().contains(val.toLowerCase())));
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: Obx(() {
-                if (isFetchingWarehouses.value) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (filteredList.isEmpty) {
-                  return const Center(child: Text('No warehouses found'));
-                }
-                return ListView.separated(
-                  itemCount: filteredList.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final wh = filteredList[i];
-                    return ListTile(
-                      title: Text(wh),
-                      onTap: () {
-                        if (forItem) {
-                          bsWarehouseController.text = wh;
-                        } else {
-                          setWarehouseController.text = wh;
-                          onWarehouseChanged(wh);
-                        }
-                        Get.back();
-                      },
-                    );
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
+      WarehousePickerSheet(
+        warehouses: warehouses,
+        isLoading: isFetchingWarehouses.value,
+        onSelected: (wh) {
+          if (forItem) {
+            bsWarehouseController.text = wh;
+            // validateSheet is called via bsWarehouseController listener
+          } else {
+            setWarehouseController.text = wh;
+            onWarehouseChanged(wh);
+          }
+        },
       ),
       isScrollControlled: true,
     );
@@ -503,9 +446,6 @@ class MaterialRequestFormController extends GetxController
       GlobalSnackbar.warning(message: 'Document is submitted.');
       return;
     }
-    // When the item sheet is open a hardware scan should not re-open a
-    // new sheet on top — silently drop it (the sheet has its own barcode
-    // field for batch/rack resolution if needed in future).
     if (isItemSheetOpen.value) return;
     if (isScanning.value) return;
 
