@@ -348,7 +348,11 @@ class RackPickerSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Obx(() {
+                      // Builder (not Obx) — itemCode/batchNo/warehouse are plain
+                      // String getters, not RxString. No observable subscriptions
+                      // are needed here; the chips are static for the sheet's
+                      // lifetime.
+                      Builder(builder: (_) {
                         final ctrl = Get.find<RackPickerController>(tag: pickerTag);
                         return Wrap(
                           spacing: 6,
