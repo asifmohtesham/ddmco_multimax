@@ -3,9 +3,9 @@ import 'package:get/get.dart';
 
 import 'rack_picker_controller.dart';
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _StatusColor
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 Color _statusColor(SufficiencyStatus status) {
   switch (status) {
@@ -20,9 +20,9 @@ Color _statusColor(SufficiencyStatus status) {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _SufficiencyDot
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 class _SufficiencyDot extends StatelessWidget {
   final SufficiencyStatus status;
@@ -49,9 +49,9 @@ class _SufficiencyDot extends StatelessWidget {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _SufficiencyBar
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 class _SufficiencyBar extends StatelessWidget {
   final double availableQty;
@@ -113,9 +113,9 @@ class _SufficiencyBar extends StatelessWidget {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _RackPickerTile
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 class _RackPickerTile extends StatelessWidget {
   final RackPickerEntry entry;
@@ -236,12 +236,16 @@ class _RackPickerTile extends StatelessWidget {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // RackPickerSheet
-// ───────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Bottom sheet that displays a sorted list of racks with per-rack
 /// availability for the active item + batch.
+///
+/// A warehouse-filter toggle (default On) restricts the visible list to
+/// racks whose warehouse matches the document-level warehouse. The toggle
+/// is disabled when no warehouse context is available.
 class RackPickerSheet extends StatelessWidget {
   final String pickerTag;
   final void Function(String rack) onSelected;
@@ -294,28 +298,16 @@ class RackPickerSheet extends StatelessWidget {
     final mq    = MediaQuery.of(context);
 
     return Container(
-      // Hard ceiling at 75% of screen height.
       constraints: BoxConstraints(maxHeight: mq.size.height * 0.75),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
-      // Layout contract:
-      //   ┌─ DragHandle   (intrinsic, fixed)
-      //   ├─ Header       (intrinsic, fixed)
-      //   ├─ Divider      (1 px, fixed)
-      //   └─ Expanded     ← ALL dynamic content lives here; no height can
-      //        └─ Obx         leak out to surprise the Column
-      //             loading → spinner
-      //             loaded  → CustomScrollView
-      //                          SliverToBoxAdapter: fallback banner (conditional)
-      //                          SliverToBoxAdapter: summary row     (conditional)
-      //                          SliverList:          tiles
       child: Column(
         mainAxisSize: MainAxisSize.max,
         children: [
 
-          // ── Drag handle ───────────────────────────────────────────────────────────
+          // ── Drag handle ────────────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -330,7 +322,7 @@ class RackPickerSheet extends StatelessWidget {
             ),
           ),
 
-          // ── Header ──────────────────────────────────────────────────────────────────
+          // ── Header ─────────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
             child: Row(
@@ -348,12 +340,11 @@ class RackPickerSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Builder (not Obx) — itemCode/batchNo/warehouse are plain
-                      // String getters, not RxString. No observable subscriptions
-                      // are needed here; the chips are static for the sheet's
-                      // lifetime.
+                      // Builder (not Obx) — itemCode/batchNo/warehouse are
+                      // plain String getters set once at construction.
                       Builder(builder: (_) {
-                        final ctrl = Get.find<RackPickerController>(tag: pickerTag);
+                        final ctrl =
+                            Get.find<RackPickerController>(tag: pickerTag);
                         return Wrap(
                           spacing: 6,
                           runSpacing: 4,
@@ -361,9 +352,11 @@ class RackPickerSheet extends StatelessWidget {
                             if (ctrl.itemCode.isNotEmpty)
                               _contextChip(ctrl.itemCode, cs.primary),
                             if (ctrl.batchNo.isNotEmpty)
-                              _contextChip(ctrl.batchNo, Colors.purple.shade400),
+                              _contextChip(
+                                  ctrl.batchNo, Colors.purple.shade400),
                             if (ctrl.warehouse.isNotEmpty)
-                              _contextChip(ctrl.warehouse, Colors.teal.shade600),
+                              _contextChip(
+                                  ctrl.warehouse, Colors.teal.shade600),
                           ],
                         );
                       }),
@@ -384,23 +377,21 @@ class RackPickerSheet extends StatelessWidget {
 
           const Divider(height: 1),
 
-          // ── Everything below the divider in one Expanded slot ─────────────────────
-          // No dynamic children exist outside this Expanded. Banner and
-          // summary live as SliverToBoxAdapters inside CustomScrollView
-          // so they can never push the tile list out of bounds.
-          //
-          // selectedRack.value is read here so the entire list rebuilds
-          // on selection change — eliminates the need for a per-tile Obx.
+          // ── Scrollable body ────────────────────────────────────────────────
+          // selectedRack.value and filterByWarehouse.value are both read
+          // inside this single Obx so the entire body rebuilds on either
+          // change — no additional Obx wrappers needed.
           Expanded(
             child: Obx(() {
-              final ctrl = Get.find<RackPickerController>(tag: pickerTag);
+              final ctrl =
+                  Get.find<RackPickerController>(tag: pickerTag);
 
-              // ── Loading state ───────────────────────────────────────────────
+              // ── Loading ──────────────────────────────────────────────────
               if (ctrl.isLoading.value) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              // ── Empty state ──────────────────────────────────────────────────
+              // ── Globally empty (no stock at all) ─────────────────────────
               if (ctrl.entries.isEmpty) {
                 return Center(
                   child: Column(
@@ -422,17 +413,53 @@ class RackPickerSheet extends StatelessWidget {
                 );
               }
 
-              // ── Loaded state: banner + summary + tiles in one scrollable ──
-              // Read selectedRack here so this Obx re-runs on every tap,
-              // propagating the updated isSelected bool to each tile without
-              // requiring a per-tile Obx wrapper.
+              // ── Resolved display values ───────────────────────────────────
+              final visible      = ctrl.visibleEntries;
               final selectedRack = ctrl.selectedRack.value;
-              final suf          = ctrl.sufficientCount;
-              final tot          = ctrl.entries.length;
+              final filterOn     = ctrl.filterByWarehouse.value;
+              final hasWarehouse = ctrl.warehouse.isNotEmpty;
+              final suf          = ctrl.visibleSufficientCount;
+              final tot          = visible.length;
 
+              // ── Filtered-empty state ──────────────────────────────────────
+              // The full list has racks but the warehouse filter hides them
+              // all. Show a helpful nudge with a one-tap escape hatch.
+              if (visible.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.warehouse_outlined,
+                          size: 48,
+                          color: cs.onSurfaceVariant.withOpacity(0.4)),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No racks found in',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      _contextChip(
+                          ctrl.warehouse, Colors.teal.shade600),
+                      const SizedBox(height: 16),
+                      TextButton.icon(
+                        onPressed: () =>
+                            ctrl.filterByWarehouse.value = false,
+                        icon: const Icon(Icons.tune, size: 16),
+                        label: const Text('Show all warehouses'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // ── Loaded: banner + summary row + tiles ──────────────────────
               return CustomScrollView(
                 slivers: [
-                  // Fallback banner (conditional)
+
+                  // Fallback banner
                   if (ctrl.usedFallback.value)
                     SliverToBoxAdapter(
                       child: Container(
@@ -443,11 +470,13 @@ class RackPickerSheet extends StatelessWidget {
                         child: Row(
                           children: [
                             Icon(Icons.info_outline,
-                                size: 14, color: Colors.orange.shade700),
+                                size: 14,
+                                color: Colors.orange.shade700),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Showing item stock (batch data unavailable)',
+                                'Showing item stock'
+                                ' (batch data unavailable)',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.orange.shade800,
@@ -459,25 +488,29 @@ class RackPickerSheet extends StatelessWidget {
                       ),
                     ),
 
-                  // Summary row
+                  // Summary row + warehouse-filter toggle
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                      padding:
+                          const EdgeInsets.fromLTRB(20, 10, 12, 4),
                       child: Row(
                         children: [
-                          _sectionLabel('AVAILABLE RACKS', cs.onSurfaceVariant),
+                          _sectionLabel(
+                              'AVAILABLE RACKS', cs.onSurfaceVariant),
                           const Spacer(),
+                          // Sufficient badge
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
                               color: suf > 0
-                                  ? Colors.green.shade600.withOpacity(0.1)
+                                  ? Colors.green.shade600
+                                      .withOpacity(0.1)
                                   : cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '$suf / $tot sufficient',
+                              '$suf\u202f/\u202f$tot sufficient',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -487,22 +520,62 @@ class RackPickerSheet extends StatelessWidget {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          // Warehouse-filter toggle
+                          // Disabled (greyed) when no warehouse context.
+                          Tooltip(
+                            message: hasWarehouse
+                                ? (filterOn
+                                    ? 'Filtering by warehouse — tap to show all'
+                                    : 'Showing all warehouses — tap to filter')
+                                : 'No warehouse context',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.warehouse_outlined,
+                                  size: 14,
+                                  color: hasWarehouse
+                                      ? (filterOn
+                                          ? cs.primary
+                                          : cs.onSurfaceVariant
+                                              .withOpacity(0.5))
+                                      : cs.onSurfaceVariant
+                                          .withOpacity(0.3),
+                                ),
+                                Transform.scale(
+                                  scale: 0.75,
+                                  child: Switch(
+                                    value: filterOn,
+                                    onChanged: hasWarehouse
+                                        ? (v) => ctrl
+                                            .filterByWarehouse
+                                            .value = v
+                                        : null,
+                                    activeColor: cs.primary,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize
+                                            .shrinkWrap,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
 
-                  // Tile list
-                  // No inner Obx per tile. selectedRack is already subscribed
-                  // above — the parent Obx re-renders the list on every change.
+                  // Tile list — uses visibleEntries (filtered or full)
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                         16, 4, 16, mq.viewPadding.bottom + 24),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (_, i) {
-                          final entry      = ctrl.entries[i];
-                          final isSelected = selectedRack == entry.rackName;
+                          final entry = visible[i];
+                          final isSelected =
+                              selectedRack == entry.rackName;
                           return _RackPickerTile(
                             entry:      entry,
                             isSelected: isSelected,
@@ -513,7 +586,7 @@ class RackPickerSheet extends StatelessWidget {
                             },
                           );
                         },
-                        childCount: ctrl.entries.length,
+                        childCount: visible.length,
                       ),
                     ),
                   ),

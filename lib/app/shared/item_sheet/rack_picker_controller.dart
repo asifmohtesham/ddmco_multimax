@@ -51,8 +51,8 @@ class RackPickerEntry {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   SufficiencyStatus get status {
-    if (requestedQty <= 0)          return SufficiencyStatus.unknown;
-    if (availableQty <= 0)          return SufficiencyStatus.empty;
+    if (requestedQty <= 0)            return SufficiencyStatus.unknown;
+    if (availableQty <= 0)            return SufficiencyStatus.empty;
     if (availableQty >= requestedQty) return SufficiencyStatus.sufficient;
     return SufficiencyStatus.low;
   }
@@ -63,7 +63,7 @@ class RackPickerEntry {
   /// Falls back to an empty string when [location] is null.
   String get warehouseName => location?.warehouseName ?? '';
 
-  /// Human-readable physical location label (e.g. `'Aisle 101 \u00b7 Shelf A'`).
+  /// Human-readable physical location label (e.g. `'Aisle 101 · Shelf A'`).
   /// Falls back to [rackName] when [location] is null.
   String get displayLabel => location?.displayLabel ?? rackName;
 
@@ -117,7 +117,8 @@ class RackPickerController extends GetxController {
   /// Whether a Stock Ledger fetch is in progress.
   var isLoading = false.obs;
 
-  /// Sorted list of rack entries for the picker list.
+  /// Full sorted list of rack entries (all warehouses).
+  /// The sheet displays [visibleEntries] which may be a filtered subset.
   var entries = <RackPickerEntry>[].obs;
 
   /// The rack currently written into the rack field (may be empty).
@@ -127,17 +128,42 @@ class RackPickerController extends GetxController {
   /// to [rackStockMap]. Shown as a subtle info banner in the sheet.
   var usedFallback = false.obs;
 
+  /// Whether to restrict the visible list to racks whose warehouse matches
+  /// the document-level [warehouse]. Defaults to `true` (On).
+  /// Disabled automatically when [warehouse] is empty.
+  var filterByWarehouse = true.obs;
+
   // ── Input context (set by load()) ────────────────────────────────────
 
-  String _itemCode    = '';
-  String _batchNo     = '';
-  String _warehouse   = '';
+  String _itemCode     = '';
+  String _batchNo      = '';
+  String _warehouse    = '';
   double _requestedQty = 0.0;
 
   String get itemCode     => _itemCode;
   String get batchNo      => _batchNo;
   String get warehouse    => _warehouse;
   double get requestedQty => _requestedQty;
+
+  // ── Derived / filtered list ───────────────────────────────────────────────
+
+  /// Subset of [entries] shown in the sheet.
+  ///
+  /// When [filterByWarehouse] is `true` **and** [warehouse] is non-empty,
+  /// only entries whose [RackPickerEntry.warehouseName] matches [warehouse]
+  /// are returned. Otherwise the full [entries] list is returned.
+  List<RackPickerEntry> get visibleEntries {
+    if (filterByWarehouse.value && _warehouse.isNotEmpty) {
+      return entries
+          .where((e) => e.warehouseName == _warehouse)
+          .toList();
+    }
+    return entries;
+  }
+
+  /// Count of sufficient-stock racks in the **visible** list.
+  int get visibleSufficientCount =>
+      visibleEntries.where((e) => e.isSufficient).length;
 
   // ── load() ─────────────────────────────────────────────────────────────────
 
@@ -155,20 +181,21 @@ class RackPickerController extends GetxController {
   /// - [fallbackMap] : [ItemSheetControllerBase.rackStockMap] — used when
   ///                   Stock Ledger returns an empty map.
   Future<void> load({
-    required String             itemCode,
-    required String             batchNo,
-    required String             warehouse,
-    required double             requestedQty,
-    required String             currentRack,
+    required String              itemCode,
+    required String              batchNo,
+    required String              warehouse,
+    required double              requestedQty,
+    required String              currentRack,
     required Map<String, double> fallbackMap,
   }) async {
     _itemCode     = itemCode;
     _batchNo      = batchNo;
     _warehouse    = warehouse;
     _requestedQty = requestedQty;
-    selectedRack.value = currentRack;
-    usedFallback.value = false;
-    isLoading.value    = true;
+    selectedRack.value     = currentRack;
+    usedFallback.value     = false;
+    filterByWarehouse.value = true;   // reset to On on every fresh load
+    isLoading.value        = true;
 
     try {
       // ── 1. Primary: Stock Ledger (per-batch per-rack) ───────────────────
@@ -250,11 +277,11 @@ class RackPickerController extends GetxController {
 
   // ── Helpers for the sheet UI ──────────────────────────────────────────────
 
-  /// Count of sufficient-stock racks.
+  /// Count of sufficient-stock racks in the full (unfiltered) list.
   int get sufficientCount =>
       entries.where((e) => e.isSufficient).length;
 
-  /// Count of racks with any stock (including low).
+  /// Count of racks with any stock (including low) in the full list.
   int get withStockCount =>
       entries.where((e) => e.availableQty > 0).length;
 }
