@@ -1,3 +1,116 @@
+## [1.4.2+11-beta] — 2026-03-25
+
+> Beta release targeting internal QA on the `release/play-store-beta-1` branch.  
+> Complete rewrite of the rack auto-fill system across Stock Entry and Delivery Note.
+> Rack selection is now warehouse-constrained and quantity-triggered; the previous
+> implementation was warehouse-blind and fired at batch-validation time.
+
+---
+
+### 🐛 Bug Fixes
+
+#### Item Sheet — Rack Auto-Fill (Stock Entry + Delivery Note)
+
+- **Warehouse-blind autofill fixed** — the previous `autoFillBestRack()` picked the
+  highest-qty rack from `rackStockMap` with no regard for the parent document's Source
+  Warehouse. This could produce an autofilled rack whose ERPNext `warehouse` field
+  differed from the header, failing server-side validation silently.  
+  The new `autoFillRackForQty(double qty)` method filters candidates by derived
+  warehouse before selecting the best rack.
+
+- **Qty-blind autofill fixed** — rack autofill previously fired at batch-validation
+  time, before the operator had entered a quantity. The selected rack could hold less
+  stock than the operator intended to issue, but no warning was raised and the sheet
+  appeared valid.  
+  Autofill now fires on the **first qty-field transition from blank/zero → positive**,
+  so the requested quantity is always known at selection time.
+
+- **Insufficient-stock fallback** — if no matching-warehouse rack holds `qty >= requested`,
+  the highest-qty matching rack is still autofilled but a `GlobalSnackbar.warning` is
+  raised immediately. `baseValidate()` will independently block Save until the operator
+  resolves the shortfall.
+
+- **SE source-rack wiring gap fixed** — `StockEntryItemFormController` uses
+  `sourceRackController` (a separate TEC) for its source-rack field, not the base
+  `rackController`. The mixin now exposes two protected override hooks so SE can redirect
+  the write to the correct TEC and trigger the correct validator:
+  - `autoFillRackController` → `sourceRackController` (SE override)
+  - `onAutoFillRackSelected` → `validateDualRack(rack, true)` (SE override)
+
+- **Off-by-one loop bound removed** — the old SE `_autoFillBestSourceRack()` used
+  `i < result.length - 1` as its loop bound to skip a presumed "totals row", which
+  silently dropped the last real rack row when the API returned an even number of racks.
+  The Stock Balance report appends a totals row with `rack == null`; the base
+  `fetchAllRackStocks()` guard `if (r != null && r.isNotEmpty && qty > 0)` skips it
+  correctly without any loop-bound manipulation.
+
+---
+
+### ♻️ Refactors
+
+#### `AutoFillRackMixin` (`item_sheet_mixin_autofill_rack.dart`)
+
+- `autoFillBestRack()` (sync, warehouse-blind, qty-blind) replaced by:
+  - `autoFillRackForQty(double qty)` — warehouse-constrained core logic
+  - `initAutoFillListener()` — attaches a one-shot qty TEC listener (call from `initialise()`)
+  - `disposeAutoFillListener()` — removes the listener cleanly (call from `onClose()`)
+  - `autoFillRackController` getter — override hook; default `rackController`
+  - `onAutoFillRackSelected(String rack)` method — override hook; default `validateRack(rack)`
+
+#### Rack Naming Convention
+
+Rack asset codes follow a 4-part dash-delimited pattern:
+
+```
+KA  - WH   - DXB1 - 101A
+[0]   [1]    [2]    [3]
+│      │      │      └─ Shelf ID: 3-digit rack number + shelf letter
+│      │      └──────── Country / location counter  (DXB1, DXB2, …)
+│      └─────────────── Location type  (WH = Warehouse, POS = Point-of-Sale)
+└────────────────────── Company prefix  (KA)
+```
+
+The corresponding ERPNext Warehouse name is derived locally as:
+```
+parts[1]-parts[2] + ' - ' + parts[0]
+  e.g.  KA-WH-DXB1-101A  →  "WH-DXB1 - KA"
+```
+No extra API call is required. Names with fewer than 4 parts are treated as
+non-matching and autofill skips them safely.
+
+#### Autofill Selection Order (per `autoFillRackForQty`)
+
+| Priority | Condition | Action |
+|----------|-----------|--------|
+| 1 | Rack in `resolvedWarehouse` AND `qty ≥ requested` | Fill highest-qty match — silent |
+| 2 | Rack in `resolvedWarehouse` but `qty < requested` | Fill highest-qty match + ⚠ snackbar |
+| 3 | No rack belongs to `resolvedWarehouse` | Skip autofill + ⚠ snackbar |
+| 4 | `resolvedWarehouse` is null / empty | Skip autofill silently |
+
+#### Delivery Note — `DeliveryNoteItemFormController`
+
+- Removed `fetchAllRackStocks()` override that called `autoFillBestRack()`.
+- `isAddMode` now set before `initBaseListeners()` / `initAutoFillListener()`.
+- `initAutoFillListener()` wired in `initialise()`; `disposeAutoFillListener()` wired in `onClose()`.
+- `fetchAllRackStocks()` still called from `initialise()` to pre-populate
+  `rackStockMap` for the rack tooltip/dropdown chip — only the autofill side-effect is removed.
+
+#### Stock Entry — `StockEntryItemFormController`
+
+- Deleted `_autoFillBestSourceRack()`, `_autoFillBestTargetRack()`, `triggerAutoFill()`.
+- Removed `unawaited(_autoFillBestSourceRack())` call from `validateBatch()`.
+- Added `AutoFillRackMixin` to `with` clause.
+- Overrides `autoFillRackController → sourceRackController`.
+- Overrides `onAutoFillRackSelected → validateDualRack(rack, true)`.
+
+#### Base — `ItemSheetControllerBase.fetchAllRackStocks()`
+
+- Added block comment documenting the Stock Balance report total-row behaviour
+  and explaining why the `r != null && r.isNotEmpty` guard is the correct
+  mechanism (no off-by-one bound needed).
+
+---
+
 ## [1.4.1+10-beta] — 2026-03-13
 
 > Beta release targeting internal QA on the `release/play-store-ui-stock-entry` branch.  
