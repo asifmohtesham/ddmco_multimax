@@ -295,7 +295,6 @@ class RackPickerSheet extends StatelessWidget {
     // NOTE: ctrl is intentionally NOT resolved here at build() time.
     // Each Obx resolves it lazily via Get.find(tag: pickerTag) so that
     // GetX can correctly track reactive reads within the Obx scope.
-    // Resolving ctrl once outside Obx would cause "improper use of GetX".
     final theme = Theme.of(context);
     final cs    = theme.colorScheme;
     final mq    = MediaQuery.of(context);
@@ -309,11 +308,14 @@ class RackPickerSheet extends StatelessWidget {
         borderRadius:
             const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
+      // mainAxisSize.max: fills the constrained 75vh Container so Flexible
+      // receives the remaining space after fixed-height children are laid out.
+      // mainAxisSize.min would make Flexible collapse to zero and overflow.
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
 
-          // ── Drag handle ─────────────────────────────────────────────────────────────────
+          // ── Drag handle ────────────────────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -328,7 +330,7 @@ class RackPickerSheet extends StatelessWidget {
             ),
           ),
 
-          // ── Header ────────────────────────────────────────────────────────────────────
+          // ── Header ──────────────────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
             child: Row(
@@ -346,7 +348,6 @@ class RackPickerSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Lazy ctrl lookup inside Obx so reactive reads are tracked
                       Obx(() {
                         final ctrl = Get.find<RackPickerController>(tag: pickerTag);
                         return Wrap(
@@ -358,8 +359,7 @@ class RackPickerSheet extends StatelessWidget {
                             if (ctrl.batchNo.isNotEmpty)
                               _contextChip(ctrl.batchNo, Colors.purple.shade400),
                             if (ctrl.warehouse.isNotEmpty)
-                              _contextChip(ctrl.warehouse,
-                                  Colors.teal.shade600),
+                              _contextChip(ctrl.warehouse, Colors.teal.shade600),
                           ],
                         );
                       }),
@@ -380,7 +380,7 @@ class RackPickerSheet extends StatelessWidget {
 
           const Divider(height: 1),
 
-          // ── Fallback banner ─────────────────────────────────────────────────────────────
+          // ── Fallback banner ───────────────────────────────────────────────────────────
           Obx(() {
             final ctrl = Get.find<RackPickerController>(tag: pickerTag);
             if (!ctrl.usedFallback.value || ctrl.isLoading.value) {
@@ -389,8 +389,7 @@ class RackPickerSheet extends StatelessWidget {
             return Container(
               width: double.infinity,
               color: Colors.orange.shade50,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Row(
                 children: [
                   Icon(Icons.info_outline,
@@ -410,7 +409,7 @@ class RackPickerSheet extends StatelessWidget {
             );
           }),
 
-          // ── Entry count summary ───────────────────────────────────────────────────────────
+          // ── Entry count summary ────────────────────────────────────────────────────────
           Obx(() {
             final ctrl = Get.find<RackPickerController>(tag: pickerTag);
             if (ctrl.isLoading.value || ctrl.entries.isEmpty) {
@@ -449,7 +448,7 @@ class RackPickerSheet extends StatelessWidget {
             );
           }),
 
-          // ── List (scrollable) or loading spinner ─────────────────────────────────
+          // ── List (scrollable) or loading spinner ──────────────────────────────
           Flexible(
             child: Obx(() {
               final ctrl = Get.find<RackPickerController>(tag: pickerTag);
@@ -485,8 +484,6 @@ class RackPickerSheet extends StatelessWidget {
                 );
               }
 
-              // shrinkWrap removed: Flexible already provides a bounded
-              // height; shrinkWrap + Flexible causes RenderFlex overflow.
               return ListView.builder(
                 padding: EdgeInsets.fromLTRB(
                   16,
