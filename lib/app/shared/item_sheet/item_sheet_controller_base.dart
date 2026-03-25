@@ -37,6 +37,12 @@ enum SaveButtonState { idle, loading, success, error }
 /// P2-A: isSheetLoading now also merges isValidatingRack.
 /// P2-B: baseValidate: maxQty cap is a soft guard in edit-mode only.
 /// P2-C: fetchAllRackStocks: loop runs to result.length (was length-1).
+///       The Stock Balance report appends a totals row as the last entry in
+///       result[]. That row has rack == null and must be excluded from the
+///       rack-specific stock map. The guard
+///         `if (r != null && r.isNotEmpty && qty > 0)`
+///       handles this correctly without an off-by-one loop bound. See the
+///       fetchAllRackStocks() implementation below for the inline note.
 ///
 /// Standardisation S1:
 ///   • [isBatchReadOnly]    — promoted from PR/SE; locks batch field after scan/validation.
@@ -412,6 +418,16 @@ abstract class ItemSheetControllerBase extends GetxController {
   }
 
   // ── P2-C: Stock / rack-map fetching ──────────────────────────────────────
+  //
+  // IMPORTANT — Stock Balance report total row:
+  // The Stock Balance report (frappe.desk.query_report.run) appends a totals
+  // row as the LAST entry in result[]. That row represents the aggregate
+  // balance across all racks for the queried warehouse/batch and has:
+  //   rack == null  (the 'rack' key is absent or null)
+  // The guard `if (r != null && r.isNotEmpty && qty > 0)` below skips this
+  // row naturally — no off-by-one loop bound (i < result.length - 1) is
+  // needed. Do NOT reintroduce the off-by-one bound; it would silently drop
+  // the last real rack row when the report returns an even number of racks.
 
   Future<void> fetchAllRackStocks() async {
     final warehouse = resolvedWarehouse;
@@ -435,6 +451,8 @@ abstract class ItemSheetControllerBase extends GetxController {
             if (row is! Map) continue;
             final String? r   = row['rack'] as String?;
             final double  qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+            // r == null  →  totals row appended by the Stock Balance report;
+            // skip it so it does not pollute the per-rack stock map.
             if (r != null && r.isNotEmpty && qty > 0) {
               tempMap[r] = qty;
               tooltipLines.add('$r: $qty');
