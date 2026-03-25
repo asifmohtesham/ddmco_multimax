@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -89,7 +90,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     ));
   }
 
-  // ── Details tab ──────────────────────────────────────────────────────────
+  // ── Details tab ──────────────────────────────────────────────────────────────────────────────────
 
   Widget _buildDetailsView(PackingSlip slip) {
     return SingleChildScrollView(
@@ -212,9 +213,19 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  // ── Items tab ─────────────────────────────────────────────────────────────
+  // ── Items tab ─────────────────────────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(PackingSlip slip) {
+    // Smoke-test: confirm the DataWedge worker was registered by the controller.
+    // Expected output in flutter logs once per build of this tab:
+    //   [PackingSlipScreen] DataWedge worker active: true
+    // If this prints `false` the ever() subscription in onInit() did not fire,
+    // indicating a binding or service registration problem.
+    log(
+      'DataWedge worker active: ${controller.scanWorkerActive}',
+      name: 'PackingSlipScreen',
+    );
+
     return Column(
       children: [
         SingleChildScrollView(
@@ -293,7 +304,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  // ── Checklist row with F6 Dismissible + F7 loading overlay ──────────────────
+  // ── Checklist row with F6 Dismissible + F7 loading overlay ──────────────────────
 
   Widget _buildChecklistRow(
     dynamic dnItem,
