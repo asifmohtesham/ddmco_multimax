@@ -530,12 +530,16 @@ class HomeController extends GetxController {
 
   /// Closes the drawer safely (no Get.back() snackbar crash) then
   /// navigates to [route] only if it differs from the current route.
+  /// If already on [route], the drawer is closed and no navigation
+  /// occurs — preventing GetX from tearing down the current controller.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
     final ctx = Get.context;
     if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
-    if (Get.currentRoute != route) Get.toNamed(route);
-    _updateActiveScreenForRoute(route);
+    if (Get.currentRoute != route) {
+      Get.toNamed(route);
+      _updateActiveScreenForRoute(route);
+    }
   }
 
   void goToHome()            => changeDrawerPage(0,  AppRoutes.HOME);
