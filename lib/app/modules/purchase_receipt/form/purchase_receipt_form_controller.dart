@@ -25,7 +25,7 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
 
-import 'controllers/purchase_receipt_item_form_controller.dart';
+import 'purchase_receipt_item_form_controller.dart';
 
 class PurchaseReceiptFormController extends GetxController
     with OptimisticLockingMixin {
@@ -39,7 +39,7 @@ class PurchaseReceiptFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // ── Document-level state ──────────────────────────────────────────────────
+  // ── Document-level state ────────────────────────────────────────────────
   var isLoading       = true.obs;
   var isSaving        = false.obs;
   var isDirty         = false.obs;
@@ -50,7 +50,7 @@ class PurchaseReceiptFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Save result state machine ──────────────────────────────────────────────
+  // ── Save result state machine ─────────────────────────────────────────────
   var saveResult      = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -77,22 +77,22 @@ class PurchaseReceiptFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── PO linking cache ───────────────────────────────────────────────────────
+  // ── PO linking cache ──────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
-  // ── EAN context for doc-level scan routing ───────────────────────────────
+  // ── EAN context for doc-level scan routing ──────────────────────────────
   String currentScannedEan = '';
 
   // ── UI feedback ─────────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
 
-  // ── Persistent scan worker ─────────────────────────────────────────────────
+  // ── Persistent scan worker ───────────────────────────────────────────────────
   Worker? _scanWorker;
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -147,7 +147,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Raw scan entry point ───────────────────────────────────────────────────
+  // ── Raw scan entry point ───────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
     if (code.isEmpty) return;
@@ -157,7 +157,7 @@ class PurchaseReceiptFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── Data fetching ─────────────────────────────────────────────────────────────
+  // ── Data fetching ───────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -296,7 +296,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── S4: addItemLocally / updateItemLocally ─────────────────────────────────
+  // ── S4: addItemLocally / updateItemLocally ──────────────────────────────────
 
   void addItemLocally(
     String itemCode,
@@ -400,7 +400,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Item sheet orchestration ─────────────────────────────────────────────────
+  // ── Item sheet orchestration ──────────────────────────────────────────────────
 
   Future<void> _openItemSheet({
     required String itemCode,
@@ -490,7 +490,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── Public entry points ───────────────────────────────────────────────────
+  // ── Public entry points ───────────────────────────────────────────────────────
 
   void openSheetForNewItem({
     required String itemCode,
@@ -549,7 +549,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Save ─────────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────────
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -645,7 +645,7 @@ class PurchaseReceiptFormController extends GetxController
         const Duration(seconds: 2), () => recentlyAddedItemName.value = '');
   }
 
-  // ── Scan routing ───────────────────────────────────────────────────────────────
+  // ── Scan routing ────────────────────────────────────────────────────────────────
 
   void _handleSheetScan(String barcode) async {
     barcodeController.clear();
