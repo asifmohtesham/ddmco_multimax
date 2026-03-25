@@ -193,16 +193,13 @@ class AppNavDrawer extends StatelessWidget {
                 return ListView(
                   padding: const EdgeInsets.symmetric(vertical: 12.0),
                   children: [
+                    // Dashboard uses _defaultTap: closes drawer then navigates
+                    // only when not already on /home. No custom onTap needed.
                     _DrawerItem(
                       icon: Icons.dashboard_rounded,
                       title: 'Dashboard',
                       route: AppRoutes.HOME,
                       currentRoute: currentRoute,
-                      onTap: (ctx) {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(ctx).pop();
-                        homeController.goToHome();
-                      },
                     ),
 
                     DocTypeGuard(

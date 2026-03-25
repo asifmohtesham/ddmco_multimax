@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
-import 'package:multimax/app/core/utils/navigator_utils.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
@@ -152,10 +151,8 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    // Use NavigatorUtils.popSheet — Get.back() crashes when a
-    // SnackbarController is queued but not yet initialised.
-    final ctx = Get.context;
-    if (ctx != null && ctx.mounted) NavigatorUtils.popSheet(ctx);
+    // Use Get.back() to close the bottom sheet.
+    Get.back();
     fetchDashboardData();
     fetchPerformanceData();
   }
@@ -459,8 +456,7 @@ class HomeController extends GetxController {
   }
 
   Future<void> handleFulfillmentSelection(PosUpload posUpload) async {
-    final ctx = Get.context;
-    if (ctx != null && ctx.mounted) NavigatorUtils.popSheet(ctx);
+    Get.back();
 
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
@@ -528,14 +524,12 @@ class HomeController extends GetxController {
     }
   }
 
-  /// Closes the drawer safely (no Get.back() snackbar crash) then
-  /// navigates to [route] only if it differs from the current route.
-  /// If already on [route], the drawer is closed and no navigation
-  /// occurs — preventing GetX from tearing down the current controller.
+  /// Navigates to [route] only when it differs from the current route,
+  /// preventing GetX from tearing down the active controller on same-route taps.
+  /// Drawer closing is handled by the _DrawerItem onTap / _defaultTap at the
+  /// call site — do NOT call Navigator.pop() here.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
-    final ctx = Get.context;
-    if (ctx != null && ctx.mounted) Navigator.of(ctx).pop();
     if (Get.currentRoute != route) {
       Get.toNamed(route);
       _updateActiveScreenForRoute(route);
