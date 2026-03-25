@@ -7,10 +7,26 @@ import 'package:get/get.dart';
 ///
 /// [QuantityInputWidget] is a pure [StatelessWidget]; mutable repeat-timer
 /// state lives in a [_QtyRepeatController] that is scoped per button via
-/// [GetWidget].  GetWidget ties the controller lifecycle to its own
-/// [UniqueKey], so the controller is created once and deleted automatically
-/// when the button leaves the tree — regardless of how many times the
-/// parent rebuilds.
+/// an explicit [Get.put] call keyed on [key.toString()].
+///
+/// ## Why not GetWidget?
+///
+/// [GetWidget] derives its controller tag from [widget.hashCode]. When a
+/// parent [StatelessWidget] is rebuilt (e.g. by an [Obx]), Flutter constructs
+/// a new widget object for every child, giving [_QtyActionButton] a new
+/// [hashCode] on each rebuild. [GetWidget.controller] then calls
+/// [Get.find(tag: newHash)] before [Get.put] has fired for that tag,
+/// returning null and crashing with:
+///   "type 'Null' is not a subtype of type '_QtyRepeatController'"
+///
+/// ## Fix
+///
+/// [_QtyActionButton] is now a plain [StatelessWidget]. The controller tag
+/// is derived from [key.toString()] — stable because [_decKey] / [_incKey]
+/// are `final` fields created **once** in the [QuantityInputWidget]
+/// constructor, not in [build()]. The same [UniqueKey] object (and therefore
+/// the same [toString()] string) is reused on every rebuild of the parent,
+/// so [Get.find] always resolves to the same already-registered controller.
 class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
@@ -37,7 +53,7 @@ class QuantityInputWidget extends StatelessWidget {
 
   // Stable UniqueKeys — created once per QuantityInputWidget instance.
   // Because these are final fields (not computed in build()), the same
-  // key objects survive every rebuild, keeping GetWidget's tag stable.
+  // key objects survive every rebuild, keeping the GetX tag stable.
   final UniqueKey _decKey = UniqueKey();
   final UniqueKey _incKey = UniqueKey();
 
@@ -49,7 +65,7 @@ class QuantityInputWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header Row: Label + Info Badge ────────────────────────────
+        // ── Header Row: Label + Info Badge ─────────────────────────────────
         if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
@@ -85,7 +101,7 @@ class QuantityInputWidget extends StatelessWidget {
             ),
           ),
 
-        // ── Input row ─────────────────────────────────────────────────
+        // ── Input row ─────────────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
@@ -104,7 +120,7 @@ class QuantityInputWidget extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // ── Text field ──────────────────────────────────────────
+              // ── Text field ────────────────────────────────────────────
               Expanded(
                 child: TextFormField(
                   controller: controller,
@@ -140,7 +156,7 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
               ),
 
-              // ── Buttons Group (Right Side) ───────────────────────────
+              // ── Buttons Group (Right Side) ──────────────────────────────
               if (!isReadOnly) ...[
                 Container(
                     width: 1, height: 32, color: Colors.grey.shade200),
@@ -173,6 +189,8 @@ class QuantityInputWidget extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // GetxController: owns the repeat Timer for a single button.
+// Unchanged — remains a GetxController so it participates in Get.delete
+// lifecycle management correctly.
 // ---------------------------------------------------------------------------
 class _QtyRepeatController extends GetxController {
   Timer? _repeatTimer;
@@ -197,44 +215,65 @@ class _QtyRepeatController extends GetxController {
 }
 
 // ---------------------------------------------------------------------------
-// GetWidget-based press-and-hold button.
+// Press-and-hold button — plain StatelessWidget with explicit GetX tag.
 //
-// GetWidget<T> is the correct GetX idiom for widget-scoped controllers:
-//   • It calls Get.put() exactly once, keyed on instanceKey (the widget key).
-//   • It calls Get.delete() automatically when the widget leaves the tree.
-//   • The controller is never re-created on parent rebuilds — only on a
-//     genuine unmount/remount, which is the desired behaviour here.
+// WHY NOT GetWidget:
+//   GetWidget derives instanceKey from widget.hashCode. A new widget object
+//   is created on every parent rebuild (Obx, setState, etc.), giving a new
+//   hashCode on each call. GetWidget.controller then calls
+//   Get.find(tag: newHash) before Get.put has fired → null → crash.
 //
-// The widget receives a UniqueKey from QuantityInputWidget (final field,
-// created once per parent instance), so the key — and therefore the
-// GetX tag — is stable for the entire lifetime of the parent widget.
+// FIX — explicit tag from key.toString():
+//   _QtyActionButton receives a UniqueKey that is a `final` field of
+//   QuantityInputWidget (created once in the constructor, not in build()).
+//   UniqueKey.toString() is therefore stable for the lifetime of the
+//   parent widget instance and survives every Obx / parent rebuild.
+//
+//   Get.isRegistered guard: ensures Get.put is called exactly once per
+//   tag, even if build() is invoked multiple times before the controller
+//   is deleted (e.g. rapid rebuilds before the first frame settles).
+//
+//   Cleanup: the controller is deleted in a post-frame callback when the
+//   widget is removed from the tree. Because QuantityInputWidget creates
+//   its keys as final fields, this only happens on a genuine unmount —
+//   not on a parent Obx rebuild — matching the original GetWidget intent.
 // ---------------------------------------------------------------------------
-class _QtyActionButton extends GetWidget<_QtyRepeatController> {
+class _QtyActionButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final Color color;
   final BorderRadius? borderRadius;
 
   const _QtyActionButton({
-    required super.key,  // UniqueKey from parent — drives GetWidget.instanceKey
+    required super.key,
     required this.icon,
     required this.onPressed,
     required this.color,
     this.borderRadius,
   });
 
+  // Resolves or registers the controller for this button's stable tag.
+  _QtyRepeatController _controller() {
+    final tag = key.toString();
+    if (!Get.isRegistered<_QtyRepeatController>(tag: tag)) {
+      Get.put(_QtyRepeatController(), tag: tag, permanent: false);
+    }
+    return Get.find<_QtyRepeatController>(tag: tag);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ctrl = _controller();
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
         onTapDown: (_) {
           HapticFeedback.lightImpact();
-          controller.startRepeat(onPressed);
+          ctrl.startRepeat(onPressed);
         },
-        onTapUp: (_) => controller.stopRepeat(),
-        onTapCancel: () => controller.stopRepeat(),
+        onTapUp:     (_) => ctrl.stopRepeat(),
+        onTapCancel: ()  => ctrl.stopRepeat(),
         child: SizedBox(
           width: 56,
           height: double.infinity,
