@@ -32,18 +32,17 @@ class PackingSlipFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  var isLoading  = true.obs;
-  var isSaving   = false.obs;
-  var isScanning = false.obs;
-  var isDirty    = false.obs;
-  // Step-2: isAddingItem needed so child controller can wire isAddingItemFlag.
+  var isLoading    = true.obs;
+  var isSaving     = false.obs;
+  var isScanning   = false.obs;
+  var isDirty      = false.obs;
   var isAddingItem = false.obs;
   String _originalJson = '';
 
-  // bsQtyController kept as a shim until step-6 removes addItemToSlip().
+  // bsQtyController and bsMaxQty kept as shims until step-6.
   final bsQtyController = TextEditingController();
   var bsMaxQty  = 0.0.obs;
-  // isSheetValid kept until step-6 (still read by old validateSheet() shim).
+  // isSheetValid shim kept until step-6.
   var isSheetValid = false.obs;
   String _initialQty = '';
 
@@ -57,7 +56,6 @@ class PackingSlipFormController extends GetxController
 
   var expandedInvoice = ''.obs;
 
-  // Step-2: isEditing kept for addItemToSlip() shim.
   var isEditing = false.obs;
 
   var itemFilter = ''.obs;
@@ -67,7 +65,6 @@ class PackingSlipFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // Temporary state populated in _populateItemDetails.
   String? currentItemDnDetail;
   String? currentItemCode;
   String? currentItemName;
@@ -77,10 +74,9 @@ class PackingSlipFormController extends GetxController
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
-  // Step-2: variant-of for itemSubtext in UniversalItemFormSheet.
   String? currentItemVariantOf;
 
-  // Metadata — kept as shim until step-6 removes addItemToSlip().
+  // Metadata shims kept until step-6.
   var bsItemOwner      = RxnString();
   var bsItemCreation   = RxnString();
   var bsItemModified   = RxnString();
@@ -93,11 +89,7 @@ class PackingSlipFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    // Step-2: bsQtyController listener kept only for the addItemToSlip() shim.
-    // The ever(isSheetValid) auto-submit worker is removed — auto-submit is now
-    // wired via child.setupAutoSubmit() in _openItemSheet.
     bsQtyController.addListener(_validateSheetShim);
-
     if (mode == 'new') {
       _initNewPackingSlip();
     } else {
@@ -105,14 +97,12 @@ class PackingSlipFormController extends GetxController
     }
   }
 
-  /// Shim: keeps isSheetValid in sync so addItemToSlip() guard still works
-  /// until step-6 removes both.
   void _validateSheetShim() {
     final text = bsQtyController.text;
     final qty  = double.tryParse(text);
-    if (qty == null || qty <= 0)                          { isSheetValid.value = false; return; }
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value)      { isSheetValid.value = false; return; }
-    if (isEditing.value && text == _initialQty)           { isSheetValid.value = false; return; }
+    if (qty == null || qty <= 0)                     { isSheetValid.value = false; return; }
+    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) { isSheetValid.value = false; return; }
+    if (isEditing.value && text == _initialQty)      { isSheetValid.value = false; return; }
     isSheetValid.value = true;
   }
 
@@ -419,16 +409,9 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
-  // Sheet: shared private opener (Step-2)
+  // Sheet: shared private opener
   // ---------------------------------------------------------------------------
 
-  /// Opens the item sheet using [UniversalItemFormSheet] inside a
-  /// [DraggableScrollableSheet]. Mirrors StockEntryFormController._openItemSheet:
-  ///   • async/await lifecycle (no .whenComplete)
-  ///   • scrollController wired from DSS builder
-  ///   • isSaveEnabled respects docstatus
-  ///   • isLoading wired to child.isSheetLoading
-  ///   • Get.delete<PackingSlipItemFormController>() after await
   Future<void> _openItemSheet(PackingSlipItemFormController child) async {
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
@@ -441,7 +424,7 @@ class PackingSlipFormController extends GetxController
           key:              ValueKey(child.editingItemName.value ?? 'new'),
           controller:       child,
           scrollController: sc,
-          onSubmit:         addItemToSlip,
+          onSubmit:         () => addItemToSlip(),
           onScan:           null,
           isSaveEnabled:    packingSlip.value?.docstatus == 0,
           itemSubtext:      currentItemVariantOf,
@@ -453,7 +436,6 @@ class PackingSlipFormController extends GetxController
       ),
       isScrollControlled: true,
     );
-    // Reliable post-await cleanup.
     isItemSheetOpen.value = false;
     Get.delete<PackingSlipItemFormController>();
   }
@@ -465,9 +447,9 @@ class PackingSlipFormController extends GetxController
   void prepareSheetForAdd(DeliveryNoteItem item) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
-    itemFormKey              = GlobalKey<FormState>();
-    isEditing.value          = false;
-    currentItemNameKey       = null;
+    itemFormKey        = GlobalKey<FormState>();
+    isEditing.value    = false;
+    currentItemNameKey = null;
     _populateItemDetails(item);
 
     bsItemOwner.value      = null;
@@ -475,7 +457,6 @@ class PackingSlipFormController extends GetxController
     bsItemModified.value   = null;
     bsItemModifiedBy.value = null;
 
-    // Compute remaining qty.
     double globalPackedForLine = 0.0;
     final currentSlipName = packingSlip.value?.name;
     for (var slip in relatedPackingSlips) {
@@ -491,12 +472,12 @@ class PackingSlipFormController extends GetxController
     if (remaining < 0) remaining = 0;
     bsMaxQty.value = remaining;
 
+    // Keep bsQtyController in sync (shim until step-6).
     final qtyStr         = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
     bsQtyController.text = qtyStr;
     _initialQty          = qtyStr;
     _validateSheetShim();
 
-    // Create child, initialise, wire auto-submit, open sheet.
     final child = Get.put(PackingSlipItemFormController());
     child.initialise(
       parent:   this,
@@ -544,7 +525,6 @@ class PackingSlipFormController extends GetxController
 
       _populateItemDetails(dnItem);
 
-      // Compute remaining qty excluding this item.
       double globalPackedOthers = 0.0;
       final currentSlipName = packingSlip.value?.name;
       for (var slip in relatedPackingSlips) {
@@ -565,7 +545,6 @@ class PackingSlipFormController extends GetxController
       _initialQty          = qtyStr;
       _validateSheetShim();
 
-      // Create child, initialise with editingItem, wire auto-submit, open sheet.
       final child = Get.put(PackingSlipItemFormController());
       child.initialise(
         parent:      this,
@@ -615,19 +594,25 @@ class PackingSlipFormController extends GetxController
   }
 
   void _populateItemDetails(DeliveryNoteItem item) {
-    currentItemDnDetail    = item.name;
-    currentItemCode        = item.itemCode;
-    currentItemName        = item.itemName;
-    currentBatchNo         = item.batchNo;
-    currentUom             = item.uom;
-    currentSerial          = item.customInvoiceSerialNumber;
-    currentNetWeight       = 0.0;
-    currentWeightUom       = 0.0;
-    // Step-2: expose variant-of for itemSubtext.
-    currentItemVariantOf   = (item as dynamic).customVariantOf as String?;
+    currentItemDnDetail  = item.name;
+    currentItemCode      = item.itemCode;
+    currentItemName      = item.itemName;
+    currentBatchNo       = item.batchNo;
+    currentUom           = item.uom;
+    currentSerial        = item.customInvoiceSerialNumber;
+    currentNetWeight     = 0.0;
+    currentWeightUom     = 0.0;
+    currentItemVariantOf = (item as dynamic).customVariantOf as String?;
   }
 
+  // Step-3: adjustQty delegates to child if sheet is open.
   void adjustQty(double delta) {
+    if (isItemSheetOpen.value) {
+      try {
+        Get.find<PackingSlipItemFormController>().adjustQty(delta);
+        return;
+      } catch (_) { /* fall through to legacy path */ }
+    }
     double current = double.tryParse(bsQtyController.text) ?? 0;
     double newVal  = current + delta;
     if (newVal < 0) newVal = 0;
@@ -636,11 +621,12 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
-  // Commit item (shim — kept until step-6 removes it)
+  // Commit item
   // ---------------------------------------------------------------------------
 
-  Future<void> addItemToSlip() async {
-    final double qtyToAdd = double.tryParse(bsQtyController.text) ?? 0;
+  /// Step-3: primary entry point called by child.submit().
+  /// Receives the already-parsed qty — no dependency on bsQtyController.
+  Future<void> addItemToSlipWithQty(double qtyToAdd) async {
     if (qtyToAdd <= 0) { Get.back(); return; }
 
     final currentItems = packingSlip.value?.items.toList() ?? [];
@@ -715,6 +701,13 @@ class PackingSlipFormController extends GetxController
     Get.back();
     _checkForChanges();
     if (isDirty.value) await savePackingSlip();
+  }
+
+  /// Forwarding shim — kept so auto-submit lambda and old call sites compile.
+  /// Removed in step-6.
+  Future<void> addItemToSlip() async {
+    final qty = double.tryParse(bsQtyController.text) ?? 0.0;
+    await addItemToSlipWithQty(qty);
   }
 
   // ---------------------------------------------------------------------------

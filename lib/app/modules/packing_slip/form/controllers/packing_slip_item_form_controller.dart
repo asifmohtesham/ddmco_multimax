@@ -13,10 +13,10 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 ///   • submitWithFeedback() animated save-button flow
 ///   • adjustQty(delta) with maxQty capping (base implementation)
 ///
-/// Step-1: Full implementation of all ItemSheetControllerBase abstract members.
-///   submit() delegates to parent.addItemToSlip() via a bsQtyController sync
-///   shim; the shim and addItemToSlip() are replaced in step-3 and removed
-///   in step-6 once qty ownership fully migrates to the child controller.
+/// Step-3: qtyController (base) is now the single source of truth for qty.
+///   submit() reads qtyController.text and passes parsed qty to
+///   parent.addItemToSlipWithQty(qty), removing the direct dependency
+///   on parent.bsQtyController.
 ///
 /// PS-specific notes:
 ///   • resolvedWarehouse → null  (PS has no warehouse concept)
@@ -49,7 +49,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   void validateSheet() {
-    // Read from base qtyController — single source of truth for qty.
+    // Read from base qtyController (single source of truth after step-3).
     final qty = double.tryParse(qtyController.text);
 
     if (qty == null || qty <= 0) {
@@ -74,11 +74,10 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   Future<void> submit() async {
+    // Step-3: read directly from base TEC — no bsQtyController sync shim.
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
-    // Sync parent alias so addItemToSlip() still compiles until step-6 cleanup.
-    _parent.bsQtyController.text = qtyController.text;
-    await _parent.addItemToSlip();
+    await _parent.addItemToSlipWithQty(qty);
   }
 
   // ── Initialisation ───────────────────────────────────────────────────────
@@ -119,7 +118,13 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       itemModified.value    = null;
       itemModifiedBy.value  = null;
 
-      qtyController.text = parent.bsQtyController.text;
+      // Step-3: pre-fill from bsMaxQty directly, not bsQtyController.
+      final remaining = parent.bsMaxQty.value;
+      qtyController.text = remaining > 0
+          ? (remaining % 1 == 0
+              ? remaining.toInt().toString()
+              : remaining.toString())
+          : '0';
     }
 
     isAddMode = editingItem == null;
