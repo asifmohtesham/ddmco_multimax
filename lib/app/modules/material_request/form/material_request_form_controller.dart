@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -8,6 +9,8 @@ import 'package:multimax/app/modules/material_request/form/widgets/material_requ
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
@@ -17,6 +20,7 @@ class MaterialRequestFormController extends GetxController
       Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
   String name = Get.arguments['name'] ?? '';
   String mode = Get.arguments['mode'] ?? 'view';
@@ -28,7 +32,7 @@ class MaterialRequestFormController extends GetxController
 
   var materialRequest = Rx<MaterialRequest?>(null);
 
-  // ── Header form fields ───────────────────────────────────────────────────
+  // ── Header form fields ──────────────────────────────────────────────────
   final selectedType = 'Material Transfer'.obs;
   final scheduleDateController = TextEditingController();
   final transactionDateController = TextEditingController();
@@ -42,27 +46,16 @@ class MaterialRequestFormController extends GetxController
     'Customer Provided',
   ];
 
-  // ── Warehouse data ───────────────────────────────────────────────────────
+  // ── Warehouse data ─────────────────────────────────────────────────────────
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
   // ── Item Sheet State ─────────────────────────────────────────────────────
-  //
-  // Mirrors DeliveryNoteFormController exactly:
-  //   itemFormKey    — required by GlobalItemFormSheet for Form.validate()
-  //   isFormDirty    — true when any sheet field differs from its initial
-  //                    snapshot; gates the "Update" button in edit mode
-  //   _initialQty    — snapshot of qty when the sheet opened
-  //   _initialWh     — snapshot of warehouse when the sheet opened
-  //   bsItemVariantOf — variant_of of the item; shown as itemSubtext in header
-  //   bsMaxQty        — available qty hint (0 = no stock concept for MR)
-  //   isAddingItem    — loading spinner on save button
-
   final itemFormKey = GlobalKey<FormState>();
 
   final bsQtyController = TextEditingController();
   final bsWarehouseController = TextEditingController();
-  final bsDateController = TextEditingController(); // schedule date pre-fill
+  final bsDateController = TextEditingController();
 
   var bsMaxQty = 0.0.obs;
   var bsItemVariantOf = RxnString();
@@ -71,7 +64,6 @@ class MaterialRequestFormController extends GetxController
   var isSheetValid = false.obs;
   var isAddingItem = false.obs;
 
-  // Snapshots for dirty detection
   String _initialQty = '';
   String _initialWh = '';
 
@@ -83,12 +75,22 @@ class MaterialRequestFormController extends GetxController
   final TextEditingController barcodeController = TextEditingController();
   final ScrollController scrollController = ScrollController();
 
+  // ── Persistent scan worker ──────────────────────────────────────────────────
+  Worker? _scanWorker;
+
+  bool get isEditable => (materialRequest.value?.docstatus ?? 1) == 0;
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
+
   @override
   void onInit() {
     super.onInit();
     bsQtyController.addListener(validateSheet);
     bsWarehouseController.addListener(validateSheet);
     fetchWarehouses();
+
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    log('[MR:onInit] _scanWorker registered', name: 'MR');
 
     if (mode == 'new') {
       _initNewRequest();
@@ -98,13 +100,9 @@ class MaterialRequestFormController extends GetxController
   }
 
   @override
-  Future<void> reloadDocument() async {
-    await fetchMaterialRequest();
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
-  }
-
-  @override
   void onClose() {
+    _scanWorker?.dispose();
+    log('[MR:onClose] _scanWorker disposed', name: 'MR');
     scheduleDateController.dispose();
     transactionDateController.dispose();
     setWarehouseController.dispose();
@@ -116,7 +114,27 @@ class MaterialRequestFormController extends GetxController
     super.onClose();
   }
 
-  // ── Warehouse ─────────────────────────────────────────────────────────────
+  @override
+  Future<void> reloadDocument() async {
+    await fetchMaterialRequest();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
+  // ── Raw scan entry point (DataWedge hardware trigger) ─────────────────────
+
+  void _onRawScan(String code) {
+    log('[MR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'MR');
+    if (code.isEmpty) return;
+    // Only handle scans when this form is the active route.
+    if (Get.currentRoute != AppRoutes.MATERIAL_REQUEST_FORM) return;
+    final clean = code.trim();
+    barcodeController.text = clean;
+    // If the item sheet is open, route directly to scanBarcode so the
+    // sheet's field interactions are handled correctly.
+    scanBarcode(clean);
+  }
+
+  // ── Warehouse ───────────────────────────────────────────────────────────────────
 
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
@@ -138,7 +156,7 @@ class MaterialRequestFormController extends GetxController
     }
   }
 
-  // ── Document init ─────────────────────────────────────────────────────────
+  // ── Document init ──────────────────────────────────────────────────────────────
 
   void _initNewRequest() {
     final now = DateTime.now();
@@ -187,7 +205,7 @@ class MaterialRequestFormController extends GetxController
     }
   }
 
-  // ── Dirty / Navigation ────────────────────────────────────────────────────
+  // ── Dirty / Navigation ───────────────────────────────────────────────────────────
 
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
@@ -199,12 +217,13 @@ class MaterialRequestFormController extends GetxController
   }
 
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value) {
+    // Guard: do not dirty-flag a submitted document.
+    if (!isLoading.value && !isDirty.value && isEditable) {
       isDirty.value = true;
     }
   }
 
-  // ── Header field interactions ─────────────────────────────────────────────
+  // ── Header field interactions ──────────────────────────────────────────────────
 
   void onTypeChanged(String? val) {
     if (val != null && val != selectedType.value) {
@@ -230,7 +249,7 @@ class MaterialRequestFormController extends GetxController
     }
   }
 
-  // ── Warehouse picker ──────────────────────────────────────────────────────
+  // ── Warehouse picker ────────────────────────────────────────────────────────────
 
   void showWarehousePicker({bool forItem = false}) {
     final searchCtrl = TextEditingController();
@@ -287,7 +306,6 @@ class MaterialRequestFormController extends GetxController
                       onTap: () {
                         if (forItem) {
                           bsWarehouseController.text = wh;
-                          // validateSheet is called via bsWarehouseController listener
                         } else {
                           setWarehouseController.text = wh;
                           onWarehouseChanged(wh);
@@ -306,7 +324,7 @@ class MaterialRequestFormController extends GetxController
     );
   }
 
-  // ── Item Sheet ────────────────────────────────────────────────────────────
+  // ── Item Sheet ───────────────────────────────────────────────────────────────────
 
   void openItemSheet({
     MaterialRequestItem? item,
@@ -314,7 +332,6 @@ class MaterialRequestFormController extends GetxController
     String? newName,
     String? variantOf,
   }) {
-    // ── Reset sheet state ───────────────────────────────────────────────────
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
     bsWarehouseController.clear();
@@ -326,7 +343,6 @@ class MaterialRequestFormController extends GetxController
     _initialWh = '';
 
     if (item != null) {
-      // ── Edit mode ─────────────────────────────────────────────────────────
       currentItemCode = item.itemCode;
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
@@ -338,13 +354,11 @@ class MaterialRequestFormController extends GetxController
       bsQtyController.text = qtyStr;
       bsWarehouseController.text = item.warehouse ?? '';
 
-      // Snapshots for dirty detection
       _initialQty = qtyStr;
       _initialWh = item.warehouse ?? '';
 
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
-      // ── Add mode (barcode) ─────────────────────────────────────────────────
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
@@ -353,7 +367,6 @@ class MaterialRequestFormController extends GetxController
       _initialQty = '';
       _initialWh = setWarehouseController.text;
     } else {
-      // ── Add mode (manual) ──────────────────────────────────────────────────
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
@@ -370,10 +383,6 @@ class MaterialRequestFormController extends GetxController
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        // Cap the sheet at 90 % of screen height so it never covers the
-        // full screen. When content is shorter the sheet only covers what
-        // it needs. The SingleChildScrollView makes the content scrollable
-        // when the keyboard or many fields push past the cap.
         final maxHeight = MediaQuery.of(context).size.height * 0.90;
         return ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
@@ -382,8 +391,6 @@ class MaterialRequestFormController extends GetxController
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(16)),
             child: SingleChildScrollView(
-              // Shift content up when the soft keyboard appears so the
-              // focused field is never hidden behind it.
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
@@ -394,52 +401,36 @@ class MaterialRequestFormController extends GetxController
       },
     ).whenComplete(() {
       isItemSheetOpen.value = false;
+      barcodeController.clear();
     });
   }
 
-  // ── Sheet validation ──────────────────────────────────────────────────────
-  //
-  // Mirrors DeliveryNoteFormController.validateSheet:
-  //   1. Basic validity  — qty > 0
-  //   2. Dirty detection — compares current values against _initial snapshots
-  //   3. Edit-mode gate  — Update button disabled if !isFormDirty
+  // ── Sheet validation ───────────────────────────────────────────────────────────
 
   void validateSheet() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     bool valid = qty > 0 && currentItemCode.isNotEmpty;
 
-    // Dirty detection
     bool dirty = false;
     if (bsQtyController.text != _initialQty) dirty = true;
     if (bsWarehouseController.text != _initialWh) dirty = true;
     isFormDirty.value = dirty;
 
-    // In edit mode the button is only enabled when the form is actually dirty
     if (currentItemNameKey.value != null && !dirty) valid = false;
 
     isSheetValid.value = valid;
   }
 
-  /// Increment / decrement qty by [delta] (pass 1 or -1).
-  ///
-  /// Mirrors DeliveryNoteFormController / StockEntryFormController exactly:
-  ///   - Never goes below 0
-  ///   - Integer display when no fractional part
-  ///   - Calls validateSheet() → isFormDirty is updated automatically
-  ///     so increment/decrement on an existing item marks the sheet dirty
-  ///     and enables the Update button immediately.
   void adjustSheetQty(int delta) {
     final current = double.tryParse(bsQtyController.text) ?? 0;
     final newVal = current + delta;
     if (newVal < 0) return;
     bsQtyController.text =
         newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
-    // validateSheet is triggered automatically via the bsQtyController listener
-    // registered in onInit(), but call explicitly here as belt-and-suspenders.
     validateSheet();
   }
 
-  // ── Save / Delete item ────────────────────────────────────────────────────
+  // ── Save / Delete item ─────────────────────────────────────────────────────────────
 
   Future<void> saveItem() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
@@ -450,7 +441,6 @@ class MaterialRequestFormController extends GetxController
       final currentItems = materialRequest.value?.items.toList() ?? [];
 
       if (currentItemNameKey.value != null) {
-        // Update existing
         final index = currentItems
             .indexWhere((i) => i.name == currentItemNameKey.value);
         if (index != -1) {
@@ -470,7 +460,6 @@ class MaterialRequestFormController extends GetxController
           );
         }
       } else {
-        // Add new
         currentItems.add(MaterialRequestItem(
           name: 'local_${DateTime.now().millisecondsSinceEpoch}',
           itemCode: currentItemCode,
@@ -486,12 +475,7 @@ class MaterialRequestFormController extends GetxController
         val?.items.assignAll(currentItems);
       });
 
-      // Mark document dirty BEFORE Navigator.pop so PopScope evaluates
-      // the correct state immediately.
       _markDirty();
-
-      // Sheet close is handled by GlobalItemFormSheet._popSheet
-      // (Navigator.of(context).pop) — no Get.back() here.
     } finally {
       isAddingItem.value = false;
     }
@@ -510,11 +494,20 @@ class MaterialRequestFormController extends GetxController
     );
   }
 
-  // ── Barcode scan ──────────────────────────────────────────────────────────
+  // ── Barcode scan ─────────────────────────────────────────────────────────────────
 
   Future<void> scanBarcode(String code) async {
     if (code.isEmpty) return;
     if (checkStaleAndBlock()) return;
+    if (!isEditable) {
+      GlobalSnackbar.warning(message: 'Document is submitted.');
+      return;
+    }
+    // When the item sheet is open a hardware scan should not re-open a
+    // new sheet on top — silently drop it (the sheet has its own barcode
+    // field for batch/rack resolution if needed in future).
+    if (isItemSheetOpen.value) return;
+    if (isScanning.value) return;
 
     isScanning.value = true;
     try {
@@ -523,9 +516,10 @@ class MaterialRequestFormController extends GetxController
         openItemSheet(
           newCode: result.itemData!.itemCode,
           newName: result.itemData!.itemName,
+          variantOf: result.itemData!.variantOf,
         );
       } else {
-        GlobalSnackbar.error(message: 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Scan Error: $e');
@@ -535,7 +529,7 @@ class MaterialRequestFormController extends GetxController
     }
   }
 
-  // ── Save document ─────────────────────────────────────────────────────────
+  // ── Save document ───────────────────────────────────────────────────────────────
 
   Future<void> saveMaterialRequest() async {
     if (isSaving.value) return;
