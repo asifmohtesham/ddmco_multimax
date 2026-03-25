@@ -11,20 +11,21 @@ import '../purchase_order_form_controller.dart';
 class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   late PurchaseOrderFormController _parent;
 
-  // ── PO-specific field controllers ─────────────────────────────────────────
+  // ── PO-specific field controllers ───────────────────────────────────────────────────
   final rateController         = TextEditingController();
   final scheduleDateController = TextEditingController();
 
-  // ── PO-specific Rx ───────────────────────────────────────────────────────
+  // ── PO-specific Rx ───────────────────────────────────────────────────────────────
   var sheetRate = 0.0.obs;
-  double get sheetAmount => (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
+  double get sheetAmount =>
+      (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
 
-  // ── Dirty-check snapshot ─────────────────────────────────────────────────
+  // ── Dirty-check snapshot ────────────────────────────────────────────────────────
   double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
 
-  // ── ItemSheetControllerBase overrides ─────────────────────────────────────
+  // ── ItemSheetControllerBase overrides ─────────────────────────────────────────────
 
   @override
   String? get resolvedWarehouse => null; // PO has no warehouse concept
@@ -36,18 +37,65 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   bool get requiresRack => false;
 
   @override
-  String? get qtyInfoText => null; // no stock context on outbound orders
+  String? get qtyInfoText => null; // no stock context on purchase orders
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Listener helpers ──────────────────────────────────────────────────────────────
+  //
+  // Symmetric add/remove helpers for PO-specific TECs.
+  // Must be called in the same onClose() pattern as ItemSheetControllerBase
+  // (B-2 fix): remove listeners synchronously, defer dispose() to
+  // addPostFrameCallback.
+
+  void _initPOListeners() {
+    scheduleDateController.addListener(validateSheet);
+    scheduleDateController.addListener(_resetSaveStateOnEdit);
+    rateController.addListener(_onRateChanged);      // updates sheetRate + validateSheet
+    rateController.addListener(_resetSaveStateOnEdit);
+  }
+
+  void _removePOListeners() {
+    scheduleDateController.removeListener(validateSheet);
+    scheduleDateController.removeListener(_resetSaveStateOnEdit);
+    rateController.removeListener(_onRateChanged);
+    rateController.removeListener(_resetSaveStateOnEdit);
+  }
+
+  // _resetSaveStateOnEdit is defined in ItemSheetControllerBase but is private
+  // there. We expose a thin forwarder so _initPOListeners can reference it.
+  // This avoids duplicating the reset logic.
+  void _resetSaveStateOnEdit() {
+    if (saveButtonState.value == SaveButtonState.success ||
+        saveButtonState.value == SaveButtonState.error) {
+      saveButtonState.value = SaveButtonState.idle;
+    }
+  }
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
-    rateController.dispose();
-    scheduleDateController.dispose();
-    super.onClose(); // disposes qtyController + base controllers
+    // Step 1: remove PO-specific listeners synchronously (B-2 fix).
+    // The base onClose() removes its own listeners; we must remove ours
+    // first so no in-flight notification reaches _onRateChanged or
+    // validateSheet after this controller is logically closed.
+    _removePOListeners();
+
+    // Step 2: defer dispose() to post-frame (B-2 fix).
+    // The base class already defers qtyController / batchController /
+    // rackController dispose via addPostFrameCallback. We do the same
+    // for PO-specific TECs so no TextFormField rebuild can call
+    // ChangeNotifier.addListener() on a disposed controller.
+    final rtc = rateController;
+    final sdc = scheduleDateController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      rtc.dispose();
+      sdc.dispose();
+    });
+
+    super.onClose(); // removes base listeners + defers base TEC disposes
   }
 
-  // ── Initialise — called by parent _openItemSheet() ────────────────────────
+  // ── Initialise — called by parent _openItemSheet() ────────────────────────────
 
   void initialise({
     required PurchaseOrderFormController parentController,
@@ -65,24 +113,24 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parentController;
 
-    // ── Base: add-mode flag & editing context ──────────────────────────────
+    // ── Base: add-mode flag & editing context ──────────────────────────────────
     editingItemName.value = rowId;
     isAddMode             = rowId == null;
 
-    // ── Base: item identity ────────────────────────────────────────────────
+    // ── Base: item identity ─────────────────────────────────────────────────────
     itemCode.value = code;
     itemName.value = name;
 
-    // ── Base: metadata footer ──────────────────────────────────────────────
+    // ── Base: metadata footer ───────────────────────────────────────────────────
     itemOwner.value      = owner;
     itemCreation.value   = creation;
     itemModified.value   = modified;
     itemModifiedBy.value = modifiedBy;
 
-    // ── Base: parent saving flag ───────────────────────────────────────────
+    // ── Base: parent saving flag ────────────────────────────────────────────────
     isAddingItemFlag = _parent.isAddingItem;
 
-    // ── PO-specific fields ─────────────────────────────────────────────────
+    // ── PO-specific fields ─────────────────────────────────────────────────────────
     qtyController.text          = qty.toStringAsFixed(0);
     rateController.text         = rate.toStringAsFixed(2);
     scheduleDateController.text =
@@ -90,18 +138,17 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
 
     sheetRate.value = rate;
 
-    // ── Dirty-check snapshot ───────────────────────────────────────────────
+    // ── Dirty-check snapshot ─────────────────────────────────────────────────────
     _initialQty  = qty;
     _initialRate = rate;
     _initialDate = scheduleDateController.text;
 
-    // ── Base: wire shared qty listener + capture snapshot ─────────────────
-    initBaseListeners();
-    scheduleDateController.addListener(validateSheet);
-    rateController.addListener(_onRateChanged);
+    // ── Wire all listeners ──────────────────────────────────────────────────────────
+    initBaseListeners(); // qty / batch / rack → validateSheet + _resetSaveStateOnEdit
+    _initPOListeners();  // rate / scheduleDate → validateSheet + _resetSaveStateOnEdit
     captureSnapshot();
 
-    // ── Auto-submit ────────────────────────────────────────────────────────
+    // ── Auto-submit ─────────────────────────────────────────────────────────────────
     final storage = Get.find<StorageService>();
     setupAutoSubmit(
       enabled:       storage.getAutoSubmitEnabled(),
@@ -114,14 +161,14 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
+  // ── Private helpers ─────────────────────────────────────────────────────────────────
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
   }
 
-  // ── ItemSheetControllerBase: validateSheet ────────────────────────────────
+  // ── ItemSheetControllerBase: validateSheet ───────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -131,23 +178,23 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
 
     final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) { isSheetValid.value = false; return; }
-    if (scheduleDateController.text.isEmpty) { isSheetValid.value = false; return; }
-    if ((double.tryParse(rateController.text) ?? -1) < 0) { isSheetValid.value = false; return; }
+    if (qty <= 0)                                          { isSheetValid.value = false; return; }
+    if (scheduleDateController.text.isEmpty)               { isSheetValid.value = false; return; }
+    if ((double.tryParse(rateController.text) ?? -1) < 0)  { isSheetValid.value = false; return; }
 
     // Edit mode: require at least one field to have changed.
     if (!isAddMode) {
       final currentRate = double.tryParse(rateController.text) ?? 0;
-      final dirty = qty != _initialQty ||
-          currentRate != _initialRate ||
-          scheduleDateController.text != _initialDate;
+      final dirty = qty             != _initialQty  ||
+                    currentRate     != _initialRate  ||
+                    scheduleDateController.text != _initialDate;
       isSheetValid.value = dirty;
     } else {
       isSheetValid.value = true;
     }
   }
 
-  // ── ItemSheetControllerBase: deleteCurrentItem ────────────────────────────
+  // ── ItemSheetControllerBase: deleteCurrentItem ──────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -158,7 +205,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent.confirmAndDeleteItem(item);
   }
 
-  // ── ItemSheetControllerBase: submit ───────────────────────────────────────
+  // ── ItemSheetControllerBase: submit ──────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
