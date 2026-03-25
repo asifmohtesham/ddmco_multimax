@@ -23,6 +23,7 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
 
@@ -37,6 +38,11 @@ class HomeController extends GetxController {
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+
+  /// Worker that routes hardware (DataWedge) scans to [onScan].
+  /// Disposed in [onClose].
+  Worker? _scanWorker;
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -87,10 +93,23 @@ class HomeController extends GetxController {
     super.onInit();
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
+
+    // ── DataWedge hardware-scan worker ────────────────────────────────────
+    // BarcodeInputWidget runs in manual-input-only mode and no longer
+    // attaches its own ever() worker.  Each consuming controller must
+    // subscribe here.  The route guard ensures this handler is a no-op
+    // while the user has navigated to a sub-screen (DN, SE, PR, etc.)
+    // whose controller has its own dedicated worker.
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isEmpty) return;
+      if (Get.currentRoute != AppRoutes.HOME) return;
+      onScan(code);
+    });
   }
 
   @override
   void onClose() {
+    _scanWorker?.dispose();
     barcodeController.dispose();
     super.onClose();
   }
