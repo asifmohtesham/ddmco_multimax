@@ -279,6 +279,131 @@ class ApiProvider {
     );
   }
 
+  /// Fetches per-rack available quantity for [itemCode] + [batchNo] within
+  /// [warehouse] from the Stock Ledger report.
+  ///
+  /// ## Why Stock Ledger?
+  /// Stock Balance gives rack → total qty; Batch-Wise Balance gives
+  /// batch → total qty.  Only Stock Ledger provides rack + batch → qty
+  /// in a single query.
+  ///
+  /// ## Return value
+  /// `Map<String, double>` where each key is a rack asset-code name and
+  /// the value is the **latest** `qty_after_transaction` for that rack
+  /// (i.e. the running balance).  Rows are server-ordered by `timestamp`
+  /// ascending, so iterating forward and overwriting naturally yields the
+  /// last (most recent) balance per rack.
+  ///
+  /// ## Column resolution
+  /// The Frappe query_report response is columnar:
+  /// ```json
+  /// { "result": {
+  ///     "columns": [ { "fieldname": "rack" }, … ],
+  ///     "result":  [ [ "KA-WH-DXB1-101A", …, 12.0 ], … ]
+  /// }}
+  /// ```
+  /// Column positions are resolved at runtime by `fieldname` so that
+  /// future ERPNext column-order changes cannot silently corrupt the data.
+  ///
+  /// ## Error behaviour
+  /// Returns an **empty map** on any error or empty result set.
+  /// The caller ([RackPickerController]) falls back gracefully to the
+  /// `rackStockMap` already held in [ItemSheetControllerBase].
+  Future<Map<String, double>> getRackBatchStock({
+    required String itemCode,
+    required String batchNo,
+    required String warehouse,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage  = Get.find<StorageService>();
+    final company  = storage.getCompany();
+    final today    = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    // ── 1. Build filters ────────────────────────────────────────────────────
+    final filters = <String, dynamic>{
+      'company'  : company,
+      'item_code': itemCode,
+      'batch_no' : batchNo,
+      'warehouse': warehouse,
+      'from_date': '2000-01-01', // full history needed for running balance
+      'to_date'  : today,
+    };
+
+    // ── 2. Call report ────────────────────────────────────────────────────
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'          : 'Stock Ledger',
+          'filters'              : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'  : 'false',
+          '_'                    : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return {};
+    } catch (_) {
+      return {};
+    }
+
+    if (response.statusCode != 200) return {};
+
+    // ── 3. Parse columnar response ───────────────────────────────────────────
+    // Frappe query_report shape:
+    //   response.data['message']['columns'] = List of column definitions
+    //   response.data['message']['result']  = List<List<dynamic>> rows
+    // Column definitions can be either a Map with 'fieldname' key or a
+    // plain String fieldname — handle both defensively.
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return {};
+
+      final rawColumns = message['columns'] as List<dynamic>?;
+      final rawRows    = message['result']  as List<dynamic>?;
+      if (rawColumns == null || rawRows == null || rawRows.isEmpty) return {};
+
+      // Resolve fieldname from column definition (Map or String).
+      String _fieldname(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        return col.toString().toLowerCase();
+      }
+
+      // Locate required column indices.
+      final colNames = rawColumns.map(_fieldname).toList();
+      final rackIdx  = colNames.indexOf('rack');
+      final qtyIdx   = colNames.indexOf('qty_after_transaction');
+
+      if (rackIdx == -1 || qtyIdx == -1) return {};
+
+      // ── 4. Build rack → latest-qty map ──────────────────────────────────────
+      // Rows arrive ordered by timestamp asc — iterating forward and
+      // overwriting gives the most-recent balance per rack.
+      final result = <String, double>{};
+      for (final row in rawRows) {
+        if (row is! List || row.length <= rackIdx || row.length <= qtyIdx) {
+          continue;
+        }
+        final rack = row[rackIdx]?.toString().trim() ?? '';
+        if (rack.isEmpty) continue;
+
+        final qty = switch (row[qtyIdx]) {
+          final num n   => n.toDouble(),
+          final String s => double.tryParse(s) ?? 0.0,
+          _              => 0.0,
+        };
+
+        result[rack] = qty;
+      }
+
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
   // Module specific getters
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, orderBy: orderBy, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
@@ -294,7 +419,7 @@ class ApiProvider {
   Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);
   Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) filters.remove('docstatus');
-    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status', 'total_qty']);
+    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'total_qty']);
   }
   Future<Response> getPosUpload(String name) async => getDocument('POS Upload', name);
   Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>
