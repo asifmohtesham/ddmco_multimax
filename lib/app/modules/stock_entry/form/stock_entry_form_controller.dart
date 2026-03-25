@@ -14,7 +14,7 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 
-import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -68,7 +68,7 @@ class StockEntryFormController extends GetxController
   final String? argStockEntryType    = Get.arguments?['stockEntryType'];
   final String? argCustomReferenceNo = Get.arguments?['customReferenceNo'];
 
-  // ── Document state ──────────────────────────────────────────────────────
+  // ── Document state ──────────────────────────────────────────────────────────
   var isLoading        = true.obs;
   var isScanning       = false.obs;
   var isSaving         = false.obs;
