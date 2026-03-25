@@ -17,10 +17,8 @@ class ItemFormScreen extends GetView<ItemFormController> {
     final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
     final cs = Theme.of(context).colorScheme;
 
-    // Fix #1: use controller.tabController — lives in GetX, never reset by Obx.
     return Scaffold(
       appBar: MainAppBar(
-        // Fix #2: Obx around title so it updates once item loads.
         title: '',
         titleWidget: Obx(
           () => Text(
@@ -89,7 +87,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Hero image with loading shimmer (Fix #8)
           if (item.image != null)
             GestureDetector(
               onTap: () =>
@@ -99,7 +96,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  // Fix #10: theme token instead of Colors.white
                   color: cs.surfaceContainer,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: cs.outlineVariant),
@@ -110,7 +106,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                   child: Image.network(
                     '$baseUrl${item.image}',
                     fit: BoxFit.contain,
-                    // Fix #8: shimmer placeholder during load
                     loadingBuilder: (context, child, progress) {
                       if (progress == null) return child;
                       return Center(
@@ -206,14 +201,13 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     children: [
                       Text(
                         'Detailed Description',
-                        // Fix #13/14: theme token
-                        style: theme.textTheme.labelSmall
+                        style: Theme.of(context).textTheme.labelSmall
                             ?.copyWith(color: cs.onSurfaceVariant),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         item.description!,
-                        style: theme.textTheme.bodyMedium
+                        style: Theme.of(context).textTheme.bodyMedium
                             ?.copyWith(color: cs.onSurface, height: 1.4),
                       ),
                     ],
@@ -233,7 +227,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
   Widget _buildStockLevelsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
 
-    // Fix #16: RefreshIndicator for manual refresh
     return RefreshIndicator(
       onRefresh: controller.fetchDashboardData,
       child: SingleChildScrollView(
@@ -242,7 +235,96 @@ class ItemFormScreen extends GetView<ItemFormController> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Warehouse Balance Chart
+
+            // ── Warehouse filter chips ─────────────────────────────────
+            // Hidden when there is only one warehouse (filtering adds no
+            // value) or while data is still loading.
+            Obx(() {
+              final warehouses = controller.availableWarehouses;
+              if (controller.isLoadingStock.value || warehouses.length <= 1) {
+                return const SizedBox.shrink();
+              }
+              final selected = controller.selectedWarehouse.value;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Filter by Warehouse',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        // ── "All" chip ──────────────────────────────────
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: const Text('All'),
+                            selected: selected == null,
+                            onSelected: (_) => controller.clearWarehouseFilter(),
+                            selectedColor: cs.primary,
+                            checkmarkColor: cs.onPrimary,
+                            labelStyle: TextStyle(
+                              color: selected == null
+                                  ? cs.onPrimary
+                                  : cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            side: BorderSide(
+                              color: selected == null
+                                  ? cs.primary
+                                  : cs.outlineVariant,
+                            ),
+                            backgroundColor: cs.surfaceContainer,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        // ── Per-warehouse chips ─────────────────────────
+                        ...warehouses.map((wh) {
+                          final isActive = selected == wh;
+                          // Shorten long warehouse names:
+                          // "Main Warehouse - DDMCO" → "Main Warehouse"
+                          final label = wh.contains(' - ')
+                              ? wh.split(' - ').first.trim()
+                              : wh;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(label),
+                              selected: isActive,
+                              onSelected: (_) =>
+                                  controller.onWarehouseChanged(wh),
+                              selectedColor: cs.primary,
+                              checkmarkColor: cs.onPrimary,
+                              labelStyle: TextStyle(
+                                color: isActive
+                                    ? cs.onPrimary
+                                    : cs.onSurfaceVariant,
+                              ),
+                              side: BorderSide(
+                                color: isActive
+                                    ? cs.primary
+                                    : cs.outlineVariant,
+                              ),
+                              backgroundColor: cs.surfaceContainer,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }),
+
+            // 1. Warehouse Balance ─────────────────────────────────────
             Text(
               'Warehouse Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -255,20 +337,28 @@ class ItemFormScreen extends GetView<ItemFormController> {
               if (controller.isLoadingStock.value) {
                 return const LinearProgressIndicator();
               }
-              if (controller.stockLevels.isEmpty) {
+              final levels = controller.filteredStockLevels;
+              if (levels.isEmpty) {
                 return _buildEmptyState(
                   context,
                   cs,
                   icon: Icons.warehouse_outlined,
-                  message: 'No stock available in any warehouse.',
+                  message: controller.selectedWarehouse.value != null
+                      ? 'No stock in the selected warehouse.'
+                      : 'No stock available in any warehouse.',
                 );
               }
-              return StockBalanceChart(stockLevels: controller.stockLevels);
+              // ValueKey forces the chart to repaint when the filter changes,
+              // preventing stale bar animations from a previous selection.
+              return StockBalanceChart(
+                key: ValueKey(controller.selectedWarehouse.value),
+                stockLevels: levels,
+              );
             }),
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance
+            // 2. Batch-Wise Balance ────────────────────────────────────
             Text(
               'Batch-Wise Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -281,25 +371,25 @@ class ItemFormScreen extends GetView<ItemFormController> {
               if (controller.isLoadingBatches.value) {
                 return const LinearProgressIndicator();
               }
-              if (controller.batchHistory.isEmpty) {
+              final batches = controller.filteredBatchHistory;
+              if (batches.isEmpty) {
                 return _buildEmptyState(
                   context,
                   cs,
                   icon: Icons.category_outlined,
-                  message: 'No batch history found.',
+                  message: controller.selectedWarehouse.value != null
+                      ? 'No batches in the selected warehouse.'
+                      : 'No batch history found.',
                 );
               }
               return Column(
-                children: controller.batchHistory.map((batch) {
+                children: batches.map((batch) {
                   final dateStr = batch['stock_age_date'];
-                  final ageString =
-                      controller.getFormattedStockAge(dateStr);
-                  final batchNo =
-                      batch['batch_no'] ?? batch['batch'] ?? 'N/A';
+                  final ageString = controller.getFormattedStockAge(dateStr);
+                  final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
                   final qty = batch['balance_qty'];
                   final warehouse = batch['warehouse'];
 
-                  // Fix #10: theme tokens replace hardcoded white/grey
                   return Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 10),
@@ -369,7 +459,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 3. Stock Ledger
+            // 3. Stock Ledger (untouched) ──────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -392,8 +482,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                           context: context,
                           firstDate: DateTime(2020),
                           lastDate: DateTime.now(),
-                          initialDateRange:
-                              controller.ledgerDateRange.value,
+                          initialDateRange: controller.ledgerDateRange.value,
                         );
                         if (picked != null) {
                           controller.updateLedgerDateRange(picked);
@@ -403,7 +492,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ],
             ),
 
-            // Fix #17: d MMM yy format to include year
             Obx(() {
               final range = controller.ledgerDateRange.value;
               if (range == null) return const SizedBox.shrink();
@@ -439,8 +527,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final entry = controller.stockLedgerEntries[index];
-                  final qty =
-                      (entry['actual_qty'] as num).toDouble();
+                  final qty = (entry['actual_qty'] as num).toDouble();
                   final isPositive = qty > 0;
 
                   String subtitle = '${entry['voucher_no']}';
@@ -455,7 +542,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     extraInfo = 'Ref: ${entry['custom_reference_no']}';
                   }
 
-                  // Fix #11: theme tokens replace Colors.white / grey.shade200
                   return Card(
                     elevation: 0,
                     color: cs.surfaceContainer,
@@ -469,21 +555,18 @@ class ItemFormScreen extends GetView<ItemFormController> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 entry['voucher_type'],
-                                style: theme.textTheme.bodyMedium
-                                    ?.copyWith(
+                                style: theme.textTheme.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: cs.onSurface,
                                 ),
                               ),
                               Text(
                                 '${isPositive ? '+' : ''}$qty',
-                                style: theme.textTheme.bodyMedium
-                                    ?.copyWith(
+                                style: theme.textTheme.bodyMedium?.copyWith(
                                   color: isPositive
                                       ? Colors.green.shade600
                                       : cs.error,
@@ -510,16 +593,14 @@ class ItemFormScreen extends GetView<ItemFormController> {
                             ),
                           const SizedBox(height: 6),
                           Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               if (entry['warehouse'] != null)
                                 Expanded(
                                   child: Text(
                                     entry['warehouse'],
                                     style: theme.textTheme.labelSmall
-                                        ?.copyWith(
-                                            color: cs.onSurfaceVariant),
+                                        ?.copyWith(color: cs.onSurfaceVariant),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -528,8 +609,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                                     '${entry['posting_date']} '
                                     '${entry['posting_time']}'),
                                 style: theme.textTheme.labelSmall
-                                    ?.copyWith(
-                                        color: cs.onSurfaceVariant),
+                                    ?.copyWith(color: cs.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -546,10 +626,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Attributes Tab ─────────────────────────────────────────────────────────
+  // ── Attributes Tab ──────────────────────────────────────────────────────
 
-  Widget _buildAttributesTab(
-      BuildContext context, Item item, ColorScheme cs) {
+  Widget _buildAttributesTab(BuildContext context, Item item, ColorScheme cs) {
     final theme = Theme.of(context);
 
     if (item.attributes.isEmpty) {
@@ -570,7 +649,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
         final attr = item.attributes[index];
         return ListTile(
           contentPadding: EdgeInsets.zero,
-          // Fix #12: theme tokens instead of hardcoded Colors.grey
           title: Text(
             attr.attributeName,
             style: theme.textTheme.bodyMedium
@@ -606,7 +684,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
         );
       }
 
-      // Fix #7: fully defined gridDelegate
       return GridView.builder(
         padding: const EdgeInsets.all(12),
         itemCount: controller.attachments.length,
@@ -694,7 +771,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     });
   }
 
-  // ── Shared helpers ─────────────────────────────────────────────────────────
+  // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildSectionCard({
     required BuildContext context,
@@ -703,7 +780,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
     required List<Widget> children,
   }) {
     final theme = Theme.of(context);
-    // Fix #13: theme tokens for section card
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -746,7 +822,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Fix #14: theme token instead of Colors.black54
           Text(
             label,
             style: theme.textTheme.bodySmall
@@ -767,7 +842,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     textAlign: TextAlign.right,
                   ),
                 ),
-                // Fix #9: copy icon is now tappable
                 if (isCopyable && onCopy != null) ...[
                   const SizedBox(width: 8),
                   GestureDetector(
@@ -787,7 +861,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // Fix #18: proper empty state with icon + centred layout
   Widget _buildEmptyState(
     BuildContext context,
     ColorScheme cs, {
@@ -813,7 +886,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // Fix #15: swipe-down-to-dismiss + barrierDismissible
   void _openFullScreenImage(BuildContext context, String url) {
     Get.dialog(
       barrierDismissible: true,
@@ -822,7 +894,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: GestureDetector(
-          // Swipe down to dismiss
           onVerticalDragEnd: (details) {
             if (details.primaryVelocity != null &&
                 details.primaryVelocity! > 300) {
