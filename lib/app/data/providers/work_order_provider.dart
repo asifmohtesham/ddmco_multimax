@@ -24,7 +24,6 @@ class WorkOrderProvider {
         'produced_qty',
         'status',
         'planned_start_date',
-        'expected_end_date',
         'docstatus',
         'modified',
         'wip_warehouse',
