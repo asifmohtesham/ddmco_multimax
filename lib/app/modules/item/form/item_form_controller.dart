@@ -17,8 +17,6 @@ class ItemFormController extends GetxController
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // Fix #1: TabController owned by the GetX controller — never reset by
-  // Obx rebuilds, and disposed automatically in onClose().
   late final TabController tabController;
 
   String itemCode = '';
@@ -37,18 +35,57 @@ class ItemFormController extends GetxController
   var isLoadingLedger = false.obs;
   var isLoadingBatches = false.obs;
 
-  // Fix #5: track which tabs have been loaded at least once.
+  // ── Warehouse filter ────────────────────────────────────────────────────
+  /// null = All Warehouses (no filter applied).
+  var selectedWarehouse = Rx<String?>(null);
+
+  /// Deduplicated, sorted list of warehouses derived from the raw stockLevels
+  /// list.  Used to build the filter chip row in the UI.
+  List<String> get availableWarehouses {
+    final seen = <String>{};
+    final warehouses = <String>[];
+    for (final s in stockLevels) {
+      if (s.warehouse.isNotEmpty && seen.add(s.warehouse)) {
+        warehouses.add(s.warehouse);
+      }
+    }
+    warehouses.sort();
+    return warehouses;
+  }
+
+  /// stockLevels filtered by [selectedWarehouse].
+  List<WarehouseStock> get filteredStockLevels {
+    final wh = selectedWarehouse.value;
+    if (wh == null) return stockLevels;
+    return stockLevels.where((s) => s.warehouse == wh).toList();
+  }
+
+  /// batchHistory filtered by [selectedWarehouse].
+  List<Map<String, dynamic>> get filteredBatchHistory {
+    final wh = selectedWarehouse.value;
+    if (wh == null) return batchHistory;
+    return batchHistory
+        .where((b) => (b['warehouse'] ?? '') == wh)
+        .toList();
+  }
+
+  void onWarehouseChanged(String? warehouse) {
+    selectedWarehouse.value = warehouse;
+  }
+
+  void clearWarehouseFilter() {
+    selectedWarehouse.value = null;
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   bool _stockTabLoaded = false;
   bool _attachmentsTabLoaded = false;
 
-  // Fix #6: enrichment cache — keyed by voucher_no.
   final Map<String, Map<String, dynamic>> _enrichmentCache = {};
 
   @override
   void onInit() {
     super.onInit();
-
-    // Fix #1: initialise TabController with this controller as vsync.
     tabController = TabController(length: 4, vsync: this);
     tabController.addListener(_onTabChanged);
 
@@ -71,17 +108,16 @@ class ItemFormController extends GetxController
     super.onClose();
   }
 
-  // Fix #5: lazy tab listener — only fetch when a tab is first selected.
   void _onTabChanged() {
     if (tabController.indexIsChanging) return;
     switch (tabController.index) {
-      case 1: // Stock Levels
+      case 1:
         if (!_stockTabLoaded) {
           _stockTabLoaded = true;
           fetchDashboardData();
         }
         break;
-      case 3: // Attachments
+      case 3:
         if (!_attachmentsTabLoaded) {
           _attachmentsTabLoaded = true;
           fetchAttachments();
@@ -95,7 +131,6 @@ class ItemFormController extends GetxController
     _loadCoreData();
   }
 
-  /// Only fetches item details on init. Tab data is lazy.
   void _loadCoreData() {
     fetchItemDetails();
   }
@@ -156,6 +191,8 @@ class ItemFormController extends GetxController
 
   Future<void> fetchStockLevels() async {
     isLoadingStock.value = true;
+    // Reset filter so a stale selection never hides data after a refresh.
+    selectedWarehouse.value = null;
     try {
       final response = await _provider.getStockLevels(itemCode);
       if (response.statusCode == 200 &&
@@ -186,7 +223,6 @@ class ItemFormController extends GetxController
         List<Map<String, dynamic>> entries =
             List<Map<String, dynamic>>.from(response.data['data']);
 
-        // Fix #6: only enrich voucher numbers not already in cache.
         final List<String> dnToFetch = [];
         final List<String> seToFetch = [];
 
@@ -235,7 +271,6 @@ class ItemFormController extends GetxController
           }
         }
 
-        // Merge cache into entries
         for (var i = 0; i < entries.length; i++) {
           final voucherNo = entries[i]['voucher_no'];
           if (voucherNo != null && _enrichmentCache.containsKey(voucherNo)) {
@@ -256,7 +291,7 @@ class ItemFormController extends GetxController
     isLoadingBatches.value = true;
     try {
       final response = await _provider.getBatchWiseHistory(itemCode);
-      if (response.statusCode == 200 &&
+      if (response.statusCode == 200&&
           response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
         List<Map<String, dynamic>> historyList =
