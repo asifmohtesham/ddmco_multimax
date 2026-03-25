@@ -17,8 +17,8 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/modules/packing_slip/form/controllers/packing_slip_item_form_controller.dart';
-// step-4 will convert this to a stub export; kept for reference until then.
-import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
+    show BatchDisplayTile;
 
 class PackingSlipFormController extends GetxController
     with OptimisticLockingMixin {
@@ -36,10 +36,10 @@ class PackingSlipFormController extends GetxController
   var isSaving     = false.obs;
   var isScanning   = false.obs;
   var isDirty      = false.obs;
-  var isAddingItem = false.obs; // wired into child.isAddingItemFlag
+  var isAddingItem = false.obs;
   String _originalJson = '';
 
-  // Sheet validation state (kept for Step 3 which moves it to child).
+  // Kept until step-6 removes it after child fully owns qty.
   var isSheetValid = false.obs;
   String _initialQty = '';
 
@@ -47,7 +47,6 @@ class PackingSlipFormController extends GetxController
   var linkedDeliveryNote = Rx<DeliveryNote?>(null);
   var posUpload          = Rx<PosUpload?>(null);
 
-  // Other Packing Slips linked to the same Delivery Note.
   var relatedPackingSlips = <PackingSlip>[].obs;
 
   final TextEditingController barcodeController = TextEditingController();
@@ -58,13 +57,10 @@ class PackingSlipFormController extends GetxController
   var bsMaxQty  = 0.0.obs;
   var isEditing = false.obs;
 
-  // Filters
   var itemFilter = 'All'.obs;
 
-  // Sheet open state
   var isItemSheetOpen = false.obs;
 
-  // ── F7: per-item loading overlay ─────────────────────────────────────────────
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
@@ -78,8 +74,10 @@ class PackingSlipFormController extends GetxController
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
+  // Step-5: variant-of for itemSubtext chip.
+  String? currentItemVariantOf;
 
-  // Metadata observables (kept for Step 6 which removes them after child owns them).
+  // Metadata (step-6 removes these once child owns them).
   var bsItemOwner      = RxnString();
   var bsItemCreation   = RxnString();
   var bsItemModified   = RxnString();
@@ -92,13 +90,7 @@ class PackingSlipFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    // Sheet validation listener stays on bsQtyController until Step 3
-    // moves qty ownership fully into the child controller.
     bsQtyController.addListener(validateSheet);
-
-    // NOTE: the ever(isSheetValid, ...) auto-submit worker that was here has
-    // been removed. Auto-submit is now wired per-sheet via child.setupAutoSubmit()
-    // inside prepareSheetForAdd / editItem, matching the SE pattern.
 
     if (mode == 'new') {
       _initNewPackingSlip();
@@ -128,7 +120,7 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
-  // Sheet validation (kept until Step 3 moves it to child)
+  // Sheet validation (kept until step-6 moves it to child)
   // ---------------------------------------------------------------------------
 
   void validateSheet() {
@@ -148,24 +140,24 @@ class PackingSlipFormController extends GetxController
 
   void _initNewPackingSlip() {
     isLoading.value = true;
-    final String dnName    = Get.arguments['deliveryNote'] ?? '';
+    final String dnName      = Get.arguments['deliveryNote'] ?? '';
     final String? customPoNo = Get.arguments['customPoNo'];
-    final int nextCaseNo   = Get.arguments['nextCaseNo'] ?? 1;
+    final int nextCaseNo     = Get.arguments['nextCaseNo'] ?? 1;
     packingSlip.value = PackingSlip(
-      name:        'New Packing Slip',
+      name:         'New Packing Slip',
       deliveryNote: dnName,
-      modified:    '',
-      creation:    DateTime.now().toString(),
-      docstatus:   0,
-      status:      'Draft',
-      customPoNo:  customPoNo,
-      fromCaseNo:  nextCaseNo,
-      toCaseNo:    nextCaseNo,
-      items:       [],
-      customer:    '',
+      modified:     '',
+      creation:     DateTime.now().toString(),
+      docstatus:    0,
+      status:       'Draft',
+      customPoNo:   customPoNo,
+      fromCaseNo:   nextCaseNo,
+      toCaseNo:     nextCaseNo,
+      items:        [],
+      customer:     '',
     );
-    isDirty.value  = true;
-    _originalJson  = '';
+    isDirty.value = true;
+    _originalJson = '';
     if (dnName.isNotEmpty) {
       fetchLinkedDeliveryNote(dnName);
       fetchRelatedPackingSlips(dnName);
@@ -242,8 +234,8 @@ class PackingSlipFormController extends GetxController
   }
 
   void _updateOriginalState(PackingSlip slip) {
-    _originalJson  = jsonEncode(slip.toJson());
-    isDirty.value  = false;
+    _originalJson = jsonEncode(slip.toJson());
+    isDirty.value = false;
   }
 
   void _checkForChanges() {
@@ -287,9 +279,8 @@ class PackingSlipFormController extends GetxController
 
   String getPosItemName(String serial) {
     if (posUpload.value == null) return '';
-    final int idx = int.tryParse(serial) ?? 0;
-    final item =
-        posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
+    final int idx  = int.tryParse(serial) ?? 0;
+    final item = posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
     return item?.itemName ?? '';
   }
 
@@ -427,9 +418,9 @@ class PackingSlipFormController extends GetxController
   // ---------------------------------------------------------------------------
 
   void prepareSheetForAdd(DeliveryNoteItem item) {
-    itemFormKey              = GlobalKey<FormState>();
-    isEditing.value          = false;
-    currentItemNameKey       = null;
+    itemFormKey        = GlobalKey<FormState>();
+    isEditing.value    = false;
+    currentItemNameKey = null;
     _populateItemDetails(item);
 
     bsItemOwner.value      = null;
@@ -453,7 +444,7 @@ class PackingSlipFormController extends GetxController
     if (remaining < 0) remaining = 0;
     bsMaxQty.value = remaining;
 
-    final qtyStr       = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
+    final qtyStr         = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
     bsQtyController.text = qtyStr;
     _initialQty          = qtyStr;
     validateSheet();
@@ -486,7 +477,6 @@ class PackingSlipFormController extends GetxController
   Future<void> editItem(PackingSlipItem item) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
-    // F7: per-item loading overlay (now actually fires).
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
 
@@ -521,7 +511,7 @@ class PackingSlipFormController extends GetxController
       }
       bsMaxQty.value = dnItem.qty - globalPackedOthers;
 
-      final qtyStr       = item.qty.toStringAsFixed(0);
+      final qtyStr         = item.qty.toStringAsFixed(0);
       bsQtyController.text = qtyStr;
       _initialQty          = qtyStr;
       validateSheet();
@@ -569,63 +559,27 @@ class PackingSlipFormController extends GetxController
           controller:       child,
           scrollController: sc,
           onSubmit:         addItemToSlip,
-          onScan:           null, // PS scans at document level
+          onScan:           null,
           isSaveEnabled:    packingSlip.value?.docstatus == 0,
-          customFields:     _buildCustomFields(),
+          // Step-5: variant-of chip (null hides the subtext).
+          itemSubtext: currentItemVariantOf?.isNotEmpty == true
+              ? currentItemVariantOf
+              : null,
+          customFields: _buildCustomFields(),
         ),
       ),
       isScrollControlled: true,
     );
-    // Reliable post-await cleanup (replaces old .whenComplete()).
     isItemSheetOpen.value = false;
     Get.delete<PackingSlipItemFormController>();
   }
 
-  /// Read-only custom fields injected into the sheet.
-  /// Step-4 will extract this into a dedicated private widget.
+  /// Builds the read-only custom fields list for the item sheet.
+  /// Step-5: uses BatchDisplayTile (extracted StatelessWidget) instead of
+  /// the inline Builder+Container workaround from step-2.
   List<Widget> _buildCustomFields() {
     if (currentBatchNo == null || currentBatchNo!.isEmpty) return const [];
-    // The builder context is not available here; widgets that need
-    // Theme.of(context) are built via Builder inside the sheet.
-    return [
-      Builder(
-        builder: (context) => Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 80,
-                child: Text(
-                  'Batch No',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  currentBatchNo!,
-                  style: const TextStyle(
-                    fontFamily: 'ShureTechMono',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ];
+    return [BatchDisplayTile(batchNo: currentBatchNo!)];
   }
 
   // ---------------------------------------------------------------------------
@@ -651,14 +605,16 @@ class PackingSlipFormController extends GetxController
   }
 
   void _populateItemDetails(DeliveryNoteItem item) {
-    currentItemDnDetail = item.name;
-    currentItemCode     = item.itemCode;
-    currentItemName     = item.itemName;
-    currentBatchNo      = item.batchNo;
-    currentUom          = item.uom;
-    currentSerial       = item.customInvoiceSerialNumber;
-    currentNetWeight    = 0.0;
-    currentWeightUom    = 0.0;
+    currentItemDnDetail   = item.name;
+    currentItemCode       = item.itemCode;
+    currentItemName       = item.itemName;
+    currentBatchNo        = item.batchNo;
+    currentUom            = item.uom;
+    currentSerial         = item.customInvoiceSerialNumber;
+    currentNetWeight      = 0.0;
+    currentWeightUom      = 0.0;
+    // Step-5: populate variant-of for itemSubtext chip.
+    currentItemVariantOf  = item.customVariantOf;
   }
 
   void adjustQty(double delta) {
@@ -736,7 +692,7 @@ class PackingSlipFormController extends GetxController
           netWeight:   0.0,
           weightUom:   0.0,
           customInvoiceSerialNumber: currentSerial,
-          customVariantOf:           null,
+          customVariantOf:           currentItemVariantOf,
           customCountryOfOrigin:     null,
           creation:    DateTime.now().toString(),
           owner:       bsItemOwner.value,
@@ -793,10 +749,10 @@ class PackingSlipFormController extends GetxController
         'modified':      packingSlip.value?.modified,
         'items': packingSlip.value!.items.map((e) {
           final json = <String, dynamic>{
-            'item_code':                      e.itemCode,
-            'qty':                            e.qty,
-            'dn_detail':                      e.dnDetail,
-            'custom_invoice_serial_number':   e.customInvoiceSerialNumber,
+            'item_code':                    e.itemCode,
+            'qty':                          e.qty,
+            'dn_detail':                    e.dnDetail,
+            'custom_invoice_serial_number': e.customInvoiceSerialNumber,
           };
           if (e.name.isNotEmpty) json['name'] = e.name;
           return json;
