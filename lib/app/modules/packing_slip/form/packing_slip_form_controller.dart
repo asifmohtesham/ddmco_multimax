@@ -87,6 +87,12 @@ class PackingSlipFormController extends GetxController
   // DataWedge hardware-scan worker — subscribed in onInit, disposed in onClose.
   Worker? _scanWorker;
 
+  /// True once the DataWedge ever() worker has been successfully subscribed
+  /// in [onInit]. Read by [PackingSlipFormScreen] for the smoke-test log trace:
+  ///   log('DataWedge worker active: \${controller.scanWorkerActive}',
+  ///       name: 'PackingSlipScreen');
+  bool get scanWorkerActive => _scanWorker != null;
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
