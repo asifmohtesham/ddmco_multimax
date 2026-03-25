@@ -12,10 +12,13 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/modules/packing_slip/form/controllers/packing_slip_item_form_controller.dart';
+// step-4 will convert this to a stub export; kept for reference until then.
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart';
 
 class PackingSlipFormController extends GetxController
     with OptimisticLockingMixin {
@@ -29,12 +32,14 @@ class PackingSlipFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  var isLoading  = true.obs;
-  var isSaving   = false.obs;
-  var isScanning = false.obs;
-  var isDirty    = false.obs;
+  var isLoading    = true.obs;
+  var isSaving     = false.obs;
+  var isScanning   = false.obs;
+  var isDirty      = false.obs;
+  var isAddingItem = false.obs; // wired into child.isAddingItemFlag
   String _originalJson = '';
 
+  // Sheet validation state (kept for Step 3 which moves it to child).
   var isSheetValid = false.obs;
   String _initialQty = '';
 
@@ -42,7 +47,7 @@ class PackingSlipFormController extends GetxController
   var linkedDeliveryNote = Rx<DeliveryNote?>(null);
   var posUpload          = Rx<PosUpload?>(null);
 
-  // Other Packing Slips linked to the same Delivery Note (for progress calculation)
+  // Other Packing Slips linked to the same Delivery Note.
   var relatedPackingSlips = <PackingSlip>[].obs;
 
   final TextEditingController barcodeController = TextEditingController();
@@ -59,7 +64,7 @@ class PackingSlipFormController extends GetxController
   // Sheet open state
   var isItemSheetOpen = false.obs;
 
-  // ── F7: per-item loading overlay (mirrors PO/SE/DN) ───────────────────────
+  // ── F7: per-item loading overlay ─────────────────────────────────────────────
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
@@ -74,13 +79,11 @@ class PackingSlipFormController extends GetxController
   double? currentWeightUom;
   String? currentItemNameKey;
 
-  // Metadata observables
+  // Metadata observables (kept for Step 6 which removes them after child owns them).
   var bsItemOwner      = RxnString();
   var bsItemCreation   = RxnString();
   var bsItemModified   = RxnString();
   var bsItemModifiedBy = RxnString();
-
-  Timer? _autoSubmitTimer;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -89,21 +92,13 @@ class PackingSlipFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // Sheet validation listener stays on bsQtyController until Step 3
+    // moves qty ownership fully into the child controller.
     bsQtyController.addListener(validateSheet);
 
-    ever(isSheetValid, (bool valid) {
-      _autoSubmitTimer?.cancel();
-      if (valid && isItemSheetOpen.value && packingSlip.value?.docstatus == 0) {
-        if (_storageService.getAutoSubmitEnabled()) {
-          final int delay = _storageService.getAutoSubmitDelay();
-          _autoSubmitTimer = Timer(Duration(seconds: delay), () {
-            if (isSheetValid.value && isItemSheetOpen.value) {
-              addItemToSlip();
-            }
-          });
-        }
-      }
-    });
+    // NOTE: the ever(isSheetValid, ...) auto-submit worker that was here has
+    // been removed. Auto-submit is now wired per-sheet via child.setupAutoSubmit()
+    // inside prepareSheetForAdd / editItem, matching the SE pattern.
 
     if (mode == 'new') {
       _initNewPackingSlip();
@@ -114,7 +109,6 @@ class PackingSlipFormController extends GetxController
 
   @override
   void onClose() {
-    _autoSubmitTimer?.cancel();
     barcodeController.dispose();
     bsQtyController.dispose();
     super.onClose();
@@ -134,7 +128,7 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
-  // Sheet validation
+  // Sheet validation (kept until Step 3 moves it to child)
   // ---------------------------------------------------------------------------
 
   void validateSheet() {
@@ -464,69 +458,178 @@ class PackingSlipFormController extends GetxController
     _initialQty          = qtyStr;
     validateSheet();
 
-    isItemSheetOpen.value = true;
-    Get.bottomSheet(
-      const PackingSlipItemFormSheet(),
-      isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-    });
+    final child = Get.put(PackingSlipItemFormController());
+    child.initialise(
+      parent:   this,
+      itemCode: item.itemCode,
+      itemName: item.itemName ?? '',
+    );
+    child.setupAutoSubmit(
+      enabled:       _storageService.getAutoSubmitEnabled(),
+      delaySeconds:  _storageService.getAutoSubmitDelay(),
+      isSheetOpen:   isItemSheetOpen,
+      isSubmittable: () => packingSlip.value?.docstatus == 0,
+      onAutoSubmit:  () async {
+        isAddingItem.value = true;
+        await Future.delayed(const Duration(milliseconds: 500));
+        await addItemToSlip();
+        isAddingItem.value = false;
+      },
+    );
+    _openItemSheet(child);
   }
 
   // ---------------------------------------------------------------------------
   // Sheet: edit
   // ---------------------------------------------------------------------------
 
-  void editItem(PackingSlipItem item) {
-    itemFormKey = GlobalKey<FormState>();
-    final dnItem = linkedDeliveryNote.value?.items
-        .firstWhereOrNull((d) => d.name == item.dnDetail);
-    if (dnItem == null) return;
+  Future<void> editItem(PackingSlipItem item) async {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
-    isEditing.value    = true;
-    currentItemNameKey = item.name;
+    // F7: per-item loading overlay (now actually fires).
+    isLoadingItemEdit.value  = true;
+    loadingForItemName.value = item.name;
 
-    bsItemOwner.value      = item.owner;
-    bsItemCreation.value   = item.creation;
-    bsItemModified.value   = item.modified;
-    bsItemModifiedBy.value = item.modifiedBy;
+    try {
+      itemFormKey = GlobalKey<FormState>();
+      final dnItem = linkedDeliveryNote.value?.items
+          .firstWhereOrNull((d) => d.name == item.dnDetail);
+      if (dnItem == null) return;
 
-    _populateItemDetails(dnItem);
+      isEditing.value    = true;
+      currentItemNameKey = item.name;
 
-    double globalPackedOthers = 0.0;
-    final currentSlipName = packingSlip.value?.name;
-    for (var slip in relatedPackingSlips) {
-      if (slip.name == currentSlipName) continue;
-      for (var i in slip.items) {
-        if (i.dnDetail == item.dnDetail) globalPackedOthers += i.qty;
+      bsItemOwner.value      = item.owner;
+      bsItemCreation.value   = item.creation;
+      bsItemModified.value   = item.modified;
+      bsItemModifiedBy.value = item.modifiedBy;
+
+      _populateItemDetails(dnItem);
+
+      double globalPackedOthers = 0.0;
+      final currentSlipName = packingSlip.value?.name;
+      for (var slip in relatedPackingSlips) {
+        if (slip.name == currentSlipName) continue;
+        for (var i in slip.items) {
+          if (i.dnDetail == item.dnDetail) globalPackedOthers += i.qty;
+        }
       }
-    }
-    for (var i in (packingSlip.value?.items ?? [])) {
-      if (i.dnDetail == item.dnDetail && i.name != item.name) {
-        globalPackedOthers += i.qty;
+      for (var i in (packingSlip.value?.items ?? [])) {
+        if (i.dnDetail == item.dnDetail && i.name != item.name) {
+          globalPackedOthers += i.qty;
+        }
       }
+      bsMaxQty.value = dnItem.qty - globalPackedOthers;
+
+      final qtyStr       = item.qty.toStringAsFixed(0);
+      bsQtyController.text = qtyStr;
+      _initialQty          = qtyStr;
+      validateSheet();
+
+      final child = Get.put(PackingSlipItemFormController());
+      child.initialise(
+        parent:      this,
+        itemCode:    dnItem.itemCode,
+        itemName:    dnItem.itemName ?? '',
+        editingItem: item,
+      );
+      child.setupAutoSubmit(
+        enabled:       _storageService.getAutoSubmitEnabled(),
+        delaySeconds:  _storageService.getAutoSubmitDelay(),
+        isSheetOpen:   isItemSheetOpen,
+        isSubmittable: () => packingSlip.value?.docstatus == 0,
+        onAutoSubmit:  () async {
+          isAddingItem.value = true;
+          await Future.delayed(const Duration(milliseconds: 500));
+          await addItemToSlip();
+          isAddingItem.value = false;
+        },
+      );
+      _openItemSheet(child);
+    } finally {
+      isLoadingItemEdit.value  = false;
+      loadingForItemName.value = null;
     }
-    bsMaxQty.value = dnItem.qty - globalPackedOthers;
-
-    final qtyStr       = item.qty.toStringAsFixed(0);
-    bsQtyController.text = qtyStr;
-    _initialQty          = qtyStr;
-    validateSheet();
-
-    isItemSheetOpen.value = true;
-    Get.bottomSheet(
-      const PackingSlipItemFormSheet(),
-      isScrollControlled: true,
-    ).whenComplete(() {
-      isItemSheetOpen.value = false;
-    });
   }
 
   // ---------------------------------------------------------------------------
-  // F6: confirmAndDeleteItem — swipe-to-delete entry point
-  //
-  // Mirrors PO/SE/DN pattern: closes sheet if open, shows confirmation dialog,
-  // removes the item locally, then triggers save.
+  // _openItemSheet — SE-standard async/await coordinator
+  // ---------------------------------------------------------------------------
+
+  Future<void> _openItemSheet(PackingSlipItemFormController child) async {
+    isItemSheetOpen.value = true;
+    await Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize:     0.4,
+        maxChildSize:     0.95,
+        expand:           false,
+        builder: (context, sc) => UniversalItemFormSheet(
+          key:              ValueKey(child.editingItemName.value ?? 'new'),
+          controller:       child,
+          scrollController: sc,
+          onSubmit:         addItemToSlip,
+          onScan:           null, // PS scans at document level
+          isSaveEnabled:    packingSlip.value?.docstatus == 0,
+          customFields:     _buildCustomFields(),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+    // Reliable post-await cleanup (replaces old .whenComplete()).
+    isItemSheetOpen.value = false;
+    Get.delete<PackingSlipItemFormController>();
+  }
+
+  /// Read-only custom fields injected into the sheet.
+  /// Step-4 will extract this into a dedicated private widget.
+  List<Widget> _buildCustomFields() {
+    if (currentBatchNo == null || currentBatchNo!.isEmpty) return const [];
+    // The builder context is not available here; widgets that need
+    // Theme.of(context) are built via Builder inside the sheet.
+    return [
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 80,
+                child: Text(
+                  'Batch No',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  currentBatchNo!,
+                  style: const TextStyle(
+                    fontFamily: 'ShureTechMono',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  // ---------------------------------------------------------------------------
+  // confirmAndDeleteItem
   // ---------------------------------------------------------------------------
 
   void confirmAndDeleteItem(PackingSlipItem item) {
@@ -649,7 +752,7 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
-  // deleteCurrentItem — used by sheet's Delete button
+  // deleteCurrentItem
   // ---------------------------------------------------------------------------
 
   Future<void> deleteCurrentItem() async {
