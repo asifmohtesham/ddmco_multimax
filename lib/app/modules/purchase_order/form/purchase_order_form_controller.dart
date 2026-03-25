@@ -18,7 +18,6 @@ import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
-// F4: canonical sheet-controller tag — matches 'po_item_sheet' used in the sheet widget.
 const _kPoSheetTag = 'po_item_sheet';
 
 class PurchaseOrderFormController extends GetxController {
@@ -124,6 +123,25 @@ class PurchaseOrderFormController extends GetxController {
   Worker? _scanWorker;
 
   // ---------------------------------------------------------------------------
+  // Listener helpers
+  //
+  // Suspending listeners around controller write-backs prevents _checkForChanges
+  // from firing while _originalJson is still '' and sibling fields are partially
+  // written — which was the root cause of the spurious 'Not Saved' status on
+  // a clean Draft document.
+  // ---------------------------------------------------------------------------
+
+  void _addListeners() {
+    supplierController.addListener(_checkForChanges);
+    dateController.addListener(_checkForChanges);
+  }
+
+  void _removeListeners() {
+    supplierController.removeListener(_checkForChanges);
+    dateController.removeListener(_checkForChanges);
+  }
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
@@ -131,8 +149,7 @@ class PurchaseOrderFormController extends GetxController {
   void onInit() {
     super.onInit();
     fetchSuppliers();
-    supplierController.addListener(_checkForChanges);
-    dateController.addListener(_checkForChanges);
+    _addListeners();
 
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
 
@@ -147,6 +164,7 @@ class PurchaseOrderFormController extends GetxController {
   void onClose() {
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
+    _removeListeners();
     supplierController.dispose();
     dateController.dispose();
     barcodeController.dispose();
@@ -231,10 +249,18 @@ class PurchaseOrderFormController extends GetxController {
       final response = await _provider.getPurchaseOrder(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final po = PurchaseOrder.fromJson(response.data['data']);
-        purchaseOrder.value     = po;
+        purchaseOrder.value = po;
+
+        // Suspend listeners so that assigning text values does not trigger
+        // _checkForChanges before _originalJson has been captured. Without
+        // this guard, the first .text assignment fires the listener while
+        // _originalJson is still '' — making the document appear dirty and
+        // instantly showing 'Not Saved' on a clean Draft.
+        _removeListeners();
         supplierController.text = po.supplier;
         dateController.text     = po.transactionDate;
-        _updateOriginalState(po);
+        _updateOriginalState(po); // sets _originalJson + isDirty=false
+        _addListeners();          // re-attach only after snapshot is ready
       } else {
         GlobalDialog.showError(
           title:   'Could not load Purchase Order',
@@ -562,10 +588,6 @@ class PurchaseOrderFormController extends GetxController {
 
   // ---------------------------------------------------------------------------
   // Open item bottom sheet
-  //
-  // F4: renamed private helper to _openItemSheet (was already _openItemSheet;
-  //     now uses await + explicit cleanup matching SE's Fix #5/#8 pattern).
-  // F5: maxChildSize 0.9 → 0.95 — matches SE/DN/PR for full-height sheet.
   // ---------------------------------------------------------------------------
 
   Future<void> _openItemSheet({
@@ -606,12 +628,11 @@ class PurchaseOrderFormController extends GetxController {
     );
 
     isItemSheetOpen.value = true;
-    // F4: await + explicit cleanup (mirrors SE Fix #5/#8 — no .whenComplete)
     await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
         minChildSize:     0.4,
-        maxChildSize:     0.95, // F5: was 0.9
+        maxChildSize:     0.95,
         expand:           false,
         builder: (context, scrollController) {
           return PurchaseOrderItemFormSheet(
@@ -620,7 +641,6 @@ class PurchaseOrderFormController extends GetxController {
       ),
       isScrollControlled: true,
     );
-    // F4: post-await cleanup — runs predictably unlike .whenComplete()
     isItemSheetOpen.value = false;
     Get.delete<PurchaseOrderItemFormController>(tag: _kPoSheetTag);
   }
