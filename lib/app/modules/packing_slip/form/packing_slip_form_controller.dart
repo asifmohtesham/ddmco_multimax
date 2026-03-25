@@ -100,6 +100,11 @@ class PackingSlipFormController extends GetxController
     // BarcodeInputWidget handles manual keyboard input only; hardware scans
     // from the DataWedge EventChannel must be subscribed here, mirroring the
     // pattern used in StockEntryFormController._initDependencies().
+    //
+    // Guard: `code.isNotEmpty` is the first line of defence against the
+    // deliberate scannedCode = '' reset that DataWedgeService._processQueue()
+    // emits between queued items (see data_wedge_service.dart). scanBarcode()
+    // also contains a belt-and-braces `barcode.isEmpty` check for safety.
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
         log('[PackingSlipForm] DataWedge scan received: $code', name: 'Scan');
@@ -386,9 +391,22 @@ class PackingSlipFormController extends GetxController
   // Scan
   // ---------------------------------------------------------------------------
 
+  /// Processes a barcode from either the DataWedge hardware trigger or manual
+  /// keyboard entry via [BarcodeInputWidget.onFieldSubmitted].
+  ///
+  /// Guard behaviour:
+  ///   • [isItemSheetOpen] — suppresses scans while the item bottom-sheet is
+  ///     open, preventing a second sheet from being pushed on top during
+  ///     auto-submit delays.
+  ///   • [barcode.isEmpty] — belt-and-braces fallback against the deliberate
+  ///     `scannedCode = ''` reset that [DataWedgeService._processQueue] emits
+  ///     between queued items. The `ever()` worker in [onInit] already filters
+  ///     empty strings as its first line of defence.
   Future<void> scanBarcode(String barcode) async {
+    // Guard 1: suppress new scans while item sheet is open.
     if (isItemSheetOpen.value) return;
     if (checkStaleAndBlock()) return;
+    // Guard 2: ignore the empty-string inter-scan reset from DataWedgeService.
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
       GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
