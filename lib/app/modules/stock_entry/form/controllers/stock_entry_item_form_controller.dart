@@ -8,13 +8,18 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
+import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import '../stock_entry_form_controller.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///
-/// Extends [ItemSheetControllerBase] and mixes in [PosSerialMixin].
+/// Extends [ItemSheetControllerBase] and mixes in:
+///   • [PosSerialMixin]    — invoice serial-number selector (POS Upload flow)
+///   • [AutoFillRackMixin] — auto-selects the best-fit source rack once the
+///                           operator enters a positive qty in add-mode,
+///                           constrained to the parent document's Source Warehouse.
 ///
 /// SE is the most complex DocType item sheet:
 ///   • dual rack (source + target)
@@ -22,8 +27,24 @@ import '../stock_entry_form_controller.dart';
 ///   • three entry-source modes (manual / MR / POS)
 ///   • MR qty constraint
 ///   • batch-balance cross-check
-///   • auto-fill source/target rack
+///   • auto-fill source rack (via AutoFillRackMixin, qty-triggered)
 ///   • auto-submit worker (via base setupAutoSubmit)
+///
+/// AutoFillRackMixin wiring:
+///   • [isAddMode] set before listener attachment.
+///   • [initAutoFillListener] called in initialise() after initBaseListeners().
+///     Fires [autoFillRackForQty] once the operator enters qty > 0 and the
+///     SOURCE rack field ([rackController], mapped to sourceRackController) is
+///     still empty. Constrained to [resolvedWarehouse] — the effective source
+///     warehouse for Material Issue.
+///   • [disposeAutoFillListener] called in onClose() before super.onClose().
+///
+/// Note: AutoFillRackMixin operates on [rackController] (the base TEC).
+/// For SE, [rackController] is aliased to [sourceRackController] via the
+/// override of [resolvedWarehouse] which already reflects the source side.
+/// The mixin autofill only applies to Material Issue (source-rack only).
+/// Target-rack autofill (Material Receipt) is out of scope and has been
+/// removed; it can be addressed in a future commit if required.
 ///
 /// Step-2 additions:
 ///   • [isAddingItemFlag]   wired to _parent.isAddingItem
@@ -51,8 +72,8 @@ import '../stock_entry_form_controller.dart';
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
 ///   sheet closes → Get.delete<StockEntryItemFormController>()
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with PosSerialMixin {
-  // ── Parent reference ──────────────────────────────────────────────────
+    with PosSerialMixin, AutoFillRackMixin {
+  // ── Parent reference ────────────────────────────────────────────────
   late StockEntryFormController _parent;
 
   /// Public read-only access to the parent document controller.
@@ -76,7 +97,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var itemSourceWarehouse    = RxnString();
   var itemTargetWarehouse    = RxnString();
 
-  // ── Balance state ─────────────────────────────────────────────────────────
+  // ── Balance state ─────────────────────────────────────────────────────
   var batchBalance          = 0.0.obs;
   var rackBalance           = 0.0.obs;
   var validationMaxQty      = 0.0.obs; // MR cap
@@ -92,6 +113,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
+  /// The effective source warehouse for this item, used by both
+  /// stock-balance fetching and AutoFillRackMixin warehouse constraint.
   @override
   String? get resolvedWarehouse =>
       itemSourceWarehouse.value ??
@@ -104,7 +127,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false; // dual-rack rules are SE-specific; handled in isValidRacks()
 
-  // ── P1-C: isSheetLoading override ────────────────────────────────────────
+  // ── P1-C: isSheetLoading override ───────────────────────────────────────
 
   @override
   bool get isSheetLoading =>
@@ -139,12 +162,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── PosSerialMixin contract ─────────────────────────────────────────────
+  // ── PosSerialMixin contract ────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
-  // ── Initialisation ─────────────────────────────────────────────────────
+  // ── Initialisation ───────────────────────────────────────────────────
 
   void initialise({
     required StockEntryFormController parent,
@@ -203,7 +226,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo, mrReferenceItems);
     }
 
+    // isAddMode must be set before initAutoFillListener() so the mixin
+    // guard reads the correct value when the qty listener first fires.
+    isAddMode = editingItem == null;
+
     initBaseListeners();
+    initAutoFillListener(); // AutoFillRackMixin: attach qty → source-rack autofill trigger
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
@@ -216,8 +244,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     captureSerialSnapshot();
     _snapshotSourceRack = sourceRackController.text;
     _snapshotTargetRack = targetRackController.text;
-
-    isAddMode = editingItem == null;
 
     if (editingItem != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -354,7 +380,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Computed max qty ──────────────────────────────────────────────────────
+  // ── Computed max qty ────────────────────────────────────────────────────
 
   double get effectiveMaxQty {
     double limit = 999999.0;
@@ -367,7 +393,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return limit;
   }
 
-  // ── Rack rule helper ──────────────────────────────────────────────────────
+  // ── Rack rule helper ───────────────────────────────────────────────────
 
   bool isValidRacks() {
     final type = _parent.selectedStockEntryType.value;
@@ -424,7 +450,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return true;
   }
 
-  // ── validateBatch (SE-specific override) ──────────────────────────────────
+  // ── validateBatch (SE-specific override) ────────────────────────────────
   // validateBatchOnInit → removed; use base method (S1)
 
   @override
@@ -467,10 +493,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         await _updateAvailableStock();
         await _updateBatchBalance();
 
-        if (_parent.selectedStockEntryType.value == 'Material Issue' &&
-            sourceRackController.text.isEmpty) {
-          unawaited(_autoFillBestSourceRack());
-        }
+        // Source-rack autofill is now driven by AutoFillRackMixin via the
+        // qty-field listener. The previous unawaited(_autoFillBestSourceRack())
+        // call has been removed — autofill now fires when the operator
+        // explicitly sets a positive qty after batch validation completes.
 
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
@@ -489,7 +515,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     } catch (e) {
       isBatchValid.value    = false;
       isBatchReadOnly.value = false; // S1: base field
-      GlobalSnackbar.error(message: 'Failed to validate batch: \$e');
+      GlobalSnackbar.error(message: 'Failed to validate batch: $e');
     } finally {
       isValidatingBatch.value = false;
       validateSheet();
@@ -503,7 +529,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── validateDualRack ──────────────────────────────────────────────────────
+  // ── validateDualRack ───────────────────────────────────────────────────
 
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
@@ -583,7 +609,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── Stock / batch balance fetchers ────────────────────────────────────────
+  // ── Stock / batch balance fetchers ──────────────────────────────────────────
 
   Future<void> _updateAvailableStock() async {
     final type = _parent.selectedStockEntryType.value;
@@ -636,15 +662,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
         if (rack.isNotEmpty && rackBal <= 0) {
           rackError.value =
-              'Insufficient stock in Rack: \$rack (Warehouse: \$effectiveWh)';
+              'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)';
           GlobalSnackbar.error(
               message:
-                  'Insufficient stock in Rack: \$rack (Warehouse: \$effectiveWh)');
+                  'Insufficient stock in Rack: $rack (Warehouse: $effectiveWh)');
           isSourceRackValid.value = false;
         }
       }
     } catch (e) {
-      log('[SE:ItemSheet] _updateAvailableStock error: \$e', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] _updateAvailableStock error: $e', name: 'SE:ItemSheet');
     } finally {
       isLoadingRackBalance.value = false;
     }
@@ -682,90 +708,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       }
     } catch (e) {
       batchBalance.value = 0.0;
-      log('[SE:ItemSheet] _updateBatchBalance error: \$e', name: 'SE:ItemSheet');
+      log('[SE:ItemSheet] _updateBatchBalance error: $e', name: 'SE:ItemSheet');
     } finally {
       isLoadingBatchBalance.value = false;
-    }
-  }
-
-  // ── Auto-fill racks ───────────────────────────────────────────────────────
-
-  Future<void> _autoFillBestSourceRack() async {
-    if (_parent.selectedStockEntryType.value != 'Material Issue') return;
-    if (sourceRackController.text.isNotEmpty) return;
-
-    final warehouse = itemSourceWarehouse.value ??
-        derivedSourceWarehouse.value ??
-        _parent.selectedFromWarehouse.value;
-    if (warehouse == null || warehouse.isEmpty) return;
-
-    try {
-      final api = Get.find<ApiProvider>();
-      final response = await api.getStockBalance(
-        itemCode:  itemCode.value,
-        warehouse: warehouse,
-        batchNo:   batchController.text.isNotEmpty ? batchController.text : null,
-      );
-      if (response.statusCode != 200 || response.data['message'] == null) return;
-      final result = response.data['message']['result'];
-      if (result is! List || result.isEmpty) return;
-
-      final Map<String, double> map = {};
-      for (int i = 0; i < result.length - 1; i++) {
-        final row = result[i] as Map<String, dynamic>;
-        final String? r = row['rack'] as String?;
-        final double  q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
-        if (r != null && r.isNotEmpty && q > 0) map[r] = q;
-      }
-      rackStockMap.assignAll(map);
-      if (map.isEmpty || sourceRackController.text.isNotEmpty) return;
-
-      final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-      log('[SE:ItemSheet] auto-fill source rack="\$best"', name: 'SE:ItemSheet');
-      sourceRackController.text = best;
-      await validateDualRack(best, true);
-    } catch (e) {
-      log('[SE:ItemSheet] _autoFillBestSourceRack error (non-fatal): \$e',
-          name: 'SE:ItemSheet');
-    }
-  }
-
-  Future<void> _autoFillBestTargetRack() async {
-    if (_parent.selectedStockEntryType.value != 'Material Receipt') return;
-    if (targetRackController.text.isNotEmpty) return;
-
-    final warehouse = itemTargetWarehouse.value ??
-        derivedTargetWarehouse.value ??
-        _parent.selectedToWarehouse.value;
-    if (warehouse == null || warehouse.isEmpty) return;
-
-    try {
-      final api = Get.find<ApiProvider>();
-      final response = await api.getStockBalance(
-        itemCode:  itemCode.value,
-        warehouse: warehouse,
-      );
-      if (response.statusCode != 200 || response.data['message'] == null) return;
-      final result = response.data['message']['result'];
-      if (result is! List || result.isEmpty) return;
-
-      final Map<String, double> map = {};
-      for (int i = 0; i < result.length - 1; i++) {
-        final row = result[i] as Map<String, dynamic>;
-        final String? r = row['rack'] as String?;
-        final double  q = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
-        if (r != null && r.isNotEmpty && q > 0) map[r] = q;
-      }
-      rackStockMap.assignAll(map);
-      if (map.isEmpty || targetRackController.text.isNotEmpty) return;
-
-      final best = map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-      log('[SE:ItemSheet] auto-fill target rack="\$best"', name: 'SE:ItemSheet');
-      targetRackController.text = best;
-      await validateDualRack(best, false);
-    } catch (e) {
-      log('[SE:ItemSheet] _autoFillBestTargetRack error (non-fatal): \$e',
-          name: 'SE:ItemSheet');
     }
   }
 
@@ -807,21 +752,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return false;
   }
 
-  // ── Trigger auto-fill after sheet opens ───────────────────────────────────
-
-  void triggerAutoFill() {
-    final type = _parent.selectedStockEntryType.value;
-    if (type == 'Material Issue') {
-      unawaited(_autoFillBestSourceRack());
-    } else if (type == 'Material Receipt') {
-      unawaited(_autoFillBestTargetRack());
-    }
-  }
-
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
+    disposeAutoFillListener(); // AutoFillRackMixin: remove qty TEC listener
     sourceRackController.dispose();
     targetRackController.dispose();
     super.onClose();
