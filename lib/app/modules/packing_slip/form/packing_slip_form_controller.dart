@@ -173,7 +173,7 @@ class PackingSlipFormController extends GetxController
         GlobalSnackbar.error(message: 'Failed to fetch packing slip details');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load data: \${e.toString()}');
+      GlobalSnackbar.error(message: 'Failed to load data: ${e.toString()}');
     } finally {
       isLoading.value = false;
     }
@@ -194,7 +194,7 @@ class PackingSlipFormController extends GetxController
         }
       }
     } catch (e) {
-      log('Failed to fetch linked DN: \$e');
+      log('Failed to fetch linked DN: $e');
     }
   }
 
@@ -205,7 +205,7 @@ class PackingSlipFormController extends GetxController
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      log('Failed to fetch linked POS Upload: \$e');
+      log('Failed to fetch linked POS Upload: $e');
     }
   }
 
@@ -221,7 +221,7 @@ class PackingSlipFormController extends GetxController
             data.map((json) => PackingSlip.fromJson(json)).toList();
       }
     } catch (e) {
-      log('Failed to fetch related packing slips: \$e');
+      log('Failed to fetch related packing slips: $e');
     }
   }
 
@@ -396,7 +396,7 @@ class PackingSlipFormController extends GetxController
       prepareSheetForAdd(match);
     } else {
       GlobalSnackbar.error(
-          message: 'Item \$itemCode not found in Delivery Note or Batch mismatch.');
+          message: 'Item $itemCode not found in Delivery Note or Batch mismatch.');
     }
   }
 
@@ -581,7 +581,7 @@ class PackingSlipFormController extends GetxController
     }
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
-      message: 'Are you sure you want to remove \${item.itemCode} from this package?',
+      message: 'Are you sure you want to remove ${item.itemCode} from this package?',
       onConfirm: () async {
         final items = packingSlip.value?.items.toList() ?? [];
         items.removeWhere((i) => i.name == item.name);
@@ -602,7 +602,9 @@ class PackingSlipFormController extends GetxController
     currentSerial        = item.customInvoiceSerialNumber;
     currentNetWeight     = 0.0;
     currentWeightUom     = 0.0;
-    currentItemVariantOf = (item as dynamic).customVariantOf as String?;
+    // Step-5: use typed accessor — DeliveryNoteItem.customVariantOf is a
+    // proper String? field; the previous (item as dynamic) cast is removed.
+    currentItemVariantOf = item.customVariantOf;
   }
 
   // Step-3: adjustQty delegates to child if sheet is open.
@@ -771,7 +773,7 @@ class PackingSlipFormController extends GetxController
         if (isNew) {
           name = saved.name;
           mode = 'edit';
-          GlobalSnackbar.success(message: 'Packing Slip Created: \${saved.name}');
+          GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
         } else {
           GlobalSnackbar.success(message: 'Packing Slip Saved');
         }
@@ -780,7 +782,7 @@ class PackingSlipFormController extends GetxController
       }
     } catch (e) {
       if (handleVersionConflict(e)) return;
-      GlobalSnackbar.error(message: 'Save failed: \$e');
+      GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
     }
