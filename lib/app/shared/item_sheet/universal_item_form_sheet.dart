@@ -26,6 +26,19 @@ import 'item_sheet_controller_base.dart';
 /// The scan bar is shown automatically when [controller.sheetScanController]
 /// is non-null. For DN this is the parent barcodeController; for SE it is null
 /// so the bar is hidden (SE scans route at document level).
+///
+/// ## Stable key contract
+///
+/// [GlobalItemFormSheet] is given [key: const ValueKey('universal_item_sheet')].
+/// A stable [ValueKey] tells Flutter’s element reconciler that this is the
+/// same widget across [Obx] rebuilds, so the existing element (and its
+/// subtree, including [QuantityInputWidget] with its `final` [_decKey] /
+/// [_incKey] fields) is updated in-place rather than unmounted and remounted.
+/// This prevents:
+///   (a) [_QtyRepeatController] GetX tag churn (tag derived from [UniqueKey])
+///   (b) In-progress press-and-hold timer cancellation on every Rx tick
+/// One sheet instance is mounted per [showModalBottomSheet] call, so a
+/// single constant key is correct for the entire lifetime of a sheet.
 class UniversalItemFormSheet extends StatelessWidget {
   final ItemSheetControllerBase controller;
 
@@ -68,7 +81,20 @@ class UniversalItemFormSheet extends StatelessWidget {
       final isEditing = controller.editingItemName.value != null;
 
       return GlobalItemFormSheet(
-        // ── Identity ────────────────────────────────────────────────────────
+        // ── Stable key ─────────────────────────────────────────────────────────
+        //
+        // CRITICAL: prevents GlobalItemFormSheet from being unmounted and
+        // remounted on every Obx rebuild. Without a stable key, each Rx
+        // change creates a new widget object → new QuantityInputWidget
+        // instance → new _decKey / _incKey UniqueKeys → new GetX tags for
+        // _QtyRepeatController → mid-hold timer cancellation and (in the
+        // unbounded path) the GetWidget null-cast crash.
+        //
+        // One UniversalItemFormSheet is mounted per sheet open, so this
+        // constant key is correct for the entire lifetime of one sheet.
+        key: const ValueKey('universal_item_sheet'),
+
+        // ── Identity ───────────────────────────────────────────────────────────
         formKey:          controller.formKey,
         scrollController: scrollController,
         title:            isEditing ? 'Update Item' : 'Add Item',
@@ -76,23 +102,27 @@ class UniversalItemFormSheet extends StatelessWidget {
         itemName:         controller.itemName.value,
         itemSubtext:      itemSubtext,
 
-        // ── Metadata footer ─────────────────────────────────────────────────
+        // ── Metadata footer ───────────────────────────────────────────────────
         owner:      controller.itemOwner.value,
         creation:   controller.itemCreation.value,
         modified:   controller.itemModified.value,
         modifiedBy: controller.itemModifiedBy.value,
 
-        // ── Qty ─────────────────────────────────────────────────────────────
+        // ── Qty ─────────────────────────────────────────────────────────────────
         qtyController: controller.qtyController,
         onIncrement:   () => controller.adjustQty(1),
         onDecrement:   () => controller.adjustQty(-1),
         qtyInfoText:   controller.qtyInfoText,
 
-        // ── Save / delete ────────────────────────────────────────────────────
+        // ── Save / delete ───────────────────────────────────────────────────
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled:   isSaveEnabled,
         isLoading:       controller.isSheetLoading,
         onSubmit:        onSubmit,
+        // onDelete delegates to deleteCurrentItem() which reads
+        // editingItemName at call time — not at build time — ensuring
+        // the closure always resolves the live item even if the Rx
+        // value changes between build and tap.
         onDelete: isEditing
             ? () => controller.deleteCurrentItem()
             : null,
