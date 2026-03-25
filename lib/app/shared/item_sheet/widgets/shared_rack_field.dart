@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/item_form_sheet/validated_rack_field.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 
 /// A reusable Rack input field backed by any [ItemSheetControllerBase].
@@ -10,16 +11,26 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///
 /// ### `editMode: false` (default — SE style)
 /// Borderless [TextField], green check-circle when valid, clear + validate
-/// icons, per-rack stock tooltip. [BalanceChip] shown below the field
+/// icons, per-rack stock tooltip.  [BalanceChip] shown below the field
 /// displaying the selected rack's balance from [rackStockMap].
 ///
 /// ### `editMode: true` (PR / DN style)
-/// [OutlineInputBorder] [TextFormField], readOnly-when-valid, spinner →
-/// Edit-btn → forward-arrow suffix. [BalanceChip] shown below the field.
+/// Delegates to [ValidatedRackField] → [ValidatedFieldWidget], giving
+/// consistent OutlineInputBorder, spinner → edit-button lifecycle, and
+/// picker button support through [onPickerTap].  [BalanceChip] shown below.
+///
+/// ## Picker integration
+/// Pass [onPickerTap] to show the shelves icon button in the suffix area
+/// when `editMode: true`.  The full picker lifecycle (controller creation,
+/// data load, sheet presentation) is owned by the caller
+/// (UniversalItemFormSheet); this widget only renders the button.
 ///
 /// P3-C: onChanged simplified — c.resetRack() replaces inline Rx read.
 /// P3-D: Per-rack stock tooltip in _EditModeRack suffix row.
 /// Balance chip: sources rackStockMap[rackController.text] for the balance.
+/// Commit-E: _EditModeRack now delegates to ValidatedRackField instead of
+///   its own hand-rolled TextFormField, eliminating the duplicate
+///   OutlineInputBorder / suffix / readOnly implementation.
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -27,28 +38,20 @@ class SharedRackField extends StatelessWidget {
   final String hint;
   final bool   editMode;
 
+  /// Optional callback fired when the picker icon button is tapped.
+  /// Only active when [editMode] is true.  When null, no picker button
+  /// is shown.
+  final VoidCallback? onPickerTap;
+
   const SharedRackField({
     super.key,
     required this.c,
     required this.accentColor,
-    this.label    = 'Rack',
-    this.hint     = 'Enter or scan rack ID',
-    this.editMode = false,
+    this.label       = 'Rack',
+    this.hint        = 'Enter or scan rack ID',
+    this.editMode    = false,
+    this.onPickerTap,
   });
-
-  Color get _validFill {
-    if (accentColor is MaterialColor) {
-      return (accentColor as MaterialColor).shade50;
-    }
-    return accentColor.withOpacity(0.08);
-  }
-
-  Color get _validBorder {
-    if (accentColor is MaterialColor) {
-      return (accentColor as MaterialColor).shade200;
-    }
-    return accentColor.withOpacity(0.5);
-  }
 
   /// Returns the balance for the currently-typed rack from rackStockMap,
   /// or 0.0 if the rack is not in the map.
@@ -64,7 +67,7 @@ class SharedRackField extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode ─────────────────────────────────────────────────
+// ── Simple (borderless) mode — SE style, unchanged ───────────────────────────
 class _SimpleRack extends StatelessWidget {
   final SharedRackField w;
   const _SimpleRack(this.w);
@@ -146,7 +149,6 @@ class _SimpleRack extends StatelessWidget {
               ),
             ),
           ),
-          // Rack balance chip — sources the typed rack's balance from rackStockMap.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
@@ -159,7 +161,12 @@ class _SimpleRack extends StatelessWidget {
   }
 }
 
-// ── Edit-mode (OutlineInputBorder, readOnly-when-valid) ──────────────────────
+// ── Edit-mode — delegates to ValidatedRackField ───────────────────────────────
+//
+// Previously owned its own TextFormField + OutlineInputBorder + suffix
+// logic (Commits A-D history). Now delegates entirely to ValidatedRackField
+// → ValidatedFieldWidget so both DN and SE share a single rack field
+// implementation. The BalanceChip is rendered below as before.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -171,47 +178,22 @@ class _EditModeRack extends StatelessWidget {
     return Obx(() {
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
-      final hasError   = c.rackError.value != null;
       final rackBal    = w._rackBalance(c);
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GlobalItemFormSheet.buildInputGroup(
-            label:   w.label,
-            color:   w.accentColor,
-            bgColor: isValid ? w._validFill : null,
-            child: TextFormField(
-              key:        const ValueKey('shared_rack_edit'),
-              controller: c.rackController,
-              readOnly:   isValid,
-              autofocus:  false,
-              decoration: InputDecoration(
-                hintText: w.hint,
-                helperText: c.rackError.value,
-                helperStyle: TextStyle(
-                  color:      hasError ? Colors.red : Colors.grey,
-                  fontWeight: hasError ? FontWeight.bold : FontWeight.normal,
-                ),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                      color: hasError ? Colors.red : w._validBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide:
-                      BorderSide(color: w.accentColor, width: 2),
-                ),
-                filled:    true,
-                fillColor: isValid ? w._validFill : Colors.white,
-                suffixIcon: _suffixIcon(c, isValid, validating),
-              ),
-              onChanged: isValid ? null : (_) => c.resetRack(),
-              onFieldSubmitted: (val) => c.validateRack(val),
-            ),
+          ValidatedRackField(
+            key:            const ValueKey('shared_rack_edit'),
+            textController: c.rackController,
+            isValid:        isValid,
+            isValidating:   validating,
+            label:          w.hint,   // hint text used as field label/hintText
+            color:          w.accentColor,
+            onReset:        c.resetRack,
+            onValidate:     () => c.validateRack(c.rackController.text),
+            onSubmitted:    (val) => c.validateRack(val),
+            onPickerTap:    w.onPickerTap,
           ),
           // Rack balance chip — sources the typed rack's balance from rackStockMap.
           BalanceChip(
@@ -223,50 +205,5 @@ class _EditModeRack extends StatelessWidget {
         ],
       );
     });
-  }
-
-  Widget _suffixIcon(
-    ItemSheetControllerBase c,
-    bool isValid,
-    bool validating,
-  ) {
-    if (validating) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: 20, height: 20,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: w.accentColor),
-        ),
-      );
-    }
-    if (isValid) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (c.rackStockTooltip.value != null)
-            Tooltip(
-              message:     c.rackStockTooltip.value!,
-              triggerMode: TooltipTriggerMode.tap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(Icons.inventory_2_outlined,
-                    color: w.accentColor, size: 20),
-              ),
-            ),
-          IconButton(
-            icon:    Icon(Icons.edit, color: w.accentColor, size: 20),
-            onPressed: c.resetRack,
-            tooltip: 'Edit Rack',
-          ),
-        ],
-      );
-    }
-    return IconButton(
-      icon:      const Icon(Icons.arrow_forward),
-      onPressed: () => c.validateRack(c.rackController.text),
-      tooltip:   'Validate',
-      color:     Colors.grey,
-    );
   }
 }
