@@ -32,6 +32,7 @@ class FakeApiProvider extends ApiProvider {
       {int limit = 20,
       int limitStart = 0,
       Map<String, dynamic>? filters,
+      Map<String, dynamic>? orFilters,
       List<String>? fields,
       String orderBy = 'modified desc'}) async =>
       emptyOk();
@@ -52,13 +53,17 @@ class FakeApiProvider extends ApiProvider {
 
   // Stock balance stubs — overridden per test when needed
   @override
-  Future<Response> getStockBalance(String itemCode, String warehouse,
-          {String? batchNo}) async =>
+  Future<Response> getStockBalance({
+    required String itemCode,
+    String? warehouse,
+    String? batchNo,
+    String? rack,
+  }) async =>
       okResponse([]);
 
   @override
-  Future<Response> getBatchWiseBalance(
-          String itemCode, String batchNo, String? warehouse) async =>
+  Future<Response> getBatchWiseBalance(String itemCode, String batchNo,
+          {String? warehouse}) async =>
       okResponse([]);
 
   @override
