@@ -77,7 +77,6 @@ class _SufficiencyBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Qty label
           Text(
             availableQty % 1 == 0
                 ? availableQty.toInt().toString()
@@ -90,19 +89,16 @@ class _SufficiencyBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          // Bar track
           ClipRRect(
             borderRadius: BorderRadius.circular(2),
             child: SizedBox(
               height: 4,
               child: Stack(
                 children: [
-                  // Track
                   Container(
                     color: color.withOpacity(0.15),
                     width: double.infinity,
                   ),
-                  // Fill
                   FractionallySizedBox(
                     widthFactor: fraction,
                     child: Container(color: color),
@@ -166,16 +162,12 @@ class _RackPickerTile extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── Leading: sufficiency dot ─────────────────────────────────
                 _SufficiencyDot(status: entry.status),
                 const SizedBox(width: 12),
-
-                // ── Middle: rack name + location + warehouse ────────────────
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Rack asset-code name
                       Text(
                         entry.rackName,
                         style: TextStyle(
@@ -188,7 +180,6 @@ class _RackPickerTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      // Physical location label (Aisle N · Shelf X)
                       if (entry.displayLabel != entry.rackName) ...[
                         Text(
                           entry.displayLabel,
@@ -201,7 +192,6 @@ class _RackPickerTile extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                       ],
-                      // Warehouse badge
                       if (entry.warehouseName.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -227,17 +217,12 @@ class _RackPickerTile extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(width: 12),
-
-                // ── Trailing: qty + sufficiency bar ────────────────────────
                 _SufficiencyBar(
                   availableQty: entry.availableQty,
                   requestedQty: entry.requestedQty,
                   status: entry.status,
                 ),
-
-                // ── Selected checkmark ─────────────────────────────────────
                 if (isSelected) ...[
                   const SizedBox(width: 8),
                   Icon(Icons.check_circle, color: cs.primary, size: 18),
@@ -257,38 +242,11 @@ class _RackPickerTile extends StatelessWidget {
 
 /// Bottom sheet that displays a sorted list of racks with per-rack
 /// availability for the active item + batch.
-///
-/// ## Usage
-/// ```dart
-/// // In ValidatedRackField picker button onTap (Commit E):
-/// final ctrl = Get.put(RackPickerController(), tag: pickerTag);
-/// await ctrl.load(
-///   itemCode:     sheetCtrl.itemCode.value,
-///   batchNo:      sheetCtrl.batchController.text,
-///   warehouse:    sheetCtrl.resolvedWarehouse ?? '',
-///   requestedQty: double.tryParse(sheetCtrl.qtyController.text) ?? 0,
-///   currentRack:  sheetCtrl.rackController.text,
-///   fallbackMap:  sheetCtrl.rackStockMap,
-/// );
-/// await Get.bottomSheet(
-///   RackPickerSheet(
-///     pickerTag: pickerTag,
-///     onSelected: (rack) {
-///       rackController.text = rack;
-///       validateRack(rack);
-///     },
-///   ),
-///   isScrollControlled: true,
-/// );
-/// Get.delete<RackPickerController>(tag: pickerTag);
-/// ```
 class RackPickerSheet extends StatelessWidget {
   /// Tag used to locate the [RackPickerController] registered by the caller.
   final String pickerTag;
 
-  /// Called when the operator taps a rack tile. Receives the selected
-  /// rack asset-code name. The caller is responsible for populating the
-  /// rack field and triggering validation.
+  /// Called when the operator taps a rack tile.
   final void Function(String rack) onSelected;
 
   const RackPickerSheet({
@@ -297,7 +255,6 @@ class RackPickerSheet extends StatelessWidget {
     required this.onSelected,
   });
 
-  // ── Header section label (mirrors GlobalItemFormSheet.buildInputGroup style)
   static Widget _sectionLabel(String text, Color color) {
     return Padding(
       padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
@@ -313,7 +270,6 @@ class RackPickerSheet extends StatelessWidget {
     );
   }
 
-  // ── Small inline chip (item code, batch, warehouse context)
   static Widget _contextChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -336,13 +292,15 @@ class RackPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = Get.find<RackPickerController>(tag: pickerTag);
+    // NOTE: ctrl is intentionally NOT resolved here at build() time.
+    // Each Obx resolves it lazily via Get.find(tag: pickerTag) so that
+    // GetX can correctly track reactive reads within the Obx scope.
+    // Resolving ctrl once outside Obx would cause "improper use of GetX".
     final theme = Theme.of(context);
     final cs    = theme.colorScheme;
     final mq    = MediaQuery.of(context);
 
     return Container(
-      // ── Sheet chrome ─────────────────────────────────────────────────────────────
       constraints: BoxConstraints(
         maxHeight: mq.size.height * 0.75,
       ),
@@ -355,7 +313,7 @@ class RackPickerSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
 
-          // ── Drag handle ─────────────────────────────────────────────────────────
+          // ── Drag handle ─────────────────────────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -370,7 +328,7 @@ class RackPickerSheet extends StatelessWidget {
             ),
           ),
 
-          // ── Header ───────────────────────────────────────────────────────────
+          // ── Header ────────────────────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
             child: Row(
@@ -388,20 +346,23 @@ class RackPickerSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Context chips: item code + batch + warehouse
-                      Obx(() => Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          if (ctrl.itemCode.isNotEmpty)
-                            _contextChip(ctrl.itemCode, cs.primary),
-                          if (ctrl.batchNo.isNotEmpty)
-                            _contextChip(ctrl.batchNo, Colors.purple.shade400),
-                          if (ctrl.warehouse.isNotEmpty)
-                            _contextChip(ctrl.warehouse,
-                                Colors.teal.shade600),
-                        ],
-                      )),
+                      // Lazy ctrl lookup inside Obx so reactive reads are tracked
+                      Obx(() {
+                        final ctrl = Get.find<RackPickerController>(tag: pickerTag);
+                        return Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (ctrl.itemCode.isNotEmpty)
+                              _contextChip(ctrl.itemCode, cs.primary),
+                            if (ctrl.batchNo.isNotEmpty)
+                              _contextChip(ctrl.batchNo, Colors.purple.shade400),
+                            if (ctrl.warehouse.isNotEmpty)
+                              _contextChip(ctrl.warehouse,
+                                  Colors.teal.shade600),
+                          ],
+                        );
+                      }),
                     ],
                   ),
                 ),
@@ -419,10 +380,9 @@ class RackPickerSheet extends StatelessWidget {
 
           const Divider(height: 1),
 
-          // ── Fallback banner ─────────────────────────────────────────────────────
-          // Shown when the Stock Ledger returned no data and the picker
-          // fell back to rackStockMap (Stock Balance — not batch-filtered).
+          // ── Fallback banner ─────────────────────────────────────────────────────────────
           Obx(() {
+            final ctrl = Get.find<RackPickerController>(tag: pickerTag);
             if (!ctrl.usedFallback.value || ctrl.isLoading.value) {
               return const SizedBox.shrink();
             }
@@ -450,16 +410,16 @@ class RackPickerSheet extends StatelessWidget {
             );
           }),
 
-          // ── Entry count summary ────────────────────────────────────────────────
+          // ── Entry count summary ───────────────────────────────────────────────────────────
           Obx(() {
+            final ctrl = Get.find<RackPickerController>(tag: pickerTag);
             if (ctrl.isLoading.value || ctrl.entries.isEmpty) {
               return const SizedBox.shrink();
             }
             final suf = ctrl.sufficientCount;
             final tot = ctrl.entries.length;
             return Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
               child: Row(
                 children: [
                   _sectionLabel('AVAILABLE RACKS', cs.onSurfaceVariant),
@@ -489,15 +449,15 @@ class RackPickerSheet extends StatelessWidget {
             );
           }),
 
-          // ── List (scrollable) or loading shimmer ──────────────────────────
+          // ── List (scrollable) or loading spinner ─────────────────────────────────
           Flexible(
             child: Obx(() {
+              final ctrl = Get.find<RackPickerController>(tag: pickerTag);
+
               if (ctrl.isLoading.value) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48.0),
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                  child: Center(child: CircularProgressIndicator()),
                 );
               }
 
@@ -525,6 +485,8 @@ class RackPickerSheet extends StatelessWidget {
                 );
               }
 
+              // shrinkWrap removed: Flexible already provides a bounded
+              // height; shrinkWrap + Flexible causes RenderFlex overflow.
               return ListView.builder(
                 padding: EdgeInsets.fromLTRB(
                   16,
@@ -532,19 +494,21 @@ class RackPickerSheet extends StatelessWidget {
                   16,
                   mq.viewPadding.bottom + 24,
                 ),
-                shrinkWrap: true,
                 itemCount: ctrl.entries.length,
                 itemBuilder: (_, i) {
                   final entry = ctrl.entries[i];
-                  return Obx(() => _RackPickerTile(
-                        entry:      entry,
-                        isSelected: ctrl.selectedRack.value == entry.rackName,
-                        onTap: () {
-                          ctrl.selectRack(entry.rackName);
-                          onSelected(entry.rackName);
-                          Navigator.of(context).pop();
-                        },
-                      ));
+                  return Obx(() {
+                    final c = Get.find<RackPickerController>(tag: pickerTag);
+                    return _RackPickerTile(
+                      entry:      entry,
+                      isSelected: c.selectedRack.value == entry.rackName,
+                      onTap: () {
+                        c.selectRack(entry.rackName);
+                        onSelected(entry.rackName);
+                        Navigator.of(context).pop();
+                      },
+                    );
+                  });
                 },
               );
             }),
