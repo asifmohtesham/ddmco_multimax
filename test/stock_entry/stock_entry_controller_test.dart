@@ -6,6 +6,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
+import 'package:multimax/app/data/models/material_request_model.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'helpers/mock_providers.dart';
 
 void main() {
@@ -169,8 +171,6 @@ void main() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-import 'package:multimax/app/data/models/material_request_model.dart';
-import 'package:multimax/app/data/models/pos_upload_model.dart';
 
 MaterialRequest _fakeMR(String name, String type) => MaterialRequest(
       name: name,
@@ -178,6 +178,8 @@ MaterialRequest _fakeMR(String name, String type) => MaterialRequest(
       status: 'Pending',
       docstatus: 1,
       transactionDate: '2026-01-01',
+      scheduleDate: '2026-01-01',
+      modified: '2026-01-01 00:00:00',
       items: [],
     );
 
