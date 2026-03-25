@@ -133,10 +133,10 @@ class PosUploadController extends GetxController {
         }
         _currentPage++;
       } else {
-        AppNotification.error(message: 'Failed to fetch POS uploads');
+        AppNotification.error('Failed to fetch POS uploads');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;

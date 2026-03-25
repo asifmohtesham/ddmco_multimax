@@ -123,10 +123,10 @@ class PackingSlipController extends GetxController {
         _fetchAssociatedCustomers(newSlips);
         _currentPage++;
       } else {
-        AppNotification.error(message: 'Failed to fetch packing slips');
+        AppNotification.error('Failed to fetch packing slips');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -238,7 +238,7 @@ class PackingSlipController extends GetxController {
         deliveryNotesForSelection.value = _allFetchedDNs;
       }
     } catch (e) {
-      AppNotification.error(message: 'Failed to fetch Delivery Notes');
+      AppNotification.error('Failed to fetch Delivery Notes');
     } finally {
       isFetchingDNs.value = false;
     }

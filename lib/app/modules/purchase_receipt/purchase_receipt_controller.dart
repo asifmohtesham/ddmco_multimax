@@ -112,10 +112,10 @@ class PurchaseReceiptController extends GetxController {
         }
         _currentPage++;
       } else {
-        AppNotification.error(message: 'Failed to fetch purchase receipts');
+        AppNotification.error('Failed to fetch purchase receipts');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -136,10 +136,10 @@ class PurchaseReceiptController extends GetxController {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
         _detailedReceiptsCache[name] = receipt;
       } else {
-        AppNotification.error(message: 'Failed to fetch receipt details');
+        AppNotification.error('Failed to fetch receipt details');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       isLoadingDetails.value = false;
     }
@@ -172,7 +172,7 @@ class PurchaseReceiptController extends GetxController {
         purchaseOrdersForSelection.value = _allFetchedPOs;
       }
     } catch (e) {
-      AppNotification.error(message: 'Failed to fetch Purchase Orders');
+      AppNotification.error('Failed to fetch Purchase Orders');
     } finally {
       isFetchingPOs.value = false;
     }

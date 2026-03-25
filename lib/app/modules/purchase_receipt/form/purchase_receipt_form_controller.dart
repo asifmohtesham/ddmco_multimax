@@ -135,7 +135,7 @@ class PurchaseReceiptFormController extends GetxController
     await fetchPurchaseReceipt();
     isStale.value    = false;
     isScanning.value = false;
-    AppNotification.success(message: 'Document reloaded successfully');
+    AppNotification.success('Document reloaded successfully');
   }
 
   Future<void> confirmDiscard() async {
@@ -232,10 +232,10 @@ class PurchaseReceiptFormController extends GetxController
 
         if (poNames.isNotEmpty) await _fetchLinkedPurchaseOrders(poNames);
       } else {
-        AppNotification.error(message: 'Failed to fetch purchase receipt');
+        AppNotification.error('Failed to fetch purchase receipt');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       isLoading.value = false;
       isDirty.value   = false;
@@ -543,7 +543,7 @@ class PurchaseReceiptFormController extends GetxController
         currentItems.removeWhere((i) => i.name == item.name);
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
-        AppNotification.success(message: 'Item removed');
+        AppNotification.success('Item removed');
         await savePurchaseReceipt();
       },
     );
@@ -584,11 +584,10 @@ class PurchaseReceiptFormController extends GetxController
           mode = 'edit';
           await fetchPurchaseReceipt();
           _setSaveResult(SaveResult.success);
-          AppNotification.success(message: 'Purchase Receipt created: $name');
+          AppNotification.success('Purchase Receipt created: $name');
         } else {
           _setSaveResult(SaveResult.error);
-          AppNotification.error(
-              message: 'Failed to create: '
+          AppNotification.error('Failed to create: '
                   '${response.data['exception'] ?? 'Unknown error'}');
         }
       } else {
@@ -598,8 +597,7 @@ class PurchaseReceiptFormController extends GetxController
           await fetchPurchaseReceipt();
         } else {
           _setSaveResult(SaveResult.error);
-          AppNotification.error(
-              message: 'Failed to update: '
+          AppNotification.error('Failed to update: '
                   '${response.data['exception'] ?? 'Unknown error'}');
         }
       }
@@ -617,11 +615,11 @@ class PurchaseReceiptFormController extends GetxController
             msg = 'Validation Error: Check form details';
           }
         }
-        AppNotification.error(message: msg);
+        AppNotification.error(msg);
       }
     } catch (e) {
       _setSaveResult(SaveResult.error);
-      AppNotification.error(message: 'Save failed: $e');
+      AppNotification.error('Save failed: $e');
     } finally {
       isSaving.value = false;
     }
@@ -671,13 +669,13 @@ class PurchaseReceiptFormController extends GetxController
       child.validateBatch(result.batchNo!);
     } else {
       AppNotification.error(
-          message: result.message ?? 'Invalid input for this field');
+          result.message ?? 'Invalid input for this field');
     }
   }
 
   Future<void> scanBarcode(String barcode) async {
     if (!isEditable) {
-      AppNotification.warning(message: 'Document is submitted.');
+      AppNotification.warning('Document is submitted.');
       return;
     }
     if (barcode.isEmpty) return;
@@ -713,7 +711,7 @@ class PurchaseReceiptFormController extends GetxController
             return pi.itemCode == itemData.itemCode;
           });
           if (!found) {
-            AppNotification.error(message:
+            AppNotification.error(
                 'Item ${itemData.itemCode} is not in the linked Purchase Order');
             return;
           }
@@ -731,10 +729,10 @@ class PurchaseReceiptFormController extends GetxController
           uom:        itemData.stockUom,
         );
       } else {
-        AppNotification.error(message: result.message ?? 'Item not found');
+        AppNotification.error(result.message ?? 'Item not found');
       }
     } catch (e) {
-      AppNotification.error(message: 'Scan failed: $e');
+      AppNotification.error('Scan failed: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();

@@ -303,7 +303,7 @@ class DeliveryNoteController extends GetxController {
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
       posUploadSearchQuery.value = '';
     } catch (e) {
-      AppNotification.error(message: 'Failed to fetch POS Uploads: $e');
+      AppNotification.error('Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
     }

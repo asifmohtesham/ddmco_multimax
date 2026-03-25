@@ -377,7 +377,7 @@ class ToDoCard extends StatelessWidget {
                                   OutlinedButton(
                                     // TODO: implement close ToDo action
                                     onPressed: () => AppNotification.info(
-                                        message: 'Close ToDo coming soon'),
+                                        'Close ToDo coming soon'),
                                     child: const Text('Close'),
                                   ),
                                   const SizedBox(width: 8),

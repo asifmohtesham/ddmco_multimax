@@ -117,10 +117,10 @@ class ToDoController extends GetxController {
         _applyLocalSearch();
         _currentPage++;
       } else {
-        AppNotification.error(message: 'Failed to fetch ToDos');
+        AppNotification.error('Failed to fetch ToDos');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -140,10 +140,10 @@ class ToDoController extends GetxController {
       if (response.statusCode == 200 && response.data['data'] != null) {
         _detailedTodosCache[name] = ToDo.fromJson(response.data['data']);
       } else {
-        AppNotification.error(message: 'Failed to fetch ToDo details');
+        AppNotification.error('Failed to fetch ToDo details');
       }
     } catch (e) {
-      AppNotification.error(message: e.toString());
+      AppNotification.error(e.toString());
     } finally {
       isLoadingDetails.value = false;
     }
