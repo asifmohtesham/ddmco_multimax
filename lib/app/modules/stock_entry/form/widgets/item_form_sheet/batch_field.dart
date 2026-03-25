@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart';
-import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 
 /// Batch No field for the Stock Entry item sheet.
 ///

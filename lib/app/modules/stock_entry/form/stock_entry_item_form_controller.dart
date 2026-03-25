@@ -11,7 +11,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import '../stock_entry_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///

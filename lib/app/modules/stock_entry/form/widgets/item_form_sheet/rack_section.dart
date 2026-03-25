@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
-import 'package:multimax/app/modules/stock_entry/form/controllers/stock_entry_item_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'derived_warehouse_label.dart';

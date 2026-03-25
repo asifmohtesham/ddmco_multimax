@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/purchase_order/form/controllers/purchase_order_item_form_controller.dart';
+import 'package:multimax/app/modules/purchase_order/form/purchase_order_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
