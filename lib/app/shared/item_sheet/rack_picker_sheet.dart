@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'rack_picker_controller.dart';
 
 // ───────────────────────────────────────────────────────────────────────────────
-// _StatusColor — central colour mapping for SufficiencyStatus
+// _StatusColor
 // ───────────────────────────────────────────────────────────────────────────────
 
 Color _statusColor(SufficiencyStatus status) {
@@ -21,7 +21,7 @@ Color _statusColor(SufficiencyStatus status) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// _SufficiencyDot — small coloured circle in the tile leading slot
+// _SufficiencyDot
 // ───────────────────────────────────────────────────────────────────────────────
 
 class _SufficiencyDot extends StatelessWidget {
@@ -50,7 +50,7 @@ class _SufficiencyDot extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// _SufficiencyBar — fractional width bar in the tile trailing slot
+// _SufficiencyBar
 // ───────────────────────────────────────────────────────────────────────────────
 
 class _SufficiencyBar extends StatelessWidget {
@@ -237,16 +237,13 @@ class _RackPickerTile extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// RackPickerSheet — public bottom sheet widget
+// RackPickerSheet
 // ───────────────────────────────────────────────────────────────────────────────
 
 /// Bottom sheet that displays a sorted list of racks with per-rack
 /// availability for the active item + batch.
 class RackPickerSheet extends StatelessWidget {
-  /// Tag used to locate the [RackPickerController] registered by the caller.
   final String pickerTag;
-
-  /// Called when the operator taps a rack tile.
   final void Function(String rack) onSelected;
 
   const RackPickerSheet({
@@ -292,30 +289,33 @@ class RackPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // NOTE: ctrl is intentionally NOT resolved here at build() time.
-    // Each Obx resolves it lazily via Get.find(tag: pickerTag) so that
-    // GetX can correctly track reactive reads within the Obx scope.
     final theme = Theme.of(context);
     final cs    = theme.colorScheme;
     final mq    = MediaQuery.of(context);
 
     return Container(
-      constraints: BoxConstraints(
-        maxHeight: mq.size.height * 0.75,
-      ),
+      // Hard ceiling at 75% of screen height.
+      constraints: BoxConstraints(maxHeight: mq.size.height * 0.75),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(28.0)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
       ),
-      // mainAxisSize.max: fills the constrained 75vh Container so Flexible
-      // receives the remaining space after fixed-height children are laid out.
-      // mainAxisSize.min would make Flexible collapse to zero and overflow.
+      // Layout contract:
+      //   ┌─ DragHandle   (intrinsic, fixed)
+      //   ├─ Header       (intrinsic, fixed)
+      //   ├─ Divider      (1 px, fixed)
+      //   └─ Expanded     ← ALL dynamic content lives here; no height can
+      //        └─ Obx         leak out to surprise the Column
+      //             loading → spinner
+      //             loaded  → CustomScrollView
+      //                          SliverToBoxAdapter: fallback banner (conditional)
+      //                          SliverToBoxAdapter: summary row     (conditional)
+      //                          SliverList:          tiles
       child: Column(
         mainAxisSize: MainAxisSize.max,
         children: [
 
-          // ── Drag handle ────────────────────────────────────────────────────────────
+          // ── Drag handle ───────────────────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -380,133 +380,134 @@ class RackPickerSheet extends StatelessWidget {
 
           const Divider(height: 1),
 
-          // ── Fallback banner ───────────────────────────────────────────────────────────
-          Obx(() {
-            final ctrl = Get.find<RackPickerController>(tag: pickerTag);
-            if (!ctrl.usedFallback.value || ctrl.isLoading.value) {
-              return const SizedBox.shrink();
-            }
-            return Container(
-              width: double.infinity,
-              color: Colors.orange.shade50,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 14, color: Colors.orange.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Showing item stock (batch data unavailable)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.orange.shade800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-
-          // ── Entry count summary ────────────────────────────────────────────────────────
-          Obx(() {
-            final ctrl = Get.find<RackPickerController>(tag: pickerTag);
-            if (ctrl.isLoading.value || ctrl.entries.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            final suf = ctrl.sufficientCount;
-            final tot = ctrl.entries.length;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
-              child: Row(
-                children: [
-                  _sectionLabel('AVAILABLE RACKS', cs.onSurfaceVariant),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: suf > 0
-                          ? Colors.green.shade600.withOpacity(0.1)
-                          : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$suf / $tot sufficient',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: suf > 0
-                            ? Colors.green.shade700
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-
-          // ── List (scrollable) or loading spinner ──────────────────────────────
-          Flexible(
+          // ── Everything below the divider in one Expanded slot ─────────────────────
+          // No dynamic children exist outside this Expanded. Banner and
+          // summary live as SliverToBoxAdapters inside CustomScrollView
+          // so they can never push the tile list out of bounds.
+          Expanded(
             child: Obx(() {
               final ctrl = Get.find<RackPickerController>(tag: pickerTag);
 
+              // ── Loading state ───────────────────────────────────────────────
               if (ctrl.isLoading.value) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48.0),
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const Center(child: CircularProgressIndicator());
               }
 
+              // ── Empty state ──────────────────────────────────────────────────
               if (ctrl.entries.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48.0),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.inventory_2_outlined,
-                            size: 48,
-                            color: cs.onSurfaceVariant.withOpacity(0.4)),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No racks found with stock',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 14,
-                          ),
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined,
+                          size: 48,
+                          color: cs.onSurfaceVariant.withOpacity(0.4)),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No racks found with stock',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 14,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               }
 
-              return ListView.builder(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  mq.viewPadding.bottom + 24,
-                ),
-                itemCount: ctrl.entries.length,
-                itemBuilder: (_, i) {
-                  final entry = ctrl.entries[i];
-                  return Obx(() {
-                    final c = Get.find<RackPickerController>(tag: pickerTag);
-                    return _RackPickerTile(
-                      entry:      entry,
-                      isSelected: c.selectedRack.value == entry.rackName,
-                      onTap: () {
-                        c.selectRack(entry.rackName);
-                        onSelected(entry.rackName);
-                        Navigator.of(context).pop();
-                      },
-                    );
-                  });
-                },
+              // ── Loaded state: banner + summary + tiles in one scrollable ──
+              final suf = ctrl.sufficientCount;
+              final tot = ctrl.entries.length;
+
+              return CustomScrollView(
+                slivers: [
+                  // Fallback banner (conditional)
+                  if (ctrl.usedFallback.value)
+                    SliverToBoxAdapter(
+                      child: Container(
+                        width: double.infinity,
+                        color: Colors.orange.shade50,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 14, color: Colors.orange.shade700),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Showing item stock (batch data unavailable)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // Summary row
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                      child: Row(
+                        children: [
+                          _sectionLabel('AVAILABLE RACKS', cs.onSurfaceVariant),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: suf > 0
+                                  ? Colors.green.shade600.withOpacity(0.1)
+                                  : cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$suf / $tot sufficient',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: suf > 0
+                                    ? Colors.green.shade700
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Tile list
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                        16, 4, 16, mq.viewPadding.bottom + 24),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (_, i) {
+                          final entry = ctrl.entries[i];
+                          return Obx(() {
+                            final c = Get.find<RackPickerController>(
+                                tag: pickerTag);
+                            return _RackPickerTile(
+                              entry:      entry,
+                              isSelected: c.selectedRack.value == entry.rackName,
+                              onTap: () {
+                                c.selectRack(entry.rackName);
+                                onSelected(entry.rackName);
+                                Navigator.of(context).pop();
+                              },
+                            );
+                          });
+                        },
+                        childCount: ctrl.entries.length,
+                      ),
+                    ),
+                  ),
+                ],
               );
             }),
           ),
