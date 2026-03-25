@@ -384,6 +384,9 @@ class RackPickerSheet extends StatelessWidget {
           // No dynamic children exist outside this Expanded. Banner and
           // summary live as SliverToBoxAdapters inside CustomScrollView
           // so they can never push the tile list out of bounds.
+          //
+          // selectedRack.value is read here so the entire list rebuilds
+          // on selection change — eliminates the need for a per-tile Obx.
           Expanded(
             child: Obx(() {
               final ctrl = Get.find<RackPickerController>(tag: pickerTag);
@@ -416,8 +419,12 @@ class RackPickerSheet extends StatelessWidget {
               }
 
               // ── Loaded state: banner + summary + tiles in one scrollable ──
-              final suf = ctrl.sufficientCount;
-              final tot = ctrl.entries.length;
+              // Read selectedRack here so this Obx re-runs on every tap,
+              // propagating the updated isSelected bool to each tile without
+              // requiring a per-tile Obx wrapper.
+              final selectedRack = ctrl.selectedRack.value;
+              final suf          = ctrl.sufficientCount;
+              final tot          = ctrl.entries.length;
 
               return CustomScrollView(
                 slivers: [
@@ -482,26 +489,25 @@ class RackPickerSheet extends StatelessWidget {
                   ),
 
                   // Tile list
+                  // No inner Obx per tile. selectedRack is already subscribed
+                  // above — the parent Obx re-renders the list on every change.
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                         16, 4, 16, mq.viewPadding.bottom + 24),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (_, i) {
-                          final entry = ctrl.entries[i];
-                          return Obx(() {
-                            final c = Get.find<RackPickerController>(
-                                tag: pickerTag);
-                            return _RackPickerTile(
-                              entry:      entry,
-                              isSelected: c.selectedRack.value == entry.rackName,
-                              onTap: () {
-                                c.selectRack(entry.rackName);
-                                onSelected(entry.rackName);
-                                Navigator.of(context).pop();
-                              },
-                            );
-                          });
+                          final entry      = ctrl.entries[i];
+                          final isSelected = selectedRack == entry.rackName;
+                          return _RackPickerTile(
+                            entry:      entry,
+                            isSelected: isSelected,
+                            onTap: () {
+                              ctrl.selectRack(entry.rackName);
+                              onSelected(entry.rackName);
+                              Navigator.of(context).pop();
+                            },
+                          );
                         },
                         childCount: ctrl.entries.length,
                       ),
