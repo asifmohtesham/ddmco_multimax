@@ -8,8 +8,8 @@
 // after this commit; the export below keeps existing imports from breaking
 // during the transition (they are removed in step-6).
 //
-// _BatchDisplayTile is extracted here so the customFields list built in
-// _buildCustomFields() is clean and independently testable.
+// BatchDisplayTile is extracted here so the customFields list built in
+// _openItemSheet() is clean and independently testable.
 
 import 'package:flutter/material.dart';
 export 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
@@ -18,7 +18,7 @@ export 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 /// inside UniversalItemFormSheet.
 ///
 /// Uses Theme.of(context) directly (no workaround needed since it is a
-/// proper StatelessWidget).
+/// proper StatelessWidget with a BuildContext).
 class BatchDisplayTile extends StatelessWidget {
   final String batchNo;
 
