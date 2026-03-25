@@ -8,6 +8,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_form_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
@@ -30,6 +31,10 @@ class MaterialRequestFormController extends GetxController
   var isSaving = false.obs;
   var isDirty = false.obs;
   var isScanning = false.obs;
+
+  /// Drives the animated Save button state — identical to the pattern used
+  /// in StockEntryFormController / SaveIconButton across all DocTypes.
+  var saveResult = SaveResult.idle.obs;
 
   var materialRequest = Rx<MaterialRequest?>(null);
 
@@ -476,6 +481,7 @@ class MaterialRequestFormController extends GetxController
     if (checkStaleAndBlock()) return;
 
     isSaving.value = true;
+    saveResult.value = SaveResult.saving;
 
     final data = {
       'material_request_type': selectedType.value,
@@ -506,22 +512,27 @@ class MaterialRequestFormController extends GetxController
           name = created['name'];
           mode = 'edit';
           await fetchMaterialRequest();
+          saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Created');
         } else {
+          saveResult.value = SaveResult.error;
           GlobalSnackbar.error(message: 'Failed to create request');
         }
       } else {
         final response = await _provider.updateMaterialRequest(name, data);
         if (response.statusCode == 200) {
           await fetchMaterialRequest();
+          saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Updated');
         } else {
+          saveResult.value = SaveResult.error;
           GlobalSnackbar.error(message: 'Failed to update request');
         }
       }
     } on DioException catch (e) {
       if (handleVersionConflict(e)) return;
 
+      saveResult.value = SaveResult.error;
       String errorMessage = 'Save failed';
       if (e.response?.data is Map) {
         if (e.response!.data['exception'] != null) {
@@ -536,6 +547,7 @@ class MaterialRequestFormController extends GetxController
       }
       GlobalSnackbar.error(message: errorMessage);
     } catch (e) {
+      saveResult.value = SaveResult.error;
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;

@@ -12,8 +12,22 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final entry = controller.materialRequest.value;
+      final entry      = controller.materialRequest.value;
       final bool isEditable = entry?.docstatus == 0;
+
+      // ── AppBar params — canonical pattern identical to StockEntryFormScreen ──
+      //
+      // onSave  : gated on isEditable ONLY. SaveIconButton self-manages its
+      //           greyed/idle visual via the isDirty param — no need to gate
+      //           the button's existence on isDirty.
+      //
+      // onReload: gated on mode != 'new' ONLY. Available even when dirty so
+      //           the user can reload to discard unsaved changes.
+      //
+      // saveResult: wired to controller.saveResult so SaveIconButton shows
+      //             the animated success ✓ / error ✗ feedback after each save.
+      final VoidCallback? onSave   = isEditable ? controller.saveMaterialRequest : null;
+      final VoidCallback? onReload = controller.mode != 'new' ? controller.reloadDocument : null;
 
       final String title = entry == null
           ? 'Loading...'
@@ -31,16 +45,13 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           length: 2,
           child: Scaffold(
             appBar: MainAppBar(
-              title: title,
-              status: entry?.status,
-              isDirty: controller.isDirty.value,
-              isSaving: controller.isSaving.value,
-              onSave: (isEditable && controller.isDirty.value)
-                  ? controller.saveMaterialRequest
-                  : null,
-              onReload: (controller.mode != 'new' && !controller.isDirty.value)
-                  ? controller.reloadDocument
-                  : null,
+              title:      title,
+              status:     entry?.status,
+              isDirty:    controller.isDirty.value,
+              isSaving:   controller.isSaving.value,
+              saveResult: controller.saveResult.value,
+              onSave:     onSave,
+              onReload:   onReload,
               bottom: const TabBar(
                 tabs: [
                   Tab(text: 'Details'),
@@ -73,7 +84,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   // NOTE: isEditable is NOT passed as a parameter here.
   // Every interactive child reads `controller.materialRequest.value?.docstatus`
   // directly inside its own Obx so the tap callbacks always reflect the live
-  // document state — even if the outer Obx hasn’t rebuilt yet.
+  // document state — even if the outer Obx hasn't rebuilt yet.
 
   Widget _buildDetailsTab(BuildContext context) {
     return SingleChildScrollView(
@@ -159,7 +170,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Type + Warehouse Banner ───────────────────────────────────────────────
+  // ── Type + Warehouse Banner ──────────────────────────────────────────
   //
   // isEditable is derived HERE inside the Obx so every rebuild of this widget
   // (e.g. when selectedType changes) re-reads docstatus from the controller
@@ -186,7 +197,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         ),
         child: Column(
           children: [
-            // ── Request Type row ──────────────────────────────────────────
+            // ── Request Type row ───────────────────────────────────────────
             InkWell(
               // ⭐ onTap uses the live isEditable captured in this Obx frame
               onTap: isEditable ? () => _showTypePicker(context) : null,
@@ -250,7 +261,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
 
             const Divider(height: 20),
 
-            // ── Target Warehouse row ──────────────────────────────────────
+            // ── Target Warehouse row ─────────────────────────────────────────
             InkWell(
               // ⭐ onTap uses the live isEditable captured in this Obx frame
               onTap: isEditable
@@ -315,7 +326,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     });
   }
 
-  // ── Items Tab ────────────────────────────────────────────────────────────
+  // ── Items Tab ────────────────────────────────────────────────────────
 
   Widget _buildItemsTab(BuildContext context, bool isEditable) {
     return Stack(
@@ -367,7 +378,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Shared helpers ───────────────────────────────────────────────────────────
+  // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
@@ -487,7 +498,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Type Picker bottom-sheet ───────────────────────────────────────────────
+  // ── Type Picker bottom-sheet ────────────────────────────────────────────
 
   void _showTypePicker(BuildContext context) {
     final RxList<String> filtered = RxList<String>(controller.requestTypes);
