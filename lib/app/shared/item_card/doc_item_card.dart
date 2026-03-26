@@ -10,18 +10,28 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Layout (C12):
+/// Supported DocTypes:
+///   Purchase Order, Purchase Receipt, Stock Entry,
+///   Delivery Note, Packing Slip
+///
+/// Layout (C13):
 ///
 ///   Row 1  ─ index badge | item code + name (_HeadlineRow) | delete button
-///   Row 2  ─ [Variant Of chip]          ← full card width
-///   Zone 2 ─ Batch No, rack pair        ← full card width
-///   [────── divider ──────]
-///   Zone 3 ─ Qty                        ← full card width
-///   [progress bar]                      ← full card width
-///   [linear loading indicator]          ← full card width
+///   Row 2  ─ [Variant Of chip]               ← full card width
+///   Zone 2 ─ [Batch No (flex) | Qty (min)]   ← same row, natural-width Qty
+///            rack pair, warehouse pair        ← full card width
+///   [progress bar]                            ← full card width
+///   [linear loading indicator]                ← full card width
 ///
-/// Index badge and delete button are constrained to Row 1 only,
-/// freeing the full width for all subsequent content.
+/// Index badge and delete button are constrained to Row 1 only (C12).
+/// _FinancialZone removed — Qty absorbed into Zone 2 alongside Batch No (C13).
+///
+/// Field presence matrix (all fields are nullable in ItemCardData):
+///   PO          — qty, uom, warehouse
+///   PR          — qty, uom, batchNo, rack, warehouse
+///   SE          — qty, uom, batchNo, rack, toRack, warehouse, toWarehouse
+///   DN          — qty, uom, batchNo, rack, warehouse
+///   Packing Slip— qty, uom, batchNo, rack, variantOf
 ///
 /// [onEdit] is retained as a silent no-op for call-site compatibility (C11).
 class DocItemCard extends StatelessWidget {
@@ -51,10 +61,8 @@ class DocItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    final bool hasVariant     = data.variantOf != null && data.variantOf!.isNotEmpty;
-    final bool hasOperational =
-        (data.batchNo != null && data.batchNo!.isNotEmpty) ||
-        (data.rack    != null && data.rack!.isNotEmpty);
+    final bool hasVariant =
+        data.variantOf != null && data.variantOf!.isNotEmpty;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -65,7 +73,7 @@ class DocItemCard extends StatelessWidget {
             : cs.surface,
         boxShadow: [
           BoxShadow(
-            color:       cs.shadow.withValues(alpha: .06),
+            color:        cs.shadow.withValues(alpha: .06),
             spreadRadius: 1,
             blurRadius:   3,
             offset:       const Offset(0, 1),
@@ -77,7 +85,9 @@ class DocItemCard extends StatelessWidget {
         children: [
           // ── Card body ──────────────────────────────────────────────────
           InkWell(
-            onTap: onTap,
+            onTap:          onTap,
+            splashColor:    cs.primary.withValues(alpha: 0.08),
+            highlightColor: cs.primary.withValues(alpha: 0.04),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: 16.0, vertical: 10.0),
@@ -137,8 +147,13 @@ class DocItemCard extends StatelessWidget {
                   ],
 
                   // ── Zone 2: Operational (full width) ─────────────────
+                  // Covers all DocTypes — fields are nullable; zone renders
+                  // only what ItemCardData supplies.
                   _OperationalZone(
                     batchNo:        data.batchNo,
+                    qty:            data.qty,
+                    uom:            data.uom,
+                    qtyLabel:       data.qtyLabel ?? 'Qty',
                     rack:           data.rack,
                     toRack:         data.toRack,
                     warehouse:      data.warehouse,
@@ -146,31 +161,15 @@ class DocItemCard extends StatelessWidget {
                     warehouseLabel: data.warehouseLabel ?? 'Warehouse',
                   ),
 
-                  // ── Zone 2 → Zone 3 divider ───────────────────────
-                  if (hasOperational)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Divider(
-                        height:    1,
-                        thickness: 0.6,
-                        color:     cs.outlineVariant,
-                      ),
-                    ),
-
-                  // ── Zone 3: Financial (full width) ─────────────────
-                  _FinancialZone(
-                    qty:      data.qty,
-                    uom:      data.uom,
-                    qtyLabel: data.qtyLabel ?? 'Qty',
-                  ),
-
-                  // ── Progress bar (full width) ─────────────────────
-                  if (data.targetQty != null && data.targetQty! > 0)
+                  // ── Progress bar (full width) ─────────────────────────
+                  if (data.targetQty != null && data.targetQty! > 0) ...[
+                    const SizedBox(height: 6),
                     DocItemProgressBar(
                       qty:       data.qty,
                       targetQty: data.targetQty!,
                       uom:       data.uom,
                     ),
+                  ],
                 ],
               ),
             ),
@@ -250,6 +249,7 @@ class _HeadlineRow extends StatelessWidget {
 
 /// Variant Of chip rendered at full card width below Row 1.
 /// Only built when variantOf is non-null and non-empty.
+/// Applies to: Packing Slip (primary use), any DocType with variant items.
 class _VariantOfRow extends StatelessWidget {
   final String variantOf;
 
@@ -270,18 +270,39 @@ class _VariantOfRow extends StatelessWidget {
 // _OperationalZone
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 2: Batch No (full-width), rack _ArrowPairRow, warehouse _ArrowPairRow.
-/// Returns [SizedBox.shrink] when no operational field is set.
+/// Zone 2: Batch No + Qty (same row), rack pair, warehouse pair.
+///
+/// Batch No / Qty row behaviour (C13):
+///   - Both present → Batch No [Expanded] | Qty [natural width]
+///   - Batch No absent (e.g. PO) → Qty full-width alone
+///   - Qty is always rendered here; _FinancialZone has been removed.
+///
+/// Returns [SizedBox.shrink] when no field is populated.
+///
+/// DocType coverage:
+///   PO  — qty, warehouse
+///   PR  — qty, batchNo, rack, warehouse
+///   SE  — qty, batchNo, rack, toRack, warehouse, toWarehouse
+///   DN  — qty, batchNo, rack, warehouse
+///   PS  — qty, batchNo, rack
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
+  final double  qty;
+  final String? uom;
+  final String  qtyLabel;
   final String? rack;
   final String? toRack;
   final String? warehouse;
   final String? toWarehouse;
   final String  warehouseLabel;
 
+  static final _fmt = NumberFormat('#,##0.##');
+
   const _OperationalZone({
     this.batchNo,
+    required this.qty,
+    this.uom,
+    required this.qtyLabel,
     this.rack,
     this.toRack,
     this.warehouse,
@@ -295,23 +316,46 @@ class _OperationalZone extends StatelessWidget {
     final bool hasSourceRack = rack      != null && rack!.isNotEmpty;
     final bool hasWarehouse  = warehouse != null && warehouse!.isNotEmpty;
 
-    if (!hasBatch && !hasSourceRack && !hasWarehouse) {
-      return const SizedBox.shrink();
-    }
+    final String qtyValue =
+        '${_fmt.format(qty)}${uom != null ? '  $uom' : ''}';
+
+    final Widget qtyCell = _LabelValueCell(
+      icon:  Icons.numbers,
+      label: qtyLabel,
+      value: qtyValue,
+      role:  MetaChipRole.qty,
+    );
 
     final List<Widget> rows = [];
 
+    // ── Batch No + Qty row ──────────────────────────────────────────────
     if (hasBatch) {
-      rows.add(_LabelValueCell(
-        icon:  Icons.label_outline,
-        label: 'Batch No',
-        value: batchNo!,
-        role:  MetaChipRole.batch,
-      ));
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _LabelValueCell(
+                icon:  Icons.label_outline,
+                label: 'Batch No',
+                value: batchNo!,
+                role:  MetaChipRole.batch,
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Qty hugs its content; Batch No gets all remaining width.
+            IntrinsicWidth(child: qtyCell),
+          ],
+        ),
+      );
+    } else {
+      // PO and any DocType without a batch — Qty spans full width.
+      rows.add(qtyCell);
     }
 
+    // ── Rack pair ───────────────────────────────────────────────────────
     if (hasSourceRack) {
-      if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
+      rows.add(const SizedBox(height: 6));
       rows.add(_ArrowPairRow(
         source: _LabelValueCell(
           icon:  Icons.shelves,
@@ -330,8 +374,9 @@ class _OperationalZone extends StatelessWidget {
       ));
     }
 
+    // ── Warehouse pair ──────────────────────────────────────────────────
     if (hasWarehouse) {
-      if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
+      rows.add(const SizedBox(height: 6));
       rows.add(_ArrowPairRow(
         source: _LabelValueCell(
           icon:  Icons.store_outlined,
@@ -355,41 +400,6 @@ class _OperationalZone extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: rows,
-      ),
-    );
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// _FinancialZone
-// ────────────────────────────────────────────────────────────────────────────
-
-/// Zone 3: Qty only — single [_LabelValueCell] at natural width.
-class _FinancialZone extends StatelessWidget {
-  final double  qty;
-  final String? uom;
-  final String  qtyLabel;
-
-  static final _fmt = NumberFormat('#,##0.##');
-
-  const _FinancialZone({
-    required this.qty,
-    this.uom,
-    required this.qtyLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final String qtyValue =
-        '${_fmt.format(qty)}${uom != null ? '  $uom' : ''}';
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: _LabelValueCell(
-        icon:  Icons.numbers,
-        label: qtyLabel,
-        value: qtyValue,
-        role:  MetaChipRole.qty,
       ),
     );
   }
