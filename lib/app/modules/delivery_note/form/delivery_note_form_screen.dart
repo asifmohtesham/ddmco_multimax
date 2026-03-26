@@ -4,9 +4,9 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
+import 'package:multimax/app/shared/item_card/doc_item_card.dart';
+import 'package:multimax/app/shared/item_card/item_card_data.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
-import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -27,8 +27,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             length: 2,
             child: Scaffold(
               appBar: MainAppBar(
-                title: controller.deliveryNote.value?.name ?? 'Loading...',
-                status: controller.deliveryNote.value?.status,
+                title:   controller.deliveryNote.value?.name ?? 'Loading...',
+                status:  controller.deliveryNote.value?.status,
                 isDirty: controller.isDirty.value,
                 onReload: (controller.mode != 'new' &&
                         !controller.isDirty.value)
@@ -46,7 +46,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       isSaving:   controller.isSaving.value,
                       saveResult: controller.saveResult.value,
                       isDirty:    canSave,
-                      onPressed:  canSave ? controller.saveDeliveryNote : null,
+                      onPressed:  canSave
+                          ? controller.saveDeliveryNote
+                          : null,
                     );
                   }),
                 ],
@@ -62,13 +64,11 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                     controller.deliveryNote.value == null) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 final note = controller.deliveryNote.value;
                 if (note == null) {
                   return const Center(
                       child: Text('Delivery note not found.'));
                 }
-
                 return SafeArea(
                   child: TabBarView(
                     children: [
@@ -83,10 +83,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ));
   }
 
-  // ── Shared banner binding ──────────────────────────────────────────────────────
-  // Extracted into a single helper so both tab views reference one Obx,
-  // keeping the binding DRY and ensuring the banner is always visible
-  // regardless of which tab is active when it fires.
+  // ── Banner helper ──────────────────────────────────────────────────────────────────
+
   Widget _buildBanner() {
     return Obx(() => InlineBanner(
           visible: controller.bannerVisible.value,
@@ -95,7 +93,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ));
   }
 
-  Widget _buildDetailsView(DeliveryNote note) {
+  // ── Details tab ────────────────────────────────────────────────────────────────
+
+  Widget _buildDetailsView(dynamic note) {
     final bool isEditable = note.docstatus == 0;
 
     return SingleChildScrollView(
@@ -103,7 +103,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // InlineBanner at top — collapses to zero height when not visible.
           _buildBanner(),
           _buildSectionCard(
             title: 'General Information',
@@ -171,7 +170,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                               overflow: TextOverflow.ellipsis));
                     }).toList(),
                     onChanged: isEditable
-                        ? (value) => controller.setWarehouse.value = value
+                        ? (value) =>
+                            controller.setWarehouse.value = value
                         : null,
                   )),
             ],
@@ -221,9 +221,11 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   '${note.totalQty.toStringAsFixed(2)} Items'),
               const Divider(),
               _buildSummaryRow(
-                  'Grand Total',
-                  '${FormattingHelper.getCurrencySymbol(note.currency)} ${note.grandTotal.toStringAsFixed(2)}',
-                  isBold: true),
+                'Grand Total',
+                '${FormattingHelper.getCurrencySymbol(note.currency)} '
+                    '${note.grandTotal.toStringAsFixed(2)}',
+                isBold: true,
+              ),
             ],
           ),
           const SizedBox(height: 80),
@@ -232,11 +234,265 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     );
   }
 
+  // ── Items tab ───────────────────────────────────────────────────────────────────
+
+  Widget _buildItemsView() {
+    return Obx(() {
+      if (controller.setWarehouse.value == null ||
+          controller.setWarehouse.value!.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.store_outlined,
+                  size: 64, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              const Text('Warehouse Not Selected',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              const Text(
+                  'Please go to Details tab and set the Source Warehouse.',
+                  style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        );
+      }
+
+      return Column(
+        children: [
+          _buildBanner(),
+
+          // ── Filters ────────────────────────────────────────────────────────
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16.0, vertical: 8.0),
+            child: Obx(() => Row(
+                  children: [
+                    _buildFilterChip('All', controller.allCount),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                        'Pending', controller.pendingCount),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                        'Completed', controller.completedCount),
+                  ],
+                )),
+          ),
+          const Divider(height: 1),
+
+          // ── Item List ─────────────────────────────────────────────────────
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value &&
+                  controller.posUpload.value == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final isEditable =
+                  controller.deliveryNote.value?.docstatus == 0;
+              final currentExpandedKey =
+                  controller.expandedInvoice.value;
+              final posUpload         = controller.posUpload.value;
+              final deliveryNoteItems =
+                  controller.deliveryNote.value?.items ?? [];
+              final currency =
+                  controller.deliveryNote.value?.currency;
+
+              // ── Flat (non-POS) list ───────────────────────────────────
+              if (posUpload == null) {
+                if (deliveryNoteItems.isEmpty) {
+                  return const Center(
+                      child: Text('No items to display.'));
+                }
+                return ListView.builder(
+                  controller: controller.scrollController,
+                  padding: const EdgeInsets.only(
+                      left: 8.0,
+                      right: 8.0,
+                      top: 8.0,
+                      bottom: 80.0),
+                  itemCount: deliveryNoteItems.length,
+                  itemBuilder: (context, index) {
+                    final item = deliveryNoteItems[index];
+                    if (item.name != null &&
+                        !controller.itemKeys
+                            .containsKey(item.name)) {
+                      controller.itemKeys[item.name!] = GlobalKey();
+                    }
+                    final isHighlighted =
+                        controller.recentlyAddedItemName.value ==
+                            item.name;
+
+                    return Dismissible(
+                      key: ValueKey(item.name ?? index),
+                      direction: isEditable
+                          ? DismissDirection.endToStart
+                          : DismissDirection.none,
+                      confirmDismiss: (_) async {
+                        if (isEditable) {
+                          await controller
+                              .confirmAndDeleteItem(item);
+                        }
+                        return false;
+                      },
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        color: Colors.red.shade400,
+                        child: const Icon(Icons.delete_outline,
+                            color: Colors.white, size: 28),
+                      ),
+                      child: DocItemCard(
+                        key:  controller.itemKeys[item.name],
+                        data: ItemCardData.fromDeliveryNoteItem(
+                          item,
+                          isEditable:    isEditable,
+                          isHighlighted: isHighlighted,
+                        ),
+                        onDelete: isEditable
+                            ? () => controller
+                                .confirmAndDeleteItem(item)
+                            : null,
+                      ),
+                    );
+                  },
+                );
+              }
+
+              // ── POS-grouped list ───────────────────────────────────
+              final posItems       = posUpload.items;
+              final groupedDnItems = controller.groupedItems;
+
+              final filteredItems = posItems.where((posItem) {
+                final serialNumber = posItem.idx.toString();
+                final dnItemsForThisPosItem =
+                    groupedDnItems[serialNumber] ?? [];
+                final cumulativeQty = dnItemsForThisPosItem.fold(
+                    0.0, (sum, item) => sum + item.qty);
+
+                if (controller.itemFilter.value == 'Completed') {
+                  return cumulativeQty >= posItem.quantity;
+                } else if (controller.itemFilter.value == 'Pending') {
+                  return cumulativeQty < posItem.quantity;
+                }
+                return true;
+              }).toList();
+
+              if (filteredItems.isEmpty) {
+                return const Center(
+                    child: Text('No items match the filter.'));
+              }
+
+              return ListView.builder(
+                controller: controller.scrollController,
+                padding: const EdgeInsets.only(
+                    left: 8.0,
+                    right: 8.0,
+                    top: 8.0,
+                    bottom: 80.0),
+                itemCount: filteredItems.length,
+                itemBuilder: (context, index) {
+                  final posItem      = filteredItems[index];
+                  final serialNumber = posItem.idx.toString();
+                  final dnItemsForThisPosItem =
+                      groupedDnItems[serialNumber] ?? [];
+                  final expansionKey = '${posItem.idx}';
+
+                  if (!controller.itemKeys
+                      .containsKey(expansionKey)) {
+                    controller.itemKeys[expansionKey] = GlobalKey();
+                  }
+
+                  final cumulativeQty = dnItemsForThisPosItem.fold(
+                      0.0, (sum, item) => sum + item.qty);
+
+                  return Container(
+                    key: controller.itemKeys[expansionKey],
+                    child: ItemGroupCard(
+                      isExpanded: currentExpandedKey == expansionKey,
+                      serialNo:   posItem.idx,
+                      itemName:   posItem.itemName,
+                      rate:       posItem.rate,
+                      totalQty:   posItem.quantity,
+                      scannedQty: cumulativeQty,
+                      currency:   currency,
+                      onToggle: () =>
+                          controller.toggleInvoiceExpand(expansionKey),
+                      children: dnItemsForThisPosItem
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                        final groupIndex = entry.key;
+                        final item       = entry.value;
+                        if (item.name != null &&
+                            !controller.itemKeys
+                                .containsKey(item.name)) {
+                          controller.itemKeys[item.name!] =
+                              GlobalKey();
+                        }
+                        final isHighlighted =
+                            controller.recentlyAddedItemName.value ==
+                                item.name;
+
+                        return DocItemCard(
+                          key:  controller.itemKeys[item.name],
+                          data: ItemCardData.fromDeliveryNoteItem(
+                            item,
+                            index:         groupIndex,
+                            isEditable:    isEditable,
+                            isHighlighted: isHighlighted,
+                          ),
+                          onDelete: isEditable
+                              ? () => controller
+                                  .confirmAndDeleteItem(item)
+                              : null,
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            }),
+          ),
+
+          // ── Scanner ────────────────────────────────────────────────────────
+          Obx(() {
+            if (controller.deliveryNote.value?.docstatus != 0)
+              return const SizedBox.shrink();
+            if (controller.isItemSheetOpen.value ||
+                controller.isLoadingItemEdit.value)
+              return const SizedBox.shrink();
+
+            if (controller.isScanning.value ||
+                controller.isAddingItem.value) {
+              return BarcodeInputWidget(
+                onScan:      (code) {},
+                isLoading:   controller.isScanning.value,
+                isSuccess:   controller.isAddingItem.value,
+                controller:  controller.barcodeController,
+                activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
+              );
+            }
+            return BarcodeInputWidget(
+              onScan:      (code) => controller.scanBarcode(code),
+              controller:  controller.barcodeController,
+              activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
+            );
+          }),
+        ],
+      );
+    });
+  }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────────
+
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
     return Card(
       elevation: 0,
-      margin: EdgeInsets.zero,
+      margin:    EdgeInsets.zero,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: Colors.grey.shade200)),
@@ -271,241 +527,17 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             value,
             style: TextStyle(
                 fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize: isBold ? 16 : 14,
-                color: isBold ? Colors.black87 : Colors.black54),
+                fontSize:   isBold ? 16 : 14,
+                color:      isBold ? Colors.black87 : Colors.black54),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildItemsView() {
-    return Obx(() {
-      if (controller.setWarehouse.value == null ||
-          controller.setWarehouse.value!.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.store_outlined,
-                  size: 64, color: Colors.grey.shade300),
-              const SizedBox(height: 16),
-              const Text('Warehouse Not Selected',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              const Text(
-                  'Please go to Details tab and set the Source Warehouse.',
-                  style: TextStyle(color: Colors.grey)),
-            ],
-          ),
-        );
-      }
-
-      return Column(
-        children: [
-          // InlineBanner at top of Items tab — above filters, collapses when
-          // not visible so filter chips are not displaced.
-          _buildBanner(),
-
-          // 1. Filters
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16.0, vertical: 8.0),
-            child: Obx(() => Row(
-                  children: [
-                    _buildFilterChip('All', controller.allCount),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Pending', controller.pendingCount),
-                    const SizedBox(width: 8),
-                    _buildFilterChip(
-                        'Completed', controller.completedCount),
-                  ],
-                )),
-          ),
-          const Divider(height: 1),
-
-          // 2. Item List
-          Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value &&
-                  controller.posUpload.value == null) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final currentExpandedKey = controller.expandedInvoice.value;
-              final posUpload          = controller.posUpload.value;
-              final deliveryNoteItems  =
-                  controller.deliveryNote.value?.items ?? [];
-              final currency =
-                  controller.deliveryNote.value?.currency;
-
-              if (posUpload == null) {
-                if (deliveryNoteItems.isEmpty) {
-                  return const Center(
-                      child: Text('No items to display.'));
-                }
-                // Flat non-POS list — no index badge passed.
-                return ListView.builder(
-                  controller: controller.scrollController,
-                  padding: const EdgeInsets.only(
-                      left: 8.0,
-                      right: 8.0,
-                      top: 8.0,
-                      bottom: 80.0),
-                  itemCount: deliveryNoteItems.length,
-                  itemBuilder: (context, index) {
-                    final item = deliveryNoteItems[index];
-                    if (item.name != null &&
-                        !controller.itemKeys.containsKey(item.name)) {
-                      controller.itemKeys[item.name!] = GlobalKey();
-                    }
-                    return Dismissible(
-                      key: ValueKey(item.name ?? index),
-                      direction:
-                          controller.deliveryNote.value?.docstatus == 0
-                              ? DismissDirection.endToStart
-                              : DismissDirection.none,
-                      confirmDismiss: (_) async {
-                        if (controller.deliveryNote.value?.docstatus ==
-                            0) {
-                          await controller.confirmAndDeleteItem(item);
-                        }
-                        return false;
-                      },
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        color: Colors.red.shade400,
-                        child: const Icon(Icons.delete_outline,
-                            color: Colors.white, size: 28),
-                      ),
-                      child: Container(
-                        key: item.name != null
-                            ? controller.itemKeys[item.name]
-                            : null,
-                        child: DeliveryNoteItemCard(item: item),
-                      ),
-                    );
-                  },
-                );
-              }
-
-              final posItems       = posUpload.items;
-              final groupedDnItems = controller.groupedItems;
-
-              final filteredItems = posItems.where((posItem) {
-                final serialNumber = posItem.idx.toString();
-                final dnItemsForThisPosItem =
-                    groupedDnItems[serialNumber] ?? [];
-                final cumulativeQty = dnItemsForThisPosItem.fold(
-                    0.0, (sum, item) => sum + item.qty);
-
-                if (controller.itemFilter.value == 'Completed') {
-                  return cumulativeQty >= posItem.quantity;
-                } else if (controller.itemFilter.value == 'Pending') {
-                  return cumulativeQty < posItem.quantity;
-                }
-                return true;
-              }).toList();
-
-              if (filteredItems.isEmpty) {
-                return const Center(
-                    child: Text('No items match the filter.'));
-              }
-
-              return ListView.builder(
-                controller: controller.scrollController,
-                padding: const EdgeInsets.only(
-                    left: 8.0,
-                    right: 8.0,
-                    top: 8.0,
-                    bottom: 80.0),
-                itemCount: filteredItems.length,
-                itemBuilder: (context, index) {
-                  final posItem = filteredItems[index];
-                  final serialNumber = posItem.idx.toString();
-                  final dnItemsForThisPosItem =
-                      groupedDnItems[serialNumber] ?? [];
-                  final expansionKey = '${posItem.idx}';
-
-                  if (!controller.itemKeys.containsKey(expansionKey)) {
-                    controller.itemKeys[expansionKey] = GlobalKey();
-                  }
-
-                  final cumulativeQty = dnItemsForThisPosItem.fold(
-                      0.0, (sum, item) => sum + item.qty);
-
-                  return Container(
-                    key: controller.itemKeys[expansionKey],
-                    child: ItemGroupCard(
-                      isExpanded: currentExpandedKey == expansionKey,
-                      serialNo:   posItem.idx,
-                      itemName:   posItem.itemName,
-                      rate:       posItem.rate,
-                      totalQty:   posItem.quantity,
-                      scannedQty: cumulativeQty,
-                      currency:   currency,
-                      onToggle: () =>
-                          controller.toggleInvoiceExpand(expansionKey),
-                      // asMap().entries.map() passes the 0-based position
-                      // within this group so each child card shows its badge.
-                      children: dnItemsForThisPosItem
-                          .asMap()
-                          .entries
-                          .map((entry) {
-                        final groupIndex = entry.key;
-                        final item       = entry.value;
-                        if (item.name != null &&
-                            !controller.itemKeys
-                                .containsKey(item.name)) {
-                          controller.itemKeys[item.name!] = GlobalKey();
-                        }
-                        return DeliveryNoteItemCard(
-                          item:  item,
-                          index: groupIndex,
-                        );
-                      }).toList(),
-                    ),
-                  );
-                },
-              );
-            }),
-          ),
-
-          // 3. Scanner
-          Obx(() {
-            if (controller.deliveryNote.value?.docstatus != 0)
-              return const SizedBox.shrink();
-            if (controller.isItemSheetOpen.value ||
-                controller.isLoadingItemEdit.value)
-              return const SizedBox.shrink();
-
-            if (controller.isScanning.value ||
-                controller.isAddingItem.value) {
-              return BarcodeInputWidget(
-                onScan: (code) {},
-                isLoading: controller.isScanning.value,
-                isSuccess: controller.isAddingItem.value,
-                controller: controller.barcodeController,
-                activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
-              );
-            }
-            return BarcodeInputWidget(
-              onScan: (code) => controller.scanBarcode(code),
-              controller: controller.barcodeController,
-              activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
-            );
-          }),
-        ],
-      );
-    });
-  }
-
   Widget _buildFilterChip(String label, int count) {
     return ChoiceChip(
-      label: Text('$label ($count)'),
+      label:    Text('$label ($count)'),
       selected: controller.itemFilter.value == label,
       onSelected: (bool selected) {
         if (selected) controller.setFilter(label);
