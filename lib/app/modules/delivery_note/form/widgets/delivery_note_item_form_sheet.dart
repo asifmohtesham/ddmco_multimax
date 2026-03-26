@@ -10,6 +10,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
 
@@ -18,49 +20,37 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
         creation: controller.bsItemCreation.value,
         modified: controller.bsItemModified.value,
         modifiedBy: controller.bsItemModifiedBy.value,
-
         formKey: controller.itemFormKey,
         scrollController: scrollController,
         title: isEditing ? 'Update Item' : 'Add Item',
         itemCode: controller.currentItemCode,
         itemName: controller.currentItemName,
-
         qtyController: controller.bsQtyController,
         onIncrement: () => controller.adjustSheetQty(1),
         onDecrement: () => controller.adjustSheetQty(-1),
         qtyInfoText: controller.bsMaxQty.value > 0
             ? 'Max Available: ${controller.bsMaxQty.value}'
             : null,
-
-        // Only enable save if the sheet is valid
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled: true,
-
-        // UPDATED: Show loading if validating batch OR if adding/submitting (auto-submit)
         isLoading: controller.isValidatingBatch.value || controller.isAddingItem.value,
-
         onSubmit: controller.submitSheet,
         onDelete: isEditing
             ? () {
-          final item = controller.deliveryNote.value?.items
-              .firstWhereOrNull((i) => i.name == controller.editingItemName.value);
-          if (item != null) {
-            controller.confirmAndDeleteItem(item);
-          }
-        }
+                final item = controller.deliveryNote.value?.items
+                    .firstWhereOrNull((i) => i.name == controller.editingItemName.value);
+                if (item != null) controller.confirmAndDeleteItem(item);
+              }
             : null,
-
-        // Standardised Global Scan Integration
         onScan: (code) => controller.scanBarcode(code),
         scanController: controller.barcodeController,
         isScanning: controller.isScanning.value,
-
         customFields: [
           // Invoice Serial No
           if (controller.bsAvailableInvoiceSerialNos.isNotEmpty)
             GlobalItemFormSheet.buildInputGroup(
               label: 'Invoice Serial No',
-              color: Colors.blueGrey,
+              color: cs.secondary,
               child: DropdownButtonFormField<String>(
                 value: controller.bsInvoiceSerialNo.value,
                 decoration: InputDecoration(
@@ -69,7 +59,7 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                   hintText: 'Select Serial',
                 ),
                 items: controller.bsAvailableInvoiceSerialNos.map((s) {
-                  return DropdownMenuItem(value: s, child: Text('Serial #$s'));
+                  return DropdownMenuItem(value: s, child: Text('Serial #\$s'));
                 }).toList(),
                 onChanged: (value) {
                   controller.bsInvoiceSerialNo.value = value;
@@ -81,66 +71,67 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           // Batch No
           Obx(() => GlobalItemFormSheet.buildInputGroup(
             label: 'Batch No',
-            color: Colors.purple,
-            bgColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : null,
+            color: cs.tertiary,
+            bgColor: controller.bsIsBatchValid.value ? cs.tertiaryContainer.withValues(alpha: 0.3) : null,
             child: TextFormField(
               key: const ValueKey('batch_field'),
               controller: controller.bsBatchController,
               readOnly: controller.bsIsBatchValid.value,
               autofocus: false,
-              style: TextStyle(fontFamily: 'ShureTechMono',),
+              style: const TextStyle(fontFamily: 'ShureTechMono'),
               decoration: InputDecoration(
                 hintText: 'Enter or scan batch',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.purple.shade200),
+                  borderSide: BorderSide(color: cs.tertiary.withValues(alpha: 0.4)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.purple, width: 2),
+                  borderSide: BorderSide(color: cs.tertiary, width: 2),
                 ),
                 filled: true,
-                fillColor: controller.bsIsBatchValid.value ? Colors.purple.shade50 : Colors.white,
+                fillColor: controller.bsIsBatchValid.value
+                    ? cs.tertiaryContainer.withValues(alpha: 0.3)
+                    : cs.surface,
                 suffixIcon: controller.isValidatingBatch.value
-                    ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)))
-                    : (controller.bsIsBatchValid.value
-                    ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Helpful Tooltip
-                    if (controller.batchInfoTooltip.value != null)
-                      Tooltip(
-                        message: controller.batchInfoTooltip.value!,
-                        triggerMode: TooltipTriggerMode.tap,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Icon(Icons.info_outline, color: Colors.blue),
+                    ? Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: cs.tertiary),
                         ),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.purple),
-                      onPressed: controller.resetBatchValidation,
-                      tooltip: 'Edit Batch',
-                    ),
-                  ],
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
-                  tooltip: 'Validate',
-                )),
+                      )
+                    : (controller.bsIsBatchValid.value
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (controller.batchInfoTooltip.value != null)
+                                Tooltip(
+                                  message: controller.batchInfoTooltip.value!,
+                                  triggerMode: TooltipTriggerMode.tap,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Icon(Icons.info_outline, color: cs.primary),
+                                  ),
+                                ),
+                              IconButton(
+                                icon: Icon(Icons.edit, color: cs.tertiary),
+                                onPressed: controller.resetBatchValidation,
+                                tooltip: 'Edit Batch',
+                              ),
+                            ],
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.arrow_forward),
+                            onPressed: () => controller.validateAndFetchBatch(controller.bsBatchController.text),
+                            tooltip: 'Validate',
+                          )),
               ),
               onChanged: (_) => controller.validateSheet(),
               onFieldSubmitted: (val) {
-                if (!controller.bsIsBatchValid.value) {
-                  controller.validateAndFetchBatch(val);
-                }
+                if (!controller.bsIsBatchValid.value) controller.validateAndFetchBatch(val);
               },
             ),
           )),
@@ -148,8 +139,8 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
           // Rack
           GlobalItemFormSheet.buildInputGroup(
             label: 'Rack',
-            color: Colors.orange,
-            bgColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : null,
+            color: cs.secondary,
+            bgColor: controller.bsIsRackValid.value ? cs.secondaryContainer.withValues(alpha: 0.4) : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -163,42 +154,45 @@ class DeliveryNoteItemBottomSheet extends GetView<DeliveryNoteFormController> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.orange.shade200),
+                      borderSide: BorderSide(color: cs.secondary.withValues(alpha: 0.4)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.orange, width: 2),
+                      borderSide: BorderSide(color: cs.secondary, width: 2),
                     ),
                     filled: true,
-                    fillColor: controller.bsIsRackValid.value ? Colors.orange.shade50 : Colors.white,
+                    fillColor: controller.bsIsRackValid.value
+                        ? cs.secondaryContainer.withValues(alpha: 0.4)
+                        : cs.surface,
                     suffixIcon: controller.isValidatingRack.value
-                        ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
+                        ? Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: cs.secondary),
+                            ),
+                          )
                         : (controller.bsIsRackValid.value
-                        ? IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.orange),
-                      onPressed: controller.resetRackValidation,
-                      tooltip: 'Edit Rack',
-                    )
-                        : IconButton(
-                      icon: const Icon(Icons.arrow_forward),
-                      onPressed: () => controller.validateRack(controller.bsRackController.text),
-                      tooltip: 'Validate',
-                    )),
+                            ? IconButton(
+                                icon: Icon(Icons.edit, color: cs.secondary),
+                                onPressed: controller.resetRackValidation,
+                                tooltip: 'Edit Rack',
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.arrow_forward),
+                                onPressed: () => controller.validateRack(controller.bsRackController.text),
+                                tooltip: 'Validate',
+                              )),
                   ),
                   onFieldSubmitted: (val) => controller.validateRack(val),
                 )),
-                // Display Rack Stock Error
                 if (controller.rackError.value != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0, left: 4.0),
                     child: Text(
                       controller.rackError.value!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      style: TextStyle(color: cs.error, fontSize: 12),
                     ),
                   ),
               ],
