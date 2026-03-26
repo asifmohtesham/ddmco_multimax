@@ -19,39 +19,40 @@ class PurchaseReceiptItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     // 1. Resolve Target Quantity via Controller Map
     double targetQty = controller.getOrderedQty(item.purchaseOrderItem);
-
-    // If lookup failed (e.g. not loaded yet), try local item property
-    if (targetQty == 0) {
-      targetQty = item.purchaseOrderQty ?? 0.0;
-    }
+    if (targetQty == 0) targetQty = item.purchaseOrderQty ?? 0.0;
 
     // 2. Calculate Progress
     final double currentQty = item.qty;
-    final double percent = (targetQty > 0) ? (currentQty / targetQty).clamp(0.0, 1.0) : 0.0;
-
+    final double percent =
+        (targetQty > 0) ? (currentQty / targetQty).clamp(0.0, 1.0) : 0.0;
     final bool isCompleted = percent >= 1.0;
     final bool hasOverReceipt = currentQty > targetQty && targetQty > 0;
 
     return Obx(() {
-      final isHighlighted = controller.recentlyAddedItemName.value == item.name;
+      final isHighlighted =
+          controller.recentlyAddedItemName.value == item.name;
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
         decoration: BoxDecoration(
-          color: isHighlighted ? Colors.yellow.shade100 : Colors.white, // Highlight
+          color: isHighlighted
+              ? cs.tertiaryContainer.withValues(alpha: 0.4)
+              : cs.surface,
           borderRadius: BorderRadius.circular(12.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withValues(alpha: 0.08),
+              color: cs.shadow.withValues(alpha: 0.08),
               spreadRadius: 1,
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
           ],
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12.0),
@@ -63,21 +64,22 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    border: Border(bottom: BorderSide(color: Colors.grey
-                        .shade200)),
+                    color: cs.surfaceContainerLow,
+                    border: Border(bottom: BorderSide(color: cs.outline.withValues(alpha: 0.2))),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       CircleAvatar(
                         radius: 12,
-                        backgroundColor: Colors.blue.shade50,
+                        backgroundColor: cs.primaryContainer,
                         child: Text(
                           '${index + 1}',
-                          style: TextStyle(color: Colors.blue.shade900,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: cs.onPrimaryContainer,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -87,22 +89,21 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                           children: [
                             Text(
                               item.itemCode,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 15,
-                                color: Colors.black87,
+                                color: cs.onSurface,
                                 fontFamily: 'monospace',
-                                fontFeatures: [FontFeature.slashedZero()],
+                                fontFeatures: [const FontFeature.slashedZero()],
                               ),
                             ),
-                            if (item.itemName != null &&
-                                item.itemName!.isNotEmpty)
+                            if (item.itemName != null && item.itemName!.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
                                 child: Text(
                                   item.itemName!,
-                                  style: TextStyle(color: Colors.grey.shade600,
-                                      fontSize: 13),
+                                  style: TextStyle(
+                                      color: cs.onSurfaceVariant, fontSize: 13),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -114,20 +115,15 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(
-                                Icons.edit, size: 20, color: Colors.blue),
+                            icon: Icon(Icons.edit, size: 20, color: cs.primary),
                             onPressed: () => controller.editItem(item),
                           ),
                           Obx(() {
-                            if ((controller.purchaseReceipt.value?.items
-                                .length ?? 0) > 1) {
+                            if ((controller.purchaseReceipt.value?.items.length ?? 0) > 1) {
                               return IconButton(
-                                icon: const Icon(
-                                    Icons.delete, size: 20, color: Colors.red),
+                                icon: Icon(Icons.delete, size: 20, color: cs.error),
                                 onPressed: () {
-                                  if (item.name != null) {
-                                    controller.deleteItem(item.name!);
-                                  }
+                                  if (item.name != null) controller.deleteItem(item.name!);
                                 },
                               );
                             }
@@ -153,28 +149,40 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                               spacing: 8.0,
                               runSpacing: 8.0,
                               children: [
-                                if (item.batchNo != null &&
-                                    item.batchNo!.isNotEmpty)
-                                  _buildBadge(icon: Icons.qr_code,
-                                      label: item.batchNo!,
-                                      color: Colors.purple,
-                                      isMono: true),
+                                if (item.batchNo != null && item.batchNo!.isNotEmpty)
+                                  _buildBadge(
+                                    context: context,
+                                    icon: Icons.qr_code,
+                                    label: item.batchNo!,
+                                    color: cs.tertiary,
+                                    containerColor: cs.tertiaryContainer,
+                                    isMono: true,
+                                  ),
                                 if (item.rack != null && item.rack!.isNotEmpty)
-                                  _buildBadge(icon: Icons.shelves,
-                                      label: item.rack!,
-                                      color: Colors.blueGrey),
+                                  _buildBadge(
+                                    context: context,
+                                    icon: Icons.shelves,
+                                    label: item.rack!,
+                                    color: cs.secondary,
+                                    containerColor: cs.secondaryContainer,
+                                  ),
                                 if (item.warehouse.isNotEmpty)
-                                  _buildBadge(icon: Icons.store,
-                                      label: item.warehouse,
-                                      color: Colors.orange),
+                                  _buildBadge(
+                                    context: context,
+                                    icon: Icons.store,
+                                    label: item.warehouse,
+                                    color: cs.primary,
+                                    containerColor: cs.primaryContainer,
+                                  ),
                               ],
                             ),
                           ),
                           Text(
                             NumberFormat('#,##0.##').format(item.qty),
-                            style: const TextStyle(fontWeight: FontWeight.bold,
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
                                 fontSize: 20,
-                                color: Colors.black),
+                                color: cs.onSurface),
                           ),
                         ],
                       ),
@@ -185,18 +193,18 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'PO Qty: ${NumberFormat('#,##0.##').format(
-                                  targetQty)}',
-                              style: TextStyle(fontSize: 11,
-                                  color: Colors.grey.shade600,
+                              'PO Qty: ${NumberFormat('#,##0.##').format(targetQty)}',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
                                   fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              "${(percent * 100).toInt()}%",
+                              '${(percent * 100).toInt()}%',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: isCompleted ? Colors.green : Colors.blue,
+                                color: isCompleted ? cs.primary : cs.tertiary,
                               ),
                             ),
                           ],
@@ -208,9 +216,9 @@ class PurchaseReceiptItemCard extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           barRadius: const Radius.circular(3),
                           progressColor: hasOverReceipt
-                              ? Colors.orange
-                              : (isCompleted ? Colors.green : Colors.blue),
-                          backgroundColor: Colors.grey.shade100,
+                              ? cs.error
+                              : (isCompleted ? cs.primary : cs.tertiary),
+                          backgroundColor: cs.surfaceContainerHighest,
                         ),
                       ],
                     ],
@@ -224,30 +232,34 @@ class PurchaseReceiptItemCard extends StatelessWidget {
     });
   }
 
-  Widget _buildBadge({required IconData icon, required String label, required MaterialColor color, bool isMono = false}) {
+  Widget _buildBadge({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color containerColor,
+    bool isMono = false,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: color.shade50,
+        color: containerColor.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.shade100),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color.shade700),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: color.shade900,
-                fontWeight: FontWeight.w600,
-                fontFamily: isMono ? 'monospace' : null,
-                fontFeatures: isMono ? [const FontFeature.slashedZero()] : null,
-                overflow: TextOverflow.ellipsis,
-              ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+              fontFamily: isMono ? 'monospace' : null,
+              fontFeatures: isMono ? [const FontFeature.slashedZero()] : null,
             ),
           ),
         ],

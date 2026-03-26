@@ -26,34 +26,22 @@ class StockEntryItemFormSheet extends StatelessWidget {
         formKey: controller.itemFormKey,
         scrollController: scrollController,
         title: isEditing ? 'Update Item' : 'Add Item',
-
-        // --- Standard Item Fields ---
         itemCode: controller.itemCode.value,
         itemName: controller.itemName.value,
         itemSubtext: controller.customVariantOf,
-
-        // --- Quantity Control ---
-        // FIX: Check currentBundleEntries instead of currentBatches
         isQtyReadOnly: controller.currentBundleEntries.isNotEmpty,
         qtyController: controller.qtyController,
         onIncrement: () => _modifyQty(1),
         onDecrement: () => _modifyQty(-1),
-
-        // --- Actions ---
-        // Bind enabled state to controller's dirty & valid check
         isSaveEnabledRx: controller.isSaveEnabled,
         onSubmit: controller.submit,
         onDelete: isEditing ? controller.deleteItem : null,
-
-        // --- Metadata ---
         owner: controller.itemOwner.value,
         creation: controller.itemCreation.value,
         modified: controller.itemModified.value,
         modifiedBy: controller.itemModifiedBy.value,
-
-        // --- Custom Form Body ---
         customFields: [
-          _buildValidationErrors(),
+          _buildValidationErrors(context),
           _buildSerialBatchBundleFields(context),
           _buildInventoryDimensionFields(context),
         ],
@@ -67,35 +55,35 @@ class StockEntryItemFormSheet extends StatelessWidget {
     if (newValue >= 0) controller.qtyController.text = newValue.toString();
   }
 
-  // --- Section: Stock Movement (Warehouses & Racks) ---
   Widget _buildInventoryDimensionFields(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
-        // SOURCE
         _buildLocationColumn(
+          context: context,
           label: 'Source Rack',
           warehouse: controller.itemSourceWarehouse.value,
           rackController: controller.sourceRackController,
           isValid: controller.isSourceRackValid.value,
           onValidate: (v) => controller.validateRack(v, isSource: true),
-          iconColor: Colors.orange,
+          iconColor: cs.tertiary,
         ),
         const SizedBox(height: 12),
-
-        // TARGET
         _buildLocationColumn(
+          context: context,
           label: 'Target Rack',
           warehouse: controller.itemTargetWarehouse.value,
           rackController: controller.targetRackController,
           isValid: controller.isTargetRackValid.value,
           onValidate: (v) => controller.validateRack(v, isSource: false),
-          iconColor: Colors.green,
+          iconColor: cs.secondary,
         ),
       ],
     );
   }
 
   Widget _buildLocationColumn({
+    required BuildContext context,
     required String label,
     required String? warehouse,
     required TextEditingController rackController,
@@ -103,34 +91,37 @@ class StockEntryItemFormSheet extends StatelessWidget {
     required Function(String) onValidate,
     required Color iconColor,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Row for Label and Warehouse to save vertical space
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-                'Warehouse',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)
-            ),
+            Text('Warehouse',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurfaceVariant)),
             if (warehouse != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   warehouse,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: iconColor),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: iconColor),
                 ),
               ),
           ],
         ),
         const SizedBox(height: 8),
-
-        // Rack Input
         TextFormField(
           controller: rackController,
           style: const TextStyle(fontSize: 14),
@@ -139,12 +130,21 @@ class StockEntryItemFormSheet extends StatelessWidget {
             hintText: 'Scan $label Rack',
             isDense: true,
             filled: true,
-            fillColor: isValid ? iconColor.withValues(alpha: 0.05) : Colors.grey.shade50,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: iconColor)),
-            prefixIcon: Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade400),
-            suffixIcon: Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
+            fillColor: isValid
+                ? iconColor.withValues(alpha: 0.05)
+                : cs.surfaceContainerLow,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: iconColor)),
+            prefixIcon:
+                Icon(Icons.dns_outlined, size: 16, color: cs.onSurfaceVariant),
+            suffixIcon:
+                Icon(Icons.qr_code_scanner, size: 18, color: iconColor),
           ),
           onFieldSubmitted: onValidate,
         ),
@@ -152,14 +152,13 @@ class StockEntryItemFormSheet extends StatelessWidget {
     );
   }
 
-  // --- Section: Batch & Serial (Identification) ---
   Widget _buildSerialBatchBundleFields(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Searchable Dropdown for Batch Input
             RawAutocomplete<Map<String, dynamic>>(
               textEditingController: controller.batchController,
               focusNode: FocusNode(),
@@ -178,7 +177,7 @@ class StockEntryItemFormSheet extends StatelessWidget {
                   child: Material(
                     elevation: 4.0,
                     borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
+                    color: cs.surface,
                     child: SizedBox(
                       width: constraints.maxWidth,
                       height: 200,
@@ -191,11 +190,13 @@ class StockEntryItemFormSheet extends StatelessWidget {
                             dense: true,
                             title: Text(
                               option['batch'] ?? '',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
                               '${option['batch']}: ${option['qty']}',
-                              style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                              style: TextStyle(
+                                  color: cs.primary, fontSize: 12),
                             ),
                             onTap: () => onSelected(option),
                           );
@@ -205,7 +206,8 @@ class StockEntryItemFormSheet extends StatelessWidget {
                   ),
                 );
               },
-              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+              fieldViewBuilder:
+                  (context, textController, focusNode, onFieldSubmitted) {
                 return Obx(() => TextFormField(
                   controller: textController,
                   focusNode: focusNode,
@@ -215,19 +217,24 @@ class StockEntryItemFormSheet extends StatelessWidget {
                     errorMaxLines: null,
                     hintText: 'Scan/Enter Batch',
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    // FIX: Show loading indicator if validating, else show Add icon
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     suffixIcon: controller.isValidatingBatch.value
-                        ? Transform.scale(scale: 0.5, child: const CircularProgressIndicator(strokeWidth: 2))
+                        ? Transform.scale(
+                            scale: 0.5,
+                            child: const CircularProgressIndicator(
+                                strokeWidth: 2))
                         : IconButton(
-                      icon: const Icon(Icons.add, color: Colors.purple),
-                      onPressed: () {
-                        if (textController.text.isNotEmpty) {
-                          controller.validateAndAddBatch(textController.text);
-                        }
-                      },
-                    ),
+                            icon: Icon(Icons.add, color: cs.tertiary),
+                            onPressed: () {
+                              if (textController.text.isNotEmpty) {
+                                controller.validateAndAddBatch(
+                                    textController.text);
+                              }
+                            },
+                          ),
                   ),
                   onFieldSubmitted: (val) {
                     if (val.isNotEmpty) {
@@ -237,23 +244,23 @@ class StockEntryItemFormSheet extends StatelessWidget {
                 ));
               },
             ),
-
-            // Batch List
             if (controller.currentBundleEntries.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 constraints: const BoxConstraints(maxHeight: 250),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: cs.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(
+                      color: cs.outline.withValues(alpha: 0.2)),
                 ),
                 child: ListView.separated(
                   shrinkWrap: true,
                   padding: const EdgeInsets.all(8),
                   itemCount: controller.currentBundleEntries.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) => _buildBatchRow(context, index),
+                  itemBuilder: (context, index) =>
+                      _buildBatchRow(context, index),
                 ),
               ),
             ] else
@@ -273,12 +280,10 @@ class StockEntryItemFormSheet extends StatelessWidget {
   }
 
   Widget _buildBatchRow(BuildContext context, int index) {
+    final cs = Theme.of(context).colorScheme;
     final batch = controller.currentBundleEntries[index];
-    final isOutward = ['Material Issue', 'Material Transfer']
-        .contains(controller.parent.selectedStockEntryType.value);
 
     return TextFormField(
-      // Key ensures focus is preserved correctly if list reorders/updates
       key: ValueKey(batch.batchNo),
       initialValue: batch.qty.abs().toString(),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -286,66 +291,75 @@ class StockEntryItemFormSheet extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+        fillColor: cs.surface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.4))),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.4))),
         prefixIcon: Container(
           width: 140,
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.only(left: 12, right: 8),
           child: Text(
             batch.batchNo ?? '-',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: cs.onSurfaceVariant),
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-
-        // Requirement: Append Remove button as suffix
-        suffixIcon: controller.currentBundleEntries.length > 1 ? IconButton(
-          icon: Icon(Icons.close, size: 18, color: Colors.red.shade300),
-          onPressed: () => controller.removeEntry(index),
-          tooltip: 'Remove',
-        ) : null,
+        prefixIconConstraints:
+            const BoxConstraints(minWidth: 0, minHeight: 0),
+        suffixIcon: controller.currentBundleEntries.length > 1
+            ? IconButton(
+                icon: Icon(Icons.close,
+                    size: 18, color: cs.error.withValues(alpha: 0.7)),
+                onPressed: () => controller.removeEntry(index),
+                tooltip: 'Remove',
+              )
+            : null,
       ),
       onChanged: (val) {
         final qty = double.tryParse(val);
         if (qty != null) {
-          // Requirement: Negative if Outward, Positive if Inward
-          // final signedQty = isOutward ? -qty.abs() : qty.abs();
-          // controller.updateEntryQty(index, signedQty);
           controller.updateEntryQty(index, qty);
         }
       },
     );
   }
 
-  Widget _buildValidationErrors() {
+  Widget _buildValidationErrors(BuildContext context) {
     return Column(
       children: [
-        // if (controller.batchError.value != null)
-        //   _errorBanner(controller.batchError.value!),
         if (controller.rackError.value != null)
-          _errorBanner(controller.rackError.value!),
+          _errorBanner(context, controller.rackError.value!),
       ],
     );
   }
 
-  Widget _errorBanner(String msg) {
+  Widget _errorBanner(BuildContext context, String msg) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: cs.errorContainer.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.shade100),
+        border: Border.all(color: cs.error.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, size: 16, color: Colors.red.shade700),
+          Icon(Icons.warning_amber_rounded, size: 16, color: cs.error),
           const SizedBox(width: 8),
-          Expanded(child: Text(msg, style: TextStyle(color: Colors.red.shade800, fontSize: 12))),
+          Expanded(
+            child: Text(msg,
+                style: TextStyle(color: cs.onErrorContainer, fontSize: 12)),
+          ),
         ],
       ),
     );

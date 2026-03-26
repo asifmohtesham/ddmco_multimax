@@ -15,13 +15,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      // Determine if the document is editable and can be saved
       final entry = controller.stockEntry.value;
       final bool isEditable = entry?.docstatus == 0;
-
-      // Determine if we should show the save button:
-      // It should be visible if the document is editable.
-      // The button's disabled/enabled state is handled by MainAppBar via 'isDirty'.
       final VoidCallback? onSave = isEditable ? controller.saveStockEntry : null;
 
       return PopScope(
@@ -39,9 +34,6 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               isDirty: controller.isDirty.value,
               isSaving: controller.isSaving.value,
               onSave: onSave,
-              // Optional: Enable Search if you want to search other Stock Entries from here
-              // searchDoctype: 'Stock Entry',
-              // searchRoute: AppRoutes.STOCK_ENTRY_LIST,
               bottom: const TabBar(
                 tabs: [
                   Tab(text: 'Logistics & Details'),
@@ -53,11 +45,9 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               if (controller.isLoading.value) {
                 return const Center(child: CircularProgressIndicator());
               }
-
               if (entry == null) {
                 return const Center(child: Text('Stock entry not found.'));
               }
-
               return TabBarView(
                 children: [
                   _buildDetailsView(context, entry),
@@ -72,6 +62,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 
   Widget _buildDetailsView(BuildContext context, StockEntry entry) {
+    final cs = Theme.of(context).colorScheme;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
@@ -79,7 +71,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           final type = controller.selectedStockEntryType.value;
           final isMaterialIssue = type == 'Material Issue';
           final isMaterialReceipt = type == 'Material Receipt';
-          final isMaterialTransfer = type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+          final isMaterialTransfer = type == 'Material Transfer' ||
+              type == 'Material Transfer for Manufacture';
           final isEditable = entry.docstatus == 0;
 
           return Column(
@@ -90,25 +83,33 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   margin: const EdgeInsets.only(bottom: 24),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Colors.deepOrange.shade50, Colors.lightGreen.shade50],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight
-                    ),
+                    color: cs.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.shade100),
+                    border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
                   ),
                   child: Column(
                     children: [
                       InkWell(
-                        onTap: isEditable ? () => _showStockEntryTypePicker(context) : null,
+                        onTap: isEditable
+                            ? () => _showStockEntryTypePicker(context)
+                            : null,
                         child: Row(
                           children: [
-                            Icon(Icons.category, size: 20, color: Colors.blue.shade700),
+                            Icon(Icons.category,
+                                size: 20, color: cs.primary),
                             const SizedBox(width: 8),
-                            Text(type, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 16)),
+                            Text(
+                              type,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: cs.onSurface,
+                                fontSize: 16,
+                              ),
+                            ),
                             const Spacer(),
-                            if(isEditable) const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                            if (isEditable)
+                              Icon(Icons.arrow_drop_down,
+                                  color: cs.onSurfaceVariant),
                           ],
                         ),
                       ),
@@ -117,67 +118,110 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                         children: [
                           Expanded(
                             child: GestureDetector(
-                              onTap: (isEditable && (isMaterialIssue || isMaterialTransfer)) ? () => _showWarehousePicker(context, true) : null,
+                              onTap: (isEditable &&
+                                      (isMaterialIssue || isMaterialTransfer))
+                                  ? () => _showWarehousePicker(context, true)
+                                  : null,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('FROM', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                                  Text('FROM',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
                                   Text(
-                                    controller.selectedFromWarehouse.value ?? (isMaterialReceipt ? 'N/A' : 'Select Source'),
+                                    controller.selectedFromWarehouse.value ??
+                                        (isMaterialReceipt
+                                            ? 'N/A'
+                                            : 'Select Source'),
                                     style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: (isMaterialIssue || isMaterialTransfer) ? Colors.black87 : Colors.grey
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: (isMaterialIssue ||
+                                              isMaterialTransfer)
+                                          ? cs.onSurface
+                                          : cs.onSurfaceVariant,
                                     ),
-                                    maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  )
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ],
                               ),
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Icon(Icons.arrow_forward_rounded, color: Colors.blue.shade300),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            child: Icon(Icons.arrow_forward_rounded,
+                                color: cs.primary.withValues(alpha: 0.5)),
                           ),
                           Expanded(
                             child: GestureDetector(
-                              onTap: (isEditable && (isMaterialReceipt || isMaterialTransfer)) ? () => _showWarehousePicker(context, false) : null,
+                              onTap: (isEditable &&
+                                      (isMaterialReceipt ||
+                                          isMaterialTransfer))
+                                  ? () => _showWarehousePicker(context, false)
+                                  : null,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Text('TO', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                                  Text('TO',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
                                   Text(
-                                    controller.selectedToWarehouse.value ?? (isMaterialIssue ? 'N/A' : 'Select Target'),
+                                    controller.selectedToWarehouse.value ??
+                                        (isMaterialIssue
+                                            ? 'N/A'
+                                            : 'Select Target'),
                                     textAlign: TextAlign.end,
                                     style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: (isMaterialReceipt || isMaterialTransfer) ? Colors.black87 : Colors.grey
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: (isMaterialReceipt ||
+                                              isMaterialTransfer)
+                                          ? cs.onSurface
+                                          : cs.onSurfaceVariant,
                                     ),
-                                    maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  )
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ],
                               ),
                             ),
                           ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),
 
-              const Text("Reference & Schedule", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              Text('Reference & Schedule',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface)),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
-                    child: _buildCompactField(label: 'Date', value: entry.postingDate, icon: Icons.calendar_today),
+                    child: _buildCompactField(
+                        context: context,
+                        label: 'Date',
+                        value: entry.postingDate,
+                        icon: Icons.calendar_today),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildCompactField(label: 'Time', value: entry.postingTime, icon: Icons.access_time),
+                    child: _buildCompactField(
+                        context: context,
+                        label: 'Time',
+                        value: entry.postingTime,
+                        icon: Icons.access_time),
                   ),
                 ],
               ),
@@ -189,9 +233,12 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   decoration: InputDecoration(
                     labelText: 'Reference No',
                     hintText: 'Enter reference number',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    prefixIcon: const Icon(Icons.confirmation_number_outlined),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    border:
+                        OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon:
+                        const Icon(Icons.confirmation_number_outlined),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
                   ),
                 ),
               ],
@@ -199,12 +246,23 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
               const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Column(
                   children: [
-                    _buildSummaryRow('Total Quantity', '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
+                    _buildSummaryRow(
+                        context,
+                        'Total Quantity',
+                        '${entry.customTotalQty?.toStringAsFixed(2) ?? "0"}'),
                     const Divider(),
-                    _buildSummaryRow('Total Amount', '\$${entry.totalAmount.toStringAsFixed(2)}', isBold: true),
+                    _buildSummaryRow(
+                      context,
+                      'Total Amount',
+                      '\$${entry.totalAmount.toStringAsFixed(2)}',
+                      isBold: true,
+                    ),
                   ],
                 ),
               ),
@@ -222,39 +280,36 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         Column(
           children: [
             Expanded(
-              // REMOVED Obx() here. 'entry' is a plain object passed from parent Obx.
-              // 'controller.entrySource' is not an Rx variable in the provided controller logic (it's a plain Enum property set at init).
               child: Builder(builder: (context) {
-                // 1. Handle Empty State
-                if (entry.items.isEmpty && controller.entrySource != StockEntrySource.posUpload) {
-                  return _buildEmptyState();
+                if (entry.items.isEmpty &&
+                    controller.entrySource != StockEntrySource.posUpload) {
+                  return _buildEmptyState(context);
                 }
-
-                // 2. Dispatch Layout based on Entry Source
                 switch (controller.entrySource) {
                   case StockEntrySource.posUpload:
-                  // Wrap POS View in Obx because it listens to controller.posUpload Rx
-                    return Obx(() => _buildPosUploadItemsView(entry));
+                    return Obx(
+                        () => _buildPosUploadItemsView(context, entry));
                   case StockEntrySource.materialRequest:
-                    return _buildMaterialRequestItemsView(entry);
+                    return _buildMaterialRequestItemsView(context, entry);
                   case StockEntrySource.manual:
                   default:
-                    return _buildStandardItemsView(entry);
+                    return _buildStandardItemsView(context, entry);
                 }
               }),
             ),
           ],
         ),
-
         Positioned(
-          left: 0, right: 0, bottom: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           child: _buildBottomScanField(context),
         ),
       ],
     );
   }
 
-  Widget _buildStandardItemsView(StockEntry entry) {
+  Widget _buildStandardItemsView(BuildContext context, StockEntry entry) {
     return ListView.separated(
       controller: controller.scrollController,
       padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
@@ -263,17 +318,20 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       itemBuilder: (context, index) {
         final item = entry.items[index];
         _ensureItemKey(item);
-
         return StockEntryItemCard(
           item: item,
-          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+          onTap: controller.stockEntry.value?.docstatus == 0
+              ? () => controller.editItem(item)
+              : null,
+          onDelete: controller.stockEntry.value?.docstatus == 0
+              ? () => controller.deleteItem(item.name!)
+              : null,
         );
       },
     );
   }
 
-  Widget _buildMaterialRequestItemsView(StockEntry entry) {
+  Widget _buildMaterialRequestItemsView(BuildContext context, StockEntry entry) {
     return ListView.separated(
       controller: controller.scrollController,
       padding: const EdgeInsets.only(top: 8.0, bottom: 100.0),
@@ -282,48 +340,48 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       itemBuilder: (context, index) {
         final item = entry.items[index];
         _ensureItemKey(item);
-
         double? maxQty;
-        final refItem = controller.mrReferenceItems.firstWhereOrNull(
-                (r) => r['item_code'] == item.itemCode
-        );
+        final refItem = controller.mrReferenceItems
+            .firstWhereOrNull((r) => r['item_code'] == item.itemCode);
         if (refItem != null) {
           maxQty = (refItem['qty'] as num).toDouble();
         }
-
         return StockEntryItemCard(
           item: item,
           maxQty: maxQty,
-          onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-          onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
+          onTap: controller.stockEntry.value?.docstatus == 0
+              ? () => controller.editItem(item)
+              : null,
+          onDelete: controller.stockEntry.value?.docstatus == 0
+              ? () => controller.deleteItem(item.name!)
+              : null,
         );
       },
     );
   }
 
-  Widget _buildPosUploadItemsView(StockEntry entry) {
+  Widget _buildPosUploadItemsView(BuildContext context, StockEntry entry) {
     if (controller.posUpload.value == null) {
       return const Center(child: CircularProgressIndicator());
     }
-
     final posUpload = controller.posUpload.value!;
     final groupedItems = controller.groupedItems;
 
     return ListView.builder(
       controller: controller.scrollController,
-      padding: const EdgeInsets.only(top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
+      padding: const EdgeInsets.only(
+          top: 8.0, bottom: 100.0, left: 8.0, right: 8.0),
       itemCount: posUpload.items.length,
       itemBuilder: (context, index) {
         final posItem = posUpload.items[index];
         final serialNumber = posItem.idx.toString();
-        final expansionKey = '$serialNumber';
-
+        final expansionKey = serialNumber;
         final itemsInGroup = groupedItems[serialNumber] ?? [];
-        final currentScannedQty = itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
+        final currentScannedQty =
+            itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
 
         return Obx(() {
           final isExpanded = controller.expandedInvoice.value == expansionKey;
-
           return ItemGroupCard(
             isExpanded: isExpanded,
             serialNo: posItem.idx,
@@ -335,12 +393,18 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
             children: itemsInGroup.map((item) {
               _ensureItemKey(item);
               return Container(
-                  key: item.name != null ? controller.itemKeys[item.name] : null,
-                  child: StockEntryItemCard(
-                    item: item,
-                    onTap: controller.stockEntry.value?.docstatus == 0 ? () => controller.editItem(item) : null,
-                    onDelete: controller.stockEntry.value?.docstatus == 0 ? () => controller.deleteItem(item.name!) : null,
-                  )
+                key: item.name != null
+                    ? controller.itemKeys[item.name]
+                    : null,
+                child: StockEntryItemCard(
+                  item: item,
+                  onTap: controller.stockEntry.value?.docstatus == 0
+                      ? () => controller.editItem(item)
+                      : null,
+                  onDelete: controller.stockEntry.value?.docstatus == 0
+                      ? () => controller.deleteItem(item.name!)
+                      : null,
+                ),
               );
             }).toList(),
           );
@@ -349,28 +413,40 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.qr_code_scanner, size: 80, color: Colors.grey.shade300),
+          Icon(Icons.qr_code_scanner, size: 80, color: cs.outlineVariant),
           const SizedBox(height: 16),
-          Text('Ready to Scan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+          Text('Ready to Scan',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurfaceVariant)),
           const SizedBox(height: 8),
-          const Text('Scan items, batches or racks to start.', style: TextStyle(color: Colors.grey)),
+          Text('Scan items, batches or racks to start.',
+              style: TextStyle(color: cs.onSurfaceVariant)),
         ],
       ),
     );
   }
 
   Widget _buildBottomScanField(BuildContext context) {
-    if (controller.stockEntry.value?.docstatus != 0) return Container();
-
+    final cs = Theme.of(context).colorScheme;
+    if (controller.stockEntry.value?.docstatus != 0) return const SizedBox.shrink();
     return Container(
-      decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
+      decoration: BoxDecoration(
+        color: cs.surface,
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          )
+        ],
       ),
       padding: const EdgeInsets.only(bottom: 0),
       child: Obx(() => BarcodeInputWidget(
@@ -383,59 +459,90 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
     );
   }
 
-  Widget _buildCompactField({required String label, required String? value, required IconData icon}) {
+  Widget _buildCompactField({
+    required BuildContext context,
+    required String label,
+    required String? value,
+    required IconData icon,
+  }) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey),
+          Icon(icon, size: 16, color: cs.onSurfaceVariant),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              Text(value ?? '-', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(label,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+              Text(value ?? '-',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600)),
             ],
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+  Widget _buildSummaryRow(BuildContext context, String label, String value,
+      {bool isBold = false}) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w500, fontSize: isBold ? 16 : 14, color: isBold ? Colors.black87 : Colors.black54)),
+          Text(label,
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+              fontSize: isBold ? 16 : 14,
+              color: isBold
+                  ? cs.onSurface
+                  : cs.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
         ],
       ),
     );
   }
 
   void _showWarehousePicker(BuildContext context, bool isSource) {
-    if (controller.warehouses.isEmpty && !controller.isFetchingWarehouses.value) {
+    final cs = Theme.of(context).colorScheme;
+    if (controller.warehouses.isEmpty &&
+        !controller.isFetchingWarehouses.value) {
       controller.fetchWarehouses();
     }
-
     Get.bottomSheet(
       Container(
         height: MediaQuery.of(context).size.height * 0.6,
         padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
         child: Column(
           children: [
-            Text(isSource ? 'Select Source Warehouse' : 'Select Target Warehouse', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(
+              isSource ? 'Select Source Warehouse' : 'Select Target Warehouse',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 12),
             Expanded(
               child: Obx(() {
-                if (controller.isFetchingWarehouses.value) return const Center(child: CircularProgressIndicator());
+                if (controller.isFetchingWarehouses.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
                 return ListView.separated(
                   itemCount: controller.warehouses.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
@@ -444,15 +551,18 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                     return ListTile(
                       title: Text(wh),
                       onTap: () {
-                        if(isSource) controller.selectedFromWarehouse.value = wh;
-                        else controller.selectedToWarehouse.value = wh;
+                        if (isSource) {
+                          controller.selectedFromWarehouse.value = wh;
+                        } else {
+                          controller.selectedToWarehouse.value = wh;
+                        }
                         Get.back();
                       },
                     );
                   },
                 );
               }),
-            )
+            ),
           ],
         ),
       ),
@@ -461,8 +571,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
   }
 
   void _showStockEntryTypePicker(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final searchController = TextEditingController();
-    final RxList<String> filteredTypes = RxList<String>(controller.stockEntryTypes);
+    final RxList<String> filteredTypes =
+        RxList<String>(controller.stockEntryTypes);
 
     Get.bottomSheet(
       SafeArea(
@@ -474,17 +586,21 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           builder: (context, scrollController) {
             return Container(
               padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Select Entry Type', style: Theme.of(context).textTheme.titleLarge),
-                      IconButton(onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+                      Text('Select Entry Type',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(
+                          onPressed: () => Get.back(),
+                          icon: const Icon(Icons.close)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -494,14 +610,17 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                       labelText: 'Search Types',
                       prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (val) {
                       if (val.isEmpty) {
                         filteredTypes.assignAll(controller.stockEntryTypes);
                       } else {
-                        filteredTypes.assignAll(controller.stockEntryTypes.where(
-                                (t) => t.toLowerCase().contains(val.toLowerCase())));
+                        filteredTypes.assignAll(controller.stockEntryTypes
+                            .where((t) => t
+                                .toLowerCase()
+                                .contains(val.toLowerCase())));
                       }
                     },
                   ),
@@ -509,23 +628,38 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   Expanded(
                     child: Obx(() {
                       if (controller.isFetchingTypes.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
                       if (filteredTypes.isEmpty) {
-                        return const Center(child: Text('No types found'));
+                        return const Center(
+                            child: Text('No types found'));
                       }
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: filteredTypes.length,
-                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        separatorBuilder: (c, i) =>
+                            const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final type = filteredTypes[index];
-                          final isSelected = type == controller.selectedStockEntryType.value;
+                          final isSelected = type ==
+                              controller.selectedStockEntryType.value;
                           return ListTile(
-                            title: Text(type, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                            trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
+                            title: Text(
+                              type,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                    color: cs.primary)
+                                : null,
                             onTap: () {
-                              controller.selectedStockEntryType.value = type;
+                              controller.selectedStockEntryType.value =
+                                  type;
                               Get.back();
                             },
                           );
