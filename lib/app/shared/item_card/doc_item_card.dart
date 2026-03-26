@@ -4,34 +4,19 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // DocItemCard
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
 /// Layout — three semantic zones stacked vertically:
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
-///   Zone 2 — Operational : Batch No, rack arrow pair, warehouse arrow pair
-///                          ([_LabelValueCell] instances in a Wrap)
+///   Zone 2 — Operational : Batch No (full-width), rack pair, warehouse pair
+///                          ([_ArrowPairRow] added in C9, wired in C10)
 ///   Zone 3 — Financial   : Qty | Rate | Amount
-///                          ([_LabelValueCell] instances in an IntrinsicHeight Row
-///                          with thin vertical Dividers between columns)
-///
-/// Usage:
-/// ```dart
-/// DocItemCard(
-///   data: ItemCardData.fromDeliveryNoteItem(
-///     item,
-///     index: groupIndex,
-///     isEditable: controller.deliveryNote.value?.docstatus == 0,
-///     isHighlighted: isRecentlyAdded,
-///   ),
-///   onEdit:   () => controller.editItem(item),
-///   onDelete: () => controller.confirmAndDeleteItem(item),
-/// )
-/// ```
+///                          ([_LabelValueCell] in IntrinsicHeight Row)
 class DocItemCard extends StatelessWidget {
   final ItemCardData data;
   final VoidCallback? onTap;
@@ -95,7 +80,7 @@ class DocItemCard extends StatelessWidget {
                 const SizedBox(width: 10),
               ],
 
-              // ── Content: three zones ───────────────────────────────────────
+              // ── Content: three zones ──────────────────────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,7 +118,7 @@ class DocItemCard extends StatelessWidget {
 
               const SizedBox(width: 8),
 
-              // ── Right: actions ──────────────────────────────────────────
+              // ── Right: actions ────────────────────────────────────────────
               if (data.isEditable)
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -177,9 +162,9 @@ class DocItemCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _IdentityZone
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Zone 1: item code + name headline, optional Variant Of chip.
 class _IdentityZone extends StatelessWidget {
@@ -242,9 +227,9 @@ class _IdentityZone extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
-// _OperationalZone
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// _OperationalZone  (still Wrap-based — C10 will migrate to Column)
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Zone 2: Batch No, rack arrow pair, warehouse arrow pair.
 /// Each field rendered as a [_LabelValueCell]. Returns [SizedBox.shrink]
@@ -334,19 +319,11 @@ class _OperationalZone extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
-// _FinancialZone  (C8: Wrap chips → IntrinsicHeight Row of _LabelValueCell)
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// _FinancialZone
+// ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 3: Qty | Rate | Amount — [_LabelValueCell] instances in an
-/// [IntrinsicHeight] Row, separated by thin vertical [VerticalDivider]s.
-///
-/// Each column is [Expanded] so the three cells share available width equally,
-/// preventing a long UOM string from squeezing Rate and Amount.
-///
-/// When [rate] is null (PS), only the Qty cell is rendered.
-/// When [amount] is null (PS, sometimes SE), the Amount cell is omitted and
-/// its preceding divider is not rendered.
+/// Zone 3: Qty | Rate | Amount — [_LabelValueCell] in IntrinsicHeight Row.
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
@@ -374,9 +351,6 @@ class _FinancialZone extends StatelessWidget {
     final bool   hasRate   = rate   != null;
     final bool   hasAmount = amount != null;
 
-    // Build the list of [Expanded] cells + thin [VerticalDivider] separators.
-    // Dividers are inserted only between present cells — no leading/trailing
-    // divider ever appears.
     final List<Widget> cells = [
       Expanded(
         child: _LabelValueCell(
@@ -431,9 +405,9 @@ class _FinancialZone extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // MetaChipSize
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 enum MetaChipSize {
   /// Horizontal padding 6, vertical 3, font 12.
@@ -442,9 +416,9 @@ enum MetaChipSize {
   compact,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // MetaChipRole
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 enum MetaChipRole {
   /// Template/parent item identity — amber-tinted (secondary family).
@@ -459,13 +433,11 @@ enum MetaChipRole {
   toWarehouse,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // DocItemMetaChip
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Compact icon + label chip. Still used by [_IdentityZone] (Variant Of).
-/// [_colours] is package-private within this file so [_LabelValueCell]
-/// can share the same colour map.
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -567,17 +539,16 @@ class DocItemMetaChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // _LabelValueCell
-// ─────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 /// A labelled-value cell: muted label on top, prominent value below.
 ///
-/// Visual anatomy:
 /// ```
 /// ┌────────────────────────┐
-/// │ ⚪ label         10px, onSurfaceVariant │
-/// │ VALUE-STRING     13px, w600, role colour│
+/// │ ⬤ label   10px muted   │
+/// │ VALUE     13px w600    │
 /// └────────────────────────┘
 /// ```
 class _LabelValueCell extends StatelessWidget {
@@ -647,6 +618,62 @@ class _LabelValueCell extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// _ArrowPairRow
+// ────────────────────────────────────────────────────────────────────────────
+
+/// A single-line source → target row using two [_LabelValueCell] instances.
+///
+/// Visual anatomy (SE rack or warehouse transfer):
+/// ```
+/// ┌──────────────────────┐       ┌──────────────────────┐
+/// │ 🗄 Source Rack        │  →   │ 🗄 Target Rack         │
+/// │ KA-WH-DXB1-107B      │       │ KA-WH-DXB3-101A      │
+/// └──────────────────────┘       └──────────────────────┘
+///        Expanded          Padding        Expanded
+/// ```
+///
+/// When [target] is null the source cell expands to full width and no
+/// arrow is rendered (used for single-warehouse DocTypes like DN / PR).
+///
+/// Both cells are [Expanded] so they share width equally and long values
+/// never push the arrow off-screen.
+class _ArrowPairRow extends StatelessWidget {
+  /// The source-side [_LabelValueCell] (always rendered).
+  final Widget source;
+
+  /// The target-side [_LabelValueCell], or null for single-sided display.
+  final Widget? target;
+
+  const _ArrowPairRow({
+    required this.source,
+    this.target,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: source),
+        if (target != null) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(
+              Icons.arrow_forward_rounded,
+              size: 14,
+              color: cs.outline,
+            ),
+          ),
+          Expanded(child: target!),
+        ],
+      ],
     );
   }
 }
