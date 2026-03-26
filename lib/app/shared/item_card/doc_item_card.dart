@@ -15,6 +15,12 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 /// all state decisions are pre-computed by the caller and supplied
 /// through [data].
 ///
+/// Layout: three semantic zones stacked vertically inside the card body:
+///
+///   Zone 1 — Identity  : item code + name, optional Variant Of chip
+///   Zone 2 — Operational: Batch No, rack arrow pair, warehouse arrow pair
+///   Zone 3 — Financial  : Qty, Rate, Amount (compact chips)
+///
 /// Usage:
 /// ```dart
 /// DocItemCard(
@@ -56,9 +62,28 @@ class DocItemCard extends StatelessWidget {
     this.isLoadingEdit = false,
   });
 
+  static final _numFmt = NumberFormat('#,##0.##');
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // ── Resolve per-DocType label hints (with fallbacks) ───────────────────
+    final String qtyLabel       = data.qtyLabel       ?? 'Qty';
+    final String rateLabel      = data.rateLabel       ?? 'Rate';
+    final String warehouseLabel = data.warehouseLabel  ?? 'Warehouse';
+
+    // ── Derived booleans for zone visibility ──────────────────────────
+    final bool hasVariantOf     = data.variantOf  != null && data.variantOf!.isNotEmpty;
+    final bool hasBatch         = data.batchNo    != null && data.batchNo!.isNotEmpty;
+    final bool hasSourceRack    = data.rack        != null && data.rack!.isNotEmpty;
+    final bool hasTargetRack    = data.toRack      != null && data.toRack!.isNotEmpty;
+    final bool hasWarehouse     = data.warehouse   != null && data.warehouse!.isNotEmpty;
+    final bool hasToWarehouse   = data.toWarehouse != null && data.toWarehouse!.isNotEmpty;
+    final bool hasOperational   = hasBatch || hasSourceRack || hasTargetRack
+                                  || hasWarehouse || hasToWarehouse;
+    final bool hasRate          = data.rate   != null;
+    final bool hasAmount        = data.amount != null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -81,31 +106,39 @@ class DocItemCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Index badge ───────────────────────────────────────────────
               if (data.index != null) ...[
-                CircleAvatar(
-                  radius: 10,
-                  backgroundColor: cs.primaryContainer,
-                  child: Text(
-                    '${data.index! + 1}',
-                    style: TextStyle(
-                      color: cs.onPrimaryContainer,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
+                Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: CircleAvatar(
+                    radius: 10,
+                    backgroundColor: cs.primaryContainer,
+                    child: Text(
+                      '${data.index! + 1}',
+                      style: TextStyle(
+                        color: cs.onPrimaryContainer,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
               ],
 
-              // ── Left: identity + metadata ───────────────────────────────
+              // ── Content: three zones ───────────────────────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Item code (always ShureTechMono + slashedZero)
+
+                    // ════════════════════════════════════════════════════════
+                    // Zone 1 — Identity
+                    // ════════════════════════════════════════════════════════
+
+                    // Item code + name
                     RichText(
                       text: TextSpan(
                         style: DefaultTextStyle.of(context).style,
@@ -120,8 +153,7 @@ class DocItemCard extends StatelessWidget {
                               color: cs.onSurface,
                             ),
                           ),
-                          if (data.itemName != null &&
-                              data.itemName!.isNotEmpty)
+                          if (data.itemName != null && data.itemName!.isNotEmpty)
                             TextSpan(
                               text: ': ${data.itemName}',
                               style: TextStyle(
@@ -135,128 +167,143 @@ class DocItemCard extends StatelessWidget {
                       ),
                     ),
 
-                    // variant_of chip — label: 'Variant Of' (ERPNext custom field)
-                    if (data.variantOf != null &&
-                        data.variantOf!.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cs.secondaryContainer
-                              .withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                              color: cs.outline.withValues(alpha: 0.3),
-                              width: 0.5),
-                        ),
-                        child: Text(
-                          // ERPNext custom field label: 'Variant Of'
-                          'Variant Of: ${data.variantOf!}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSecondaryContainer,
-                            fontFamily: 'ShureTechMono',
-                          ),
-                        ),
+                    // Variant Of chip — ERPNext custom field 'custom_variant_of'
+                    // Migrated from raw Container to DocItemMetaChip for
+                    // consistent colour token and size behaviour.
+                    if (hasVariantOf) ...[
+                      const SizedBox(height: 4),
+                      DocItemMetaChip(
+                        icon: Icons.account_tree_outlined,
+                        label: 'Variant Of: ${data.variantOf!}',
+                        role: MetaChipRole.variantOf,
+                        size: MetaChipSize.standard,
                       ),
                     ],
 
-                    const SizedBox(height: 6),
+                    // ════════════════════════════════════════════════════════
+                    // Zone 2 — Operational
+                    // Rendered only when at least one operational field is set.
+                    // ════════════════════════════════════════════════════════
 
-                    // ── Meta chip row ───────────────────────────────────────
+                    if (hasOperational) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+
+                          // Batch No
+                          if (hasBatch)
+                            DocItemMetaChip(
+                              icon: Icons.label_outline,
+                              label: 'Batch No: ${data.batchNo!}',
+                              role: MetaChipRole.batch,
+                              size: MetaChipSize.standard,
+                            ),
+
+                          // Rack arrow pair:
+                          //   • SE with both rack + toRack → Source Rack → Target Rack
+                          //   • SE/PR/DN with only rack    → Source Rack
+                          if (hasSourceRack) ...[
+                            DocItemMetaChip(
+                              icon: Icons.shelves,
+                              label: 'Source Rack: ${data.rack!}',
+                              role: MetaChipRole.rack,
+                              size: MetaChipSize.standard,
+                            ),
+                            if (hasTargetRack) ...[
+                              Icon(Icons.arrow_forward,
+                                  size: 12, color: cs.outline),
+                              DocItemMetaChip(
+                                icon: Icons.shelves,
+                                label: 'Target Rack: ${data.toRack!}',
+                                role: MetaChipRole.toRack,
+                                size: MetaChipSize.standard,
+                              ),
+                            ],
+                          ],
+
+                          // Warehouse arrow pair:
+                          //   • SE with both warehouse + toWarehouse → Source WH → Target WH
+                          //   • PR / DN with single warehouse         → warehouseLabel chip
+                          if (hasWarehouse) ...[
+                            DocItemMetaChip(
+                              icon: Icons.store_outlined,
+                              label: '$warehouseLabel: ${data.warehouse!}',
+                              role: MetaChipRole.warehouse,
+                              size: MetaChipSize.standard,
+                            ),
+                            if (hasToWarehouse) ...[
+                              Icon(Icons.arrow_forward,
+                                  size: 12, color: cs.outline),
+                              DocItemMetaChip(
+                                icon: Icons.store_outlined,
+                                label: 'Target Warehouse: ${data.toWarehouse!}',
+                                role: MetaChipRole.toWarehouse,
+                                size: MetaChipSize.standard,
+                              ),
+                            ],
+                          ],
+
+                        ],
+                      ),
+                    ],
+
+                    // ════════════════════════════════════════════════════════
+                    // Zone 3 — Financial  (compact chips)
+                    // ════════════════════════════════════════════════════════
+
+                    const SizedBox(height: 6),
                     Wrap(
-                      spacing: 6,
+                      spacing: 4,
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // Qty — always shown.
-                        // Label kept as 'Qty:' here; per-DocType label
-                        // (e.g. 'Accepted Qty:' for PR) will be driven
-                        // by ItemCardData.qtyLabel in C3.
+
+                        // Qty — always shown; label from qtyLabel hint
                         DocItemMetaChip(
                           icon: Icons.numbers,
-                          label:
-                              'Qty: ${NumberFormat('#,##0.##').format(data.qty)}'
+                          label: '$qtyLabel: ${_numFmt.format(data.qty)}'
                               '${data.uom != null ? '  ${data.uom}' : ''}',
                           role: MetaChipRole.qty,
+                          size: MetaChipSize.compact,
                         ),
 
-                        // Rate — label kept as 'Rate:'; per-DocType
-                        // distinction ('Basic Rate:' for SE) comes in C3.
-                        if (data.rate != null)
+                        // Rate — label from rateLabel hint
+                        if (hasRate)
                           DocItemMetaChip(
                             icon: Icons.attach_money,
-                            label:
-                                'Rate: ${NumberFormat('#,##0.##').format(data.rate)}',
+                            label: '$rateLabel: ${_numFmt.format(data.rate)}',
                             role: MetaChipRole.rate,
+                            size: MetaChipSize.compact,
                           ),
 
-                        // Amount — verbatim ERPNext label (all DocTypes).
-                        if (data.amount != null)
+                        // Amount — verbatim label on all DocTypes
+                        if (hasAmount)
                           DocItemMetaChip(
                             icon: Icons.receipt_outlined,
-                            label:
-                                'Amount: ${NumberFormat('#,##0.##').format(data.amount)}',
+                            label: 'Amount: ${_numFmt.format(data.amount)}',
                             role: MetaChipRole.amount,
+                            size: MetaChipSize.compact,
                           ),
 
-                        // Batch No — verbatim ERPNext label.
-                        if (data.batchNo != null &&
-                            data.batchNo!.isNotEmpty)
-                          DocItemMetaChip(
-                            icon: Icons.label_outline,
-                            label: 'Batch No: ${data.batchNo!}',
-                            role: MetaChipRole.batch,
-                          ),
-
-                        // Source Rack — confirmed Inventory Dimension label.
-                        if (data.rack != null && data.rack!.isNotEmpty)
-                          DocItemMetaChip(
-                            icon: Icons.shelves,
-                            label: 'Source Rack: ${data.rack!}',
-                            role: MetaChipRole.rack,
-                          ),
-
-                        // Target Rack — confirmed Inventory Dimension label.
-                        if (data.toRack != null &&
-                            data.toRack!.isNotEmpty)
-                          DocItemMetaChip(
-                            icon: Icons.shelves,
-                            label: 'Target Rack: ${data.toRack!}',
-                            role: MetaChipRole.toRack,
-                          ),
-
-                        // Warehouse — verbatim DN label; PR uses
-                        // 'Accepted Warehouse' (handled via C3 warehouseLabel).
-                        if (data.warehouse != null &&
-                            data.warehouse!.isNotEmpty)
-                          DocItemMetaChip(
-                            icon: Icons.store_outlined,
-                            label: 'Warehouse: ${data.warehouse!}',
-                            role: MetaChipRole.warehouse,
-                          ),
-
-                        // Target Warehouse — verbatim SE label (t_warehouse).
-                        if (data.toWarehouse != null &&
-                            data.toWarehouse!.isNotEmpty)
-                          DocItemMetaChip(
-                            icon: Icons.store_outlined,
-                            label: 'Target Warehouse: ${data.toWarehouse!}',
-                            role: MetaChipRole.toWarehouse,
-                          ),
                       ],
                     ),
 
-                    // ── Progress bar ───────────────────────────────────────
+                    // ════════════════════════════════════════════════════════
+                    // Progress bar — below Zone 3, unchanged
                     // Rendered only when targetQty is provided (PO, PR, SE).
                     // DN and PS pass targetQty: null — bar is absent.
+                    // ════════════════════════════════════════════════════════
+
                     if (data.targetQty != null && data.targetQty! > 0)
                       DocItemProgressBar(
                         qty:       data.qty,
                         targetQty: data.targetQty!,
                         uom:       data.uom,
                       ),
+
                   ],
                 ),
               ),
@@ -268,15 +315,13 @@ class DocItemCard extends StatelessWidget {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Edit / loading spinner
                     SizedBox(
                       width: 36,
                       height: 36,
                       child: isLoadingEdit
                           ? const Padding(
                               padding: EdgeInsets.all(7.0),
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : onEdit != null
                               ? IconButton(
@@ -287,7 +332,6 @@ class DocItemCard extends StatelessWidget {
                                 )
                               : const SizedBox.shrink(),
                     ),
-                    // Delete
                     if (onDelete != null)
                       SizedBox(
                         width: 36,
@@ -386,9 +430,6 @@ class DocItemMetaChip extends StatelessWidget {
   static _ChipColours _colours(MetaChipRole role, ColorScheme cs) {
     switch (role) {
       case MetaChipRole.variantOf:
-        // Amber-tinted identity chip — secondary container shifted warm.
-        // Uses secondaryContainer as closest M3 token; callers may later
-        // supply a seed-colour override if the theme seed is not amber.
         return _ChipColours(
             bg:     cs.secondaryContainer.withValues(alpha: 0.55),
             border: cs.secondary.withValues(alpha: 0.35),
@@ -440,7 +481,6 @@ class DocItemMetaChip extends StatelessWidget {
     final cs  = Theme.of(context).colorScheme;
     final col = _colours(role, cs);
 
-    // Resolve padding and font size from the size parameter.
     final EdgeInsets chipPadding = size == MetaChipSize.compact
         ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
         : const EdgeInsets.symmetric(horizontal: 6, vertical: 3);
