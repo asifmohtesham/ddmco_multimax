@@ -27,6 +27,7 @@ abstract class AppRoutes {
   static const MATERIAL_REQUEST = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
   static const ABOUT = '/about';
+  static const BATCH_WISE_BALANCE = _Paths.BATCH_WISE_BALANCE;
 }
 
 abstract class _Paths {
@@ -55,4 +56,5 @@ abstract class _Paths {
   static const BATCH_FORM = '/batch/form';
   static const MATERIAL_REQUEST = '/material-request';
   static const MATERIAL_REQUEST_FORM = '/material-request/form';
+  static const BATCH_WISE_BALANCE = '/stock/batch-wise-balance';
 }
