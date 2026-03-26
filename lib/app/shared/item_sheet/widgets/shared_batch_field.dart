@@ -8,18 +8,34 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///
 /// ## Modes
 ///
-/// ### `editMode: false` (default — SE style)
+/// ### `editMode: false` (default -- SE style)
 /// Plain [TextField] with borderless card container. A [BalanceChip] is
-/// rendered below the field showing the base [maxQty] batch balance.
+/// rendered below the field showing the batch balance.
 ///
 /// ### `editMode: true` (DN / PR style)
 /// [TextFormField] with [OutlineInputBorder], readOnly-when-valid-and-clean,
 /// explicit **Edit** button. [BalanceChip] shown below the field.
 ///
+/// ## Balance source
+/// By default the [BalanceChip] sources `c.maxQty.value` (set by
+/// `validateBatch` in the base controller).
+///
+/// Pass [balanceOverride] to supply an alternative balance getter -- for
+/// example Stock Entry, which maintains a separate per-warehouse
+/// `batchBalance` distinct from the base `maxQty` field:
+///
+/// ```dart
+/// SharedBatchField(
+///   c:               child,
+///   accentColor:     Colors.purple,
+///   balanceOverride: () => child.batchBalance.value,
+/// )
+/// ```
+///
+/// P2-1: added [balanceOverride] optional callback.
 /// P3-A: readOnly requires isValid AND batchError==null.
 /// P3-A: helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B: errorText only for hard-invalid; warning rendered as orange helperText.
-/// Balance chip: sources controller.maxQty (set by validateBatch in base).
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -27,13 +43,20 @@ class SharedBatchField extends StatelessWidget {
   final bool   readOnly;
   final String? fieldKey;
 
+  /// Optional balance override.  When non-null, the [BalanceChip] calls this
+  /// getter on every rebuild instead of reading [ItemSheetControllerBase.maxQty].
+  /// Use when the child controller tracks a richer balance value (e.g. SE's
+  /// per-warehouse `batchBalance`).
+  final double? Function()? balanceOverride;
+
   const SharedBatchField({
     super.key,
     required this.c,
     required this.accentColor,
-    this.editMode  = false,
-    this.readOnly  = false,
+    this.editMode       = false,
+    this.readOnly       = false,
     this.fieldKey,
+    this.balanceOverride,
   });
 
   Color get _validFill {
@@ -56,7 +79,7 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode ─────────────────────────────────────────────────
+// -- Simple (borderless) mode -------------------------------------------------
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -81,6 +104,9 @@ class _SimpleField extends StatelessWidget {
               : w.accentColor;
 
       final chipColor = isWarning ? Colors.orange : w.accentColor;
+
+      // P2-1: use balanceOverride when provided, else fall back to maxQty.
+      final chipBalance = w.balanceOverride?.call() ?? c.maxQty.value;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,9 +182,11 @@ class _SimpleField extends StatelessWidget {
               ),
             ),
           ),
-          // Balance chip — shown once batch validation completes and maxQty > 0.
+          // Balance chip -- shown once batch validation completes.
+          // Sources balanceOverride when provided (e.g. SE batchBalance),
+          // otherwise falls back to the base maxQty field.
           BalanceChip(
-            balance:   c.maxQty.value,
+            balance:   chipBalance,
             isLoading: validating,
             color:     chipColor,
             prefix:    'Batch Balance:',
@@ -169,7 +197,7 @@ class _SimpleField extends StatelessWidget {
   }
 }
 
-// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
+// -- Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) -------------
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
@@ -201,6 +229,9 @@ class _EditModeField extends StatelessWidget {
               : w._validBorder;
 
       final chipColor = isWarning ? Colors.orange : w.accentColor;
+
+      // P2-1: use balanceOverride when provided, else fall back to maxQty.
+      final chipBalance = w.balanceOverride?.call() ?? c.maxQty.value;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,9 +283,10 @@ class _EditModeField extends StatelessWidget {
               },
             ),
           ),
-          // Balance chip — shown once batch validation completes and maxQty > 0.
+          // Balance chip -- sources balanceOverride when provided,
+          // otherwise the base maxQty field.
           BalanceChip(
-            balance:   c.maxQty.value,
+            balance:   chipBalance,
             isLoading: validating,
             color:     chipColor,
             prefix:    'Batch Balance:',
