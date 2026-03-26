@@ -346,6 +346,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   return const Center(
                       child: Text('No items to display.'));
                 }
+                // Flat non-POS list — no index badge passed.
                 return ListView.builder(
                   controller: controller.scrollController,
                   padding: const EdgeInsets.only(
@@ -448,13 +449,23 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       currency:   currency,
                       onToggle: () =>
                           controller.toggleInvoiceExpand(expansionKey),
-                      children: dnItemsForThisPosItem.map((item) {
+                      // asMap().entries.map() passes the 0-based position
+                      // within this group so each child card shows its badge.
+                      children: dnItemsForThisPosItem
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                        final groupIndex = entry.key;
+                        final item       = entry.value;
                         if (item.name != null &&
                             !controller.itemKeys
                                 .containsKey(item.name)) {
                           controller.itemKeys[item.name!] = GlobalKey();
                         }
-                        return DeliveryNoteItemCard(item: item);
+                        return DeliveryNoteItemCard(
+                          item:  item,
+                          index: groupIndex,
+                        );
                       }).toList(),
                     ),
                   );
