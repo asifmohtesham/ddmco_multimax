@@ -14,23 +14,20 @@ class ItemFilterBottomSheet extends StatefulWidget {
 class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   final ItemController controller = Get.find();
 
-  // Local State for Unified Filters
   final RxList<FilterRow> localFilters = <FilterRow>[].obs;
   final showImagesOnly = false.obs;
 
   @override
   void initState() {
     super.initState();
-    // Initialize Local Filters from Controller
     if (controller.activeFilters.isEmpty) {
-      localFilters.add(controller.availableFields[1].clone()); // Default to Item Name
+      localFilters.add(controller.availableFields[1].clone());
     } else {
       localFilters.assignAll(controller.activeFilters.map((e) => e.clone()).toList());
     }
     showImagesOnly.value = controller.showImagesOnly.value;
   }
 
-  // --- Searchable Selection Helper ---
   void _showSelectionSheet({
     required BuildContext context,
     required String title,
@@ -46,6 +43,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final cs = Theme.of(context).colorScheme;
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
           minChildSize: 0.5,
@@ -53,13 +51,13 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
           builder: (context, scrollController) {
             return Container(
               padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Column(
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 16),
                   Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
@@ -116,7 +114,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     );
   }
 
-  // --- Filter Logic ---
   void _addFilterRow() {
     localFilters.add(controller.availableFields[0].clone());
   }
@@ -132,7 +129,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   void _applyFilters() {
     controller.setImagesOnly(showImagesOnly.value);
-    // Remove filters with empty values to ensure clean queries
     final validFilters = localFilters.where((f) => f.value.isNotEmpty).toList();
     controller.applyFilters(validFilters);
     Get.back();
@@ -158,18 +154,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         controller.clearFilters();
       },
       filterWidgets: [
-        // SwitchListTile(
-        //   title: const Text('Show Images Only'),
-        //   value: showImagesOnly.value,
-        //   onChanged: (val) => showImagesOnly.value = val,
-        //   contentPadding: EdgeInsets.zero,
-        // ),
-        // const Divider(),
-        // const SizedBox(height: 8),
-
-        // const Text("Filter Conditions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        // const SizedBox(height: 12),
-
         ...localFilters.asMap().entries.map((entry) {
           final index = entry.key;
           final filter = entry.value;
@@ -179,15 +163,14 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-              boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5)),
+              boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 2))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Row: Field Name + Remove Button
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -200,22 +183,20 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       ),
                       child: Row(
                         children: [
-                          Text(filter.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueAccent)),
-                          const Icon(Icons.arrow_drop_down, color: Colors.blueAccent),
+                          Text(filter.label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Theme.of(context).colorScheme.primary)),
+                          Icon(Icons.arrow_drop_down, color: Theme.of(context).colorScheme.primary),
                         ],
                       ),
                     ),
                     InkWell(
                       onTap: () => _removeFilterRow(index),
-                      child: const Icon(Icons.close, color: Colors.grey, size: 20),
+                      child: Icon(Icons.close, color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
 
-                // Content Row: Attribute inputs OR Operator+Value
                 if (isAttribute) ...[
-                  // Attribute Specific UI
                   Row(
                     children: [
                       Expanded(
@@ -227,7 +208,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             isLoading: controller.isLoadingAttributes.value,
                             onSelected: (val) {
                               filter.attributeName = val;
-                              filter.value = ''; // Reset value when attribute changes
+                              filter.value = '';
                               controller.fetchAttributeValues(val);
                               localFilters.refresh();
                             },
@@ -266,7 +247,6 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                     ],
                   )
                 ] else ...[
-                  // Standard Field UI
                   Row(
                     children: [
                       Expanded(

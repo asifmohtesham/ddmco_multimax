@@ -26,6 +26,7 @@ class ItemGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final percent = (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
 
@@ -35,7 +36,7 @@ class ItemGroupCard extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? Colors.green.shade400 : Colors.grey.shade300,
+          color: isCompleted ? cs.tertiary : cs.outlineVariant,
           width: 1,
         ),
       ),
@@ -52,7 +53,7 @@ class ItemGroupCard extends StatelessWidget {
               child: Text(
                 isCompleted ? 'Completed' : 'Pending',
                 style: TextStyle(
-                  color: isCompleted ? Colors.green : Colors.orange.shade700,
+                  color: isCompleted ? cs.tertiary : cs.secondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -68,8 +69,8 @@ class ItemGroupCard extends StatelessWidget {
                     '${(percent * 100).toInt()}%',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                   ),
-                  progressColor: isCompleted ? Colors.green : Colors.orange,
-                  backgroundColor: Colors.grey.shade300,
+                  progressColor: isCompleted ? cs.tertiary : cs.secondary,
+                  backgroundColor: cs.outlineVariant,
                 ),
                 const SizedBox(width: 8),
                 AnimatedExpandIcon(isExpanded: isExpanded),
@@ -80,38 +81,37 @@ class ItemGroupCard extends StatelessWidget {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             alignment: Alignment.topCenter,
-            child: Container(
-              child: !isExpanded
-                  ? const SizedBox.shrink()
-                  : Column(
-                      children: [
-                        const Divider(height: 1, indent: 16, endIndent: 16),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildInfoColumn('Required', totalQty.toStringAsFixed(0)),
-                              _buildInfoColumn('Scanned', scannedQty.toStringAsFixed(0)),
-                              _buildInfoColumn('Rate', rate.toStringAsFixed(2)),
-                            ],
-                          ),
+            child: !isExpanded
+                ? const SizedBox.shrink()
+                : Column(
+                    children: [
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildInfoColumn(context, 'Required', totalQty.toStringAsFixed(0)),
+                            _buildInfoColumn(context, 'Scanned', scannedQty.toStringAsFixed(0)),
+                            _buildInfoColumn(context, 'Rate', rate.toStringAsFixed(2)),
+                          ],
                         ),
-                        ...children,
-                      ],
-                    ),
-            ),
+                      ),
+                      ...children,
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoColumn(String title, String value) {
+  Widget _buildInfoColumn(BuildContext context, String title, String value) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(title, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         Text(
           value,
           style: const TextStyle(

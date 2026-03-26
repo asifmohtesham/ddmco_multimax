@@ -17,9 +17,10 @@ class HomeScreen extends GetView<HomeController> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: cs.surface,
       appBar: MainAppBar(
         title: "Dashboard",
         actions: [
@@ -123,8 +124,8 @@ class HomeScreen extends GetView<HomeController> {
           // Persistent Scan Input
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, -2))],
+              color: cs.surface,
+              boxShadow: [BoxShadow(color: cs.shadow.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, -2))],
             ),
             child: Obx(() => BarcodeInputWidget(
               onScan: controller.onScan,
@@ -142,7 +143,7 @@ class HomeScreen extends GetView<HomeController> {
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
         builder: (context, constraints) {
-          final double itemWidth = (constraints.maxWidth - 24) / 3; // 3 items per row
+          final double itemWidth = (constraints.maxWidth - 24) / 3;
           return Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -150,7 +151,6 @@ class HomeScreen extends GetView<HomeController> {
               _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
                       () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
 
-              // Modified: Delivery Note now opens the selection sheet with KA/ML filter
               _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
                 controller.setFulfillmentPrefixFilter(['KA', 'ML']);
                 _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
@@ -161,9 +161,8 @@ class HomeScreen extends GetView<HomeController> {
               _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
                       () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
 
-              // Modified: Fulfilment POS explicitly clears filters
               _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
-                controller.setFulfillmentPrefixFilter([]); // Empty list = No filter
+                controller.setFulfillmentPrefixFilter([]);
                 _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
               }),
 
@@ -176,8 +175,9 @@ class HomeScreen extends GetView<HomeController> {
   }
 
   Widget _buildQuickActionItem(BuildContext context, String title, IconData icon, Color color, double width, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(12),
       elevation: 1,
       child: InkWell(
@@ -219,10 +219,11 @@ class HomeScreen extends GetView<HomeController> {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final cs = Theme.of(context).colorScheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
@@ -263,23 +264,38 @@ class HomeScreen extends GetView<HomeController> {
                         separatorBuilder: (c, i) => const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final pos = controller.fulfillmentPosUploads[index];
+                          final isPending = pos.status == 'Pending';
                           return ListTile(
                             title: Text(pos.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(pos.customer),
-                                Text(FormattingHelper.getRelativeTime(pos.modified), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                Text(
+                                  FormattingHelper.getRelativeTime(pos.modified),
+                                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                                ),
                               ],
                             ),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
+                                color: isPending ? cs.tertiaryContainer : cs.primaryContainer,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200),
+                                border: Border.all(
+                                  color: isPending
+                                      ? cs.tertiary.withValues(alpha: 0.4)
+                                      : cs.primary.withValues(alpha: 0.4),
+                                ),
                               ),
-                              child: Text(pos.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800)),
+                              child: Text(
+                                pos.status,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isPending ? cs.onTertiaryContainer : cs.onPrimaryContainer,
+                                ),
+                              ),
                             ),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
@@ -298,6 +314,7 @@ class HomeScreen extends GetView<HomeController> {
   }
 
   Widget _buildUserContextCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
       color: Theme.of(context).primaryColor.withValues(alpha: 0.05),
@@ -319,7 +336,7 @@ class HomeScreen extends GetView<HomeController> {
                   backgroundColor: Theme.of(context).primaryColor,
                   child: Text(
                     userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.bold),
                   ),
                 );
               }),
@@ -330,7 +347,7 @@ class HomeScreen extends GetView<HomeController> {
                   children: [
                     Text(
                       'Showing data for',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 4),
                     Obx(() {
@@ -340,16 +357,16 @@ class HomeScreen extends GetView<HomeController> {
                           Flexible(
                             child: Text(
                               selectedUser?.name ?? 'Select User',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                                color: cs.onSurface,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.blueGrey),
+                          Icon(Icons.keyboard_arrow_down, size: 20, color: cs.onSurfaceVariant),
                         ],
                       );
                     }),
@@ -372,6 +389,7 @@ class HomeScreen extends GetView<HomeController> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
+        final cs = Theme.of(context).colorScheme;
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
           minChildSize: 0.5,
@@ -382,7 +400,7 @@ class HomeScreen extends GetView<HomeController> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 16),
                   const Text("Select User", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
@@ -448,6 +466,7 @@ class SpeedometerKpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final double percent = (target > 0) ? (actual / target).clamp(0.0, 1.0) : 0.0;
 
     const LinearGradient progressGradient = LinearGradient(
@@ -472,7 +491,7 @@ class SpeedometerKpiCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, size: 16, color: Colors.grey[700]),
+                  Icon(icon, size: 16, color: cs.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -493,22 +512,22 @@ class SpeedometerKpiCard extends StatelessWidget {
                 startAngle: 270,
                 circularStrokeCap: CircularStrokeCap.round,
                 linearGradient: progressGradient,
-                backgroundColor: Colors.grey.shade200,
+                backgroundColor: cs.surfaceContainerHighest,
                 center: Padding(
                   padding: const EdgeInsets.only(top: 20.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text("$actual", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24.0, color: textColor)),
-                      const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
+                      Text("Actual", style: TextStyle(fontSize: 10.0, color: cs.onSurface.withValues(alpha: 0.5))),
                     ],
                   ),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                child: Text("Target: $target", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey.shade700)),
+                decoration: BoxDecoration(color: cs.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
+                child: Text("Target: $target", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: cs.onSurfaceVariant)),
               ),
             ],
           ),

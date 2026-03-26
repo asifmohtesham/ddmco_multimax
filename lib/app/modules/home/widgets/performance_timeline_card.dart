@@ -30,6 +30,7 @@ class PerformanceTimelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -45,12 +46,11 @@ class PerformanceTimelineCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Wrapped in Expanded to prevent overflow
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'Performance',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
@@ -58,14 +58,14 @@ class PerformanceTimelineCard extends StatelessWidget {
                           ),
                           Text(
                             'Items Managed & Fulfilled',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5)),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8), // Spacing between title and picker
+                    const SizedBox(width: 8),
                     if (viewMode == 'Weekly' && selectedRange != null)
                       _buildRangePicker(context)
                     else if (selectedDate != null)
@@ -75,15 +75,15 @@ class PerformanceTimelineCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: cs.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   padding: const EdgeInsets.all(2),
                   child: Row(
                     children: [
-                      _buildToggleBtn('Hourly', viewMode == 'Hourly'),
-                      _buildToggleBtn('Daily', viewMode == 'Daily'),
-                      _buildToggleBtn('Weekly', viewMode == 'Weekly'),
+                      _buildToggleBtn(context, 'Hourly', viewMode == 'Hourly'),
+                      _buildToggleBtn(context, 'Daily', viewMode == 'Daily'),
+                      _buildToggleBtn(context, 'Weekly', viewMode == 'Weekly'),
                     ],
                   ),
                 ),
@@ -95,13 +95,12 @@ class PerformanceTimelineCard extends StatelessWidget {
             if (isLoading)
               const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()))
             else if (data.isEmpty)
-              const SizedBox(height: 150, child: Center(child: Text('No activity data found.', style: TextStyle(color: Colors.grey))))
+              SizedBox(height: 150, child: Center(child: Text('No activity data found.', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5)))))
             else
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(
                   height: 180,
-                  // Adjust width based on data points to ensure scrollability for hourly
                   width: data.length > 7 ? data.length * 50.0 : MediaQuery.of(context).size.width - 64,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -117,11 +116,11 @@ class PerformanceTimelineCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildLegendItem(Colors.blue, 'Delivery'),
+                _buildLegendItem(context, Colors.blue, 'Delivery'),
                 const SizedBox(width: 12),
-                _buildLegendItem(Colors.orange, 'Stock Entry'),
+                _buildLegendItem(context, Colors.orange, 'Stock Entry'),
                 const SizedBox(width: 12),
-                _buildLegendItem(Colors.green, 'Receipt'),
+                _buildLegendItem(context, Colors.green, 'Receipt'),
               ],
             ),
           ],
@@ -155,7 +154,7 @@ class PerformanceTimelineCard extends StatelessWidget {
           children: [
             Icon(Icons.calendar_today, size: 14, color: Theme.of(context).primaryColor),
             const SizedBox(width: 6),
-            Flexible( // Added Flexible to handle small screens
+            Flexible(
               child: Text(
                 DateFormat('d MMM yyyy').format(selectedDate!),
                 style: TextStyle(
@@ -167,7 +166,7 @@ class PerformanceTimelineCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
+            Icon(Icons.arrow_drop_down, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -199,7 +198,7 @@ class PerformanceTimelineCard extends StatelessWidget {
           children: [
             Icon(Icons.date_range, size: 14, color: Theme.of(context).primaryColor),
             const SizedBox(width: 6),
-            Flexible( // Added Flexible
+            Flexible(
               child: Text(
                 '${DateFormat('d MMM').format(selectedRange!.start)} - ${DateFormat('d MMM').format(selectedRange!.end)}',
                 style: TextStyle(
@@ -211,23 +210,24 @@ class PerformanceTimelineCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
+            Icon(Icons.arrow_drop_down, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildToggleBtn(String label, bool isActive) {
+  Widget _buildToggleBtn(BuildContext context, String label, bool isActive) {
+    final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: GestureDetector(
         onTap: () => onToggleView(label),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.transparent,
+            color: isActive ? cs.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
-            boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 2)] : null,
+            boxShadow: isActive ? [BoxShadow(color: cs.shadow.withValues(alpha: 0.05), blurRadius: 2)] : null,
           ),
           child: Text(
             label,
@@ -235,7 +235,7 @@ class PerformanceTimelineCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              color: isActive ? Colors.black : Colors.grey,
+              color: isActive ? cs.onSurface : cs.onSurface.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -243,18 +243,19 @@ class PerformanceTimelineCard extends StatelessWidget {
     );
   }
 
-  // ... (Legend & Bar Builder remain same) ...
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _buildLegendItem(BuildContext context, Color color, String label) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+        Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500)),
       ],
     );
   }
 
   Widget _buildBarColumn(BuildContext context, TimelinePoint point) {
+    final cs = Theme.of(context).colorScheme;
     double maxTotal = 0;
     for (var p in data) {
       if (p.total > maxTotal) maxTotal = p.total;
@@ -269,7 +270,7 @@ class PerformanceTimelineCard extends StatelessWidget {
         if (point.total > 0)
           Text(
             NumberFormat.compact().format(point.total),
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: cs.onSurface.withValues(alpha: 0.54)),
           ),
         const SizedBox(height: 4),
         ClipRRect(
@@ -288,7 +289,7 @@ class PerformanceTimelineCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           point.label,
-          style: const TextStyle(fontSize: 10, color: Colors.grey),
+          style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.5)),
         ),
       ],
     );

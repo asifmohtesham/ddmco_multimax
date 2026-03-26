@@ -49,6 +49,7 @@ class _ItemScreenState extends State<ItemScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GenericListPage(
       title: 'Item Master',
       isLoading: controller.isLoading,
@@ -56,11 +57,9 @@ class _ItemScreenState extends State<ItemScreen> {
       onRefresh: () => controller.fetchItems(clear: true),
       scrollController: _scrollController,
 
-      // Global API Search Configuration
       searchDoctype: 'Item',
       searchRoute: AppRoutes.ITEM_FORM,
 
-      // Local List Search
       onSearch: controller.onSearchChanged,
       searchHint: 'Search Items (Name, Code, Desc...)',
 
@@ -73,7 +72,7 @@ class _ItemScreenState extends State<ItemScreen> {
               label: Text('$count'),
               child: Icon(
                 Icons.filter_list,
-                color: count > 0 ? Colors.amber : null,
+                color: count > 0 ? cs.secondary : null,
               ),
             ),
             onPressed: () => Get.bottomSheet(
@@ -89,7 +88,6 @@ class _ItemScreenState extends State<ItemScreen> {
         )),
       ],
 
-      // Custom Body for Grid View Toggle
       sliverBody: Obx(() {
         if (controller.isGridView.value) {
           return SliverPadding(
@@ -124,13 +122,13 @@ class _ItemScreenState extends State<ItemScreen> {
           ),
         );
       }),
-      itemBuilder: (ctx, idx) => const SizedBox.shrink(), // Not used due to sliverBody override
+      itemBuilder: (ctx, idx) => const SizedBox.shrink(),
     );
   }
 
-  // --- List View Card (Standard GenericDocumentCard) ---
   Widget _buildListCard(Item item) {
     return Obx(() {
+      final cs = Theme.of(context).colorScheme;
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
       final isLoadingStock = controller.isLoadingStock.value && isExpanded;
@@ -157,10 +155,9 @@ class _ItemScreenState extends State<ItemScreen> {
             if (item.description != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
-                child: Text(item.description!, style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 3, overflow: TextOverflow.ellipsis),
+                child: Text(item.description!, style: TextStyle(fontSize: 13, color: cs.onSurface), maxLines: 3, overflow: TextOverflow.ellipsis),
               ),
 
-            // --- Customer Items Section ---
             if (item.customerItems.isNotEmpty) ...[
               const Text('Customer References', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 8),
@@ -183,7 +180,7 @@ class _ItemScreenState extends State<ItemScreen> {
             const SizedBox(height: 8),
 
             if (stockList == null || stockList.isEmpty)
-              const Text('No stock data available.', style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic))
+              Text('No stock data available.', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5), fontSize: 12, fontStyle: FontStyle.italic))
             else
               ...stockList.map((stock) => Padding(
                 padding: const EdgeInsets.only(bottom: 4.0),
@@ -213,7 +210,6 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // --- Grid View Card (Custom M3 Style) ---
   Widget _buildGridCard(Item item) {
     return Card(
       elevation: 0,
@@ -248,10 +244,10 @@ class _ItemScreenState extends State<ItemScreen> {
                   const SizedBox(height: 4),
                   Text(
                     item.itemCode,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 11,
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                       fontFeatures: [FontFeature.slashedZero()],
                     ),
                   ),
@@ -265,6 +261,7 @@ class _ItemScreenState extends State<ItemScreen> {
   }
 
   Widget _buildImage(Item item, {double? size, BoxFit fit = BoxFit.contain}) {
+    final cs = Theme.of(context).colorScheme;
     if (item.image != null && item.image!.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
@@ -275,8 +272,8 @@ class _ItemScreenState extends State<ItemScreen> {
           fit: fit,
           errorBuilder: (c, o, s) => Container(
             width: size, height: size,
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+            color: cs.surfaceContainerHighest,
+            child: Icon(Icons.broken_image_outlined, color: cs.onSurfaceVariant),
           ),
         ),
       );
@@ -284,10 +281,10 @@ class _ItemScreenState extends State<ItemScreen> {
     return Container(
       width: size, height: size,
       decoration: BoxDecoration(
-        color: Colors.grey.shade200,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade400, size: size != null ? size * 0.5 : 30),
+      child: Icon(Icons.image_not_supported_outlined, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: size != null ? size * 0.5 : 30),
     );
   }
 }
