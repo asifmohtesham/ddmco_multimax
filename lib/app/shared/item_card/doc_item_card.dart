@@ -10,13 +10,15 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Layout — three semantic zones stacked vertically:
+/// Layout — three semantic zones separated by thin [Divider]s:
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
-///   Zone 2 — Operational : Batch No (full-width), rack pair, warehouse pair
-///                          ([_ArrowPairRow] added in C9, wired in C10)
-///   Zone 3 — Financial   : Qty | Rate | Amount
-///                          ([_LabelValueCell] in IntrinsicHeight Row)
+///   Zone 2 — Operational : Batch No (full-width), rack [_ArrowPairRow],
+///                          warehouse [_ArrowPairRow]
+///   Zone 3 — Financial   : Qty | Rate | Amount (IntrinsicHeight Row)
+///
+/// Zone 2 and Zone 3 are separated by a subtle [Divider] when Zone 2
+/// has content, keeping operational and financial fields visually distinct.
 class DocItemCard extends StatelessWidget {
   final ItemCardData data;
   final VoidCallback? onTap;
@@ -36,6 +38,13 @@ class DocItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // Determine whether Zone 2 has any content so we can conditionally
+    // insert the zone separator Divider between Zone 2 and Zone 3.
+    final bool hasOperational =
+        (data.batchNo    != null && data.batchNo!.isNotEmpty)    ||
+        (data.rack       != null && data.rack!.isNotEmpty)        ||
+        (data.warehouse  != null && data.warehouse!.isNotEmpty);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -85,11 +94,13 @@ class DocItemCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Zone 1
                     _IdentityZone(
                       itemCode:  data.itemCode,
                       itemName:  data.itemName,
                       variantOf: data.variantOf,
                     ),
+                    // Zone 2
                     _OperationalZone(
                       batchNo:        data.batchNo,
                       rack:           data.rack,
@@ -98,6 +109,17 @@ class DocItemCard extends StatelessWidget {
                       toWarehouse:    data.toWarehouse,
                       warehouseLabel: data.warehouseLabel ?? 'Warehouse',
                     ),
+                    // Zone 2 → Zone 3 separator
+                    if (hasOperational)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Divider(
+                          height: 1,
+                          thickness: 0.6,
+                          color: cs.outlineVariant,
+                        ),
+                      ),
+                    // Zone 3
                     _FinancialZone(
                       qty:       data.qty,
                       uom:       data.uom,
@@ -106,6 +128,7 @@ class DocItemCard extends StatelessWidget {
                       rateLabel: data.rateLabel ?? 'Rate',
                       amount:    data.amount,
                     ),
+                    // Progress bar
                     if (data.targetQty != null && data.targetQty! > 0)
                       DocItemProgressBar(
                         qty:       data.qty,
@@ -228,12 +251,23 @@ class _IdentityZone extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// _OperationalZone  (still Wrap-based — C10 will migrate to Column)
+// _OperationalZone  (C10: Wrap → Column + _ArrowPairRow)
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 2: Batch No, rack arrow pair, warehouse arrow pair.
-/// Each field rendered as a [_LabelValueCell]. Returns [SizedBox.shrink]
-/// when no operational field is set.
+/// Zone 2: Batch No (full-width), rack arrow pair, warehouse arrow pair.
+///
+/// Each pair is rendered as an [_ArrowPairRow] so source and target always
+/// appear on the same line. Batch No spans the full card width as a
+/// standalone row above the pairs.
+///
+/// Row order and spacing:
+/// ```
+///   [Batch No]                   ← full-width, SizedBox(6) below
+///   [Source Rack]  →  [Target Rack]    ← SizedBox(6) below
+///   [Src WH]  →  [Target WH]         ← no trailing gap (parent adds top:6)
+/// ```
+///
+/// Returns [SizedBox.shrink] when no operational field is present.
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
   final String? rack;
@@ -253,67 +287,80 @@ class _OperationalZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    final bool hasBatch       = batchNo    != null && batchNo!.isNotEmpty;
-    final bool hasSourceRack  = rack        != null && rack!.isNotEmpty;
-    final bool hasTargetRack  = toRack      != null && toRack!.isNotEmpty;
-    final bool hasWarehouse   = warehouse   != null && warehouse!.isNotEmpty;
-    final bool hasToWarehouse = toWarehouse != null && toWarehouse!.isNotEmpty;
+    final bool hasBatch      = batchNo   != null && batchNo!.isNotEmpty;
+    final bool hasSourceRack = rack      != null && rack!.isNotEmpty;
+    final bool hasWarehouse  = warehouse != null && warehouse!.isNotEmpty;
 
     if (!hasBatch && !hasSourceRack && !hasWarehouse) {
       return const SizedBox.shrink();
     }
 
+    // Build rows in order; insert SizedBox(height:6) between each present row.
+    final List<Widget> rows = [];
+
+    // Row 1 — Batch No (full width)
+    if (hasBatch) {
+      rows.add(
+        _LabelValueCell(
+          icon:  Icons.label_outline,
+          label: 'Batch No',
+          value: batchNo!,
+          role:  MetaChipRole.batch,
+        ),
+      );
+    }
+
+    // Row 2 — Rack arrow pair
+    if (hasSourceRack) {
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
+      rows.add(
+        _ArrowPairRow(
+          source: _LabelValueCell(
+            icon:  Icons.shelves,
+            label: 'Source Rack',
+            value: rack!,
+            role:  MetaChipRole.rack,
+          ),
+          target: (toRack != null && toRack!.isNotEmpty)
+              ? _LabelValueCell(
+                  icon:  Icons.shelves,
+                  label: 'Target Rack',
+                  value: toRack!,
+                  role:  MetaChipRole.toRack,
+                )
+              : null,
+        ),
+      );
+    }
+
+    // Row 3 — Warehouse arrow pair
+    if (hasWarehouse) {
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
+      rows.add(
+        _ArrowPairRow(
+          source: _LabelValueCell(
+            icon:  Icons.store_outlined,
+            label: warehouseLabel,
+            value: warehouse!,
+            role:  MetaChipRole.warehouse,
+          ),
+          target: (toWarehouse != null && toWarehouse!.isNotEmpty)
+              ? _LabelValueCell(
+                  icon:  Icons.store_outlined,
+                  label: 'Target Warehouse',
+                  value: toWarehouse!,
+                  role:  MetaChipRole.toWarehouse,
+                )
+              : null,
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          if (hasBatch)
-            _LabelValueCell(
-              icon:  Icons.label_outline,
-              label: 'Batch No',
-              value: batchNo!,
-              role:  MetaChipRole.batch,
-            ),
-          if (hasSourceRack) ...[
-            _LabelValueCell(
-              icon:  Icons.shelves,
-              label: 'Source Rack',
-              value: rack!,
-              role:  MetaChipRole.rack,
-            ),
-            if (hasTargetRack) ...[
-              Icon(Icons.arrow_forward, size: 14, color: cs.outline),
-              _LabelValueCell(
-                icon:  Icons.shelves,
-                label: 'Target Rack',
-                value: toRack!,
-                role:  MetaChipRole.toRack,
-              ),
-            ],
-          ],
-          if (hasWarehouse) ...[
-            _LabelValueCell(
-              icon:  Icons.store_outlined,
-              label: warehouseLabel,
-              value: warehouse!,
-              role:  MetaChipRole.warehouse,
-            ),
-            if (hasToWarehouse) ...[
-              Icon(Icons.arrow_forward, size: 14, color: cs.outline),
-              _LabelValueCell(
-                icon:  Icons.store_outlined,
-                label: 'Target Warehouse',
-                value: toWarehouse!,
-                role:  MetaChipRole.toWarehouse,
-              ),
-            ],
-          ],
-        ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: rows,
       ),
     );
   }
@@ -410,9 +457,7 @@ class _FinancialZone extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 enum MetaChipSize {
-  /// Horizontal padding 6, vertical 3, font 12.
   standard,
-  /// Horizontal padding 5, vertical 2, font 11.
   compact,
 }
 
@@ -421,7 +466,6 @@ enum MetaChipSize {
 // ────────────────────────────────────────────────────────────────────────────
 
 enum MetaChipRole {
-  /// Template/parent item identity — amber-tinted (secondary family).
   variantOf,
   qty,
   rate,
@@ -437,7 +481,8 @@ enum MetaChipRole {
 // DocItemMetaChip
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Compact icon + label chip. Still used by [_IdentityZone] (Variant Of).
+/// Compact icon + label chip. Used by [_IdentityZone] (Variant Of chip).
+/// [_colours] is file-private so [_LabelValueCell] can share the colour map.
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -544,13 +589,6 @@ class DocItemMetaChip extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 /// A labelled-value cell: muted label on top, prominent value below.
-///
-/// ```
-/// ┌────────────────────────┐
-/// │ ⬤ label   10px muted   │
-/// │ VALUE     13px w600    │
-/// └────────────────────────┘
-/// ```
 class _LabelValueCell extends StatelessWidget {
   final String       label;
   final String       value;
@@ -582,7 +620,6 @@ class _LabelValueCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Label row
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -603,7 +640,6 @@ class _LabelValueCell extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          // Value row
           Text(
             value,
             style: TextStyle(
@@ -626,27 +662,11 @@ class _LabelValueCell extends StatelessWidget {
 // _ArrowPairRow
 // ────────────────────────────────────────────────────────────────────────────
 
-/// A single-line source → target row using two [_LabelValueCell] instances.
-///
-/// Visual anatomy (SE rack or warehouse transfer):
-/// ```
-/// ┌──────────────────────┐       ┌──────────────────────┐
-/// │ 🗄 Source Rack        │  →   │ 🗄 Target Rack         │
-/// │ KA-WH-DXB1-107B      │       │ KA-WH-DXB3-101A      │
-/// └──────────────────────┘       └──────────────────────┘
-///        Expanded          Padding        Expanded
-/// ```
-///
-/// When [target] is null the source cell expands to full width and no
-/// arrow is rendered (used for single-warehouse DocTypes like DN / PR).
-///
-/// Both cells are [Expanded] so they share width equally and long values
-/// never push the arrow off-screen.
+/// A guaranteed single-line source → target row.
+/// Both cells are [Expanded] so long values share width equally.
+/// When [target] is null, [source] occupies full width with no arrow.
 class _ArrowPairRow extends StatelessWidget {
-  /// The source-side [_LabelValueCell] (always rendered).
-  final Widget source;
-
-  /// The target-side [_LabelValueCell], or null for single-sided display.
+  final Widget  source;
   final Widget? target;
 
   const _ArrowPairRow({
@@ -667,7 +687,7 @@ class _ArrowPairRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Icon(
               Icons.arrow_forward_rounded,
-              size: 14,
+              size:  14,
               color: cs.outline,
             ),
           ),
