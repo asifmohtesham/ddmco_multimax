@@ -7,7 +7,19 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_cont
 
 /// Batch No field for the Stock Entry item sheet.
 ///
-/// Receives [StockEntryItemFormController] — all state is now in the child.
+/// Receives [StockEntryItemFormController] -- all state is now in the child.
+///
+/// P2-TODO: consolidate onto SharedBatchField using balanceOverride:
+///
+///   SharedBatchField(
+///     c:               controller,
+///     accentColor:     Colors.purple,
+///     balanceOverride: () => controller.batchBalance.value,
+///   )
+///
+/// Blocked until ValidatedFieldWidget and SharedBatchField._SimpleField
+/// produce identical rendered output (readOnly lifecycle parity check).
+/// Track under Phase 2 post-beta cleanup.
 class BatchField extends StatelessWidget {
   final StockEntryItemFormController controller;
 
