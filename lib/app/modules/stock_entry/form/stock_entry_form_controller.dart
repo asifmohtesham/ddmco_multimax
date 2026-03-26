@@ -28,9 +28,9 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 // ── SE-module-local widgets ─────────────────────────────────────────────────────
-import 'widgets/item_form_sheet/batch_field.dart';
 import 'widgets/item_form_sheet/rack_section.dart';
 // (stock_entry_item_form_sheet.dart is now a stub re-export)
+// (batch_field.dart retired — P4-2: replaced by SharedBatchField)
 
 enum StockEntrySource { manual, materialRequest, posUpload }
 
@@ -696,7 +696,11 @@ class StockEntryFormController extends GetxController
           itemSubtext:      currentVariantOf,
           isSaveEnabled:    isEditable,
           customFields: [
-            BatchField(controller: child),
+            SharedBatchField(
+              c:               child,
+              accentColor:     Colors.purple,
+              balanceOverride: () => child.batchBalance.value,
+            ),
             SharedSerialField(
               controller:  child,
               accentColor: Colors.blueGrey,
