@@ -1,52 +1,52 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:flutter/services.dart';
 
-/// Overlay-safe snackbar helper.
-///
-/// Uses [ScaffoldMessenger] via [Get.context] so notifications are
-/// always shown on the root navigator's scaffold — never on a
-/// bottom-sheet overlay that may already be unmounted.
 class GlobalSnackbar {
   static void success({String title = 'Success', required String message}) {
+    final cs = _colorScheme();
     _show(
       title: title,
       message: message,
       icon: Icons.check_circle_rounded,
-      color: Colors.green.shade600,
+      color: cs.tertiary,
       shouldVibrate: true,
     );
   }
 
   static void error({String title = 'Error', required String message}) {
+    final cs = _colorScheme();
     _show(
       title: title,
       message: message,
       icon: Icons.error_rounded,
-      color: Colors.red.shade600,
+      color: cs.error,
       shouldVibrate: true,
     );
   }
 
   static void warning({String title = 'Warning', required String message}) {
+    final cs = _colorScheme();
     _show(
       title: title,
       message: message,
       icon: Icons.warning_amber_rounded,
-      color: Colors.orange.shade700,
+      color: cs.secondary,
     );
   }
 
   static void info({String title = 'Info', required String message}) {
+    final cs = _colorScheme();
     _show(
       title: title,
       message: message,
       icon: Icons.info_outline_rounded,
-      color: Colors.blue.shade600,
+      color: cs.primary,
     );
   }
 
-  // ---------------------------------------------------------------------------
+  static ColorScheme _colorScheme() =>
+      Theme.of(Get.context!).colorScheme;
 
   static void _show({
     required String title,
@@ -55,62 +55,51 @@ class GlobalSnackbar {
     required Color color,
     bool shouldVibrate = false,
   }) {
-    final context = Get.context;
-    if (context == null) {
-      // Controller called this before any UI is present – log and bail.
-      debugPrint('[GlobalSnackbar] no context – $title: $message');
-      return;
-    }
-
+    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
     if (shouldVibrate) HapticFeedback.lightImpact();
 
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey.shade200),
-          ),
-          backgroundColor: Colors.white,
-          elevation: 4,
-          duration: const Duration(seconds: 4),
-          content: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      message,
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontSize: 14,
-                      ),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    final cs = _colorScheme();
+
+    Get.snackbar(
+      title,
+      message,
+      titleText: Text(
+        title,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
         ),
-      );
+      ),
+      messageText: Text(
+        message,
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 14,
+        ),
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+      ),
+      backgroundColor: cs.surface,
+      icon: Icon(icon, color: color, size: 28),
+      shouldIconPulse: true,
+      snackPosition: SnackPosition.BOTTOM,
+      margin: const EdgeInsets.all(16),
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: cs.outlineVariant,
+      boxShadows: [
+        BoxShadow(
+          color: color.withValues(alpha: 0.1),
+          offset: const Offset(0, 4),
+          blurRadius: 10,
+          spreadRadius: 1,
+        ),
+      ],
+      duration: const Duration(seconds: 4),
+      isDismissible: true,
+      leftBarIndicatorColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    );
   }
 }

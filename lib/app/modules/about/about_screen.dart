@@ -10,6 +10,7 @@ class AboutScreen extends GetView<AboutController> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Scaffold(
       appBar: const MainAppBar(title: 'System Information'),
@@ -21,13 +22,13 @@ class AboutScreen extends GetView<AboutController> {
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              _buildAppHeader(theme),
+              _buildAppHeader(theme, cs),
               const SizedBox(height: 32),
-              _buildVersionCard(theme),
+              _buildVersionCard(theme, cs),
               const SizedBox(height: 24),
-              _buildSystemHealthSection(theme),
+              _buildSystemHealthSection(theme, cs),
               const SizedBox(height: 48),
-              _buildFooter(theme),
+              _buildFooter(theme, cs),
             ],
           ),
         ),
@@ -35,7 +36,7 @@ class AboutScreen extends GetView<AboutController> {
     );
   }
 
-  Widget _buildAppHeader(ThemeData theme) {
+  Widget _buildAppHeader(ThemeData theme, ColorScheme cs) {
     return Column(
       children: [
         Hero(
@@ -45,50 +46,67 @@ class AboutScreen extends GetView<AboutController> {
             height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
-              image: const DecorationImage(image: AssetImage('lib/assets/images/logo.jpg')),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.shadow.withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+              image: const DecorationImage(
+                image: AssetImage('lib/assets/images/logo.jpg'),
+              ),
             ),
           ),
         ),
         const SizedBox(height: 16),
         Obx(() => Text(
           controller.appName.value.isEmpty ? 'ERP' : controller.appName.value,
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: cs.primary,
+          ),
         )),
       ],
     );
   }
 
-  Widget _buildVersionCard(ThemeData theme) {
+  Widget _buildVersionCard(ThemeData theme, ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Obx(() => Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildVersionItem(theme, 'Version', controller.version.value),
-          Container(height: 30, width: 1, color: Colors.grey.shade300),
-          _buildVersionItem(theme, 'Build', controller.buildNumber.value),
+          _buildVersionItem(theme, cs, 'Version', controller.version.value),
+          Container(height: 30, width: 1, color: cs.outlineVariant),
+          _buildVersionItem(theme, cs, 'Build', controller.buildNumber.value),
         ],
       )),
     );
   }
 
-  Widget _buildVersionItem(ThemeData theme, String label, String value) {
+  Widget _buildVersionItem(ThemeData theme, ColorScheme cs, String label, String value) {
     return Column(
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6)),
+        ),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
       ],
     );
   }
 
-  Widget _buildSystemHealthSection(ThemeData theme) {
+  Widget _buildSystemHealthSection(ThemeData theme, ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -97,19 +115,27 @@ class AboutScreen extends GetView<AboutController> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('System Health', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'System Health',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
               Obx(() => controller.isCheckingHealth.value
-                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const SizedBox.shrink()),
             ],
           ),
         ),
         Card(
           elevation: 0,
-          color: Colors.white,
+          color: cs.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey.shade200),
+            side: BorderSide(color: cs.outlineVariant),
           ),
           child: Obx(() => Column(
             children: controller.systemStatus.asMap().entries.map((entry) {
@@ -119,19 +145,34 @@ class AboutScreen extends GetView<AboutController> {
               return Column(
                 children: [
                   ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: _buildStatusIcon(item.state),
-                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: _buildStatusIcon(item.state, cs),
+                    title: Text(
+                      item.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.type, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                        Text(
+                          item.type,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
                         if (item.filePath != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4.0),
                             child: Text(
                               item.filePath!,
-                              style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontFamily: 'monospace'),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: cs.onSurface.withValues(alpha: 0.4),
+                                fontFamily: 'monospace',
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -147,13 +188,16 @@ class AboutScreen extends GetView<AboutController> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: _getStatusColor(item.state),
+                            color: _getStatusColor(item.state, cs),
                           ),
                         ),
                         if (item.latency != null)
                           Text(
                             item.latency!,
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurface.withValues(alpha: 0.45),
+                            ),
                           ),
                       ],
                     ),
@@ -168,45 +212,69 @@ class AboutScreen extends GetView<AboutController> {
     );
   }
 
-  Widget _buildStatusIcon(IntegrationState state) {
+  Widget _buildStatusIcon(IntegrationState state, ColorScheme cs) {
     switch (state) {
       case IntegrationState.loading:
         return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-          child: const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(strokeWidth: 2)),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            shape: BoxShape.circle,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         );
       case IntegrationState.connected:
         return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
-          child: Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 20),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: cs.tertiary.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.check_circle_outline,
+            color: cs.tertiary,
+            size: 20,
+          ),
         );
       case IntegrationState.error:
       case IntegrationState.offline:
         return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-          child: Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: cs.error.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.error_outline, color: cs.error, size: 20),
         );
     }
   }
 
-  Color _getStatusColor(IntegrationState state) {
+  Color _getStatusColor(IntegrationState state, ColorScheme cs) {
     switch (state) {
-      case IntegrationState.connected: return Colors.green.shade700;
+      case IntegrationState.connected:
+        return cs.tertiary;
       case IntegrationState.error:
-      case IntegrationState.offline: return Colors.red.shade700;
-      default: return Colors.grey;
+      case IntegrationState.offline:
+        return cs.error;
+      default:
+        return cs.onSurface.withValues(alpha: 0.45);
     }
   }
 
-  Widget _buildFooter(ThemeData theme) {
+  Widget _buildFooter(ThemeData theme, ColorScheme cs) {
     return Center(
       child: Text(
         '© ${DateTime.now().year} ERP\nPowered by DDMCO',
         textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade400),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: cs.onSurface.withValues(alpha: 0.4),
+        ),
       ),
     );
   }

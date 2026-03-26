@@ -1,24 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 
-/// Quantity input with +/- action buttons.
-///
-/// Accepts [Rx<TextEditingController>] instead of a plain TEC so that
-/// the inner [Obx] always binds [controller.value] — the live instance.
-/// When GetX disposes and recreates the parent item-sheet controller,
-/// the Rx emits, Obx rebuilds, and [TextFormField] receives the new TEC
-/// rather than calling [addListener] on the already-disposed one.
-///
-/// Remains a [StatelessWidget]; all lifecycle is handled by GetX.
 class QuantityInputWidget extends StatelessWidget {
-  final Rx<TextEditingController> controller;
+  final TextEditingController controller;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final String label;
   final bool isReadOnly;
-
-  /// Additional context like "Available: 50" or "Ordered: 10"
   final String? infoText;
   final Color color;
   final Function(String)? onChanged;
@@ -37,12 +25,12 @@ class QuantityInputWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
+    final cs = Theme.of(context).colorScheme;
+    final primaryColor = cs.primary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header Row: Label + Info Badge
         if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
@@ -51,7 +39,8 @@ class QuantityInputWidget extends StatelessWidget {
               children: [
                 if (infoText != null && infoText!.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
@@ -68,27 +57,25 @@ class QuantityInputWidget extends StatelessWidget {
               ],
             ),
           ),
-
-        // Input Control Container
         Row(
           children: [
-            // Obx ensures TextFormField always receives the live TEC.
-            // If the parent controller is recreated by GetX, the Rx emits,
-            // this subtree rebuilds, and addListener is never called on
-            // a disposed ChangeNotifier.
             Expanded(
-              child: Obx(() => TextFormField(
-                controller: controller.value,
+              child: TextFormField(
+                controller: controller,
                 readOnly: isReadOnly,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 textAlign: TextAlign.start,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                  color: isReadOnly
+                      ? cs.onSurface.withValues(alpha: 0.6)
+                      : cs.onSurface,
                 ),
                 onChanged: onChanged,
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                  FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d*')),
                 ],
                 decoration: InputDecoration(
                   label: Text(label),
@@ -102,30 +89,28 @@ class QuantityInputWidget extends StatelessWidget {
                   if (qty == null || qty < 0) return 'Invalid';
                   return null;
                 },
-              )),
+              ),
             ),
-
-            // Buttons Group (Right Side)
             if (!isReadOnly) ...[
-              // Vertical Divider
-              Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-              // Decrement Button
+              Container(
+                  width: 1,
+                  height: 32,
+                  color: cs.outline.withValues(alpha: 0.3)),
               _buildActionButton(
                 icon: Icons.remove,
                 onPressed: onDecrement,
-                colour: Colors.grey.shade700,
+                colour: cs.onSurface.withValues(alpha: 0.7),
               ),
-
-              // Vertical Divider between buttons
-              Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-              // Increment Button
+              Container(
+                  width: 1,
+                  height: 32,
+                  color: cs.outline.withValues(alpha: 0.3)),
               _buildActionButton(
                 icon: Icons.add,
                 onPressed: onIncrement,
                 colour: primaryColor,
-                borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
+                borderRadius:
+                    const BorderRadius.horizontal(right: Radius.circular(11)),
               ),
             ],
           ],
@@ -151,11 +136,7 @@ class QuantityInputWidget extends StatelessWidget {
         child: SizedBox(
           width: 56,
           height: 18,
-          child: Icon(
-            icon,
-            color: colour,
-            size: 22,
-          ),
+          child: Icon(icon, color: colour, size: 22),
         ),
       ),
     );

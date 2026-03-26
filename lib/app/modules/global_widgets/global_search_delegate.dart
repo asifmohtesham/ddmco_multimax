@@ -8,7 +8,6 @@ class GlobalSearchDelegate extends SearchDelegate {
   final String doctype;
   final String targetRoute;
 
-  // Lazy load the service (ensure it's available)
   final GlobalSearchService _service = Get.put(GlobalSearchService());
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
@@ -43,16 +42,18 @@ class GlobalSearchDelegate extends SearchDelegate {
   }
 
   @override
-  Widget buildResults(BuildContext context) => _buildSearchResults();
+  Widget buildResults(BuildContext context) => _buildSearchResults(context);
 
   @override
-  Widget buildSuggestions(BuildContext context) => _buildSearchResults();
+  Widget buildSuggestions(BuildContext context) =>
+      _buildSearchResults(context);
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(BuildContext context) {
     if (query.trim().length < 3) {
       return _buildMessageState(
+        context: context,
         icon: Icons.search,
-        message: "Type at least 3 characters",
+        message: 'Type at least 3 characters',
       );
     }
 
@@ -65,8 +66,9 @@ class GlobalSearchDelegate extends SearchDelegate {
 
         if (snapshot.hasError) {
           return _buildMessageState(
+            context: context,
             icon: Icons.error_outline,
-            message: "Search failed. Please try again.",
+            message: 'Search failed. Please try again.',
             isError: true,
           );
         }
@@ -75,6 +77,7 @@ class GlobalSearchDelegate extends SearchDelegate {
 
         if (results.isEmpty) {
           return _buildMessageState(
+            context: context,
             icon: Icons.search_off,
             message: 'No $doctype found matching "$query"',
           );
@@ -82,8 +85,10 @@ class GlobalSearchDelegate extends SearchDelegate {
 
         return ListView.separated(
           itemCount: results.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-          itemBuilder: (context, index) => _buildResultTile(context, results[index]),
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, indent: 72),
+          itemBuilder: (context, index) =>
+              _buildResultTile(context, results[index]),
         );
       },
     );
@@ -97,7 +102,8 @@ class GlobalSearchDelegate extends SearchDelegate {
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: item.subtitle != null
-          ? Text(item.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis)
+          ? Text(item.subtitle!,
+              maxLines: 1, overflow: TextOverflow.ellipsis)
           : null,
       trailing: const Icon(Icons.chevron_right),
       onTap: () {
@@ -110,7 +116,8 @@ class GlobalSearchDelegate extends SearchDelegate {
   Widget _buildLeadingIcon(String? imageUrl) {
     if (imageUrl != null && imageUrl.isNotEmpty) {
       final baseUrl = _apiProvider.baseUrl;
-      final fullUrl = imageUrl.startsWith('http') ? imageUrl : '$baseUrl$imageUrl';
+      final fullUrl =
+          imageUrl.startsWith('http') ? imageUrl : '$baseUrl$imageUrl';
 
       return ClipRRect(
         borderRadius: BorderRadius.circular(4),
@@ -127,23 +134,43 @@ class GlobalSearchDelegate extends SearchDelegate {
   }
 
   Widget _defaultIcon() {
-    return CircleAvatar(
-      backgroundColor: Colors.blueGrey.shade100,
-      foregroundColor: Colors.blueGrey.shade700,
-      child: const Icon(Icons.description, size: 20),
-    );
+    // Use a Builder so we can access context for the theme
+    return Builder(builder: (context) {
+      final cs = Theme.of(context).colorScheme;
+      return CircleAvatar(
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
+        child: const Icon(Icons.description, size: 20),
+      );
+    });
   }
 
-  Widget _buildMessageState({required IconData icon, required String message, bool isError = false}) {
+  Widget _buildMessageState({
+    required BuildContext context,
+    required IconData icon,
+    required String message,
+    bool isError = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 64, color: isError ? Colors.red.shade300 : Colors.grey.shade400),
+          Icon(
+            icon,
+            size: 64,
+            color: isError
+                ? cs.error.withValues(alpha: 0.6)
+                : cs.onSurface.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: 16),
           Text(
             message,
-            style: TextStyle(color: isError ? Colors.red : Colors.grey.shade600),
+            style: TextStyle(
+              color: isError
+                  ? cs.error
+                  : cs.onSurface.withValues(alpha: 0.6),
+            ),
           ),
         ],
       ),
