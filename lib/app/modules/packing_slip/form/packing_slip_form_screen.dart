@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
+import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 
@@ -17,80 +17,84 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          // S3: Obx wrapped in PreferredSize — Obx alone is not a PreferredSizeWidget
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight + kTextTabBarHeight),
-            child: Obx(() {
-              final slip = controller.packingSlip.value;
-              final titleWidget = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    slip?.name ?? 'Loading...',
-                    style: const TextStyle(fontSize: 13, color: Colors.white70),
-                  ),
-                  if (slip?.customPoNo != null)
-                    Text(
-                      slip!.customPoNo!,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+          canPop: !controller.isDirty.value,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            await controller.confirmDiscard();
+          },
+          child: DefaultTabController(
+            length: 2,
+            child: Scaffold(
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(
+                    kToolbarHeight + kTextTabBarHeight),
+                child: Obx(() {
+                  final slip = controller.packingSlip.value;
+                  final titleWidget = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        slip?.name ?? 'Loading...',
+                        style: const TextStyle(
+                            fontSize: 13, color: Colors.white70),
+                      ),
+                      if (slip?.customPoNo != null)
+                        Text(
+                          slip!.customPoNo!,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold),
+                        ),
+                    ],
+                  );
+                  return MainAppBar(
+                    title:       slip?.name ?? 'Packing Slip',
+                    titleWidget: titleWidget,
+                    status:      slip?.status,
+                    isDirty:     controller.isDirty.value,
+                    isSaving:    controller.isSaving.value,
+                    saveResult:  SaveResult.idle,
+                    onSave: (slip?.docstatus == 0 &&
+                            controller.isDirty.value)
+                        ? controller.savePackingSlip
+                        : null,
+                    onReload: (controller.mode != 'new' &&
+                            !controller.isDirty.value)
+                        ? controller.reloadDocument
+                        : null,
+                    bottom: const TabBar(
+                      tabs: [
+                        Tab(text: 'Details'),
+                        Tab(text: 'Items'),
+                      ],
                     ),
-                ],
-              );
-              return MainAppBar(
-                title:       slip?.name ?? 'Packing Slip',
-                titleWidget: titleWidget,
-                status:      slip?.status,
-                isDirty:     controller.isDirty.value,
-                isSaving:    controller.isSaving.value,
-                saveResult:  SaveResult.idle,
-                onSave: (slip?.docstatus == 0 && controller.isDirty.value)
-                    ? controller.savePackingSlip
-                    : null,
-                onReload: (controller.mode != 'new' &&
-                        !controller.isDirty.value)
-                    ? controller.reloadDocument
-                    : null,
-                bottom: const TabBar(
-                  tabs: [
-                    Tab(text: 'Details'),
-                    Tab(text: 'Items'),
-                  ],
-                ),
-              );
-            }),
-          ),
-          body: Obx(() {
-            if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final slip = controller.packingSlip.value;
-            if (slip == null) {
-              return const Center(child: Text('Document not found'));
-            }
-            return SafeArea(
-              child: TabBarView(
-                children: [
-                  _buildDetailsView(slip),
-                  _buildItemsView(slip),
-                ],
+                  );
+                }),
               ),
-            );
-          }),
-        ),
-      ),
-    ));
+              body: Obx(() {
+                if (controller.isLoading.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final slip = controller.packingSlip.value;
+                if (slip == null) {
+                  return const Center(
+                      child: Text('Document not found'));
+                }
+                return SafeArea(
+                  child: TabBarView(
+                    children: [
+                      _buildDetailsView(slip),
+                      _buildItemsView(slip),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ));
   }
 
-  // ── Details tab ──────────────────────────────────────────────────────────────────────────────────
+  // ── Details tab ────────────────────────────────────────────────────────────────
 
   Widget _buildDetailsView(PackingSlip slip) {
     return SingleChildScrollView(
@@ -140,7 +144,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       readOnly: true,
                       decoration: const InputDecoration(
                           labelText: 'From Case No',
-                          border: OutlineInputBorder()),
+                          border:    OutlineInputBorder()),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -150,7 +154,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       readOnly: true,
                       decoration: const InputDecoration(
                           labelText: 'To Case No',
-                          border: OutlineInputBorder()),
+                          border:    OutlineInputBorder()),
                     ),
                   ),
                 ],
@@ -213,14 +217,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     );
   }
 
-  // ── Items tab ─────────────────────────────────────────────────────────────────────────────────
+  // ── Items tab ───────────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(PackingSlip slip) {
-    // Smoke-test: confirm the DataWedge worker was registered by the controller.
-    // Expected output in flutter logs once per build of this tab:
-    //   [PackingSlipScreen] DataWedge worker active: true
-    // If this prints `false` the ever() subscription in onInit() did not fire,
-    // indicating a binding or service registration problem.
     log(
       'DataWedge worker active: ${controller.scanWorkerActive}',
       name: 'PackingSlipScreen',
@@ -233,14 +232,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           padding: const EdgeInsets.symmetric(
               horizontal: 16.0, vertical: 8.0),
           child: Obx(() => Row(
-            children: [
-              _buildFilterChip('All',       controller.allCount),
-              const SizedBox(width: 8),
-              _buildFilterChip('Pending',   controller.pendingCount),
-              const SizedBox(width: 8),
-              _buildFilterChip('Completed', controller.completedCount),
-            ],
-          )),
+                children: [
+                  _buildFilterChip('All',       controller.allCount),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Pending',   controller.pendingCount),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Completed', controller.completedCount),
+                ],
+              )),
         ),
         const Divider(height: 1),
         Expanded(
@@ -251,22 +250,30 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             }
             return ListView.builder(
               padding: const EdgeInsets.only(
-                  top: 8.0, bottom: 80.0, left: 8.0, right: 8.0),
+                  top: 8.0,
+                  bottom: 80.0,
+                  left: 8.0,
+                  right: 8.0),
               itemCount: visibleGroups.length,
               itemBuilder: (context, index) {
-                final serial        = visibleGroups[index];
-                final totalRequired = controller.getTotalDnQtyForSerial(serial);
-                final globalPacked  = controller.getGlobalPackedQty(serial);
+                final serial       = visibleGroups[index];
+                final totalRequired =
+                    controller.getTotalDnQtyForSerial(serial);
+                final globalPacked =
+                    controller.getGlobalPackedQty(serial);
 
-                String itemName = controller.getPosItemName(serial);
+                String itemName =
+                    controller.getPosItemName(serial);
                 if (itemName.isEmpty) {
-                  final dnItems = controller.getDnItemsForSerial(serial);
+                  final dnItems =
+                      controller.getDnItemsForSerial(serial);
                   itemName = dnItems.isNotEmpty
                       ? (dnItems.first.itemName ?? '')
                       : 'Unknown Item';
                 }
 
-                final sectionItems = controller.getDnItemsForSerial(serial);
+                final sectionItems =
+                    controller.getDnItemsForSerial(serial);
 
                 return Obx(() {
                   final isExpanded =
@@ -278,11 +285,15 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     rate:       0.0,
                     totalQty:   totalRequired,
                     scannedQty: globalPacked,
-                    onToggle:   () => controller.toggleInvoiceExpand(serial),
+                    onToggle: () =>
+                        controller.toggleInvoiceExpand(serial),
                     children: sectionItems.map((dnItem) {
-                      final reqQty          = dnItem.qty;
-                      final packedQty       = controller.getPackedQtyForDnItem(dnItem.name);
-                      final currentSlipItem = controller.getCurrentSlipItem(dnItem.name);
+                      final reqQty    =
+                          dnItem.qty;
+                      final packedQty =
+                          controller.getPackedQtyForDnItem(dnItem.name);
+                      final currentSlipItem =
+                          controller.getCurrentSlipItem(dnItem.name);
                       return _buildChecklistRow(
                           dnItem, reqQty, packedQty, currentSlipItem);
                     }).toList(),
@@ -294,17 +305,22 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         ),
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
-            onScan:      (code) => controller.scanBarcode(code),
-            isLoading:   controller.isScanning.value,
-            hintText:    'Scan Item / Batch',
-            controller:  controller.barcodeController,
-            activeRoute: AppRoutes.PACKING_SLIP_FORM,
-          )),
+                onScan:      (code) => controller.scanBarcode(code),
+                isLoading:   controller.isScanning.value,
+                hintText:    'Scan Item / Batch',
+                controller:  controller.barcodeController,
+                activeRoute: AppRoutes.PACKING_SLIP_FORM,
+              )),
       ],
     );
   }
 
-  // ── Checklist row with F6 Dismissible + F7 loading overlay ──────────────────────
+  // ── Checklist row ──────────────────────────────────────────────────────────────
+  //
+  // Intentionally NOT migrated to DocItemCard. The PS row is a bespoke
+  // DN-linked checklist entry (packed vs required qty, edit-on-tap sheet,
+  // custom status icon) that is semantically distinct from the generic
+  // DocItemCard used by PO / PR / SE / DN. Forcing it in would reduce UX.
 
   Widget _buildChecklistRow(
     dynamic dnItem,
@@ -314,16 +330,15 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   ) {
     final bool isComplete      = packedQty >= reqQty;
     final bool isInCurrentSlip = currentItem != null;
-    final bool canEdit         = controller.packingSlip.value?.docstatus == 0;
+    final bool canEdit         =
+        controller.packingSlip.value?.docstatus == 0;
 
-    // F7: wrap in Obx so loading flag is reactive
     return Obx(() {
       final isLoadingThis =
           controller.isLoadingItemEdit.value &&
-          controller.loadingForItemName.value == (currentItem?.name ?? '');
+          controller.loadingForItemName.value ==
+              (currentItem?.name ?? '');
 
-      // F6: Dismissible only when the item exists in the current slip
-      //     and the document is editable. Non-slip rows are plain InkWell.
       final inner = InkWell(
         onTap: () {
           if (isInCurrentSlip) {
@@ -374,7 +389,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     Text(
                       dnItem.itemCode,
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14),
                     ),
                     Text(
                       dnItem.itemName,
@@ -400,7 +416,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${FormattingHelper.formatQty(packedQty)} / ${FormattingHelper.formatQty(reqQty)}',
+                    '${FormattingHelper.formatQty(packedQty)} / '
+                    '${FormattingHelper.formatQty(reqQty)}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: isComplete
@@ -428,14 +445,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         ),
       );
 
-      // F6: Dismissible wraps only items already in the slip
       final Widget rowWidget = (isInCurrentSlip && canEdit)
           ? Dismissible(
               key:       ValueKey(currentItem!.name),
               direction: DismissDirection.endToStart,
               confirmDismiss: (_) async {
                 controller.confirmAndDeleteItem(currentItem);
-                return false; // dialog owns the actual removal
+                return false;
               },
               background: Container(
                 alignment: Alignment.centerRight,
@@ -448,7 +464,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             )
           : inner;
 
-      // F7: per-item loading overlay
       if (!isLoadingThis) return rowWidget;
       return Stack(
         children: [
