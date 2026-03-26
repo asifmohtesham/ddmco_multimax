@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
-import 'package:multimax/app/data/providers/api_provider.dart'; // Added
+import 'package:multimax/app/data/providers/api_provider.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -60,14 +60,13 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ... (Other Tabs remain the same) ...
   Widget _buildStockLevelsTab(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Stock Balance Chart
           const Text('Warehouse Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Obx(() {
@@ -80,13 +79,12 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 24),
 
-          // 2. Batch-Wise History
           const Text('Batch-Wise Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Obx(() {
             if (controller.isLoadingBatches.value) return const LinearProgressIndicator();
             if (controller.batchHistory.isEmpty) {
-              return const Text('No batch history found.', style: TextStyle(color: Colors.grey));
+              return Text('No batch history found.', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5)));
             }
 
             return Wrap(
@@ -103,9 +101,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
                   width: (MediaQuery.of(context).size.width / 1) - 18,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cs.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: cs.outline.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,20 +121,20 @@ class ItemFormScreen extends GetView<ItemFormController> {
                           if (warehouse != null)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
-                              child: Text(warehouse, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                              decoration: BoxDecoration(color: cs.surfaceContainerLow, borderRadius: BorderRadius.circular(4)),
+                              child: Text(warehouse, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant)),
                             ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
                           '$qty ${controller.item.value?.stockUom ?? ''}',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).primaryColor)
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cs.primary)
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Age: $ageString',
-                        style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                        style: TextStyle(fontSize: 11, color: cs.tertiary),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -149,7 +147,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           const SizedBox(height: 24),
 
-          // 3. Ledger Entries
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -157,7 +154,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               IconButton(
                 icon: Icon(
                     Icons.calendar_month,
-                    color: controller.ledgerDateRange.value != null ? Theme.of(context).primaryColor : Colors.grey
+                    color: controller.ledgerDateRange.value != null ? cs.primary : cs.onSurfaceVariant
                 ),
                 onPressed: () async {
                   final picked = await showDateRangePicker(
@@ -186,7 +183,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
           Obx(() {
             if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
             if (controller.stockLedgerEntries.isEmpty) {
-              return const Text('No transactions found in this period.', style: TextStyle(color: Colors.grey));
+              return Text('No transactions found in this period.', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5)));
             }
 
             return ListView.separated(
@@ -212,8 +209,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
                 return Card(
                   elevation: 0,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
+                  color: cs.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -236,16 +236,16 @@ class ItemFormScreen extends GetView<ItemFormController> {
                         const SizedBox(height: 4),
                         Text(subtitle, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
                         if (extraInfo != null)
-                          Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                          Text(extraInfo, style: TextStyle(fontSize: 12, color: cs.secondary, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             if (entry['warehouse'] != null)
-                              Text(entry['warehouse'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              Text(entry['warehouse'], style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                             Text(
                                 FormattingHelper.getRelativeTime('${entry['posting_date']} ${entry['posting_time']}'),
-                                style: const TextStyle(fontSize: 11, color: Colors.grey)
+                                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)
                             ),
                           ],
                         )
@@ -262,14 +262,15 @@ class ItemFormScreen extends GetView<ItemFormController> {
   }
 
   Widget _buildAttributesTab(BuildContext context, Item item) {
+    final cs = Theme.of(context).colorScheme;
     if (item.attributes.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.list_alt, size: 64, color: Colors.grey.shade300),
+            Icon(Icons.list_alt, size: 64, color: cs.outlineVariant),
             const SizedBox(height: 16),
-            const Text('No attributes defined.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            Text('No attributes defined.', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5), fontSize: 16)),
           ],
         ),
       );
@@ -282,7 +283,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
         final attr = item.attributes[index];
         return ListTile(
           contentPadding: EdgeInsets.zero,
-          title: Text(attr.attributeName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          title: Text(attr.attributeName, style: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurfaceVariant)),
           trailing: Text(attr.attributeValue, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         );
       },
@@ -291,6 +292,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
   Widget _buildOverviewTab(BuildContext context, dynamic item) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
+    final cs = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
@@ -305,41 +307,43 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: cs.outline.withValues(alpha: 0.3)),
                 ),
                 child: Hero(
                   tag: 'item_image_${item.itemCode}',
                   child: Image.network(
                     '$baseUrl${item.image}',
                     fit: BoxFit.contain,
-                    errorBuilder: (c, o, s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                    errorBuilder: (c, o, s) => Icon(Icons.image_not_supported, size: 50, color: cs.onSurfaceVariant),
                   ),
                 ),
               ),
             ),
 
           _buildSectionCard(
+            context: context,
             title: 'General',
             children: [
-              _buildDetailRow('Item Code', item.itemCode, isCopyable: true),
+              _buildDetailRow(context, 'Item Code', item.itemCode, isCopyable: true),
               const Divider(),
-              _buildDetailRow('Item Name', item.itemName),
+              _buildDetailRow(context, 'Item Name', item.itemName),
               const Divider(),
-              _buildDetailRow('Item Group', item.itemGroup),
+              _buildDetailRow(context, 'Item Group', item.itemGroup),
             ],
           ),
 
           const SizedBox(height: 16),
 
           _buildSectionCard(
+            context: context,
             title: 'Inventory',
             children: [
-              _buildDetailRow('Default UOM', item.stockUom ?? '-'),
+              _buildDetailRow(context, 'Default UOM', item.stockUom ?? '-'),
               if (item.countryOfOrigin != null) ...[
                 const Divider(),
-                _buildDetailRow('Country of Origin', item.countryOfOrigin!),
+                _buildDetailRow(context, 'Country of Origin', item.countryOfOrigin!),
               ]
             ],
           ),
@@ -348,17 +352,18 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
           if (item.variantOf != null || item.description != null)
             _buildSectionCard(
+              context: context,
               title: 'Description',
               children: [
                 if (item.variantOf != null) ...[
-                  _buildDetailRow('Variant Of', item.variantOf!),
+                  _buildDetailRow(context, 'Variant Of', item.variantOf!),
                   const Divider(),
                 ],
                 if (item.description != null)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Detailed Description', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('Detailed Description', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                       const SizedBox(height: 4),
                       Text(item.description!, style: const TextStyle(fontSize: 14, height: 1.4)),
                     ],
@@ -373,14 +378,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
   }
 
   Widget _buildAttachmentsTab(BuildContext context) {
-    // ... (Same logic for Attachments)
     return Obx(() {
-      // ... (Same logic)
       if (controller.attachments.isEmpty) {
         return const Center(child: Text("No attachments found."));
       }
       return GridView.builder(
-        // ...
         itemCount: controller.attachments.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
         itemBuilder: (ctx, i) {
@@ -392,7 +394,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
           final fullUrl = '$baseUrl$fileUrl';
 
           return Card(
-            // ... (Card construction using fullUrl)
               child: InkWell(
                 onTap: () {
                   if (isImg) _openFullScreenImage(context, fullUrl);
@@ -414,17 +415,21 @@ class ItemFormScreen extends GetView<ItemFormController> {
     });
   }
 
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+  Widget _buildSectionCard({required BuildContext context, required String title, required List<Widget> children}) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant)),
             const SizedBox(height: 12),
             ...children,
           ],
@@ -433,13 +438,14 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {bool isCopyable = false}) {
+  Widget _buildDetailRow(BuildContext context, String label, String value, {bool isCopyable = false}) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          Text(label, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 13)),
           const SizedBox(width: 16),
           Flexible(
             child: Row(
@@ -454,7 +460,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 ),
                 if (isCopyable) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.copy, size: 14, color: Colors.grey),
+                  Icon(Icons.copy, size: 14, color: cs.onSurfaceVariant),
                 ]
               ],
             ),
@@ -465,7 +471,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
   }
 
   Widget _buildEmptyState(String message) {
-    // ... (Same logic)
     return Text(message);
   }
 

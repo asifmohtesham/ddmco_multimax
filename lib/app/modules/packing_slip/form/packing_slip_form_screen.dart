@@ -49,7 +49,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   );
                 }
 
-                // Enable Save button only if Draft AND Dirty
                 final bool isDraft = controller.packingSlip.value?.docstatus == 0;
                 final bool isDirty = controller.isDirty.value;
 
@@ -85,6 +84,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildDetailsView(PackingSlip slip) {
+    final cs = Theme.of(Get.context!).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -111,7 +111,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
                   filled: true,
-                  fillColor: Colors.white,
                 ),
               ),
             ],
@@ -175,16 +174,20 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildSectionCard({required String title, required List<Widget> children}) {
+    final cs = Theme.of(Get.context!).colorScheme;
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             ...children,
           ],
@@ -196,7 +199,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   Widget _buildItemsView(PackingSlip slip) {
     return Column(
       children: [
-        // 1. Filters
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -212,7 +214,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         ),
         const Divider(height: 1),
 
-        // 2. List
         Expanded(
           child: Obx(() {
             final visibleGroups = controller.visibleGroupKeys;
@@ -227,11 +228,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               itemBuilder: (context, index) {
                 final serial = visibleGroups[index];
 
-                // Data for Header
                 final totalRequired = controller.getTotalDnQtyForSerial(serial);
                 final globalPacked = controller.getGlobalPackedQty(serial);
 
-                // Get Header Name from POS Upload
                 String itemName = controller.getPosItemName(serial);
                 if (itemName.isEmpty) {
                   final dnItems = controller.getDnItemsForSerial(serial);
@@ -239,7 +238,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   else itemName = 'Unknown Item';
                 }
 
-                // Get All DN Items for this section (checklist)
                 final sectionItems = controller.getDnItemsForSerial(serial);
 
                 return Obx(() {
@@ -266,7 +264,6 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           }),
         ),
 
-        // 3. Scanner
         if (slip.docstatus == 0)
           Obx(() => BarcodeInputWidget(
             onScan: (code) => controller.scanBarcode(code),
@@ -282,14 +279,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   Widget _buildChecklistRow(dynamic dnItem, double reqQty, double packedQty, PackingSlipItem? currentItem) {
     final bool isComplete = packedQty >= reqQty;
     final bool isInCurrentSlip = currentItem != null;
+    final cs = Theme.of(Get.context!).colorScheme;
 
     return InkWell(
       onTap: () {
         if (isInCurrentSlip) {
           controller.editItem(currentItem);
         } else {
-          // If not in current slip, open add sheet for this DN item
-          // This allows manual "picking" from the list
           if (controller.packingSlip.value?.docstatus == 0) {
             controller.prepareSheetForAdd(dnItem);
           }
@@ -299,22 +295,24 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
           children: [
-            // Status Icon
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isComplete ? Colors.green.shade50 : (packedQty > 0 ? Colors.orange.shade50 : Colors.grey.shade100),
+                color: isComplete
+                    ? cs.tertiaryContainer
+                    : (packedQty > 0 ? cs.secondaryContainer : cs.surfaceContainerLow),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isComplete ? Icons.check : Icons.inventory_2_outlined,
                 size: 16,
-                color: isComplete ? Colors.green.shade700 : (packedQty > 0 ? Colors.orange.shade700 : Colors.grey),
+                color: isComplete
+                    ? cs.onTertiaryContainer
+                    : (packedQty > 0 ? cs.onSecondaryContainer : cs.onSurfaceVariant),
               ),
             ),
             const SizedBox(width: 12),
 
-            // Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,20 +323,19 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   ),
                   Text(
                     dnItem.itemName,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (dnItem.batchNo != null)
                     Text(
                       'Batch: ${dnItem.batchNo}',
-                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                      style: TextStyle(fontSize: 11, color: cs.secondary),
                     ),
                 ],
               ),
             ),
 
-            // Progress Text
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -346,21 +343,20 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   '${FormattingHelper.formatQty(packedQty)} / ${FormattingHelper.formatQty(reqQty)}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: isComplete ? Colors.green.shade700 : Colors.black87,
+                    color: isComplete ? cs.tertiary : cs.onSurface,
                   ),
                 ),
                 Text(
                   dnItem.uom,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
 
-            // Edit Chevron if editable
             if (controller.packingSlip.value?.docstatus == 0)
-              const Padding(
-                padding: EdgeInsets.only(left: 8.0),
-                child: Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
               ),
           ],
         ),
