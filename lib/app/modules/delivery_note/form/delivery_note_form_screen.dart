@@ -206,9 +206,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             context: context,
             title: 'Schedule',
             children: [
-              const TextFormField(
+              TextFormField(
                 readOnly: true,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Posting Date',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.calendar_today_outlined),
@@ -335,8 +335,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       controller.itemKeys[item.name!] = GlobalKey();
                     }
                     final isHighlighted =
-                        controller.recentlyAddedItemName.value ==
-                            item.name;
+                        controller.recentlyAddedItemCode.value ==
+                            item.itemCode;
 
                     return Dismissible(
                       key: ValueKey(item.name ?? index),
@@ -446,8 +446,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                               GlobalKey();
                         }
                         final isHighlighted =
-                            controller.recentlyAddedItemName.value ==
-                                item.name;
+                            controller.recentlyAddedItemCode.value ==
+                                item.itemCode;
 
                         return DocItemCard(
                           key:  controller.itemKeys[item.name],
