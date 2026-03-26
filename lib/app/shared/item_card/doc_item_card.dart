@@ -10,20 +10,31 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Layout — three semantic zones separated by thin [Divider]s:
+/// Layout — three semantic zones separated by a thin Divider:
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
-///   Zone 2 — Operational : Batch No (full-width), rack [_ArrowPairRow],
-///                          warehouse [_ArrowPairRow]
-///   Zone 3 — Financial   : Qty | Rate | Amount (IntrinsicHeight Row)
+///   Zone 2 — Operational : Batch No (full-width), rack _ArrowPairRow
+///   Zone 3 — Financial   : Qty only (_LabelValueCell, natural width)
 ///
-/// Zone 2 and Zone 3 are separated by a subtle [Divider] when Zone 2
-/// has content, keeping operational and financial fields visually distinct.
+/// Tapping anywhere on the card body fires [onTap].
+/// [onEdit] is retained as a silent no-op parameter for call-site
+/// compatibility; the edit IconButton is no longer rendered (C11).
+/// [onDelete] renders a delete IconButton in the right column.
+///
+/// When [isLoadingEdit] is true a slim LinearProgressIndicator fades in
+/// at the bottom edge of the card (replaces the old circular spinner).
 class DocItemCard extends StatelessWidget {
   final ItemCardData data;
   final VoidCallback? onTap;
+
+  /// Retained for call-site compatibility. Not wired to any widget (C11).
+  @Deprecated('Edit is triggered via onTap (card body). This parameter is a '
+      'silent no-op and will be removed in a future cleanup commit.')
   final VoidCallback? onEdit;
+
   final VoidCallback? onDelete;
+
+  /// When true a LinearProgressIndicator replaces the card bottom edge.
   final bool isLoadingEdit;
 
   const DocItemCard({
@@ -39,12 +50,9 @@ class DocItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // Determine whether Zone 2 has any content so we can conditionally
-    // insert the zone separator Divider between Zone 2 and Zone 3.
     final bool hasOperational =
-        (data.batchNo    != null && data.batchNo!.isNotEmpty)    ||
-        (data.rack       != null && data.rack!.isNotEmpty)        ||
-        (data.warehouse  != null && data.warehouse!.isNotEmpty);
+        (data.batchNo != null && data.batchNo!.isNotEmpty) ||
+        (data.rack    != null && data.rack!.isNotEmpty);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -62,124 +70,119 @@ class DocItemCard extends StatelessWidget {
           ),
         ],
       ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Index badge ───────────────────────────────────────────────
-              if (data.index != null) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 2.0),
-                  child: CircleAvatar(
-                    radius: 10,
-                    backgroundColor: cs.primaryContainer,
-                    child: Text(
-                      '${data.index! + 1}',
-                      style: TextStyle(
-                        color: cs.onPrimaryContainer,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
-
-              // ── Content: three zones ──────────────────────────────────────
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Zone 1
-                    _IdentityZone(
-                      itemCode:  data.itemCode,
-                      itemName:  data.itemName,
-                      variantOf: data.variantOf,
-                    ),
-                    // Zone 2
-                    _OperationalZone(
-                      batchNo:        data.batchNo,
-                      rack:           data.rack,
-                      toRack:         data.toRack,
-                      warehouse:      data.warehouse,
-                      toWarehouse:    data.toWarehouse,
-                      warehouseLabel: data.warehouseLabel ?? 'Warehouse',
-                    ),
-                    // Zone 2 → Zone 3 separator
-                    if (hasOperational)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Divider(
-                          height: 1,
-                          thickness: 0.6,
-                          color: cs.outlineVariant,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Card body ──────────────────────────────────────────────────
+          InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0, vertical: 10.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Index badge ──────────────────────────────────────
+                  if (data.index != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: CircleAvatar(
+                        radius: 10,
+                        backgroundColor: cs.primaryContainer,
+                        child: Text(
+                          '${data.index! + 1}',
+                          style: TextStyle(
+                            color: cs.onPrimaryContainer,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    // Zone 3
-                    _FinancialZone(
-                      qty:       data.qty,
-                      uom:       data.uom,
-                      qtyLabel:  data.qtyLabel  ?? 'Qty',
-                      rate:      data.rate,
-                      rateLabel: data.rateLabel ?? 'Rate',
-                      amount:    data.amount,
                     ),
-                    // Progress bar
-                    if (data.targetQty != null && data.targetQty! > 0)
-                      DocItemProgressBar(
-                        qty:       data.qty,
-                        targetQty: data.targetQty!,
-                        uom:       data.uom,
-                      ),
+                    const SizedBox(width: 10),
                   ],
-                ),
-              ),
 
-              const SizedBox(width: 8),
+                  // ── Content: three zones ─────────────────────────────
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Zone 1
+                        _IdentityZone(
+                          itemCode:  data.itemCode,
+                          itemName:  data.itemName,
+                          variantOf: data.variantOf,
+                        ),
+                        // Zone 2
+                        _OperationalZone(
+                          batchNo:        data.batchNo,
+                          rack:           data.rack,
+                          toRack:         data.toRack,
+                          warehouse:      data.warehouse,
+                          toWarehouse:    data.toWarehouse,
+                          warehouseLabel: data.warehouseLabel ?? 'Warehouse',
+                        ),
+                        // Zone 2 → Zone 3 separator
+                        if (hasOperational)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Divider(
+                              height: 1,
+                              thickness: 0.6,
+                              color: cs.outlineVariant,
+                            ),
+                          ),
+                        // Zone 3
+                        _FinancialZone(
+                          qty:      data.qty,
+                          uom:      data.uom,
+                          qtyLabel: data.qtyLabel ?? 'Qty',
+                        ),
+                        // Progress bar
+                        if (data.targetQty != null && data.targetQty! > 0)
+                          DocItemProgressBar(
+                            qty:       data.qty,
+                            targetQty: data.targetQty!,
+                            uom:       data.uom,
+                          ),
+                      ],
+                    ),
+                  ),
 
-              // ── Right: actions ────────────────────────────────────────────
-              if (data.isEditable)
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+                  const SizedBox(width: 8),
+
+                  // ── Right: delete only ───────────────────────────────
+                  if (data.isEditable && onDelete != null)
                     SizedBox(
                       width: 36,
                       height: 36,
-                      child: isLoadingEdit
-                          ? const Padding(
-                              padding: EdgeInsets.all(7.0),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : onEdit != null
-                              ? IconButton(
-                                  padding: EdgeInsets.zero,
-                                  icon: Icon(Icons.edit,
-                                      color: cs.primary, size: 20),
-                                  onPressed: onEdit,
-                                )
-                              : const SizedBox.shrink(),
-                    ),
-                    if (onDelete != null)
-                      SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: Icon(Icons.delete_outline,
-                              color: cs.error, size: 20),
-                          tooltip: 'Remove item',
-                          onPressed: onDelete,
-                        ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(Icons.delete_outline,
+                            color: cs.error, size: 20),
+                        tooltip: 'Remove item',
+                        onPressed: onDelete,
                       ),
-                  ],
-                ),
-            ],
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
+
+          // ── Loading indicator — full-width linear bar ──────────────
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: isLoadingEdit
+                ? LinearProgressIndicator(
+                    key: const ValueKey('loading'),
+                    minHeight: 2,
+                    backgroundColor: cs.primaryContainer,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(cs.primary),
+                  )
+                : const SizedBox.shrink(key: ValueKey('idle')),
+          ),
+        ],
       ),
     );
   }
@@ -251,23 +254,11 @@ class _IdentityZone extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// _OperationalZone  (C10: Wrap → Column + _ArrowPairRow)
+// _OperationalZone
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 2: Batch No (full-width), rack arrow pair, warehouse arrow pair.
-///
-/// Each pair is rendered as an [_ArrowPairRow] so source and target always
-/// appear on the same line. Batch No spans the full card width as a
-/// standalone row above the pairs.
-///
-/// Row order and spacing:
-/// ```
-///   [Batch No]                   ← full-width, SizedBox(6) below
-///   [Source Rack]  →  [Target Rack]    ← SizedBox(6) below
-///   [Src WH]  →  [Target WH]         ← no trailing gap (parent adds top:6)
-/// ```
-///
-/// Returns [SizedBox.shrink] when no operational field is present.
+/// Zone 2: Batch No (full-width), rack _ArrowPairRow, warehouse _ArrowPairRow.
+/// Returns [SizedBox.shrink] when no operational field is set.
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
   final String? rack;
@@ -295,65 +286,55 @@ class _OperationalZone extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    // Build rows in order; insert SizedBox(height:6) between each present row.
     final List<Widget> rows = [];
 
-    // Row 1 — Batch No (full width)
     if (hasBatch) {
-      rows.add(
-        _LabelValueCell(
-          icon:  Icons.label_outline,
-          label: 'Batch No',
-          value: batchNo!,
-          role:  MetaChipRole.batch,
-        ),
-      );
+      rows.add(_LabelValueCell(
+        icon:  Icons.label_outline,
+        label: 'Batch No',
+        value: batchNo!,
+        role:  MetaChipRole.batch,
+      ));
     }
 
-    // Row 2 — Rack arrow pair
     if (hasSourceRack) {
       if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
-      rows.add(
-        _ArrowPairRow(
-          source: _LabelValueCell(
-            icon:  Icons.shelves,
-            label: 'Source Rack',
-            value: rack!,
-            role:  MetaChipRole.rack,
-          ),
-          target: (toRack != null && toRack!.isNotEmpty)
-              ? _LabelValueCell(
-                  icon:  Icons.shelves,
-                  label: 'Target Rack',
-                  value: toRack!,
-                  role:  MetaChipRole.toRack,
-                )
-              : null,
+      rows.add(_ArrowPairRow(
+        source: _LabelValueCell(
+          icon:  Icons.shelves,
+          label: 'Source Rack',
+          value: rack!,
+          role:  MetaChipRole.rack,
         ),
-      );
+        target: (toRack != null && toRack!.isNotEmpty)
+            ? _LabelValueCell(
+                icon:  Icons.shelves,
+                label: 'Target Rack',
+                value: toRack!,
+                role:  MetaChipRole.toRack,
+              )
+            : null,
+      ));
     }
 
-    // Row 3 — Warehouse arrow pair
     if (hasWarehouse) {
       if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
-      rows.add(
-        _ArrowPairRow(
-          source: _LabelValueCell(
-            icon:  Icons.store_outlined,
-            label: warehouseLabel,
-            value: warehouse!,
-            role:  MetaChipRole.warehouse,
-          ),
-          target: (toWarehouse != null && toWarehouse!.isNotEmpty)
-              ? _LabelValueCell(
-                  icon:  Icons.store_outlined,
-                  label: 'Target Warehouse',
-                  value: toWarehouse!,
-                  role:  MetaChipRole.toWarehouse,
-                )
-              : null,
+      rows.add(_ArrowPairRow(
+        source: _LabelValueCell(
+          icon:  Icons.store_outlined,
+          label: warehouseLabel,
+          value: warehouse!,
+          role:  MetaChipRole.warehouse,
         ),
-      );
+        target: (toWarehouse != null && toWarehouse!.isNotEmpty)
+            ? _LabelValueCell(
+                icon:  Icons.store_outlined,
+                label: 'Target Warehouse',
+                value: toWarehouse!,
+                role:  MetaChipRole.toWarehouse,
+              )
+            : null,
+      ));
     }
 
     return Padding(
@@ -367,17 +348,18 @@ class _OperationalZone extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// _FinancialZone
+// _FinancialZone  (C11: simplified to Qty only)
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 3: Qty | Rate | Amount — [_LabelValueCell] in IntrinsicHeight Row.
+/// Zone 3: Qty only — a single [_LabelValueCell] at natural width.
+///
+/// Rate and Amount are suppressed globally (C11 field-test decision).
+/// The IntrinsicHeight Row + VerticalDivider structure from C8 is
+/// removed as it served only multi-column layout.
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
   final String  qtyLabel;
-  final double? rate;
-  final String  rateLabel;
-  final double? amount;
 
   static final _fmt = NumberFormat('#,##0.##');
 
@@ -385,68 +367,20 @@ class _FinancialZone extends StatelessWidget {
     required this.qty,
     this.uom,
     required this.qtyLabel,
-    this.rate,
-    required this.rateLabel,
-    this.amount,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    final String qtyValue = '${_fmt.format(qty)}${uom != null ? '  $uom' : ''}';
-    final bool   hasRate   = rate   != null;
-    final bool   hasAmount = amount != null;
-
-    final List<Widget> cells = [
-      Expanded(
-        child: _LabelValueCell(
-          icon:  Icons.numbers,
-          label: qtyLabel,
-          value: qtyValue,
-          role:  MetaChipRole.qty,
-        ),
-      ),
-      if (hasRate) ...[
-        VerticalDivider(
-          width: 12,
-          thickness: 0.8,
-          indent: 4,
-          endIndent: 4,
-          color: cs.outlineVariant,
-        ),
-        Expanded(
-          child: _LabelValueCell(
-            icon:  Icons.attach_money,
-            label: rateLabel,
-            value: _fmt.format(rate),
-            role:  MetaChipRole.rate,
-          ),
-        ),
-      ],
-      if (hasAmount) ...[
-        VerticalDivider(
-          width: 12,
-          thickness: 0.8,
-          indent: 4,
-          endIndent: 4,
-          color: cs.outlineVariant,
-        ),
-        Expanded(
-          child: _LabelValueCell(
-            icon:  Icons.receipt_outlined,
-            label: 'Amount',
-            value: _fmt.format(amount),
-            role:  MetaChipRole.amount,
-          ),
-        ),
-      ],
-    ];
+    final String qtyValue =
+        '${_fmt.format(qty)}${uom != null ? '  $uom' : ''}';
 
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: IntrinsicHeight(
-        child: Row(children: cells),
+      child: _LabelValueCell(
+        icon:  Icons.numbers,
+        label: qtyLabel,
+        value: qtyValue,
+        role:  MetaChipRole.qty,
       ),
     );
   }
@@ -482,7 +416,6 @@ enum MetaChipRole {
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Compact icon + label chip. Used by [_IdentityZone] (Variant Of chip).
-/// [_colours] is file-private so [_LabelValueCell] can share the colour map.
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -662,9 +595,9 @@ class _LabelValueCell extends StatelessWidget {
 // _ArrowPairRow
 // ────────────────────────────────────────────────────────────────────────────
 
-/// A guaranteed single-line source → target row.
-/// Both cells are [Expanded] so long values share width equally.
-/// When [target] is null, [source] occupies full width with no arrow.
+/// Guaranteed single-line source → target row.
+/// Both cells are Expanded so long values share width equally.
+/// When target is null, source occupies full width with no arrow.
 class _ArrowPairRow extends StatelessWidget {
   final Widget  source;
   final Widget? target;
@@ -698,7 +631,7 @@ class _ArrowPairRow extends StatelessWidget {
   }
 }
 
-/// Internal colour bundle — keeps the switch statement readable.
+/// Internal colour bundle.
 class _ChipColours {
   final Color bg;
   final Color border;
