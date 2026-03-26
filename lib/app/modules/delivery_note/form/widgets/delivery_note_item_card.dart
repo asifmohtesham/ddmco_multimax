@@ -7,9 +7,16 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 
 class DeliveryNoteItemCard extends StatelessWidget {
   final DeliveryNoteItem item;
+
+  /// 0-based position within a POS Upload group. When provided, a numbered
+  /// CircleAvatar badge is shown to the left of the item code to help
+  /// operators identify and locate items at a glance inside a group.
+  /// Pass null (default) in the flat / non-POS list to hide the badge.
+  final int? index;
+
   final DeliveryNoteFormController controller = Get.find();
 
-  DeliveryNoteItemCard({super.key, required this.item});
+  DeliveryNoteItemCard({super.key, required this.item, this.index});
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +53,24 @@ class DeliveryNoteItemCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ── Left: item identity + metadata ──────────────────────────
+              // ── Optional index badge (POS grouped view only) ─────────────
+              if (index != null) ...[
+                CircleAvatar(
+                  radius: 10,
+                  backgroundColor: Colors.blue.shade50,
+                  child: Text(
+                    '${index! + 1}',
+                    style: TextStyle(
+                      color: Colors.blue.shade900,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+
+              // ── Left: item identity + metadata ──────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,7 +129,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
 
                     const SizedBox(height: 6),
 
-                    // ── Inline metadata row: qty · batch · rack ───────────
+                    // ── Inline metadata row: qty · batch · rack ─────────────
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
@@ -141,7 +165,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
 
               const SizedBox(width: 8),
 
-              // ── Right: edit + delete ─────────────────────────────────────
+              // ── Right: edit + delete ─────────────────────────────────
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
