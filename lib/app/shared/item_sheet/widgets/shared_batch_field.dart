@@ -32,10 +32,11 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// )
 /// ```
 ///
-/// P2-1: added [balanceOverride] optional callback.
-/// P3-A: readOnly requires isValid AND batchError==null.
-/// P3-A: helperText / border colour is 3-tier (red / orange / grey).
-/// P3-B: errorText only for hard-invalid; warning rendered as orange helperText.
+/// P2-1 : added [balanceOverride] optional callback.
+/// P3-A : readOnly requires isValid AND batchError==null.
+/// P3-A : helperText / border colour is 3-tier (red / orange / grey).
+/// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
+/// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -45,7 +46,7 @@ class SharedBatchField extends StatelessWidget {
 
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
   /// getter on every rebuild instead of reading [ItemSheetControllerBase.maxQty].
-  /// Use when the child controller tracks a richer balance value (e.g. SE's
+  /// Use when the child controller tracks a richer balance value (e.g. SE’s
   /// per-warehouse `batchBalance`).
   final double? Function()? balanceOverride;
 
@@ -79,7 +80,7 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// -- Simple (borderless) mode -------------------------------------------------
+// ── Simple (borderless) mode ─────────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -93,6 +94,9 @@ class _SimpleField extends StatelessWidget {
       final isValid    = c.isBatchValid.value;
       final validating = c.isValidatingBatch.value;
       final errorMsg   = c.batchError.value;
+
+      // P4-1: also honour controller-driven readOnly (e.g. SE isBatchReadOnly).
+      final isReadOnly = w.readOnly || c.isBatchReadOnly.value;
 
       final isHardError = !isValid && errorMsg != null;
       final isWarning   =  isValid && errorMsg != null;
@@ -116,7 +120,7 @@ class _SimpleField extends StatelessWidget {
             color: borderColor,
             child: TextField(
               controller: c.batchController,
-              readOnly:   w.readOnly,
+              readOnly:   isReadOnly,
               style:      theme.textTheme.bodyMedium,
               textInputAction: TextInputAction.done,
               onSubmitted: (v) {
@@ -169,7 +173,7 @@ class _SimpleField extends StatelessWidget {
                               color: w.accentColor, size: 20),
                         ),
                       ),
-                    if (c.batchController.text.isNotEmpty && !w.readOnly)
+                    if (c.batchController.text.isNotEmpty && !isReadOnly)
                       IconButton(
                         icon: const Icon(Icons.clear, size: 18),
                         onPressed: () {
@@ -182,9 +186,6 @@ class _SimpleField extends StatelessWidget {
               ),
             ),
           ),
-          // Balance chip -- shown once batch validation completes.
-          // Sources balanceOverride when provided (e.g. SE batchBalance),
-          // otherwise falls back to the base maxQty field.
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -197,7 +198,7 @@ class _SimpleField extends StatelessWidget {
   }
 }
 
-// -- Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) -------------
+// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
@@ -283,8 +284,6 @@ class _EditModeField extends StatelessWidget {
               },
             ),
           ),
-          // Balance chip -- sources balanceOverride when provided,
-          // otherwise the base maxQty field.
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
