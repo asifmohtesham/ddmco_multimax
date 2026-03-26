@@ -10,21 +10,22 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Layout — three semantic zones separated by a thin Divider:
+/// Layout (C12):
 ///
-///   Zone 1 — Identity    : item code + name, optional Variant Of chip
-///   Zone 2 — Operational : Batch No (full-width), rack _ArrowPairRow
-///   Zone 3 — Financial   : Qty only (_LabelValueCell, natural width)
+///   Row 1  ─ index badge | item code + name (_HeadlineRow) | delete button
+///   Row 2  ─ [Variant Of chip]          ← full card width
+///   Zone 2 ─ Batch No, rack pair        ← full card width
+///   [────── divider ──────]
+///   Zone 3 ─ Qty                        ← full card width
+///   [progress bar]                      ← full card width
+///   [linear loading indicator]          ← full card width
 ///
-/// Tapping anywhere on the card body fires [onTap].
-/// [onEdit] is retained as a silent no-op parameter for call-site
-/// compatibility; the edit IconButton is no longer rendered (C11).
-/// [onDelete] renders a delete IconButton in the right column.
+/// Index badge and delete button are constrained to Row 1 only,
+/// freeing the full width for all subsequent content.
 ///
-/// When [isLoadingEdit] is true a slim LinearProgressIndicator fades in
-/// at the bottom edge of the card (replaces the old circular spinner).
+/// [onEdit] is retained as a silent no-op for call-site compatibility (C11).
 class DocItemCard extends StatelessWidget {
-  final ItemCardData data;
+  final ItemCardData  data;
   final VoidCallback? onTap;
 
   /// Retained for call-site compatibility. Not wired to any widget (C11).
@@ -34,7 +35,7 @@ class DocItemCard extends StatelessWidget {
 
   final VoidCallback? onDelete;
 
-  /// When true a LinearProgressIndicator replaces the card bottom edge.
+  /// When true a slim LinearProgressIndicator fades in at the card bottom.
   final bool isLoadingEdit;
 
   const DocItemCard({
@@ -50,6 +51,7 @@ class DocItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final bool hasVariant     = data.variantOf != null && data.variantOf!.isNotEmpty;
     final bool hasOperational =
         (data.batchNo != null && data.batchNo!.isNotEmpty) ||
         (data.rack    != null && data.rack!.isNotEmpty);
@@ -63,10 +65,10 @@ class DocItemCard extends StatelessWidget {
             : cs.surface,
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha: .06),
+            color:       cs.shadow.withValues(alpha: .06),
             spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 1),
+            blurRadius:   3,
+            offset:       const Offset(0, 1),
           ),
         ],
       ),
@@ -79,90 +81,95 @@ class DocItemCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: 16.0, vertical: 10.0),
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Index badge ──────────────────────────────────────
-                  if (data.index != null) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2.0),
-                      child: CircleAvatar(
-                        radius: 10,
-                        backgroundColor: cs.primaryContainer,
-                        child: Text(
-                          '${data.index! + 1}',
-                          style: TextStyle(
-                            color: cs.onPrimaryContainer,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
 
-                  // ── Content: three zones ─────────────────────────────
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Zone 1
-                        _IdentityZone(
-                          itemCode:  data.itemCode,
-                          itemName:  data.itemName,
-                          variantOf: data.variantOf,
-                        ),
-                        // Zone 2
-                        _OperationalZone(
-                          batchNo:        data.batchNo,
-                          rack:           data.rack,
-                          toRack:         data.toRack,
-                          warehouse:      data.warehouse,
-                          toWarehouse:    data.toWarehouse,
-                          warehouseLabel: data.warehouseLabel ?? 'Warehouse',
-                        ),
-                        // Zone 2 → Zone 3 separator
-                        if (hasOperational)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Divider(
-                              height: 1,
-                              thickness: 0.6,
-                              color: cs.outlineVariant,
+                  // ── Row 1: headline + index badge + delete ────────────
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (data.index != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2.0),
+                          child: CircleAvatar(
+                            radius: 10,
+                            backgroundColor: cs.primaryContainer,
+                            child: Text(
+                              '${data.index! + 1}',
+                              style: TextStyle(
+                                color:      cs.onPrimaryContainer,
+                                fontSize:   9,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        // Zone 3
-                        _FinancialZone(
-                          qty:      data.qty,
-                          uom:      data.uom,
-                          qtyLabel: data.qtyLabel ?? 'Qty',
                         ),
-                        // Progress bar
-                        if (data.targetQty != null && data.targetQty! > 0)
-                          DocItemProgressBar(
-                            qty:       data.qty,
-                            targetQty: data.targetQty!,
-                            uom:       data.uom,
-                          ),
+                        const SizedBox(width: 10),
                       ],
-                    ),
+                      Expanded(
+                        child: _HeadlineRow(
+                          itemCode: data.itemCode,
+                          itemName: data.itemName,
+                        ),
+                      ),
+                      if (data.isEditable && onDelete != null) ...[
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width:  36,
+                          height: 36,
+                          child: IconButton(
+                            padding:   EdgeInsets.zero,
+                            icon:      Icon(Icons.delete_outline,
+                                color: cs.error, size: 20),
+                            tooltip:   'Remove item',
+                            onPressed: onDelete,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
 
-                  const SizedBox(width: 8),
+                  // ── Row 2: Variant Of chip (full width) ──────────────
+                  if (hasVariant) ...[
+                    const SizedBox(height: 6),
+                    _VariantOfRow(variantOf: data.variantOf!),
+                  ],
 
-                  // ── Right: delete only ───────────────────────────────
-                  if (data.isEditable && onDelete != null)
-                    SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(Icons.delete_outline,
-                            color: cs.error, size: 20),
-                        tooltip: 'Remove item',
-                        onPressed: onDelete,
+                  // ── Zone 2: Operational (full width) ─────────────────
+                  _OperationalZone(
+                    batchNo:        data.batchNo,
+                    rack:           data.rack,
+                    toRack:         data.toRack,
+                    warehouse:      data.warehouse,
+                    toWarehouse:    data.toWarehouse,
+                    warehouseLabel: data.warehouseLabel ?? 'Warehouse',
+                  ),
+
+                  // ── Zone 2 → Zone 3 divider ───────────────────────
+                  if (hasOperational)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(
+                        height:    1,
+                        thickness: 0.6,
+                        color:     cs.outlineVariant,
                       ),
+                    ),
+
+                  // ── Zone 3: Financial (full width) ─────────────────
+                  _FinancialZone(
+                    qty:      data.qty,
+                    uom:      data.uom,
+                    qtyLabel: data.qtyLabel ?? 'Qty',
+                  ),
+
+                  // ── Progress bar (full width) ─────────────────────
+                  if (data.targetQty != null && data.targetQty! > 0)
+                    DocItemProgressBar(
+                      qty:       data.qty,
+                      targetQty: data.targetQty!,
+                      uom:       data.uom,
                     ),
                 ],
               ),
@@ -174,11 +181,10 @@ class DocItemCard extends StatelessWidget {
             duration: const Duration(milliseconds: 300),
             child: isLoadingEdit
                 ? LinearProgressIndicator(
-                    key: const ValueKey('loading'),
-                    minHeight: 2,
+                    key:             const ValueKey('loading'),
+                    minHeight:       2,
                     backgroundColor: cs.primaryContainer,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(cs.primary),
+                    valueColor:      AlwaysStoppedAnimation<Color>(cs.primary),
                   )
                 : const SizedBox.shrink(key: ValueKey('idle')),
           ),
@@ -189,66 +195,73 @@ class DocItemCard extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// _IdentityZone
+// _HeadlineRow  (split from _IdentityZone — C12)
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 1: item code + name headline, optional Variant Of chip.
-class _IdentityZone extends StatelessWidget {
+/// Item code + name headline only.
+/// Sits inside the constrained Row 1 alongside the index badge and
+/// delete button. Variant Of has been extracted to [_VariantOfRow].
+class _HeadlineRow extends StatelessWidget {
   final String  itemCode;
   final String? itemName;
-  final String? variantOf;
 
-  const _IdentityZone({
+  const _HeadlineRow({
     required this.itemCode,
     this.itemName,
-    this.variantOf,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs         = Theme.of(context).colorScheme;
-    final hasVariant = variantOf != null && variantOf!.isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        RichText(
-          text: TextSpan(
-            style: DefaultTextStyle.of(context).style,
-            children: [
-              TextSpan(
-                text: itemCode,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  fontFamily: 'ShureTechMono',
-                  fontFeatures: const [FontFeature.slashedZero()],
-                  color: cs.onSurface,
-                ),
+    return RichText(
+      text: TextSpan(
+        style: DefaultTextStyle.of(context).style,
+        children: [
+          TextSpan(
+            text: itemCode,
+            style: TextStyle(
+              fontWeight:   FontWeight.bold,
+              fontSize:     14,
+              fontFamily:   'ShureTechMono',
+              fontFeatures: const [FontFeature.slashedZero()],
+              color:        cs.onSurface,
+            ),
+          ),
+          if (itemName != null && itemName!.isNotEmpty)
+            TextSpan(
+              text: ': $itemName',
+              style: TextStyle(
+                fontWeight:   FontWeight.bold,
+                fontSize:     14,
+                fontFamily:   'ShureTechMono',
+                color:        cs.onSurface,
               ),
-              if (itemName != null && itemName!.isNotEmpty)
-                TextSpan(
-                  text: ': $itemName',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    fontFamily: 'ShureTechMono',
-                    color: cs.onSurface,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        if (hasVariant) ...[
-          const SizedBox(height: 4),
-          DocItemMetaChip(
-            icon:  Icons.account_tree_outlined,
-            label: 'Variant Of: $variantOf',
-            role:  MetaChipRole.variantOf,
-            size:  MetaChipSize.standard,
-          ),
+            ),
         ],
-      ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// _VariantOfRow  (split from _IdentityZone — C12)
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Variant Of chip rendered at full card width below Row 1.
+/// Only built when variantOf is non-null and non-empty.
+class _VariantOfRow extends StatelessWidget {
+  final String variantOf;
+
+  const _VariantOfRow({required this.variantOf});
+
+  @override
+  Widget build(BuildContext context) {
+    return DocItemMetaChip(
+      icon:  Icons.account_tree_outlined,
+      label: 'Variant Of: $variantOf',
+      role:  MetaChipRole.variantOf,
+      size:  MetaChipSize.standard,
     );
   }
 }
@@ -348,14 +361,10 @@ class _OperationalZone extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// _FinancialZone  (C11: simplified to Qty only)
+// _FinancialZone
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Zone 3: Qty only — a single [_LabelValueCell] at natural width.
-///
-/// Rate and Amount are suppressed globally (C11 field-test decision).
-/// The IntrinsicHeight Row + VerticalDivider structure from C8 is
-/// removed as it served only multi-column layout.
+/// Zone 3: Qty only — single [_LabelValueCell] at natural width.
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
@@ -390,10 +399,7 @@ class _FinancialZone extends StatelessWidget {
 // MetaChipSize
 // ────────────────────────────────────────────────────────────────────────────
 
-enum MetaChipSize {
-  standard,
-  compact,
-}
+enum MetaChipSize { standard, compact }
 
 // ────────────────────────────────────────────────────────────────────────────
 // MetaChipRole
@@ -415,7 +421,7 @@ enum MetaChipRole {
 // DocItemMetaChip
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Compact icon + label chip. Used by [_IdentityZone] (Variant Of chip).
+/// Compact icon + label chip used across all zones.
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -493,9 +499,9 @@ class DocItemMetaChip extends StatelessWidget {
     return Container(
       padding: pad,
       decoration: BoxDecoration(
-        color:  col.bg,
+        color:        col.bg,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: col.border, width: 0.5),
+        border:       Border.all(color: col.border, width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
