@@ -135,7 +135,7 @@ class DocItemCard extends StatelessWidget {
                       ),
                     ),
 
-                    // variant_of chip
+                    // variant_of chip — label: 'Variant Of' (ERPNext custom field)
                     if (data.variantOf != null &&
                         data.variantOf!.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -151,7 +151,8 @@ class DocItemCard extends StatelessWidget {
                               width: 0.5),
                         ),
                         child: Text(
-                          'Variant of: ${data.variantOf!}',
+                          // ERPNext custom field label: 'Variant Of'
+                          'Variant Of: ${data.variantOf!}',
                           style: TextStyle(
                             fontSize: 11,
                             color: cs.onSecondaryContainer,
@@ -169,7 +170,10 @@ class DocItemCard extends StatelessWidget {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // Qty — always shown
+                        // Qty — always shown.
+                        // Label kept as 'Qty:' here; per-DocType label
+                        // (e.g. 'Accepted Qty:' for PR) will be driven
+                        // by ItemCardData.qtyLabel in C3.
                         DocItemMetaChip(
                           icon: Icons.numbers,
                           label:
@@ -178,7 +182,8 @@ class DocItemCard extends StatelessWidget {
                           role: MetaChipRole.qty,
                         ),
 
-                        // Rate
+                        // Rate — label kept as 'Rate:'; per-DocType
+                        // distinction ('Basic Rate:' for SE) comes in C3.
                         if (data.rate != null)
                           DocItemMetaChip(
                             icon: Icons.attach_money,
@@ -187,56 +192,57 @@ class DocItemCard extends StatelessWidget {
                             role: MetaChipRole.rate,
                           ),
 
-                        // Amount
+                        // Amount — verbatim ERPNext label (all DocTypes).
                         if (data.amount != null)
                           DocItemMetaChip(
                             icon: Icons.receipt_outlined,
                             label:
-                                'Amt: ${NumberFormat('#,##0.##').format(data.amount)}',
+                                'Amount: ${NumberFormat('#,##0.##').format(data.amount)}',
                             role: MetaChipRole.amount,
                           ),
 
-                        // Batch
+                        // Batch No — verbatim ERPNext label.
                         if (data.batchNo != null &&
                             data.batchNo!.isNotEmpty)
                           DocItemMetaChip(
                             icon: Icons.label_outline,
-                            label: 'Batch: ${data.batchNo!}',
+                            label: 'Batch No: ${data.batchNo!}',
                             role: MetaChipRole.batch,
                           ),
 
-                        // Source rack
+                        // Source Rack — confirmed Inventory Dimension label.
                         if (data.rack != null && data.rack!.isNotEmpty)
                           DocItemMetaChip(
                             icon: Icons.shelves,
-                            label: 'Rack: ${data.rack!}',
+                            label: 'Source Rack: ${data.rack!}',
                             role: MetaChipRole.rack,
                           ),
 
-                        // Destination rack (SE transfer only)
+                        // Target Rack — confirmed Inventory Dimension label.
                         if (data.toRack != null &&
                             data.toRack!.isNotEmpty)
                           DocItemMetaChip(
                             icon: Icons.shelves,
-                            label: 'To Rack: ${data.toRack!}',
+                            label: 'Target Rack: ${data.toRack!}',
                             role: MetaChipRole.toRack,
                           ),
 
-                        // Warehouse
+                        // Warehouse — verbatim DN label; PR uses
+                        // 'Accepted Warehouse' (handled via C3 warehouseLabel).
                         if (data.warehouse != null &&
                             data.warehouse!.isNotEmpty)
                           DocItemMetaChip(
                             icon: Icons.store_outlined,
-                            label: 'WH: ${data.warehouse!}',
+                            label: 'Warehouse: ${data.warehouse!}',
                             role: MetaChipRole.warehouse,
                           ),
 
-                        // Destination warehouse (SE only)
+                        // Target Warehouse — verbatim SE label (t_warehouse).
                         if (data.toWarehouse != null &&
                             data.toWarehouse!.isNotEmpty)
                           DocItemMetaChip(
                             icon: Icons.store_outlined,
-                            label: 'To WH: ${data.toWarehouse!}',
+                            label: 'Target Warehouse: ${data.toWarehouse!}',
                             role: MetaChipRole.toWarehouse,
                           ),
                       ],
