@@ -56,6 +56,17 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [currentScannedEan]   — removed local currentScannedEan8; use base field.
 ///   • [validateBatchOnInit] — removed local duplicate; use base method.
 ///
+/// Browse-Rack fix (parity with DN):
+///   • initialise() now calls fetchAllRackStocks() unconditionally at the end,
+///     matching DeliveryNoteItemFormController. This pre-warms rackStockMap so
+///     RackPickerController.load() receives a non-empty fallbackMap even when
+///     the operator taps Browse Rack before entering a batch.
+///   • validateBatch() override now calls unawaited(fetchAllRackStocks()) after
+///     _updateAvailableStock() + _updateBatchBalance() succeed. The base
+///     validateBatch() ends with fetchAllRackStocks(); SE's override replaced
+///     that entire call chain without re-adding the map refresh, causing
+///     rackStockMap to remain empty after batch validation.
+///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
 ///   • Sheet dismissal is owned exclusively by the parent coordinator
@@ -256,6 +267,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     validateSheet();
+    fetchAllRackStocks(); // pre-warm rackStockMap so Browse Rack is never empty on open (mirrors DN)
   }
 
   void _loadExistingItem(
@@ -495,6 +507,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         }
         await _updateAvailableStock();
         await _updateBatchBalance();
+        unawaited(fetchAllRackStocks()); // refresh rackStockMap with batch-filtered data (mirrors base validateBatch)
 
         // Source-rack autofill is driven by AutoFillRackMixin via the qty-field
         // listener. The previous unawaited(_autoFillBestSourceRack()) call has
