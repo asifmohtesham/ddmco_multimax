@@ -357,18 +357,27 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                         child: Icon(Icons.delete_outline,
                             color: cs.onErrorContainer, size: 28),
                       ),
-                      child: DocItemCard(
+                      child: Obx(() => DocItemCard(
                         key:  controller.itemKeys[item.name],
                         data: ItemCardData.fromDeliveryNoteItem(
                           item,
                           isEditable:    isEditable,
                           isHighlighted: isHighlighted,
                         ),
+                        onTap: isEditable
+                            ? () => controller.editItem(item)
+                            : null,
+                        onEdit: isEditable
+                            ? () => controller.editItem(item)
+                            : null,
+                        isLoadingEdit:
+                            controller.loadingForItemName.value ==
+                                item.name,
                         onDelete: isEditable
                             ? () => controller
                                 .confirmAndDeleteItem(item)
                             : null,
-                      ),
+                      )),
                     );
                   },
                 );
@@ -449,7 +458,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                             controller.recentlyAddedItemCode.value ==
                                 item.itemCode;
 
-                        return DocItemCard(
+                        return Obx(() => DocItemCard(
                           key:  controller.itemKeys[item.name],
                           data: ItemCardData.fromDeliveryNoteItem(
                             item,
@@ -457,11 +466,20 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                             isEditable:    isEditable,
                             isHighlighted: isHighlighted,
                           ),
+                          onTap: isEditable
+                              ? () => controller.editItem(item)
+                              : null,
+                          onEdit: isEditable
+                              ? () => controller.editItem(item)
+                              : null,
+                          isLoadingEdit:
+                              controller.loadingForItemName.value ==
+                                  item.name,
                           onDelete: isEditable
                               ? () => controller
                                   .confirmAndDeleteItem(item)
                               : null,
-                        );
+                        ));
                       }).toList(),
                     ),
                   );
