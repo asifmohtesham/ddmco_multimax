@@ -22,6 +22,8 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 /// [RackPickerSheet], and disposes the controller when the sheet closes.
 ///
 /// P2-2: extracted from SE module into shared/item_sheet/widgets.
+/// fix: pass rackStockMap as fallbackMap so the Available Rack Balance
+///      bottom sheet is populated (was always empty due to `const {}`).
 class SharedDualRackSection extends StatelessWidget {
   final StockEntryItemFormController controller;
 
@@ -56,7 +58,13 @@ class SharedDualRackSection extends StatelessWidget {
       currentRack: isSource
           ? controller.sourceRackController.text
           : controller.targetRackController.text,
-      fallbackMap: const {},
+      // Pass a point-in-time snapshot of the live rackStockMap as the
+      // fallback / merge-base for RackPickerController.load().
+      // Previously `const {}` caused the Available Rack Balance sheet
+      // to always render empty when the primary batch-ledger API returned
+      // no data (non-batch items, API hiccup, or first-open before batch
+      // validation). Matches the pattern used in DN's openRackPicker().
+      fallbackMap: Map<String, double>.from(controller.rackStockMap),
     ));
 
     await Get.bottomSheet(
