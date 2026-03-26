@@ -4,82 +4,83 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
-import 'package:multimax/app/data/models/purchase_receipt_model.dart';
-import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_item_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/shared/item_card/doc_item_card.dart';
+import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
-class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
+class PurchaseReceiptFormScreen
+    extends GetView<PurchaseReceiptFormController> {
   const PurchaseReceiptFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          // S3: Obx wrapped in PreferredSize — Obx alone is not a PreferredSizeWidget
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight + kTextTabBarHeight),
-            child: Obx(() {
-              final receipt = controller.purchaseReceipt.value;
-              return MainAppBar(
-                title:      receipt?.name ?? 'Loading...',
-                status:     receipt?.status,
-                isDirty:    controller.isDirty.value,
-                isSaving:   controller.isSaving.value,
-                saveResult: controller.saveResult.value,
-                onSave: (receipt?.docstatus == 0 && controller.isDirty.value)
-                    ? controller.savePurchaseReceipt
-                    : null,
-                onReload: (controller.mode != 'new' &&
-                        !controller.isDirty.value)
-                    ? controller.reloadDocument
-                    : null,
-                bottom: const TabBar(
-                  tabs: [
-                    Tab(text: 'Details'),
-                    Tab(text: 'Items'),
-                  ],
-                ),
-              );
-            }),
-          ),
-          body: Obx(() {
-            if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final receipt = controller.purchaseReceipt.value;
-            if (receipt == null) {
-              return const Center(
-                  child: Text('Purchase receipt not found.'));
-            }
-
-            return SafeArea(
-              child: TabBarView(
-                children: [
-                  _buildDetailsView(context, receipt),
-                  _buildItemsView(context, receipt),
-                ],
+          canPop: !controller.isDirty.value,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            await controller.confirmDiscard();
+          },
+          child: DefaultTabController(
+            length: 2,
+            child: Scaffold(
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(
+                    kToolbarHeight + kTextTabBarHeight),
+                child: Obx(() {
+                  final receipt = controller.purchaseReceipt.value;
+                  return MainAppBar(
+                    title:      receipt?.name ?? 'Loading...',
+                    status:     receipt?.status,
+                    isDirty:    controller.isDirty.value,
+                    isSaving:   controller.isSaving.value,
+                    saveResult: controller.saveResult.value,
+                    onSave: (receipt?.docstatus == 0 &&
+                            controller.isDirty.value)
+                        ? controller.savePurchaseReceipt
+                        : null,
+                    onReload:
+                        (controller.mode != 'new' &&
+                                !controller.isDirty.value)
+                            ? controller.reloadDocument
+                            : null,
+                    bottom: const TabBar(
+                      tabs: [
+                        Tab(text: 'Details'),
+                        Tab(text: 'Items'),
+                      ],
+                    ),
+                  );
+                }),
               ),
-            );
-          }),
-        ),
-      ),
-    ));
+              body: Obx(() {
+                if (controller.isLoading.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final receipt = controller.purchaseReceipt.value;
+                if (receipt == null) {
+                  return const Center(
+                      child: Text('Purchase receipt not found.'));
+                }
+                return SafeArea(
+                  child: TabBarView(
+                    children: [
+                      _buildDetailsView(context, receipt),
+                      _buildItemsView(context, receipt),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ));
   }
 
-  // ── Details tab ──────────────────────────────────────────────────────
+  // ── Details tab ────────────────────────────────────────────────────────────────
 
-  Widget _buildDetailsView(BuildContext context, PurchaseReceipt receipt) {
+  Widget _buildDetailsView(BuildContext context, dynamic receipt) {
     final bool isEditable = controller.isEditable;
 
     return SingleChildScrollView(
@@ -145,10 +146,10 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                             ? () async {
                                 final now    = DateTime.now();
                                 final picked = await showDatePicker(
-                                  context: context,
+                                  context:     context,
                                   initialDate: now,
-                                  firstDate: DateTime(now.year - 5),
-                                  lastDate:  DateTime(now.year + 5),
+                                  firstDate:   DateTime(now.year - 5),
+                                  lastDate:    DateTime(now.year + 5),
                                 );
                                 if (picked != null) {
                                   controller.postingDateController.text =
@@ -179,7 +180,7 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
                         onTap: isEditable
                             ? () async {
                                 final picked = await showTimePicker(
-                                  context: context,
+                                  context:     context,
                                   initialTime: TimeOfDay.now(),
                                 );
                                 if (picked != null) {
@@ -256,7 +257,89 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
     );
   }
 
-  // ── Shared helpers ───────────────────────────────────────────────────────
+  // ── Items tab ───────────────────────────────────────────────────────────────────
+
+  Widget _buildItemsView(BuildContext context, dynamic receipt) {
+    final items = receipt.items;
+
+    return Column(
+      children: [
+        Expanded(
+          child: items.isEmpty
+              ? const Center(child: Text('No items in this receipt.'))
+              : ListView.builder(
+                  controller: controller.scrollController,
+                  padding:
+                      const EdgeInsets.only(top: 8.0, bottom: 80.0),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    controller.ensureItemKey(item);
+
+                    return Obx(() {
+                      final isHighlighted =
+                          controller.recentlyAddedItemName.value ==
+                              item.name;
+                      final isLoadingThis =
+                          controller.isLoadingItemEdit.value &&
+                          controller.loadingForItemName.value ==
+                              item.name;
+
+                      final cardData =
+                          ItemCardData.fromPurchaseReceiptItem(
+                        item,
+                        index:         index,
+                        isEditable:    controller.isEditable,
+                        isHighlighted: isHighlighted,
+                      );
+
+                      return Dismissible(
+                        key: ValueKey(item.name ?? index),
+                        direction: controller.isEditable
+                            ? DismissDirection.endToStart
+                            : DismissDirection.none,
+                        confirmDismiss: (_) async {
+                          if (controller.isEditable) {
+                            controller.confirmAndDeleteItem(item);
+                          }
+                          return false;
+                        },
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding:   const EdgeInsets.only(right: 20),
+                          color:     Colors.red.shade400,
+                          child:     const Icon(Icons.delete_outline,
+                              color: Colors.white, size: 28),
+                        ),
+                        child: DocItemCard(
+                          key:           controller.itemKeys[item.name],
+                          data:          cardData,
+                          isLoadingEdit: isLoadingThis,
+                          onTap: controller.isEditable
+                              ? () => controller.editItem(item)
+                              : null,
+                          onDelete: controller.isEditable
+                              ? () =>
+                                  controller.confirmAndDeleteItem(item)
+                              : null,
+                        ),
+                      );
+                    });
+                  },
+                ),
+        ),
+        if (controller.isEditable)
+          Obx(() => BarcodeInputWidget(
+                onScan:      (code) => controller.scanBarcode(code),
+                isLoading:   controller.isScanning.value,
+                controller:  controller.barcodeController,
+                activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
+              )),
+      ],
+    );
+  }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
       {required String title, required List<Widget> children}) {
@@ -303,93 +386,6 @@ class PurchaseReceiptFormScreen extends GetView<PurchaseReceiptFormController> {
           ),
         ],
       ),
-    );
-  }
-
-  // ── Items tab ──────────────────────────────────────────────────────────────
-
-  Widget _buildItemsView(BuildContext context, PurchaseReceipt receipt) {
-    final items = receipt.items;
-
-    return Column(
-      children: [
-        Expanded(
-          child: items.isEmpty
-              ? const Center(child: Text('No items in this receipt.'))
-              : ListView.builder(
-                  controller: controller.scrollController,
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 80.0),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    controller.ensureItemKey(item);
-
-                    return Obx(() {
-                      final isLoadingThis =
-                          controller.isLoadingItemEdit.value &&
-                          controller.loadingForItemName.value == item.name;
-
-                      return Dismissible(
-                        key:       ValueKey(item.name ?? index),
-                        direction: controller.isEditable
-                            ? DismissDirection.endToStart
-                            : DismissDirection.none,
-                        confirmDismiss: (_) async {
-                          if (controller.isEditable) {
-                            controller.confirmAndDeleteItem(item);
-                          }
-                          return false;
-                        },
-                        background: Container(
-                          alignment: Alignment.centerRight,
-                          padding:   const EdgeInsets.only(right: 20),
-                          color:     Colors.red.shade400,
-                          child:     const Icon(Icons.delete_outline,
-                              color: Colors.white, size: 28),
-                        ),
-                        child: Stack(
-                          children: [
-                            Container(
-                              key: item.name != null
-                                  ? controller.itemKeys[item.name]
-                                  : null,
-                              child: PurchaseReceiptItemCard(
-                                item:  item,
-                                index: index,
-                              ),
-                            ),
-                            if (isLoadingThis)
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.65),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Center(
-                                    child: SizedBox(
-                                      width:  24,
-                                      height: 24,
-                                      child:  CircularProgressIndicator(
-                                          strokeWidth: 2.5),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    });
-                  },
-                ),
-        ),
-        if (controller.isEditable)
-          Obx(() => BarcodeInputWidget(
-                onScan:      (code) => controller.scanBarcode(code),
-                isLoading:   controller.isScanning.value,
-                controller:  controller.barcodeController,
-                activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
-              )),
-      ],
     );
   }
 }
