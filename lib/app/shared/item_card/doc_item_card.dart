@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
+import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // DocItemCard
@@ -242,13 +243,13 @@ class DocItemCard extends StatelessWidget {
                     ),
 
                     // ── Progress bar ───────────────────────────────────────
-                    // Rendered only when targetQty is provided.
-                    // Phase 3 will replace this inline block with
-                    // DocItemProgressBar(qty: data.qty, targetQty: data.targetQty!).
+                    // Rendered only when targetQty is provided (PO, PR, SE).
+                    // DN and PS pass targetQty: null — bar is absent.
                     if (data.targetQty != null && data.targetQty! > 0)
-                      _ProgressSection(
-                        qty: data.qty,
+                      DocItemProgressBar(
+                        qty:       data.qty,
                         targetQty: data.targetQty!,
+                        uom:       data.uom,
                       ),
                   ],
                 ),
@@ -348,53 +349,52 @@ class DocItemMetaChip extends StatelessWidget {
   });
 
   /// Maps a [MetaChipRole] to a [_ChipColours] pair from [colorScheme].
-  static _ChipColours _colours(
-      MetaChipRole role, ColorScheme cs) {
+  static _ChipColours _colours(MetaChipRole role, ColorScheme cs) {
     switch (role) {
       case MetaChipRole.qty:
         return _ChipColours(
-            bg: cs.primaryContainer.withValues(alpha: 0.5),
+            bg:     cs.primaryContainer.withValues(alpha: 0.5),
             border: cs.primary.withValues(alpha: 0.25),
-            icon: cs.primary,
-            text: cs.onPrimaryContainer);
+            icon:   cs.primary,
+            text:   cs.onPrimaryContainer);
       case MetaChipRole.rate:
         return _ChipColours(
-            bg: cs.secondaryContainer.withValues(alpha: 0.5),
+            bg:     cs.secondaryContainer.withValues(alpha: 0.5),
             border: cs.secondary.withValues(alpha: 0.25),
-            icon: cs.secondary,
-            text: cs.onSecondaryContainer);
+            icon:   cs.secondary,
+            text:   cs.onSecondaryContainer);
       case MetaChipRole.amount:
         return _ChipColours(
-            bg: cs.tertiaryContainer.withValues(alpha: 0.5),
+            bg:     cs.tertiaryContainer.withValues(alpha: 0.5),
             border: cs.tertiary.withValues(alpha: 0.25),
-            icon: cs.tertiary,
-            text: cs.onTertiaryContainer);
+            icon:   cs.tertiary,
+            text:   cs.onTertiaryContainer);
       case MetaChipRole.batch:
         return _ChipColours(
-            bg: cs.surfaceContainerHighest,
+            bg:     cs.surfaceContainerHighest,
             border: cs.outline.withValues(alpha: 0.4),
-            icon: cs.onSurfaceVariant,
-            text: cs.onSurface);
+            icon:   cs.onSurfaceVariant,
+            text:   cs.onSurface);
       case MetaChipRole.rack:
       case MetaChipRole.toRack:
         return _ChipColours(
-            bg: cs.tertiaryContainer.withValues(alpha: 0.3),
+            bg:     cs.tertiaryContainer.withValues(alpha: 0.3),
             border: cs.tertiary.withValues(alpha: 0.2),
-            icon: cs.tertiary,
-            text: cs.onTertiaryContainer);
+            icon:   cs.tertiary,
+            text:   cs.onTertiaryContainer);
       case MetaChipRole.warehouse:
       case MetaChipRole.toWarehouse:
         return _ChipColours(
-            bg: cs.secondaryContainer.withValues(alpha: 0.3),
+            bg:     cs.secondaryContainer.withValues(alpha: 0.3),
             border: cs.secondary.withValues(alpha: 0.2),
-            icon: cs.secondary,
-            text: cs.onSecondaryContainer);
+            icon:   cs.secondary,
+            text:   cs.onSecondaryContainer);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final cs  = Theme.of(context).colorScheme;
     final col = _colours(role, cs);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -429,83 +429,10 @@ class _ChipColours {
   final Color border;
   final Color icon;
   final Color text;
-  const _ChipColours(
-      {required this.bg,
-      required this.border,
-      required this.icon,
-      required this.text});
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────
-// _ProgressSection  —  inline placeholder until Phase 3
-// ─────────────────────────────────────────────────────────────────────────────────
-
-/// Inline progress block used by [DocItemCard] until [DocItemProgressBar]
-/// (Phase 3) is ready to slot in.
-///
-/// Phase 3 replaces this class entirely — the call-site in [DocItemCard]
-/// is already commented with the replacement instruction.
-class _ProgressSection extends StatelessWidget {
-  final double qty;
-  final double targetQty;
-
-  const _ProgressSection({
-    required this.qty,
-    required this.targetQty,
+  const _ChipColours({
+    required this.bg,
+    required this.border,
+    required this.icon,
+    required this.text,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final percent = (qty / targetQty).clamp(0.0, 1.0);
-    final isComplete = percent >= 1.0;
-    final isOver = qty > targetQty;
-
-    final Color progressColor = isOver
-        ? cs.error
-        : isComplete
-            ? cs.tertiary
-            : cs.primary;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                isComplete
-                    ? 'Fully received'
-                    : 'Rcvd: ${NumberFormat('#,##0.##').format(qty)}'
-                        ' / ${NumberFormat('#,##0.##').format(targetQty)}',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: progressColor,
-                    fontWeight: FontWeight.w600),
-              ),
-              Text(
-                '${(percent * 100).toInt()}%',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: progressColor),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: percent,
-              minHeight: 6,
-              backgroundColor: cs.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
