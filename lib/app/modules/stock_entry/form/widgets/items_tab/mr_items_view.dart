@@ -3,12 +3,12 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/mr_item_filter_bar.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/empty_scan_state.dart';
+import 'package:multimax/app/shared/item_card/doc_item_card.dart';
+import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
 /// Items list driven by a Material Request reference.
-/// Step 6 — extracted from StockEntryFormScreen._buildMaterialRequestItemsView().
 class MrItemsView extends StatelessWidget {
   final StockEntryFormController controller;
   final StockEntry entry;
@@ -51,6 +51,8 @@ class MrItemsView extends StatelessWidget {
                         const SizedBox(height: 0),
                     itemBuilder: (context, index) {
                       final row = rows[index];
+                      final isEditable =
+                          controller.stockEntry.value?.docstatus == 0;
 
                       final realItem = entry.items.firstWhereOrNull(
                         (i) =>
@@ -58,44 +60,49 @@ class MrItemsView extends StatelessWidget {
                             row.itemCode.trim().toLowerCase(),
                       );
 
+                      // Phantom item for rows not yet received.
                       final displayItem = realItem ??
                           StockEntryItem(
-                            name: null,
+                            name:     null,
                             itemCode: row.itemCode,
-                            qty: 0,
+                            qty:      0,
                             basicRate: 0.0,
-                            itemGroup: null,
-                            customVariantOf: null,
-                            batchNo: null,
-                            itemName: row.itemCode,
-                            rack: null,
-                            toRack: null,
-                            sWarehouse: null,
-                            tWarehouse: null,
+                            itemGroup:          null,
+                            customVariantOf:     null,
+                            batchNo:             null,
+                            itemName:            row.itemCode,
+                            rack:                null,
+                            toRack:              null,
+                            sWarehouse:          null,
+                            tWarehouse:          null,
                             customInvoiceSerialNumber: null,
-                            materialRequest: row.materialRequest,
-                            materialRequestItem:
-                                row.materialRequestItem,
+                            materialRequest:     row.materialRequest,
+                            materialRequestItem: row.materialRequestItem,
                           );
 
                       if (realItem != null) {
                         controller.ensureItemKey(realItem);
                       }
 
-                      return StockEntryItemCard(
-                        item: displayItem,
-                        maxQty: row.requestedQty,
-                        onTap: realItem != null &&
-                                controller.stockEntry.value
-                                        ?.docstatus ==
-                                    0
+                      // Build CardData with targetQty = row.requestedQty so
+                      // DocItemProgressBar shows fulfilment progress.
+                      final cardData = ItemCardData.fromStockEntryItem(
+                        displayItem,
+                        index:      index,
+                        isEditable: isEditable && realItem != null,
+                      ).copyWithTargetQty(row.requestedQty);
+
+                      return DocItemCard(
+                        key:  realItem != null
+                            ? controller.itemKeys[realItem.name]
+                            : null,
+                        data: cardData,
+                        onTap: realItem != null && isEditable
                             ? () => controller.editItem(realItem)
                             : null,
                         onDelete: realItem != null &&
                                 realItem.name != null &&
-                                controller.stockEntry.value
-                                        ?.docstatus ==
-                                    0
+                                isEditable
                             ? () =>
                                 controller.confirmAndDeleteItem(realItem)
                             : null,
