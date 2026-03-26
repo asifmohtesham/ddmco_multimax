@@ -305,6 +305,24 @@ class DocItemCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
+// MetaChipSize  —  two-tier size scale for chips
+// ─────────────────────────────────────────────────────────────────────────────────
+
+/// Controls the visual weight of a [DocItemMetaChip].
+///
+/// - [standard] — default size; used for identity and operational chips
+///   (Variant Of, Batch No, rack, warehouse).
+/// - [compact]  — reduced padding and font size; used for financial chips
+///   (Qty, Rate, Amount) where density is preferred.
+enum MetaChipSize {
+  /// Default size: horizontal padding 6, vertical 3, font 12.
+  standard,
+
+  /// Reduced size: horizontal padding 5, vertical 2, font 11.
+  compact,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
 // MetaChipRole  —  semantic colour slots
 // ─────────────────────────────────────────────────────────────────────────────────
 
@@ -312,6 +330,8 @@ class DocItemCard extends StatelessWidget {
 /// Maps to a distinct [colorScheme] colour pair so chips are
 /// visually distinguishable without relying on raw colours.
 enum MetaChipRole {
+  /// Template/parent item identity — amber-tinted (secondary family).
+  variantOf,
   qty,
   rate,
   amount,
@@ -331,26 +351,43 @@ enum MetaChipRole {
 /// Colour is driven entirely by [role] → [colorScheme] token mapping,
 /// so no caller ever passes a raw [Color].
 ///
+/// The optional [size] parameter controls padding and font size:
+/// use [MetaChipSize.compact] for financial chips (Qty/Rate/Amount)
+/// and [MetaChipSize.standard] (default) for all other chips.
+///
 /// Promoted as a named export so it can also be used in edit sheets
 /// and other contexts that need the same visual language.
 class DocItemMetaChip extends StatelessWidget {
   final IconData icon;
 
-  /// Self-explanatory prefixed label, e.g. 'Batch: B-001', 'Rack: R-02'.
+  /// Self-explanatory prefixed label, e.g. 'Batch No: B-001', 'Source Rack: R-02'.
   final String label;
 
   final MetaChipRole role;
+
+  /// Visual weight of the chip. Defaults to [MetaChipSize.standard].
+  final MetaChipSize size;
 
   const DocItemMetaChip({
     super.key,
     required this.icon,
     required this.label,
     required this.role,
+    this.size = MetaChipSize.standard,
   });
 
   /// Maps a [MetaChipRole] to a [_ChipColours] pair from [colorScheme].
   static _ChipColours _colours(MetaChipRole role, ColorScheme cs) {
     switch (role) {
+      case MetaChipRole.variantOf:
+        // Amber-tinted identity chip — secondary container shifted warm.
+        // Uses secondaryContainer as closest M3 token; callers may later
+        // supply a seed-colour override if the theme seed is not amber.
+        return _ChipColours(
+            bg:     cs.secondaryContainer.withValues(alpha: 0.55),
+            border: cs.secondary.withValues(alpha: 0.35),
+            icon:   cs.secondary,
+            text:   cs.onSecondaryContainer);
       case MetaChipRole.qty:
         return _ChipColours(
             bg:     cs.primaryContainer.withValues(alpha: 0.5),
@@ -396,8 +433,16 @@ class DocItemMetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs  = Theme.of(context).colorScheme;
     final col = _colours(role, cs);
+
+    // Resolve padding and font size from the size parameter.
+    final EdgeInsets chipPadding = size == MetaChipSize.compact
+        ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
+        : const EdgeInsets.symmetric(horizontal: 6, vertical: 3);
+    final double fontSize = size == MetaChipSize.compact ? 11.0 : 12.0;
+    final double iconSize = size == MetaChipSize.compact ? 11.0 : 12.0;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: chipPadding,
       decoration: BoxDecoration(
         color: col.bg,
         borderRadius: BorderRadius.circular(6),
@@ -406,12 +451,12 @@ class DocItemMetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: col.icon),
+          Icon(icon, size: iconSize, color: col.icon),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: fontSize,
               color: col.text,
               fontFamily: 'ShureTechMono',
               fontFeatures: const [FontFeature.slashedZero()],
