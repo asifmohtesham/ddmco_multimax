@@ -10,19 +10,11 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Accepts an [ItemCardData] value object and three optional callbacks.
-/// The widget has zero knowledge of any controller or DocType model;
-/// all state decisions are pre-computed by the caller and supplied
-/// through [data].
-///
 /// Layout: three semantic zones stacked vertically inside the card body:
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
 ///   Zone 2 — Operational : Batch No, rack arrow pair, warehouse arrow pair
 ///   Zone 3 — Financial   : Qty, Rate, Amount (compact chips)
-///
-/// Each zone is implemented as a private [StatelessWidget] that receives
-/// only the fields it needs, keeping [build] as a thin scaffold.
 ///
 /// Usage:
 /// ```dart
@@ -39,19 +31,9 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 /// ```
 class DocItemCard extends StatelessWidget {
   final ItemCardData data;
-
-  /// Called when the card body is tapped (e.g. PR edit-on-tap).
   final VoidCallback? onTap;
-
-  /// Called when the edit icon button is pressed.
-  /// Shown only when [ItemCardData.isEditable] is true.
   final VoidCallback? onEdit;
-
-  /// Called when the delete icon button is pressed.
-  /// Shown only when [ItemCardData.isEditable] is true.
   final VoidCallback? onDelete;
-
-  /// When true, a [CircularProgressIndicator] replaces the edit button.
   final bool isLoadingEdit;
 
   const DocItemCard({
@@ -210,13 +192,12 @@ class _IdentityZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
+    final cs         = Theme.of(context).colorScheme;
     final hasVariant = variantOf != null && variantOf!.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Item code + name (ShureTechMono, slashedZero, bold)
         RichText(
           text: TextSpan(
             style: DefaultTextStyle.of(context).style,
@@ -244,8 +225,6 @@ class _IdentityZone extends StatelessWidget {
             ],
           ),
         ),
-
-        // Variant Of chip — ERPNext custom field 'custom_variant_of'
         if (hasVariant) ...[
           const SizedBox(height: 4),
           DocItemMetaChip(
@@ -265,17 +244,13 @@ class _IdentityZone extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Zone 2: Batch No, rack arrow pair, warehouse arrow pair.
-///
-/// Renders nothing (zero height) when no operational field is set,
-/// so DN/PO/PS cards with no batch/rack/warehouse incur no extra spacing.
+/// Returns [SizedBox.shrink] when no operational field is present.
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
   final String? rack;
   final String? toRack;
   final String? warehouse;
   final String? toWarehouse;
-
-  /// Per-DocType warehouse label resolved by caller from [ItemCardData.warehouseLabel].
   final String  warehouseLabel;
 
   const _OperationalZone({
@@ -308,8 +283,6 @@ class _OperationalZone extends StatelessWidget {
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-
-          // Batch No
           if (hasBatch)
             DocItemMetaChip(
               icon:  Icons.label_outline,
@@ -317,8 +290,6 @@ class _OperationalZone extends StatelessWidget {
               role:  MetaChipRole.batch,
               size:  MetaChipSize.standard,
             ),
-
-          // Rack arrow pair: Source Rack [→] Target Rack
           if (hasSourceRack) ...[
             DocItemMetaChip(
               icon:  Icons.shelves,
@@ -336,8 +307,6 @@ class _OperationalZone extends StatelessWidget {
               ),
             ],
           ],
-
-          // Warehouse arrow pair: warehouseLabel [→] Target Warehouse
           if (hasWarehouse) ...[
             DocItemMetaChip(
               icon:  Icons.store_outlined,
@@ -355,7 +324,6 @@ class _OperationalZone extends StatelessWidget {
               ),
             ],
           ],
-
         ],
       ),
     );
@@ -367,10 +335,6 @@ class _OperationalZone extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Zone 3: Qty, Rate, Amount — all rendered as compact chips.
-///
-/// Qty is always shown. Rate and Amount are shown only when non-null.
-/// Label strings are passed in pre-resolved by [DocItemCard.build]
-/// from [ItemCardData.qtyLabel] / [rateLabel] (fallbacks already applied).
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
@@ -399,8 +363,6 @@ class _FinancialZone extends StatelessWidget {
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-
-          // Qty — always shown
           DocItemMetaChip(
             icon:  Icons.numbers,
             label: '$qtyLabel: ${_fmt.format(qty)}'
@@ -408,8 +370,6 @@ class _FinancialZone extends StatelessWidget {
             role:  MetaChipRole.qty,
             size:  MetaChipSize.compact,
           ),
-
-          // Rate
           if (rate != null)
             DocItemMetaChip(
               icon:  Icons.attach_money,
@@ -417,8 +377,6 @@ class _FinancialZone extends StatelessWidget {
               role:  MetaChipRole.rate,
               size:  MetaChipSize.compact,
             ),
-
-          // Amount
           if (amount != null)
             DocItemMetaChip(
               icon:  Icons.receipt_outlined,
@@ -426,7 +384,6 @@ class _FinancialZone extends StatelessWidget {
               role:  MetaChipRole.amount,
               size:  MetaChipSize.compact,
             ),
-
         ],
       ),
     );
@@ -434,13 +391,9 @@ class _FinancialZone extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// MetaChipSize  —  two-tier size scale for chips
+// MetaChipSize
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Controls the visual weight of a [DocItemMetaChip].
-///
-/// - [standard] — default; used for identity and operational chips.
-/// - [compact]  — reduced padding/font; used for financial chips.
 enum MetaChipSize {
   /// Horizontal padding 6, vertical 3, font 12.
   standard,
@@ -449,12 +402,9 @@ enum MetaChipSize {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// MetaChipRole  —  semantic colour slots
+// MetaChipRole
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Semantic role assigned to each [DocItemMetaChip].
-/// Maps to a distinct [colorScheme] colour pair so chips are
-/// visually distinguishable without relying on raw colours.
 enum MetaChipRole {
   /// Template/parent item identity — amber-tinted (secondary family).
   variantOf,
@@ -473,18 +423,12 @@ enum MetaChipRole {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Compact icon + label chip for metadata in a [DocItemCard].
-///
-/// Colour is driven entirely by [role] → [colorScheme] token mapping.
-/// Size is controlled by [size]: use [MetaChipSize.compact] for financial
-/// chips and [MetaChipSize.standard] (default) for all others.
-///
-/// Promoted as a named export so it can be reused in edit sheets
-/// and other contexts that need the same visual language.
+/// Colour driven by [role] → [colorScheme] token mapping.
 class DocItemMetaChip extends StatelessWidget {
-  final IconData      icon;
-  final String        label;
-  final MetaChipRole  role;
-  final MetaChipSize  size;
+  final IconData     icon;
+  final String       label;
+  final MetaChipRole role;
+  final MetaChipSize size;
 
   const DocItemMetaChip({
     super.key,
@@ -569,10 +513,102 @@ class DocItemMetaChip extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: fontSize,
-              color:    col.text,
-              fontFamily: 'ShureTechMono',
+              fontSize:     fontSize,
+              color:        col.text,
+              fontFamily:   'ShureTechMono',
               fontFeatures: const [FontFeature.slashedZero()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// _LabelValueCell
+// ─────────────────────────────────────────────────────────────────────────────────
+
+/// A small labelled-value cell: muted label on top, prominent value below.
+///
+/// Visual anatomy:
+/// ```
+/// ┌────────────────────────┐
+/// │ ⚪ label         10px, onSurfaceVariant  │
+/// │ VALUE-STRING     13px, w600, role colour │
+/// └────────────────────────┘
+/// ```
+///
+/// - Background and border tint come from the same [MetaChipRole] →
+///   [_ChipColours] mapping used by [DocItemMetaChip], ensuring colour
+///   consistency across both chip styles.
+/// - [isMonospace] (default `true`) applies ShureTechMono + slashedZero
+///   to the value text. Set to `false` for natural-language values.
+/// - [icon] is optional; when supplied it appears inline before the label
+///   text at 10 px in [_ChipColours.icon] colour.
+class _LabelValueCell extends StatelessWidget {
+  final String       label;
+  final String       value;
+  final MetaChipRole role;
+  final IconData?    icon;
+  final bool         isMonospace;
+
+  const _LabelValueCell({
+    required this.label,
+    required this.value,
+    required this.role,
+    this.icon,
+    this.isMonospace = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs  = Theme.of(context).colorScheme;
+    final col = DocItemMetaChip._colours(role, cs); // reuse same colour helper
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color:        col.bg,
+        borderRadius: BorderRadius.circular(6),
+        border:       Border.all(color: col.border, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Label row ────────────────────────────────────────
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 10, color: col.icon),
+                const SizedBox(width: 3),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color:    cs.onSurfaceVariant,
+                  fontFamily:   'ShureTechMono',
+                  fontFeatures: const [FontFeature.slashedZero()],
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          // ── Value row ────────────────────────────────────────
+          Text(
+            value,
+            style: TextStyle(
+              fontSize:     13,
+              fontWeight:   FontWeight.w600,
+              color:        col.text,
+              fontFamily:   isMonospace ? 'ShureTechMono' : null,
+              fontFeatures: isMonospace
+                  ? const [FontFeature.slashedZero()]
+                  : null,
             ),
           ),
         ],
