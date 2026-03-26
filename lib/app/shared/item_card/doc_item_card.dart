@@ -10,13 +10,14 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 
 /// Shared stateless item-card widget for all DocType form screens.
 ///
-/// Layout: three semantic zones stacked vertically inside the card body:
+/// Layout — three semantic zones stacked vertically:
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
 ///   Zone 2 — Operational : Batch No, rack arrow pair, warehouse arrow pair
-///                          (rendered as [_LabelValueCell] from C7 onwards)
-///   Zone 3 — Financial   : Qty, Rate, Amount (compact chips — C8 will
-///                          replace these with [_LabelValueCell] too)
+///                          ([_LabelValueCell] instances in a Wrap)
+///   Zone 3 — Financial   : Qty | Rate | Amount
+///                          ([_LabelValueCell] instances in an IntrinsicHeight Row
+///                          with thin vertical Dividers between columns)
 ///
 /// Usage:
 /// ```dart
@@ -242,16 +243,12 @@ class _IdentityZone extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// _OperationalZone  (C7: chips → _LabelValueCell)
+// _OperationalZone
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Zone 2: Batch No, rack arrow pair, warehouse arrow pair.
-///
-/// Each field is rendered as a [_LabelValueCell] (label on top, prominent
-/// value below). Arrow icon (Icons.arrow_forward) separates source → target
-/// pairs for rack and warehouse.
-///
-/// Returns [SizedBox.shrink] when no operational field is set.
+/// Each field rendered as a [_LabelValueCell]. Returns [SizedBox.shrink]
+/// when no operational field is set.
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
   final String? rack;
@@ -290,8 +287,6 @@ class _OperationalZone extends StatelessWidget {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-
-          // Batch No
           if (hasBatch)
             _LabelValueCell(
               icon:  Icons.label_outline,
@@ -299,8 +294,6 @@ class _OperationalZone extends StatelessWidget {
               value: batchNo!,
               role:  MetaChipRole.batch,
             ),
-
-          // Rack arrow pair: Source Rack [→] Target Rack
           if (hasSourceRack) ...[
             _LabelValueCell(
               icon:  Icons.shelves,
@@ -318,8 +311,6 @@ class _OperationalZone extends StatelessWidget {
               ),
             ],
           ],
-
-          // Warehouse arrow pair: warehouseLabel [→] Target Warehouse
           if (hasWarehouse) ...[
             _LabelValueCell(
               icon:  Icons.store_outlined,
@@ -337,7 +328,6 @@ class _OperationalZone extends StatelessWidget {
               ),
             ],
           ],
-
         ],
       ),
     );
@@ -345,11 +335,18 @@ class _OperationalZone extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// _FinancialZone  (still compact chips — C8 will migrate to _LabelValueCell)
+// _FinancialZone  (C8: Wrap chips → IntrinsicHeight Row of _LabelValueCell)
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Zone 3: Qty, Rate, Amount — compact chips.
-/// C8 will replace these with _LabelValueCell in a fixed 3-column Row.
+/// Zone 3: Qty | Rate | Amount — [_LabelValueCell] instances in an
+/// [IntrinsicHeight] Row, separated by thin vertical [VerticalDivider]s.
+///
+/// Each column is [Expanded] so the three cells share available width equally,
+/// preventing a long UOM string from squeezing Rate and Amount.
+///
+/// When [rate] is null (PS), only the Qty cell is rendered.
+/// When [amount] is null (PS, sometimes SE), the Amount cell is omitted and
+/// its preceding divider is not rendered.
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
@@ -371,35 +368,64 @@ class _FinancialZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final String qtyValue = '${_fmt.format(qty)}${uom != null ? '  $uom' : ''}';
+    final bool   hasRate   = rate   != null;
+    final bool   hasAmount = amount != null;
+
+    // Build the list of [Expanded] cells + thin [VerticalDivider] separators.
+    // Dividers are inserted only between present cells — no leading/trailing
+    // divider ever appears.
+    final List<Widget> cells = [
+      Expanded(
+        child: _LabelValueCell(
+          icon:  Icons.numbers,
+          label: qtyLabel,
+          value: qtyValue,
+          role:  MetaChipRole.qty,
+        ),
+      ),
+      if (hasRate) ...[
+        VerticalDivider(
+          width: 12,
+          thickness: 0.8,
+          indent: 4,
+          endIndent: 4,
+          color: cs.outlineVariant,
+        ),
+        Expanded(
+          child: _LabelValueCell(
+            icon:  Icons.attach_money,
+            label: rateLabel,
+            value: _fmt.format(rate),
+            role:  MetaChipRole.rate,
+          ),
+        ),
+      ],
+      if (hasAmount) ...[
+        VerticalDivider(
+          width: 12,
+          thickness: 0.8,
+          indent: 4,
+          endIndent: 4,
+          color: cs.outlineVariant,
+        ),
+        Expanded(
+          child: _LabelValueCell(
+            icon:  Icons.receipt_outlined,
+            label: 'Amount',
+            value: _fmt.format(amount),
+            role:  MetaChipRole.amount,
+          ),
+        ),
+      ],
+    ];
+
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          DocItemMetaChip(
-            icon:  Icons.numbers,
-            label: '$qtyLabel: ${_fmt.format(qty)}'
-                   '${uom != null ? '  $uom' : ''}',
-            role:  MetaChipRole.qty,
-            size:  MetaChipSize.compact,
-          ),
-          if (rate != null)
-            DocItemMetaChip(
-              icon:  Icons.attach_money,
-              label: '$rateLabel: ${_fmt.format(rate)}',
-              role:  MetaChipRole.rate,
-              size:  MetaChipSize.compact,
-            ),
-          if (amount != null)
-            DocItemMetaChip(
-              icon:  Icons.receipt_outlined,
-              label: 'Amount: ${_fmt.format(amount)}',
-              role:  MetaChipRole.amount,
-              size:  MetaChipSize.compact,
-            ),
-        ],
+      child: IntrinsicHeight(
+        child: Row(children: cells),
       ),
     );
   }
@@ -437,9 +463,9 @@ enum MetaChipRole {
 // DocItemMetaChip
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Compact icon + label chip for metadata in a [DocItemCard].
-/// Colour driven by [role] → [colorScheme] token mapping.
-/// Still used by [_IdentityZone] (Variant Of chip) and [_FinancialZone].
+/// Compact icon + label chip. Still used by [_IdentityZone] (Variant Of).
+/// [_colours] is package-private within this file so [_LabelValueCell]
+/// can share the same colour map.
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -545,18 +571,15 @@ class DocItemMetaChip extends StatelessWidget {
 // _LabelValueCell
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// A small labelled-value cell: muted label on top, prominent value below.
+/// A labelled-value cell: muted label on top, prominent value below.
 ///
 /// Visual anatomy:
 /// ```
 /// ┌────────────────────────┐
-/// │ ⚪ label         10px, onSurfaceVariant  │
-/// │ VALUE-STRING     13px, w600, role colour │
+/// │ ⚪ label         10px, onSurfaceVariant │
+/// │ VALUE-STRING     13px, w600, role colour│
 /// └────────────────────────┘
 /// ```
-///
-/// Background and border come from the same [MetaChipRole] → [_ChipColours]
-/// mapping used by [DocItemMetaChip], ensuring colour consistency.
 class _LabelValueCell extends StatelessWidget {
   final String       label;
   final String       value;
@@ -599,10 +622,10 @@ class _LabelValueCell extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize:     10,
-                  color:        cs.onSurfaceVariant,
-                  fontFamily:   'ShureTechMono',
-                  fontFeatures: const [FontFeature.slashedZero()],
+                  fontSize:      10,
+                  color:         cs.onSurfaceVariant,
+                  fontFamily:    'ShureTechMono',
+                  fontFeatures:  const [FontFeature.slashedZero()],
                   letterSpacing: 0.2,
                 ),
               ),
