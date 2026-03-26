@@ -7,7 +7,8 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
-import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_order_item_card.dart';
+import 'package:multimax/app/shared/item_card/doc_item_card.dart';
+import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
 class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
   const PurchaseOrderFormScreen({super.key});
@@ -63,7 +64,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
     ));
   }
 
-  // ── Details tab ──────────────────────────────────────────────────────────
+  // ── Details tab ────────────────────────────────────────────────────────────────
 
   Widget _buildDetailsView(BuildContext context, dynamic po) {
     final bool isEditable = controller.isEditable;
@@ -148,7 +149,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
     );
   }
 
-  // ── Items tab ─────────────────────────────────────────────────────────────
+  // ── Items tab ───────────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(BuildContext context, dynamic po) {
     return Column(
@@ -193,6 +194,13 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           controller.isLoadingItemEdit.value &&
           controller.loadingForItemName.value == item.name;
 
+      final cardData = ItemCardData.fromPurchaseOrderItem(
+        item,
+        index:         index,
+        isEditable:    controller.isEditable,
+        isHighlighted: isHighlighted,
+      );
+
       return Dismissible(
         key:       ValueKey(item.name ?? index),
         direction: controller.isEditable
@@ -210,57 +218,25 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           alignment: Alignment.centerRight,
           padding:   const EdgeInsets.only(right: 20),
           color:     Colors.red.shade400,
-          child:     const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+          child:     const Icon(Icons.delete_outline,
+              color: Colors.white, size: 28),
         ),
-        child: AnimatedContainer(
-          key:      key,
-          duration: const Duration(milliseconds: 400),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: isHighlighted
-                ? [
-                    BoxShadow(
-                      color:        Colors.blue.withOpacity(0.35),
-                      blurRadius:   10,
-                      spreadRadius: 2,
-                    )
-                  ]
-                : [],
-          ),
-          child: Stack(
-            children: [
-              InkWell(
-                onTap: controller.isEditable
-                    ? () => controller.editItem(item)
-                    : null,
-                child: PurchaseOrderItemCard(
-                  item:  item,
-                  index: index,
-                ),
-              ),
-              if (isLoadingThis)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color:        Colors.white.withOpacity(0.65),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 24, height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+        child: DocItemCard(
+          key:           key,
+          data:          cardData,
+          isLoadingEdit: isLoadingThis,
+          onTap: controller.isEditable
+              ? () => controller.editItem(item)
+              : null,
+          onDelete: controller.isEditable
+              ? () => controller.confirmAndDeleteItem(item)
+              : null,
         ),
       );
     });
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────────────
+  // ── Shared helpers ────────────────────────────────────────────────────────────
 
   Widget _buildInfoRow(
     String label,
