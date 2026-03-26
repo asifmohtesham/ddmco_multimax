@@ -5,7 +5,7 @@ import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/modules/delivery_note/form/widgets/delivery_note_item_card.dart';
-import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
+import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -83,7 +83,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ));
   }
 
-  // ── Shared banner binding ───────────────────────────────────────────────────────────
+  // ── Shared banner binding ──────────────────────────────────────────────────────
   // Extracted into a single helper so both tab views reference one Obx,
   // keeping the binding DRY and ensuring the banner is always visible
   // regardless of which tab is active when it fires.
@@ -395,8 +395,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               final groupedDnItems = controller.groupedItems;
 
               final filteredItems = posItems.where((posItem) {
-                final serialNumber =
-                    (posUpload.items.indexOf(posItem) + 1).toString();
+                final serialNumber = posItem.idx.toString();
                 final dnItemsForThisPosItem =
                     groupedDnItems[serialNumber] ?? [];
                 final cumulativeQty = dnItemsForThisPosItem.fold(
