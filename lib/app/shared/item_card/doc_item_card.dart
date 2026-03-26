@@ -14,7 +14,9 @@ import 'package:multimax/app/shared/item_card/doc_item_progress_bar.dart';
 ///
 ///   Zone 1 — Identity    : item code + name, optional Variant Of chip
 ///   Zone 2 — Operational : Batch No, rack arrow pair, warehouse arrow pair
-///   Zone 3 — Financial   : Qty, Rate, Amount (compact chips)
+///                          (rendered as [_LabelValueCell] from C7 onwards)
+///   Zone 3 — Financial   : Qty, Rate, Amount (compact chips — C8 will
+///                          replace these with [_LabelValueCell] too)
 ///
 /// Usage:
 /// ```dart
@@ -240,11 +242,16 @@ class _IdentityZone extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// _OperationalZone
+// _OperationalZone  (C7: chips → _LabelValueCell)
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Zone 2: Batch No, rack arrow pair, warehouse arrow pair.
-/// Returns [SizedBox.shrink] when no operational field is present.
+///
+/// Each field is rendered as a [_LabelValueCell] (label on top, prominent
+/// value below). Arrow icon (Icons.arrow_forward) separates source → target
+/// pairs for rack and warehouse.
+///
+/// Returns [SizedBox.shrink] when no operational field is set.
 class _OperationalZone extends StatelessWidget {
   final String? batchNo;
   final String? rack;
@@ -279,51 +286,58 @@ class _OperationalZone extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
+        spacing: 6,
+        runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+
+          // Batch No
           if (hasBatch)
-            DocItemMetaChip(
+            _LabelValueCell(
               icon:  Icons.label_outline,
-              label: 'Batch No: $batchNo',
+              label: 'Batch No',
+              value: batchNo!,
               role:  MetaChipRole.batch,
-              size:  MetaChipSize.standard,
             ),
+
+          // Rack arrow pair: Source Rack [→] Target Rack
           if (hasSourceRack) ...[
-            DocItemMetaChip(
+            _LabelValueCell(
               icon:  Icons.shelves,
-              label: 'Source Rack: $rack',
+              label: 'Source Rack',
+              value: rack!,
               role:  MetaChipRole.rack,
-              size:  MetaChipSize.standard,
             ),
             if (hasTargetRack) ...[
-              Icon(Icons.arrow_forward, size: 12, color: cs.outline),
-              DocItemMetaChip(
+              Icon(Icons.arrow_forward, size: 14, color: cs.outline),
+              _LabelValueCell(
                 icon:  Icons.shelves,
-                label: 'Target Rack: $toRack',
+                label: 'Target Rack',
+                value: toRack!,
                 role:  MetaChipRole.toRack,
-                size:  MetaChipSize.standard,
               ),
             ],
           ],
+
+          // Warehouse arrow pair: warehouseLabel [→] Target Warehouse
           if (hasWarehouse) ...[
-            DocItemMetaChip(
+            _LabelValueCell(
               icon:  Icons.store_outlined,
-              label: '$warehouseLabel: $warehouse',
+              label: warehouseLabel,
+              value: warehouse!,
               role:  MetaChipRole.warehouse,
-              size:  MetaChipSize.standard,
             ),
             if (hasToWarehouse) ...[
-              Icon(Icons.arrow_forward, size: 12, color: cs.outline),
-              DocItemMetaChip(
+              Icon(Icons.arrow_forward, size: 14, color: cs.outline),
+              _LabelValueCell(
                 icon:  Icons.store_outlined,
-                label: 'Target Warehouse: $toWarehouse',
+                label: 'Target Warehouse',
+                value: toWarehouse!,
                 role:  MetaChipRole.toWarehouse,
-                size:  MetaChipSize.standard,
               ),
             ],
           ],
+
         ],
       ),
     );
@@ -331,10 +345,11 @@ class _OperationalZone extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// _FinancialZone
+// _FinancialZone  (still compact chips — C8 will migrate to _LabelValueCell)
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Zone 3: Qty, Rate, Amount — all rendered as compact chips.
+/// Zone 3: Qty, Rate, Amount — compact chips.
+/// C8 will replace these with _LabelValueCell in a fixed 3-column Row.
 class _FinancialZone extends StatelessWidget {
   final double  qty;
   final String? uom;
@@ -424,6 +439,7 @@ enum MetaChipRole {
 
 /// Compact icon + label chip for metadata in a [DocItemCard].
 /// Colour driven by [role] → [colorScheme] token mapping.
+/// Still used by [_IdentityZone] (Variant Of chip) and [_FinancialZone].
 class DocItemMetaChip extends StatelessWidget {
   final IconData     icon;
   final String       label;
@@ -539,13 +555,8 @@ class DocItemMetaChip extends StatelessWidget {
 /// └────────────────────────┘
 /// ```
 ///
-/// - Background and border tint come from the same [MetaChipRole] →
-///   [_ChipColours] mapping used by [DocItemMetaChip], ensuring colour
-///   consistency across both chip styles.
-/// - [isMonospace] (default `true`) applies ShureTechMono + slashedZero
-///   to the value text. Set to `false` for natural-language values.
-/// - [icon] is optional; when supplied it appears inline before the label
-///   text at 10 px in [_ChipColours.icon] colour.
+/// Background and border come from the same [MetaChipRole] → [_ChipColours]
+/// mapping used by [DocItemMetaChip], ensuring colour consistency.
 class _LabelValueCell extends StatelessWidget {
   final String       label;
   final String       value;
@@ -564,7 +575,7 @@ class _LabelValueCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs  = Theme.of(context).colorScheme;
-    final col = DocItemMetaChip._colours(role, cs); // reuse same colour helper
+    final col = DocItemMetaChip._colours(role, cs);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -577,7 +588,7 @@ class _LabelValueCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Label row ────────────────────────────────────────
+          // Label row
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -588,8 +599,8 @@ class _LabelValueCell extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 10,
-                  color:    cs.onSurfaceVariant,
+                  fontSize:     10,
+                  color:        cs.onSurfaceVariant,
                   fontFamily:   'ShureTechMono',
                   fontFeatures: const [FontFeature.slashedZero()],
                   letterSpacing: 0.2,
@@ -598,7 +609,7 @@ class _LabelValueCell extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          // ── Value row ────────────────────────────────────────
+          // Value row
           Text(
             value,
             style: TextStyle(
