@@ -47,9 +47,14 @@ class ItemGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     final percent =
         (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
+
+    // Semantic colour aliases — resolved once, used throughout.
+    final completionColor = isCompleted ? cs.tertiary  : cs.primary;
 
     final currSymbol  = _currencySymbol(currency);
     final rateDisplay = currSymbol.isEmpty
@@ -59,10 +64,10 @@ class ItemGroupCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? Colors.green.shade400 : Colors.grey.shade300,
+          color: isCompleted ? cs.tertiary : cs.outlineVariant,
           width: 1,
         ),
       ),
@@ -81,18 +86,22 @@ class ItemGroupCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Serial number + item name — ShureTechMono for
+                        // consistency with stat chips and child item cards.
                         Text(
                           '$serialNo: $itemName',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            fontFamily: 'ShureTechMono',
+                            color: cs.onSurface,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           isCompleted ? 'Completed' : 'Pending',
                           style: TextStyle(
-                            color: isCompleted
-                                ? Colors.green
-                                : Colors.orange.shade700,
+                            color: completionColor,
                             fontWeight: FontWeight.w500,
                             fontSize: 13,
                           ),
@@ -107,12 +116,14 @@ class ItemGroupCard extends StatelessWidget {
                     percent: percent,
                     center: Text(
                       '${(percent * 100).toInt()}%',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 11),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        color: cs.onSurface,
+                      ),
                     ),
-                    progressColor:
-                        isCompleted ? Colors.green : Colors.orange,
-                    backgroundColor: Colors.grey.shade300,
+                    progressColor: completionColor,
+                    backgroundColor: cs.surfaceContainerHighest,
                   ),
                   const SizedBox(width: 4),
                   AnimatedExpandIcon(isExpanded: isExpanded),
@@ -127,21 +138,24 @@ class ItemGroupCard extends StatelessWidget {
             child: Row(
               children: [
                 _buildStatChip(
+                  context: context,
                   label: 'Required',
                   value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
-                  color: Colors.grey,
+                  valueColor: cs.onSurfaceVariant,
                 ),
                 const SizedBox(width: 12),
                 _buildStatChip(
+                  context: context,
                   label: 'Scanned',
                   value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
-                  color: isCompleted ? Colors.green : Colors.orange,
+                  valueColor: completionColor,
                 ),
                 const SizedBox(width: 12),
                 _buildStatChip(
+                  context: context,
                   label: 'Rate',
                   value: rateDisplay,
-                  color: Colors.blueGrey,
+                  valueColor: cs.secondary,
                 ),
               ],
             ),
@@ -156,7 +170,12 @@ class ItemGroupCard extends StatelessWidget {
                 ? const SizedBox.shrink()
                 : Column(
                     children: [
-                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: cs.outlineVariant,
+                      ),
                       ...children,
                       const SizedBox(height: 8),
                     ],
@@ -167,23 +186,31 @@ class ItemGroupCard extends StatelessWidget {
     );
   }
 
+  /// Stat chip: a small label + bold value pair used in the always-visible
+  /// stats row. [valueColor] is passed in so the caller can apply semantic
+  /// colour (completion state, secondary, onSurfaceVariant) without
+  /// this method needing to know about completion logic.
   Widget _buildStatChip({
+    required BuildContext context,
     required String label,
     required String value,
-    required Color color,
+    required Color valueColor,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
         Text(
           value,
           style: TextStyle(
             fontSize: 13,
             fontFamily: 'ShureTechMono',
             fontWeight: FontWeight.bold,
-            color: color,
+            color: valueColor,
           ),
         ),
       ],
