@@ -21,7 +21,7 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 ///   ItemCardData.fromDeliveryNoteItem(item, ...)
 ///   ItemCardData.fromPackingSlipItem(item, ...)
 class ItemCardData {
-  // ── Identity ────────────────────────────────────────────────────────────────
+  // ── Identity ───────────────────────────────────────────────────────────────────────
 
   /// ERPNext row `name` (server-assigned UUID). Used as the stable Dismissible
   /// key and for controller look-ups. Null for locally-created rows not yet
@@ -33,7 +33,7 @@ class ItemCardData {
   /// Pass null in flat / non-grouped lists to suppress the badge.
   final int? index;
 
-  // ── Core item fields ────────────────────────────────────────────────────────
+  // ── Core item fields ─────────────────────────────────────────────────────────────────
 
   final String itemCode;
   final String? itemName;
@@ -41,7 +41,7 @@ class ItemCardData {
   /// custom_variant_of — shown as a blueGrey chip beneath the item name.
   final String? variantOf;
 
-  // ── Quantity ────────────────────────────────────────────────────────────────
+  // ── Quantity ─────────────────────────────────────────────────────────────────────────
 
   /// The quantity on this row (qty / basic_qty / packed_qty depending on
   /// DocType). Always required; drives the Qty meta chip.
@@ -53,12 +53,12 @@ class ItemCardData {
   /// Drives the DocItemProgressBar (Phase 3):
   ///   PO  → receivedQty  (qty already received against this PO line)
   ///   PR  → purchaseOrderQty  (the PO qty this receipt line is linked to)
-  ///   SE  → customTotalQty fallback per item (nil if unavailable)
+  ///   SE  → row.requestedQty via copyWithTargetQty (MR entries only)
   ///   DN  → null  (DN has no per-item target; omit progress bar)
   ///   PS  → null  (PS has no per-item target; omit progress bar)
   final double? targetQty;
 
-  // ── Pricing ─────────────────────────────────────────────────────────────────
+  // ── Pricing ────────────────────────────────────────────────────────────────────────
 
   /// Unit rate.  Optional — SE uses basicRate, PO/PR/DN use rate.
   final double? rate;
@@ -66,7 +66,7 @@ class ItemCardData {
   /// Line total (rate × qty).  Shown only when the DocType provides it.
   final double? amount;
 
-  // ── Warehouse / Location ────────────────────────────────────────────────────
+  // ── Warehouse / Location ───────────────────────────────────────────────────────────
 
   /// Source / single warehouse (PR warehouse, SE s_warehouse).
   final String? warehouse;
@@ -74,7 +74,7 @@ class ItemCardData {
   /// Destination warehouse (SE t_warehouse only).
   final String? toWarehouse;
 
-  // ── Batch / Rack ─────────────────────────────────────────────────────────────
+  // ── Batch / Rack ─────────────────────────────────────────────────────────────────
 
   final String? batchNo;
 
@@ -84,7 +84,7 @@ class ItemCardData {
   /// Destination rack (SE to_rack only).
   final String? toRack;
 
-  // ── Behaviour flags ──────────────────────────────────────────────────────────
+  // ── Behaviour flags ────────────────────────────────────────────────────────────────
 
   /// Whether edit / delete actions are rendered.
   /// Typically `docstatus == 0`.
@@ -93,7 +93,7 @@ class ItemCardData {
   /// Drives the yellow AnimatedContainer flash for recently-scanned rows.
   final bool isHighlighted;
 
-  // ── Constructor ──────────────────────────────────────────────────────────────
+  // ── Constructor ──────────────────────────────────────────────────────────────────────
 
   const ItemCardData({
     this.rowName,
@@ -115,7 +115,35 @@ class ItemCardData {
     this.isHighlighted = false,
   });
 
-  // ── Named factory constructors ───────────────────────────────────────────────
+  // ── copyWith helpers ─────────────────────────────────────────────────────────────────
+
+  /// Returns a copy of this object with [targetQty] replaced.
+  ///
+  /// Used by [MrItemsView] to inject [row.requestedQty] as the
+  /// fulfilment target after the base factory has already run.
+  ItemCardData copyWithTargetQty(double? targetQty) {
+    return ItemCardData(
+      rowName:       rowName,
+      index:         index,
+      itemCode:      itemCode,
+      itemName:      itemName,
+      variantOf:     variantOf,
+      qty:           qty,
+      uom:           uom,
+      targetQty:     targetQty,
+      rate:          rate,
+      amount:        amount,
+      warehouse:     warehouse,
+      toWarehouse:   toWarehouse,
+      batchNo:       batchNo,
+      rack:          rack,
+      toRack:        toRack,
+      isEditable:    isEditable,
+      isHighlighted: isHighlighted,
+    );
+  }
+
+  // ── Named factory constructors ──────────────────────────────────────────────────────────
 
   /// Maps a [PurchaseOrderItem] to [ItemCardData].
   ///
@@ -134,7 +162,7 @@ class ItemCardData {
       itemName:      item.itemName.isNotEmpty ? item.itemName : null,
       qty:           item.qty,
       uom:           item.uom,
-      // receivedQty is the "done" quantity against this PO line.
+      // receivedQty is the “done” quantity against this PO line.
       // The progress bar will show receivedQty / qty.
       targetQty:     item.receivedQty,
       rate:          item.rate,
@@ -174,6 +202,9 @@ class ItemCardData {
   }
 
   /// Maps a [StockEntryItem] to [ItemCardData].
+  ///
+  /// For Material Request entries, call [copyWithTargetQty] afterwards
+  /// to inject [row.requestedQty] as the fulfilment target.
   factory ItemCardData.fromStockEntryItem(
     StockEntryItem item, {
     int? index,
