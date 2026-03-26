@@ -21,7 +21,7 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 ///   ItemCardData.fromDeliveryNoteItem(item, ...)
 ///   ItemCardData.fromPackingSlipItem(item, ...)
 class ItemCardData {
-  // ── Identity ───────────────────────────────────────────────────────────────────────
+  // ── Identity ──────────────────────────────────────────────────────────────────
 
   /// ERPNext row `name` (server-assigned UUID). Used as the stable Dismissible
   /// key and for controller look-ups. Null for locally-created rows not yet
@@ -33,7 +33,7 @@ class ItemCardData {
   /// Pass null in flat / non-grouped lists to suppress the badge.
   final int? index;
 
-  // ── Core item fields ─────────────────────────────────────────────────────────────────
+  // ── Core item fields ───────────────────────────────────────────────────────────────────
 
   final String itemCode;
   final String? itemName;
@@ -41,7 +41,7 @@ class ItemCardData {
   /// custom_variant_of — shown as a blueGrey chip beneath the item name.
   final String? variantOf;
 
-  // ── Quantity ─────────────────────────────────────────────────────────────────────────
+  // ── Quantity ───────────────────────────────────────────────────────────────────────
 
   /// The quantity on this row (qty / basic_qty / packed_qty depending on
   /// DocType). Always required; drives the Qty meta chip.
@@ -61,12 +61,15 @@ class ItemCardData {
   // ── Pricing ────────────────────────────────────────────────────────────────────────
 
   /// Unit rate.  Optional — SE uses basicRate, PO/PR/DN use rate.
+  /// PS omits this entirely (Packing Slip Item is a logistics document
+  /// with no pricing fields in the ERPNext schema).
   final double? rate;
 
   /// Line total (rate × qty).  Shown only when the DocType provides it.
+  /// PS omits this entirely for the same reason as [rate].
   final double? amount;
 
-  // ── Warehouse / Location ───────────────────────────────────────────────────────────
+  // ── Warehouse / Location ──────────────────────────────────────────────────────────
 
   /// Source / single warehouse (PR warehouse, SE s_warehouse).
   final String? warehouse;
@@ -74,7 +77,7 @@ class ItemCardData {
   /// Destination warehouse (SE t_warehouse only).
   final String? toWarehouse;
 
-  // ── Batch / Rack ─────────────────────────────────────────────────────────────────
+  // ── Batch / Rack ───────────────────────────────────────────────────────────────────
 
   final String? batchNo;
 
@@ -84,7 +87,7 @@ class ItemCardData {
   /// Destination rack (SE to_rack only).
   final String? toRack;
 
-  // ── Behaviour flags ────────────────────────────────────────────────────────────────
+  // ── Behaviour flags ──────────────────────────────────────────────────────────────────
 
   /// Whether edit / delete actions are rendered.
   /// Typically `docstatus == 0`.
@@ -93,7 +96,7 @@ class ItemCardData {
   /// Drives the yellow AnimatedContainer flash for recently-scanned rows.
   final bool isHighlighted;
 
-  // ── Constructor ──────────────────────────────────────────────────────────────────────
+  // ── Constructor ─────────────────────────────────────────────────────────────────────
 
   const ItemCardData({
     this.rowName,
@@ -115,7 +118,7 @@ class ItemCardData {
     this.isHighlighted = false,
   });
 
-  // ── copyWith helpers ─────────────────────────────────────────────────────────────────
+  // ── copyWith helpers ───────────────────────────────────────────────────────────────────
 
   /// Returns a copy of this object with [targetQty] replaced.
   ///
@@ -143,7 +146,7 @@ class ItemCardData {
     );
   }
 
-  // ── Named factory constructors ──────────────────────────────────────────────────────────
+  // ── Named factory constructors ───────────────────────────────────────────────────────────────
 
   /// Maps a [PurchaseOrderItem] to [ItemCardData].
   ///
@@ -162,7 +165,7 @@ class ItemCardData {
       itemName:      item.itemName.isNotEmpty ? item.itemName : null,
       qty:           item.qty,
       uom:           item.uom,
-      // receivedQty is the “done” quantity against this PO line.
+      // receivedQty is the "done" quantity against this PO line.
       // The progress bar will show receivedQty / qty.
       targetQty:     item.receivedQty,
       rate:          item.rate,
@@ -255,6 +258,11 @@ class ItemCardData {
   }
 
   /// Maps a [PackingSlipItem] to [ItemCardData].
+  ///
+  /// Note: ERPNext Packing Slip Item is a logistics/weight document.
+  /// It has no pricing fields (no rate, no amount) in the standard
+  /// schema — confirmed via frappe/erpnext packing_slip_item.json.
+  /// rate and amount are therefore omitted (implicitly null).
   factory ItemCardData.fromPackingSlipItem(
     PackingSlipItem item, {
     int? index,
@@ -268,10 +276,7 @@ class ItemCardData {
       itemName:      item.itemName,
       qty:           item.qty,
       uom:           item.uom,
-      rate:          item.rate,
-      amount:        item.amount,
-      // DN-linked warehouse is available if the PS model exposes it;
-      // currently null — field can be added to the model in Phase 8.
+      // No rate / amount — Packing Slip Item has no pricing fields.
       isEditable:    isEditable,
       isHighlighted: isHighlighted,
     );
