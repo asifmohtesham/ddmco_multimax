@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/stock_entry_item_card.dart';
-import 'package:multimax/app/modules/delivery_note/form/widgets/item_group_card.dart';
+import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 
 /// Items list grouped by POS Upload invoice serial.
 class PosUploadItemsView extends StatelessWidget {
