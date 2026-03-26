@@ -22,8 +22,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
-import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'purchase_receipt_item_form_controller.dart';
 
@@ -296,7 +295,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── S4: addItemLocally / updateItemLocally ──────────────────────────────────
+  // ── addItemLocally / updateItemLocally ──────────────────────────────────────
 
   void addItemLocally(
     String itemCode,
