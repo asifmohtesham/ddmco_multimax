@@ -266,7 +266,7 @@ class StockEntryFormController extends GetxController
     customReferenceNoController.text = ref;
     _initialReferenceNo              = ref;
 
-    _determineSource(type, ref);
+    determineSource(type, ref);
 
     if (entrySource == StockEntrySource.materialRequest) {
       await _initMaterialRequestFlow(ref);
@@ -295,7 +295,11 @@ class StockEntryFormController extends GetxController
     isDirty.value   = true;
   }
 
-  void _determineSource(String type, String ref) {
+  /// Determines [entrySource] from the SE type and reference number.
+  ///
+  /// Public so unit tests can exercise the logic directly without
+  /// triggering the full [_initNewStockEntry] network flow.
+  void determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {
       entrySource = StockEntrySource.materialRequest;
     } else if (type == 'Material Issue' &&
