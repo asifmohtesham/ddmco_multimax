@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'work_order_form_controller.dart';
 
 class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
@@ -28,27 +29,12 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
           appBar: MainAppBar(
             title: title,
             status: wo?.status,
-            actions: [
-              Obx(() {
-                if (!controller.canEdit) return const SizedBox.shrink();
-                if (controller.isSaving.value) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white)),
-                  );
-                }
-                return Obx(() => IconButton(
-                      icon: const Icon(Icons.save_outlined),
-                      tooltip: 'Save',
-                      onPressed:
-                          controller.canSave ? controller.save : null,
-                    ));
-              }),
-            ],
+            // ── Native save slot — renders SaveIconButton with correct
+            // greying, spinner, and tick feedback automatically.
+            onSave:     controller.canEdit ? controller.save : null,
+            isSaving:   controller.isSaving.value,
+            isDirty:    controller.isDirty.value,
+            saveResult: SaveResult.idle,
           ),
           body: controller.isLoading.value
               ? const Center(child: CircularProgressIndicator())
@@ -80,7 +66,7 @@ class _WorkOrderForm extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Section: Production ──────────────────────────────────────────
+            // ── Section: Production ────────────────────────────────────────────
             _SectionHeader(
                 label: 'Production Details',
                 icon: Icons.precision_manufacturing_outlined),
@@ -243,7 +229,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Dates ───────────────────────────────────────────────
+            // ── Section: Dates ─────────────────────────────────────────────────
             _SectionHeader(
                 label: 'Dates', icon: Icons.date_range_outlined),
             const SizedBox(height: 12),
@@ -277,7 +263,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Warehouses ──────────────────────────────────────────
+            // ── Section: Warehouses ───────────────────────────────────────────
             _SectionHeader(
                 label: 'Warehouses', icon: Icons.warehouse_outlined),
             const SizedBox(height: 12),
@@ -302,7 +288,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Notes ───────────────────────────────────────────────
+            // ── Section: Notes ─────────────────────────────────────────────────
             _SectionHeader(
                 label: 'Notes', icon: Icons.notes_outlined),
             const SizedBox(height: 12),
@@ -319,12 +305,13 @@ class _WorkOrderForm extends StatelessWidget {
                     !canEdit ? cs.surfaceContainerHighest : null,
                 alignLabelWithHint: true,
               ),
-              // Use the public markDirty() instead of the private _markDirty()
               onChanged: (_) => controller.markDirty(),
             ),
             const SizedBox(height: 32),
 
-            // ── Save button ──────────────────────────────────────────────────
+            // ── Bottom save button (body) ──────────────────────────────────────
+            // Kept as a convenience CTA at the bottom of the scroll.
+            // The app bar save icon handles quick saves from the top.
             if (canEdit)
               Obx(() => SizedBox(
                     width: double.infinity,
