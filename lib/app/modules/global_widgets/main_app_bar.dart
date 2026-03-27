@@ -28,9 +28,27 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
 
-  // Search Configuration
+  // ── Search configuration ─────────────────────────────────────────────────────────
+
+  /// When provided, shows a 🔍 icon in the app bar that opens
+  /// [DocTypeSearchDelegate].
+  ///
+  /// **API mode** — set both [searchDoctype] and [searchRoute]:
+  /// the delegate queries the ERPNext search API and navigates on tap.
+  ///
+  /// **Local mode** — set only [searchDoctype] (leave [searchRoute] empty)
+  /// and provide [onSearchChanged] + [onSearchClear]:
+  /// every keystroke is forwarded to the controller; no network call is made.
   final String? searchDoctype;
+
+  /// Target route for API-mode search navigation. Leave empty for local mode.
   final String? searchRoute;
+
+  /// Local-mode: called on every keystroke. Ignored in API mode.
+  final ValueChanged<String>? onSearchChanged;
+
+  /// Local-mode: called when the user taps the × clear button.
+  final VoidCallback? onSearchClear;
 
   const MainAppBar({
     super.key,
@@ -49,39 +67,55 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isDirty = false,
     this.searchDoctype,
     this.searchRoute,
+    this.onSearchChanged,
+    this.onSearchClear,
   });
+
+  /// Whether the search icon should be rendered.
+  /// Requires at least [searchDoctype] to be set.
+  bool get _hasSearch => (searchDoctype ?? '').isNotEmpty;
+
+  /// API mode: both doctype and route are provided.
+  bool get _isApiSearch =>
+      _hasSearch && (searchRoute ?? '').isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
     final List<Widget> appActions = [
-      if (searchDoctype != null && searchRoute != null)
+      // ── Search icon (API or local mode) ─────────────────────────────────
+      if (_hasSearch)
         IconButton(
-          tooltip: 'Search $searchDoctype',
+          tooltip: 'Search ${searchDoctype!}',
           icon: const Icon(Icons.search),
           onPressed: () {
             showSearch(
               context: context,
-              delegate: GlobalSearchDelegate(
-                doctype: searchDoctype!,
-                targetRoute: searchRoute!,
+              delegate: DocTypeSearchDelegate(
+                doctype:        searchDoctype!,
+                targetRoute:    _isApiSearch ? searchRoute! : '',
+                onSearchChanged: !_isApiSearch ? onSearchChanged : null,
+                onSearchClear:   !_isApiSearch ? onSearchClear  : null,
               ),
             );
           },
         ),
+      // ── Reload ──────────────────────────────────────────────────────────────
       if (onReload != null)
         IconButton(
           tooltip: 'Reload document',
           icon: const Icon(Icons.refresh),
           onPressed: isSaving ? null : onReload,
         ),
+      // ── Extra caller-supplied actions ────────────────────────────────────
       ...(actions ?? []),
+      // ── Save icon (always last) ────────────────────────────────────────
       if (onSave != null)
         SaveIconButton(
-          onPressed: onSave,
-          isSaving: isSaving,
-          isDirty: isDirty,
+          onPressed:  onSave,
+          isSaving:   isSaving,
+          isDirty:    isDirty,
           saveResult: saveResult,
         ),
     ];
@@ -99,7 +133,6 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Use titleWidget when provided, otherwise fall back to Text(title).
           titleWidget ??
               Text(
                 title,
