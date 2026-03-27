@@ -12,11 +12,11 @@ class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Route args ────────────────────────────────────────────────────────────
+  // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
   late String mode; // 'new' | 'view'
 
-  // ── Rx state ─────────────────────────────────────────────────────────────
+  // ── Rx state ───────────────────────────────────────────────────────────────────────
   final isLoading = true.obs;
   final isSaving = false.obs;
   final isDirty = false.obs;
@@ -26,28 +26,30 @@ class WorkOrderFormController extends GetxController {
 
   final workOrder = Rx<WorkOrder?>(null);
 
-  // ── Dropdown / picker data ────────────────────────────────────────────────
+  // ── Dropdown / picker data ─────────────────────────────────────────────────────────
   final warehouses = <String>[].obs;
   final bomOptions = <String>[].obs;
   final itemOptions = <String>[].obs;
 
-  // ── Form controllers ──────────────────────────────────────────────────────
-  final itemController = TextEditingController();
-  final bomController = TextEditingController();
-  final qtyController = TextEditingController();
+  // ── Form controllers ───────────────────────────────────────────────────────────────
+  final itemController         = TextEditingController();
+  final bomController          = TextEditingController();
+  final qtyController          = TextEditingController();
   final plannedStartController = TextEditingController();
-  final expectedEndController = TextEditingController();
+  final expectedEndController  = TextEditingController();
   final wipWarehouseController = TextEditingController();
-  final fgWarehouseController = TextEditingController();
-  final descriptionController = TextEditingController();
+  final fgWarehouseController  = TextEditingController();
+  final descriptionController  = TextEditingController();
 
-  // ── Observables for reactive UI ───────────────────────────────────────────
-  final selectedItem = RxnString();
-  final selectedBom = RxnString();
+  // ── Observables for reactive UI ──────────────────────────────────────────────────
+  final selectedItem     = RxnString();
+  final selectedBom      = RxnString();
   final selectedItemName = RxnString();
-  final isItemValid = false.obs;
-  final isBomValid = false.obs;
-  final isQtyValid = false.obs;
+  final isItemValid      = false.obs;
+  final isBomValid       = false.obs;
+  final isQtyValid       = false.obs;
+
+  // ── Lifecycle ───────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -84,26 +86,72 @@ class WorkOrderFormController extends GetxController {
   bool get canSave =>
       isDirty.value && isItemValid.value && isBomValid.value && isQtyValid.value;
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Init new ───────────────────────────────────────────────────────────────────────
 
   void _initNew() {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final today = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     plannedStartController.text = today;
     qtyController.text = '1';
+
+    // ── Apply prefill from BOM form / list ───────────────────────────────────
+    final prefill =
+        Get.arguments?['prefill'] as Map<String, dynamic>? ?? {};
+
+    if (prefill.isNotEmpty) {
+      final item     = prefill['production_item'] as String? ?? '';
+      final itemName = prefill['item_name']        as String? ?? '';
+      final bomNo    = prefill['bom_no']           as String? ?? '';
+      final qty      = prefill['qty'];
+      final wip      = prefill['wip_warehouse']    as String? ?? '';
+      final fg       = prefill['fg_warehouse']     as String? ?? '';
+
+      if (item.isNotEmpty) {
+        itemController.text        = item;
+        selectedItem.value         = item;
+        selectedItemName.value     = itemName.isNotEmpty ? itemName : item;
+        isItemValid.value          = true;
+      }
+
+      if (bomNo.isNotEmpty) {
+        bomController.text = bomNo;
+        selectedBom.value  = bomNo;
+        isBomValid.value   = true;
+      }
+
+      if (qty != null) {
+        final q = qty is double ? qty : (qty as num).toDouble();
+        qtyController.text = q % 1 == 0 ? q.toInt().toString() : q.toString();
+      }
+
+      if (wip.isNotEmpty) wipWarehouseController.text = wip;
+      if (fg.isNotEmpty)  fgWarehouseController.text  = fg;
+
+      // If a BOM is prefilled skip the typeahead — load warehouses from it.
+      if (bomNo.isNotEmpty && (wip.isEmpty || fg.isEmpty)) {
+        isFetchingBom.value = true;
+        _applyBom(bomNo).then((_) => isFetchingBom.value = false);
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────
+
     isLoading.value = false;
-    isDirty.value = false;
+    isDirty.value   = prefill.isNotEmpty; // pre-dirtied if prefilled
+    _validateForm();
+
     workOrder.value = WorkOrder(
-      name: 'New Work Order',
-      productionItem: '',
-      itemName: '',
-      bomNo: '',
-      qty: 1,
-      producedQty: 0,
-      status: 'Draft',
-      plannedStartDate: today,
-      docstatus: 0,
+      name:             'New Work Order',
+      productionItem:   selectedItem.value ?? '',
+      itemName:         selectedItemName.value ?? '',
+      bomNo:            selectedBom.value ?? '',
+      qty:              double.tryParse(qtyController.text) ?? 1,
+      producedQty:      0,
+      status:           'Draft',
+      plannedStartDate: plannedStartController.text,
+      docstatus:        0,
     );
   }
+
+  // ── Fetch document ─────────────────────────────────────────────────────────────────
 
   Future<void> _fetchDocument() async {
     isLoading.value = true;
@@ -123,34 +171,34 @@ class WorkOrderFormController extends GetxController {
   }
 
   void _populateControllers(WorkOrder wo) {
-    itemController.text = wo.productionItem;
-    selectedItem.value = wo.productionItem;
-    selectedItemName.value = wo.itemName;
-    bomController.text = wo.bomNo;
-    selectedBom.value = wo.bomNo;
-    qtyController.text =
+    itemController.text        = wo.productionItem;
+    selectedItem.value         = wo.productionItem;
+    selectedItemName.value     = wo.itemName;
+    bomController.text         = wo.bomNo;
+    selectedBom.value          = wo.bomNo;
+    qtyController.text         =
         wo.qty % 1 == 0 ? wo.qty.toInt().toString() : wo.qty.toString();
     plannedStartController.text = wo.plannedStartDate;
-    expectedEndController.text = wo.expectedEndDate ?? '';
-    wipWarehouseController.text = wo.wip_warehouse ?? '';
-    fgWarehouseController.text = wo.fg_warehouse ?? '';
-    descriptionController.text = wo.description ?? '';
+    expectedEndController.text  = wo.expectedEndDate ?? '';
+    wipWarehouseController.text = wo.wip_warehouse   ?? '';
+    fgWarehouseController.text  = wo.fg_warehouse    ?? '';
+    descriptionController.text  = wo.description     ?? '';
     _validateForm();
   }
 
-  /// Public so the form screen's onChanged callbacks can call it directly.
+  /// Public so the form screen’s onChanged callbacks can call it directly.
   void markDirty() {
     if (!isLoading.value) isDirty.value = true;
   }
 
   void _validateForm() {
     isItemValid.value = (selectedItem.value ?? '').isNotEmpty;
-    isBomValid.value = (selectedBom.value ?? '').isNotEmpty;
+    isBomValid.value  = (selectedBom.value  ?? '').isNotEmpty;
     final qty = double.tryParse(qtyController.text) ?? 0;
-    isQtyValid.value = qty > 0;
+    isQtyValid.value  = qty > 0;
   }
 
-  // ── Fetch warehouses ──────────────────────────────────────────────────────
+  // ── Fetch warehouses ────────────────────────────────────────────────────────────────
 
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
@@ -170,7 +218,7 @@ class WorkOrderFormController extends GetxController {
     }
   }
 
-  // ── Item search ───────────────────────────────────────────────────────────
+  // ── Item search ───────────────────────────────────────────────────────────────────
 
   Future<void> searchItems(String query) async {
     if (query.length < 2) {
@@ -199,8 +247,8 @@ class WorkOrderFormController extends GetxController {
   }
 
   void onItemSelected(String itemCode) async {
-    selectedItem.value = itemCode;
-    itemController.text = itemCode;
+    selectedItem.value     = itemCode;
+    itemController.text    = itemCode;
     itemOptions.clear();
 
     try {
@@ -212,7 +260,7 @@ class WorkOrderFormController extends GetxController {
 
     bomController.clear();
     selectedBom.value = null;
-    isBomValid.value = false;
+    isBomValid.value  = false;
     bomOptions.clear();
     markDirty();
     _validateForm();
@@ -251,7 +299,7 @@ class WorkOrderFormController extends GetxController {
       if (res.statusCode == 200 && res.data['data'] != null) {
         final bom = res.data['data'];
         bomController.text = bomName;
-        selectedBom.value = bomName;
+        selectedBom.value  = bomName;
         if (wipWarehouseController.text.isEmpty) {
           wipWarehouseController.text = bom['wip_warehouse'] ?? '';
         }
@@ -269,34 +317,60 @@ class WorkOrderFormController extends GetxController {
     await _applyBom(bomName);
   }
 
-  // ── Date pickers ──────────────────────────────────────────────────────────
+  // ── Date + time picker ────────────────────────────────────────────────────────────────
 
+  /// Shows a date picker followed by a time picker.
+  /// Formats the result as `yyyy-MM-dd HH:mm:ss` — the format ERPNext
+  /// Datetime fields expect on the REST API.
   Future<void> pickDate(TextEditingController ctrl) async {
     if (!canEdit) return;
     final now = DateTime.now();
+
+    // Parse existing value (accepts both date-only and datetime formats).
     DateTime initial = now;
     try {
       if (ctrl.text.isNotEmpty) {
-        initial = DateFormat('yyyy-MM-dd').parse(ctrl.text);
+        initial = ctrl.text.contains(' ')
+            ? DateFormat('yyyy-MM-dd HH:mm:ss').parse(ctrl.text)
+            : DateFormat('yyyy-MM-dd').parse(ctrl.text);
       }
     } catch (_) {}
-    final picked = await showDatePicker(
+
+    // Step 1 — pick date.
+    final pickedDate = await showDatePicker(
       context: Get.context!,
       initialDate: initial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
-    if (picked != null) {
-      ctrl.text = DateFormat('yyyy-MM-dd').format(picked);
-      markDirty();
-    }
+    if (pickedDate == null) return;
+
+    // Step 2 — pick time (pre-filled from existing value or now).
+    final initialTime = TimeOfDay(
+      hour:   initial.hour,
+      minute: initial.minute,
+    );
+    final pickedTime = await showTimePicker(
+      context: Get.context!,
+      initialTime: initialTime,
+    );
+
+    final combined = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime?.hour   ?? 0,
+      pickedTime?.minute ?? 0,
+    );
+    ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
+    markDirty();
   }
 
-  // ── Warehouse picker (bottom sheet) ───────────────────────────────────────
+  // ── Warehouse picker (bottom sheet) ───────────────────────────────────────────────
 
   void showWarehousePicker(TextEditingController ctrl) {
     if (!canEdit) return;
-    final search = TextEditingController();
+    final search   = TextEditingController();
     final filtered = warehouses.toList().obs;
     Get.bottomSheet(
       Container(
@@ -353,11 +427,7 @@ class WorkOrderFormController extends GetxController {
                       ctrl.text = filtered[i];
                       markDirty();
                       // Use NavigatorState.pop() directly to avoid the
-                      // SnackbarController LateInitializationError:
-                      // Get.back() calls Get.closeCurrentSnackbar() which
-                      // accesses a late final field on an uninitialised
-                      // SnackbarController when a snackbar is queued but
-                      // has not yet started its animation.
+                      // SnackbarController LateInitializationError.
                       Get.key.currentState!.pop();
                     },
                   ),
@@ -370,7 +440,7 @@ class WorkOrderFormController extends GetxController {
     );
   }
 
-  // ── BOM picker (bottom sheet) ─────────────────────────────────────────────
+  // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
 
   void showBomPicker() {
     if (!canEdit) return;
@@ -422,18 +492,18 @@ class WorkOrderFormController extends GetxController {
     );
   }
 
-  // ── Adjust qty ────────────────────────────────────────────────────────────
+  // ── Adjust qty ────────────────────────────────────────────────────────────────────
 
   void adjustQty(int delta) {
     if (!canEdit) return;
     final current = double.tryParse(qtyController.text) ?? 0;
-    final newVal = (current + delta).clamp(1, double.infinity);
+    final newVal  = (current + delta).clamp(1, double.infinity);
     qtyController.text =
         newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
     markDirty();
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────────────
 
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
@@ -442,8 +512,8 @@ class WorkOrderFormController extends GetxController {
     final qty = double.tryParse(qtyController.text) ?? 0;
     final data = <String, dynamic>{
       'production_item': selectedItem.value,
-      'bom_no': selectedBom.value,
-      'qty': qty,
+      'bom_no':          selectedBom.value,
+      'qty':             qty,
       'planned_start_date': plannedStartController.text,
       if (expectedEndController.text.isNotEmpty)
         'expected_end_date': expectedEndController.text,
@@ -492,7 +562,7 @@ class WorkOrderFormController extends GetxController {
     }
   }
 
-  // ── Discard guard ─────────────────────────────────────────────────────────
+  // ── Discard guard ────────────────────────────────────────────────────────────────
 
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
