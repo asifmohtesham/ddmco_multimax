@@ -20,6 +20,7 @@ abstract class AppRoutes {
   static const ITEM_FORM             = _Paths.ITEM_FORM;
   static const BOM                   = _Paths.BOM;
   static const BOM_FORM              = _Paths.BOM_FORM;
+  static const BOM_SEARCH            = _Paths.BOM_SEARCH;
   static const WORK_ORDER            = _Paths.WORK_ORDER;
   static const WORK_ORDER_FORM       = _Paths.WORK_ORDER_FORM;
   static const JOB_CARD              = _Paths.JOB_CARD;
@@ -52,6 +53,7 @@ abstract class _Paths {
   static const ITEM_FORM             = '/item/form';
   static const BOM                   = '/bom';
   static const BOM_FORM              = '/bom/form';
+  static const BOM_SEARCH            = '/manufacturing/reports/bom-search';
   static const WORK_ORDER            = '/work-order';
   static const WORK_ORDER_FORM       = '/work-order/form';
   static const JOB_CARD              = '/job-card';
