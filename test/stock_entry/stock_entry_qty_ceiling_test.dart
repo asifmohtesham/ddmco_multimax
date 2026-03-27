@@ -1,29 +1,30 @@
-// Unit tests for StockEntryFormController — Qty ceiling enforcement.
+// Unit tests for StockEntryItemFormController — Qty ceiling enforcement.
+//
 // Covers:
-//   Group 1 — isValidQty against bsMaxQty (stock balance)
-//   Group 2 — isValidQty against bsBatchBalance (batch-wise balance)
-//   Group 3 — Effective ceiling = min(bsMaxQty, bsBatchBalance)
-//   Group 4 — adjustSheetQty stepper ceiling
-//   Group 5 — bsValidationMaxQty (MR ceiling)
+//   Group 1 — isValidQty against maxQty (stock balance ceiling)
+//   Group 2 — isValidQty against batchBalance (batch-wise balance ceiling)
+//   Group 3 — Effective ceiling = min(maxQty, batchBalance)
+//   Group 4 — isValidQty against validationMaxQty (MR line limit)
+//   Group 5 — adjustSheetQty stepper ceiling
+//
+// Uses makeItemCtrl() + primeValid() from helpers/item_form_helpers.dart so
+// tests exercise the real controller logic with no network calls.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
+import 'helpers/item_form_helpers.dart';
 import 'helpers/mock_providers.dart';
 
 void main() {
-  late StockEntryFormController controller;
+  late StockEntryItemFormController ctrl;
 
   setUp(() {
     Get.testMode = true;
     registerFormFakes();
-    controller = Get.put(StockEntryFormController());
-    // Prime a valid batch so batch-related guards are not the failure point
-    // in stock-balance focused tests.
-    controller.bsBatchController.text = 'BATCH-001';
-    controller.bsIsBatchValid.value = true;
-    // Set item name key to null so _hasChanges always returns true
-    // (new item path — no initial snapshot to compare against).
-    controller.currentItemNameKey.value = null;
+    ctrl = makeItemCtrl();
+    // Prime a passing baseline (Material Issue — source rack only).
+    // Individual groups override only the field they are testing.
+    primeValid(ctrl, 'Material Issue');
   });
 
   tearDown(() async {
@@ -31,151 +32,154 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  // Group 1 — bsMaxQty ceiling (Stock Balance)
+  // Group 1 — maxQty ceiling (Stock Balance)
   // -------------------------------------------------------------------------
-  group('isValidQty — bsMaxQty (stock balance) ceiling', () {
+  group('isValidQty — maxQty (stock balance) ceiling', () {
     setUp(() {
-      controller.bsBatchBalance.value = 0.0; // disabled — not the gate here
-      controller.bsValidationMaxQty.value = 0.0;
+      // Isolate: disable batch-balance and MR ceiling so only maxQty is the gate.
+      ctrl.batchBalance.value     = 0.0;
+      ctrl.validationMaxQty.value = 0.0;
     });
 
     test('qty = 0 is always invalid', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsQtyController.text = '0';
-      expect(controller.isValidQty(), isFalse);
+      ctrl.maxQty.value        = 10.0;
+      ctrl.qtyController.text  = '0';
+      expect(ctrl.isValidQty(), isFalse);
     });
 
-    test('qty < bsMaxQty is valid', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsQtyController.text = '9';
-      expect(controller.isValidQty(), isTrue);
+    test('qty < maxQty is valid', () {
+      ctrl.maxQty.value        = 10.0;
+      ctrl.qtyController.text  = '9';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
-    test('qty = bsMaxQty is valid (exact match)', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsQtyController.text = '10';
-      expect(controller.isValidQty(), isTrue);
+    test('qty = maxQty is valid (exact match)', () {
+      ctrl.maxQty.value        = 10.0;
+      ctrl.qtyController.text  = '10';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
-    test('qty > bsMaxQty is invalid', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsQtyController.text = '11';
-      expect(controller.isValidQty(), isFalse);
+    test('qty > maxQty is invalid', () {
+      ctrl.maxQty.value        = 10.0;
+      ctrl.qtyController.text  = '11';
+      expect(ctrl.isValidQty(), isFalse);
     });
 
-    test('bsMaxQty = 0 disables the ceiling (no stock data fetched yet)', () {
-      // When bsMaxQty is 0 the controller treats the ceiling as unconstrained.
-      controller.bsMaxQty.value = 0.0;
-      controller.bsQtyController.text = '999';
-      expect(controller.isValidQty(), isTrue);
+    test('maxQty = 0 disables the ceiling (no stock data fetched yet)', () {
+      // When maxQty is 0 the controller treats the ceiling as unconstrained.
+      ctrl.maxQty.value        = 0.0;
+      ctrl.qtyController.text  = '999';
+      expect(ctrl.isValidQty(), isTrue);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Group 2 — bsBatchBalance ceiling (Batch-Wise Balance)
+  // Group 2 — batchBalance ceiling (Batch-Wise Balance)
   // -------------------------------------------------------------------------
-  group('isValidQty — bsBatchBalance (batch-wise balance) ceiling', () {
+  group('isValidQty — batchBalance (batch-wise balance) ceiling', () {
     setUp(() {
-      controller.bsMaxQty.value = 0.0; // disabled
-      controller.bsValidationMaxQty.value = 0.0;
+      // Isolate: disable maxQty and MR ceiling so only batchBalance is the gate.
+      ctrl.maxQty.value           = 0.0;
+      ctrl.validationMaxQty.value = 0.0;
     });
 
-    test('qty <= bsBatchBalance is valid', () {
-      controller.bsBatchBalance.value = 5.0;
-      controller.bsQtyController.text = '5';
-      expect(controller.isValidQty(), isTrue);
+    test('qty <= batchBalance is valid', () {
+      ctrl.batchBalance.value  = 5.0;
+      ctrl.qtyController.text  = '5';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
-    test('qty > bsBatchBalance is invalid', () {
-      controller.bsBatchBalance.value = 5.0;
-      controller.bsQtyController.text = '6';
-      expect(controller.isValidQty(), isFalse);
+    test('qty > batchBalance is invalid', () {
+      ctrl.batchBalance.value  = 5.0;
+      ctrl.qtyController.text  = '6';
+      expect(ctrl.isValidQty(), isFalse);
     });
 
-    test('bsBatchBalance = 0 disables the ceiling', () {
-      controller.bsBatchBalance.value = 0.0;
-      controller.bsQtyController.text = '999';
-      expect(controller.isValidQty(), isTrue);
+    test('batchBalance = 0 disables the ceiling', () {
+      ctrl.batchBalance.value  = 0.0;
+      ctrl.qtyController.text  = '999';
+      expect(ctrl.isValidQty(), isTrue);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Group 3 — Effective ceiling = min(bsMaxQty, bsBatchBalance)
+  // Group 3 — Effective ceiling = min(maxQty, batchBalance)
   // -------------------------------------------------------------------------
   group('isValidQty — effective ceiling is the tighter of both', () {
-    setUp(() => controller.bsValidationMaxQty.value = 0.0);
+    setUp(() => ctrl.validationMaxQty.value = 0.0);
 
     test('qty within both ceilings is valid', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsBatchBalance.value = 8.0;
-      controller.bsQtyController.text = '8';
-      expect(controller.isValidQty(), isTrue);
+      ctrl.maxQty.value        = 10.0;
+      ctrl.batchBalance.value  = 8.0;
+      ctrl.qtyController.text  = '8';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
-    test('qty within bsMaxQty but exceeds bsBatchBalance is invalid', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsBatchBalance.value = 5.0;
-      controller.bsQtyController.text = '7'; // 7 <= 10 but 7 > 5
-      expect(controller.isValidQty(), isFalse);
+    test('qty within maxQty but exceeds batchBalance is invalid', () {
+      ctrl.maxQty.value        = 10.0;
+      ctrl.batchBalance.value  = 5.0;
+      ctrl.qtyController.text  = '7'; // 7 <= 10 but 7 > 5
+      expect(ctrl.isValidQty(), isFalse);
     });
 
-    test('qty within bsBatchBalance but exceeds bsMaxQty is invalid', () {
-      controller.bsMaxQty.value = 4.0;
-      controller.bsBatchBalance.value = 10.0;
-      controller.bsQtyController.text = '5'; // 5 <= 10 but 5 > 4
-      expect(controller.isValidQty(), isFalse);
+    test('qty within batchBalance but exceeds maxQty is invalid', () {
+      ctrl.maxQty.value        = 4.0;
+      ctrl.batchBalance.value  = 10.0;
+      ctrl.qtyController.text  = '5'; // 5 <= 10 but 5 > 4
+      expect(ctrl.isValidQty(), isFalse);
     });
 
     test('effective ceiling equals min — qty at exact min is valid', () {
-      controller.bsMaxQty.value = 8.0;
-      controller.bsBatchBalance.value = 5.0;
-      controller.bsQtyController.text = '5'; // equals bsBatchBalance (tighter)
-      expect(controller.isValidQty(), isTrue);
+      ctrl.maxQty.value        = 8.0;
+      ctrl.batchBalance.value  = 5.0;
+      ctrl.qtyController.text  = '5'; // equals batchBalance (tighter)
+      expect(ctrl.isValidQty(), isTrue);
     });
 
     test('qty one above min ceiling is invalid', () {
-      controller.bsMaxQty.value = 8.0;
-      controller.bsBatchBalance.value = 5.0;
-      controller.bsQtyController.text = '6';
-      expect(controller.isValidQty(), isFalse);
+      ctrl.maxQty.value        = 8.0;
+      ctrl.batchBalance.value  = 5.0;
+      ctrl.qtyController.text  = '6';
+      expect(ctrl.isValidQty(), isFalse);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Group 4 — bsValidationMaxQty ceiling (MR limit)
+  // Group 4 — validationMaxQty ceiling (MR line limit)
   // -------------------------------------------------------------------------
-  group('isValidQty — bsValidationMaxQty (MR line limit) ceiling', () {
+  group('isValidQty — validationMaxQty (MR line limit) ceiling', () {
     setUp(() {
-      controller.bsMaxQty.value = 0.0;
-      controller.bsBatchBalance.value = 0.0;
+      // Isolate: disable stock-balance and batch-balance ceilings.
+      ctrl.maxQty.value       = 0.0;
+      ctrl.batchBalance.value = 0.0;
     });
 
-    test('qty <= bsValidationMaxQty is valid', () {
-      controller.bsValidationMaxQty.value = 3.0;
-      controller.bsQtyController.text = '3';
-      expect(controller.isValidQty(), isTrue);
+    test('qty <= validationMaxQty is valid', () {
+      ctrl.validationMaxQty.value = 3.0;
+      ctrl.qtyController.text     = '3';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
-    test('qty > bsValidationMaxQty is invalid', () {
-      controller.bsValidationMaxQty.value = 3.0;
-      controller.bsQtyController.text = '4';
-      expect(controller.isValidQty(), isFalse);
+    test('qty > validationMaxQty is invalid', () {
+      ctrl.validationMaxQty.value = 3.0;
+      ctrl.qtyController.text     = '4';
+      expect(ctrl.isValidQty(), isFalse);
     });
 
-    test('bsValidationMaxQty = 0 disables MR ceiling', () {
-      controller.bsValidationMaxQty.value = 0.0;
-      controller.bsQtyController.text = '50';
-      expect(controller.isValidQty(), isTrue);
+    test('validationMaxQty = 0 disables MR ceiling', () {
+      ctrl.validationMaxQty.value = 0.0;
+      ctrl.qtyController.text     = '50';
+      expect(ctrl.isValidQty(), isTrue);
     });
 
     test('all three ceilings active — tightest wins', () {
-      controller.bsMaxQty.value = 20.0;
-      controller.bsBatchBalance.value = 10.0;
-      controller.bsValidationMaxQty.value = 4.0;
-      controller.bsQtyController.text = '5'; // 5 > 4 (MR ceiling)
-      expect(controller.isValidQty(), isFalse);
-      controller.bsQtyController.text = '4';
-      expect(controller.isValidQty(), isTrue);
+      ctrl.maxQty.value           = 20.0;
+      ctrl.batchBalance.value     = 10.0;
+      ctrl.validationMaxQty.value = 4.0;
+      ctrl.qtyController.text     = '5'; // 5 > 4 (MR ceiling)
+      expect(ctrl.isValidQty(), isFalse);
+      ctrl.qtyController.text     = '4';
+      expect(ctrl.isValidQty(), isTrue);
     });
   });
 
@@ -183,37 +187,36 @@ void main() {
   // Group 5 — adjustSheetQty stepper
   // -------------------------------------------------------------------------
   group('adjustSheetQty — stepper is capped at effective ceiling', () {
-    test('increment is blocked at bsMaxQty', () {
-      controller.bsMaxQty.value = 3.0;
-      controller.bsBatchBalance.value = 0.0;
-      controller.bsValidationMaxQty.value = 0.0;
-      controller.bsQtyController.text = '3';
-      controller.adjustSheetQty(1);
-      // Should stay at 3, not go to 4
-      expect(controller.bsQtyController.text, equals('3'));
+    test('increment is blocked at maxQty', () {
+      ctrl.maxQty.value           = 3.0;
+      ctrl.batchBalance.value     = 0.0;
+      ctrl.validationMaxQty.value = 0.0;
+      ctrl.qtyController.text     = '3';
+      ctrl.adjustSheetQty(1);
+      expect(ctrl.qtyController.text, equals('3'));
     });
 
-    test('increment is blocked at bsBatchBalance when tighter', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsBatchBalance.value = 2.0;
-      controller.bsValidationMaxQty.value = 0.0;
-      controller.bsQtyController.text = '2';
-      controller.adjustSheetQty(1);
-      expect(controller.bsQtyController.text, equals('2'));
+    test('increment is blocked at batchBalance when tighter', () {
+      ctrl.maxQty.value           = 10.0;
+      ctrl.batchBalance.value     = 2.0;
+      ctrl.validationMaxQty.value = 0.0;
+      ctrl.qtyController.text     = '2';
+      ctrl.adjustSheetQty(1);
+      expect(ctrl.qtyController.text, equals('2'));
     });
 
     test('decrement is always allowed down to 1', () {
-      controller.bsMaxQty.value = 10.0;
-      controller.bsBatchBalance.value = 10.0;
-      controller.bsQtyController.text = '5';
-      controller.adjustSheetQty(-1);
-      expect(controller.bsQtyController.text, equals('4'));
+      ctrl.maxQty.value       = 10.0;
+      ctrl.batchBalance.value = 10.0;
+      ctrl.qtyController.text = '5';
+      ctrl.adjustSheetQty(-1);
+      expect(ctrl.qtyController.text, equals('4'));
     });
 
     test('decrement at 1 does not go below 1', () {
-      controller.bsQtyController.text = '1';
-      controller.adjustSheetQty(-1);
-      expect(controller.bsQtyController.text, equals('1'));
+      ctrl.qtyController.text = '1';
+      ctrl.adjustSheetQty(-1);
+      expect(ctrl.qtyController.text, equals('1'));
     });
   });
 }
