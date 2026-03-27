@@ -3,6 +3,7 @@ import 'package:multimax/app/modules/bom/bom_screen.dart';
 import 'package:multimax/app/modules/bom/form/bom_form_binding.dart';
 import 'package:multimax/app/modules/bom/form/bom_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_binding.dart';
+import 'package:multimax/app/modules/job_card/job_card_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
@@ -195,6 +196,12 @@ class AppPages {
       name: AppRoutes.JOB_CARD,
       page: () => const JobCardScreen(),
       binding: JobCardBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.JOB_CARD_FORM,
+      page: () => const JobCardFormScreen(),
+      binding: JobCardFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.BATCH,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
@@ -115,9 +116,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
             ),
 
             // ── KPI strip + list — single Obx owns all Rx reads ────────────
-            // _JobCardKpiStrip uses computed getters (no Rx), so it must NOT
-            // be wrapped in its own Obx. It is rebuilt by the outer Obx
-            // whenever controller.jobCards / isLoading / hasMore fire.
             Obx(() {
               // ─ loading splash ────────────────────────────────────────
               if (controller.isLoading.value &&
@@ -182,7 +180,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
               final cards = controller.jobCards;
               return SliverMainAxisGroup(
                 slivers: [
-                  // KPI strip — plain widget, no inner Obx needed
                   SliverToBoxAdapter(
                     child: _JobCardKpiStrip(controller: controller),
                   ),
@@ -204,7 +201,11 @@ class _JobCardScreenState extends State<JobCardScreen> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _JobCardTile(
                               jc: jc,
-                              onTap: () {},
+                              // ── Navigate to detail form ──────────────
+                              onTap: () => Get.toNamed(
+                                AppRoutes.JOB_CARD_FORM,
+                                arguments: {'name': jc.name},
+                              ),
                             ),
                           );
                         },
@@ -222,9 +223,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
   }
 }
 
-// ── KPI strip ───────────────────────────────────────────────────────────────────────
-// Plain StatelessWidget — no Obx. Rebuilt by the parent Obx whenever
-// controller.jobCards changes. All values come from plain computed getters.
+// ── KPI strip ──────────────────────────────────────────────────────────────────
 
 class _JobCardKpiStrip extends StatelessWidget {
   final JobCardController controller;
@@ -285,7 +284,7 @@ class _Kpi extends StatelessWidget {
   }
 }
 
-// ── Job Card tile ─────────────────────────────────────────────────────────────────
+// ── Job Card tile ─────────────────────────────────────────────────────────────
 
 class _JobCardTile extends StatelessWidget {
   final dynamic jc;
