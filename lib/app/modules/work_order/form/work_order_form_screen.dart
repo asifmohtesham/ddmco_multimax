@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'job_card_creation_sheet.dart';
 import 'work_order_form_controller.dart';
 
 class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
@@ -29,8 +30,6 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
           appBar: MainAppBar(
             title: title,
             status: wo?.status,
-            // ── Native save slot — renders SaveIconButton with correct
-            // greying, spinner, and tick feedback automatically.
             onSave:     controller.canEdit ? controller.save : null,
             isSaving:   controller.isSaving.value,
             isDirty:    controller.isDirty.value,
@@ -55,7 +54,7 @@ class _WorkOrderForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final cs        = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
     return Obx(() {
@@ -66,6 +65,7 @@ class _WorkOrderForm extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
             // ── Section: Production ────────────────────────────────────────────
             _SectionHeader(
                 label: 'Production Details',
@@ -106,19 +106,17 @@ class _WorkOrderForm extends StatelessWidget {
                                   onPressed: () {
                                     controller.itemController.clear();
                                     controller.selectedItem.value = null;
-                                    controller.selectedItemName.value =
-                                        null;
+                                    controller.selectedItemName.value = null;
                                     controller.bomController.clear();
                                     controller.selectedBom.value = null;
                                     controller.bomOptions.clear();
                                     controller.isItemValid.value = false;
-                                    controller.isBomValid.value = false;
+                                    controller.isBomValid.value  = false;
                                   })
                               : null),
                     ),
                     onChanged: controller.searchItems,
                   ),
-                  // Typeahead dropdown
                   if (items.isNotEmpty)
                     Container(
                       margin: const EdgeInsets.only(top: 2),
@@ -138,7 +136,6 @@ class _WorkOrderForm extends StatelessWidget {
                             .toList(),
                       ),
                     ),
-                  // Item name subtext
                   if ((controller.selectedItemName.value ?? '').isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4, left: 4),
@@ -307,11 +304,22 @@ class _WorkOrderForm extends StatelessWidget {
               ),
               onChanged: (_) => controller.markDirty(),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
-            // ── Bottom save button (body) ──────────────────────────────────────
-            // Kept as a convenience CTA at the bottom of the scroll.
-            // The app bar save icon handles quick saves from the top.
+            // ── Section: Operations ───────────────────────────────────────────
+            Obx(() {
+              if (controller.operations.isEmpty) return const SizedBox.shrink();
+              return _OperationsSection(
+                controller: controller,
+                cs: cs,
+                textTheme: textTheme,
+              );
+            }),
+
+            // ── Action buttons (Save / Submit / Create Job Cards) ─────────────
+            const SizedBox(height: 8),
+
+            // Save button — shown when draft
             if (canEdit)
               Obx(() => SizedBox(
                     width: double.infinity,
@@ -338,6 +346,82 @@ class _WorkOrderForm extends StatelessWidget {
                           padding: const EdgeInsets.all(16)),
                     ),
                   )),
+
+            // Submit button — shown for saved drafts (docstatus 0, mode view)
+            Obx(() {
+              if (!controller.canSubmit) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: controller.isSubmitting.value
+                        ? null
+                        : controller.submitWorkOrder,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: cs.tertiary,
+                      foregroundColor: cs.onTertiary,
+                    ),
+                    icon: controller.isSubmitting.value
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white))
+                        : const Icon(Icons.check_circle_outline),
+                    label: Text(
+                      controller.isSubmitting.value
+                          ? 'Submitting…'
+                          : 'Submit Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // Create Job Cards button — shown when submitted + pending ops exist
+            Obx(() {
+              if (!controller.canCreateJobCards) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: controller.isCreatingJobCards.value
+                        ? null
+                        : () => Get.bottomSheet(
+                              JobCardCreationSheet(
+                                  controller: controller),
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                            ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      side: BorderSide(color: cs.primary, width: 1.5),
+                    ),
+                    icon: controller.isCreatingJobCards.value
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.primary))
+                        : const Icon(Icons.playlist_add_check_outlined),
+                    label: Text(
+                      controller.isCreatingJobCards.value
+                          ? 'Creating Job Cards…'
+                          : 'Create Job Cards',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       );
@@ -346,7 +430,173 @@ class _WorkOrderForm extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Small widgets
+// Operations section
+// ────────────────────────────────────────────────────────────────────────────
+
+class _OperationsSection extends StatelessWidget {
+  final WorkOrderFormController controller;
+  final ColorScheme   cs;
+  final TextTheme     textTheme;
+  const _OperationsSection({
+    required this.controller,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  Color _statusColor(String status) => switch (status) {
+    WorkOrderOperationStatus.wip       => Colors.orange.shade700,
+    WorkOrderOperationStatus.completed => cs.primary,
+    _                                  => cs.onSurfaceVariant,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+            label: 'Operations',
+            icon: Icons.account_tree_outlined),
+        const SizedBox(height: 12),
+        ...controller.operations.map((op) {
+          final woQty     = controller.workOrder.value?.qty ?? 0;
+          final pending   = op.pendingQty(woQty);
+          final progress  = woQty > 0
+              ? (op.completedQty / woQty).clamp(0.0, 1.0)
+              : 0.0;
+          final statusClr = _statusColor(op.status);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Row 1: sequence badge + operation name + status chip
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: cs.secondaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${op.sequenceId}',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: cs.onSecondaryContainer,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        op.operation,
+                        style: textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: statusClr.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        op.status,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: statusClr,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Row 2: workstation (if set)
+                if ((op.workstation ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.precision_manufacturing_outlined,
+                          size: 12, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        op.workstation!,
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 8),
+
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: cs.outlineVariant,
+                    color: statusClr,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                // Completed / pending counts
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Completed: ${_fmtQty(op.completedQty)}',
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    Text(
+                      'Pending: ${_fmtQty(pending)}',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: pending > 0
+                            ? cs.error
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  String _fmtQty(double qty) =>
+      qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
+}
+
+/// Thin status constant shim used by [_OperationsSection._statusColor].
+/// Mirrors the constants defined in [WorkOrderOperation] without adding
+/// a dependency on the full model import here.
+abstract class WorkOrderOperationStatus {
+  static const String wip       = 'Work In Progress';
+  static const String completed = 'Completed';
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Small widgets (unchanged from original)
 // ────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
