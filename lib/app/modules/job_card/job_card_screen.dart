@@ -114,20 +114,19 @@ class _JobCardScreenState extends State<JobCardScreen> {
               onClearAllFilters:  controller.clearFilters,
             ),
 
-            // ── KPI strip ───────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Obx(() => _JobCardKpiStrip(
-                  controller: controller)),
-            ),
-
-            // ── List content ──────────────────────────────────────────────
+            // ── KPI strip + list — single Obx owns all Rx reads ────────────
+            // _JobCardKpiStrip uses computed getters (no Rx), so it must NOT
+            // be wrapped in its own Obx. It is rebuilt by the outer Obx
+            // whenever controller.jobCards / isLoading / hasMore fire.
             Obx(() {
+              // ─ loading splash ────────────────────────────────────────
               if (controller.isLoading.value &&
                   controller.jobCards.isEmpty) {
                 return const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()));
               }
 
+              // ─ empty state ───────────────────────────────────────────
               if (controller.jobCards.isEmpty) {
                 final hasFilters =
                     controller.activeFilters.isNotEmpty ||
@@ -179,32 +178,41 @@ class _JobCardScreenState extends State<JobCardScreen> {
                 );
               }
 
+              // ─ KPI strip + list ───────────────────────────────────────
               final cards = controller.jobCards;
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      if (index >= cards.length) {
-                        return controller.hasMore.value
-                            ? const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator()))
-                            : const SizedBox(height: 80);
-                      }
-                      final jc = cards[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _JobCardTile(
-                          jc: jc,
-                          onTap: () {},
-                        ),
-                      );
-                    },
-                    childCount: cards.length + 1,
+              return SliverMainAxisGroup(
+                slivers: [
+                  // KPI strip — plain widget, no inner Obx needed
+                  SliverToBoxAdapter(
+                    child: _JobCardKpiStrip(controller: controller),
                   ),
-                ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index >= cards.length) {
+                            return controller.hasMore.value
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: CircularProgressIndicator()))
+                                : const SizedBox(height: 80);
+                          }
+                          final jc = cards[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _JobCardTile(
+                              jc: jc,
+                              onTap: () {},
+                            ),
+                          );
+                        },
+                        childCount: cards.length + 1,
+                      ),
+                    ),
+                  ),
+                ],
               );
             }),
           ],
@@ -215,6 +223,8 @@ class _JobCardScreenState extends State<JobCardScreen> {
 }
 
 // ── KPI strip ───────────────────────────────────────────────────────────────────────
+// Plain StatelessWidget — no Obx. Rebuilt by the parent Obx whenever
+// controller.jobCards changes. All values come from plain computed getters.
 
 class _JobCardKpiStrip extends StatelessWidget {
   final JobCardController controller;
@@ -223,16 +233,15 @@ class _JobCardKpiStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (controller.jobCards.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
-          _Kpi('Pending',  '${controller.openCards}',      cs.secondary),
+          _Kpi('Pending',   '${controller.openCards}',      cs.secondary),
           const SizedBox(width: 8),
-          _Kpi('Completed','${controller.completedCards}', cs.tertiary),
+          _Kpi('Completed', '${controller.completedCards}', cs.tertiary),
           const SizedBox(width: 8),
-          _Kpi('Total',    '${controller.totalCards}',     cs.primary),
+          _Kpi('Total',     '${controller.totalCards}',     cs.primary),
         ],
       ),
     );
@@ -279,7 +288,7 @@ class _Kpi extends StatelessWidget {
 // ── Job Card tile ─────────────────────────────────────────────────────────────────
 
 class _JobCardTile extends StatelessWidget {
-  final dynamic jc;   // JobCard model
+  final dynamic jc;
   final VoidCallback onTap;
   const _JobCardTile({required this.jc, required this.onTap});
 
@@ -301,7 +310,6 @@ class _JobCardTile extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Status icon
               Container(
                 height: 50,
                 width: 50,
@@ -314,7 +322,6 @@ class _JobCardTile extends StatelessWidget {
                     color: _statusColor(context, jc.status)),
               ),
               const SizedBox(width: 16),
-              // Main info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,7 +343,6 @@ class _JobCardTile extends StatelessWidget {
                   ],
                 ),
               ),
-              // START badge
               if (isOpen)
                 Container(
                   padding: const EdgeInsets.symmetric(

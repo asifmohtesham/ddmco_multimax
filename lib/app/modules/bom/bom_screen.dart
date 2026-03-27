@@ -114,26 +114,27 @@ class _BomScreenState extends State<BomScreen> {
             // ── Unified header ──────────────────────────────────────────────
             DocTypeListHeader(
               title: 'Bill of Materials',
-              searchDoctype:   'BOM',
-              searchQuery:     controller.searchQuery,
-              onSearchChanged: controller.onSearchChanged,
-              onSearchClear:   controller.clearFilters,
-              activeFilters:   controller.activeFilters,
+              searchDoctype:      'BOM',
+              searchQuery:        controller.searchQuery,
+              onSearchChanged:    controller.onSearchChanged,
+              onSearchClear:      controller.clearFilters,
+              activeFilters:      controller.activeFilters,
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
             ),
 
-            // ── KPI strip ──────────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Obx(() => _BomKpiStrip(controller: controller)),
-            ),
-
-            // ── List content ──────────────────────────────────────────────
+            // ── KPI strip + list — single Obx owns all Rx reads ────────────
+            // _BomKpiStrip uses computed getters (no Rx), so it must NOT
+            // be wrapped in its own Obx. It is rebuilt whenever the outer
+            // Obx fires (triggered by controller.boms / isLoading / hasMore).
             Obx(() {
+              // ─ loading splash ────────────────────────────────────────
               if (controller.isLoading.value && controller.boms.isEmpty) {
                 return const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()));
               }
+
+              // ─ empty state ───────────────────────────────────────────
               if (controller.boms.isEmpty) {
                 return SliverFillRemaining(
                   hasScrollBody: false,
@@ -165,48 +166,58 @@ class _BomScreenState extends State<BomScreen> {
                   ),
                 );
               }
+
+              // ─ KPI strip + list ───────────────────────────────────────
               final boms = controller.boms;
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      if (index >= boms.length) {
-                        return controller.hasMore.value
-                            ? const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator()))
-                            : const SizedBox(height: 80);
-                      }
-                      final bom = boms[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _BomCard(
-                          bom: bom,
-                          onTap: () => Get.toNamed(
-                            AppRoutes.BOM_FORM,
-                            arguments: {'name': bom.name},
-                          ),
-                          onCreateWo: () => Get.toNamed(
-                            AppRoutes.WORK_ORDER_FORM,
-                            arguments: {
-                              'mode': 'new',
-                              'name': '',
-                              'prefill': {
-                                'production_item': bom.item,
-                                'item_name':       bom.itemName ?? '',
-                                'bom_no':          bom.name,
-                                'qty':             bom.quantity,
-                              },
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                    childCount: boms.length + 1,
+              return SliverMainAxisGroup(
+                slivers: [
+                  // KPI strip — plain widget, no inner Obx needed
+                  SliverToBoxAdapter(
+                    child: _BomKpiStrip(controller: controller),
                   ),
-                ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index >= boms.length) {
+                            return controller.hasMore.value
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: CircularProgressIndicator()))
+                                : const SizedBox(height: 80);
+                          }
+                          final bom = boms[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _BomCard(
+                              bom: bom,
+                              onTap: () => Get.toNamed(
+                                AppRoutes.BOM_FORM,
+                                arguments: {'name': bom.name},
+                              ),
+                              onCreateWo: () => Get.toNamed(
+                                AppRoutes.WORK_ORDER_FORM,
+                                arguments: {
+                                  'mode': 'new',
+                                  'name': '',
+                                  'prefill': {
+                                    'production_item': bom.item,
+                                    'item_name':       bom.itemName ?? '',
+                                    'bom_no':          bom.name,
+                                    'qty':             bom.quantity,
+                                  },
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                        childCount: boms.length + 1,
+                      ),
+                    ),
+                  ),
+                ],
               );
             }),
           ],
@@ -216,7 +227,9 @@ class _BomScreenState extends State<BomScreen> {
   }
 }
 
-// ── KPI strip ───────────────────────────────────────────────────────────────────────
+// ── KPI strip ─────────────────────────────────────────────────────────────────────
+// Plain StatelessWidget — no Obx. Rebuilt by the parent Obx whenever
+// controller.boms changes. All values come from plain computed getters.
 
 class _BomKpiStrip extends StatelessWidget {
   final BomController controller;
@@ -225,7 +238,6 @@ class _BomKpiStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (controller.boms.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
