@@ -41,18 +41,32 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
   }
 
-  void _showFilterSheet() {
-    Get.snackbar('Filters', 'Filter sheet coming soon',
-        duration: const Duration(seconds: 2));
-  }
-
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
-    final filters = controller.activeFilters;
+    final cs = Theme.of(context).colorScheme;
+
+    Widget chip({
+      required IconData icon,
+      required String label,
+      required VoidCallback onDeleted,
+    }) =>
+        Chip(
+          avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
+          label: Text(label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.onSecondaryContainer,
+                  fontWeight: FontWeight.w600)),
+          backgroundColor: cs.secondaryContainer,
+          deleteIconColor: cs.onSecondaryContainer,
+          onDeleted: onDeleted,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          side: BorderSide.none,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        );
 
     if (controller.searchQuery.value.isNotEmpty) {
-      chips.add(_chip(
-        context,
+      chips.add(chip(
         icon: Icons.search,
         label: 'Search: ${controller.searchQuery.value}',
         onDeleted: () {
@@ -61,45 +75,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         },
       ));
     }
-    if (filters.containsKey('status')) {
-      chips.add(_chip(
-        context,
+    if (controller.activeFilters.containsKey('status')) {
+      chips.add(chip(
         icon: Icons.flag_outlined,
-        label: 'Status: ${filters['status']}',
+        label: 'Status: ${controller.activeFilters['status']}',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
-    if (filters.containsKey('production_item')) {
-      chips.add(_chip(
-        context,
+    if (controller.activeFilters.containsKey('production_item')) {
+      chips.add(chip(
         icon: Icons.inventory_2_outlined,
-        label: 'Item: ${filters['production_item']}',
+        label: 'Item: ${controller.activeFilters['production_item']}',
         onDeleted: () => controller.removeFilter('production_item'),
       ));
     }
     return chips;
-  }
-
-  Widget _chip(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required VoidCallback onDeleted,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
-      label: Text(label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: cs.onSecondaryContainer, fontWeight: FontWeight.w600)),
-      backgroundColor: cs.secondaryContainer,
-      deleteIconColor: cs.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
   }
 
   @override
@@ -125,30 +115,33 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            // ── Unified header ──────────────────────────────────────────────
             DocTypeListHeader(
               title: 'Work Orders',
-              searchQuery: controller.searchQuery,
-              onSearchChanged: controller.onSearchChanged,
+              searchDoctype:      'Work Order',
+              searchQuery:        controller.searchQuery,
+              onSearchChanged:    controller.onSearchChanged,
               onSearchClear: () {
                 controller.searchQuery.value = '';
                 controller.fetchWorkOrders(clear: true);
               },
-              activeFilters: controller.activeFilters,
-              onFilterTap: _showFilterSheet,
+              activeFilters:      controller.activeFilters,
               filterChipsBuilder: _buildFilterChips,
-              onClearAllFilters: controller.clearFilters,
+              onClearAllFilters:  controller.clearFilters,
             ),
+
+            // ── List content ──────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
                 return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                    child: Center(child: CircularProgressIndicator()));
               }
 
               if (controller.workOrders.isEmpty) {
-                final hasFilters = controller.activeFilters.isNotEmpty ||
-                    controller.searchQuery.value.isNotEmpty;
+                final hasFilters =
+                    controller.activeFilters.isNotEmpty ||
+                        controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -177,19 +170,18 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                     fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchWorkOrders(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
+                          FilledButton.tonalIcon(
+                            onPressed: hasFilters
+                                ? controller.clearFilters
+                                : () => controller.fetchWorkOrders(
+                                    clear: true),
+                            icon: Icon(hasFilters
+                                ? Icons.clear_all
+                                : Icons.refresh),
+                            label: Text(hasFilters
+                                ? 'Clear Filters'
+                                : 'Reload'),
+                          ),
                         ],
                       ),
                     ),
@@ -208,8 +200,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             ? const Center(
                                 child: Padding(
                                   padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator(),
-                                ))
+                                  child: CircularProgressIndicator()))
                             : const SizedBox(height: 80);
                       }
                       final wo = controller.workOrders[index];
@@ -233,7 +224,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(color: cs.outlineVariant),
+                              side: BorderSide(
+                                  color: cs.outlineVariant),
                             ),
                             color: cs.surfaceContainerLowest,
                             child: Padding(
@@ -244,7 +236,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                 children: [
                                   Row(
                                     mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                        MainAxisAlignment
+                                            .spaceBetween,
                                     children: [
                                       StatusPill(status: wo.status),
                                       Text(wo.name,
@@ -273,7 +266,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                             .textTheme
                                             .labelSmall
                                             ?.copyWith(
-                                                color: cs.onSurfaceVariant),
+                                                color:
+                                                    cs.onSurfaceVariant),
                                       ),
                                     ),
                                   const SizedBox(height: 16),
@@ -293,14 +287,16 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                                             .onSurfaceVariant)),
                                             const SizedBox(height: 4),
                                             RichText(
-                                              text: TextSpan(children: [
+                                              text:
+                                                  TextSpan(children: [
                                                 TextSpan(
                                                   text:
                                                       '${wo.producedQty.toInt()}',
                                                   style: TextStyle(
                                                       color: cs.primary,
                                                       fontWeight:
-                                                          FontWeight.bold,
+                                                          FontWeight
+                                                              .bold,
                                                       fontSize: 16),
                                                 ),
                                                 TextSpan(
@@ -325,8 +321,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                           strokeWidth: 4,
                                         ),
                                       if (done)
-                                        const Icon(Icons.check_circle,
-                                            color: Colors.green, size: 32),
+                                        const Icon(
+                                            Icons.check_circle,
+                                            color: Colors.green,
+                                            size: 32),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
@@ -353,7 +351,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                               Icons
                                                   .calendar_today_outlined,
                                               size: 12,
-                                              color: cs.onSurfaceVariant),
+                                              color:
+                                                  cs.onSurfaceVariant),
                                           const SizedBox(width: 4),
                                           Text(
                                             wo.plannedStartDate,
@@ -361,8 +360,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                                 .textTheme
                                                 .labelSmall
                                                 ?.copyWith(
-                                                    color:
-                                                        cs.onSurfaceVariant),
+                                                    color: cs
+                                                        .onSurfaceVariant),
                                           ),
                                         ],
                                       ),
