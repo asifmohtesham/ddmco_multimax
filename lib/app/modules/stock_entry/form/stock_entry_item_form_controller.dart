@@ -36,7 +36,7 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [disposeAutoFillListener] called in onClose() before super.onClose().
 ///   • [autoFillRackController] overridden → sourceRackController.
 ///     The mixin writes the selected rack name to sourceRackController, not
-///     the base rackController, so it reaches the correct SE rack field.
+///     the base rackController which is unused by SE's submission / validation path.
 ///   • [onAutoFillRackSelected] overridden → validateDualRack(rack, true).
 ///     Triggers SE's dual-rack validation pipeline for the source side.
 ///
@@ -776,5 +776,74 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.dispose();
     targetRackController.dispose();
     super.onClose();
+  }
+
+  // ── Test-support helpers ──────────────────────────────────────────────────
+  //
+  // These three methods are intentionally public so that unit tests can drive
+  // the controller's pure state-machine logic without going through the async
+  // network paths in initialise() / validateBatch() / validateDualRack().
+  //
+  // They must NOT be called from production UI code.
+
+  /// Returns true iff the entered qty is positive and does not exceed
+  /// [effectiveMaxQty].  Mirrors the qty portion of [validateSheet].
+  bool isValidQty() {
+    final qty = double.tryParse(qtyController.text) ?? 0;
+    if (qty <= 0) return false;
+    final effMax = effectiveMaxQty;
+    if (effMax < 999999.0 && qty > effMax) return false;
+    return true;
+  }
+
+  /// Clamp-safe stepper that respects [effectiveMaxQty].
+  ///
+  /// Increments / decrements [qtyController] by [delta]:
+  ///   • Result < 0  → field cleared (empty string, represents 0).
+  ///   • Result == 0 → field cleared.
+  ///   • Result > effectiveMaxQty (when ceiling exists) → rejected; field
+  ///     stays at its current value.
+  ///   • Otherwise   → field set to integer string (no decimal for whole numbers).
+  ///
+  /// Mirrors the behaviour of [ItemSheetControllerBase.adjustQty] but uses
+  /// [effectiveMaxQty] (the SE multi-ceiling) instead of [maxQty].
+  void adjustSheetQty(double delta) {
+    final current = double.tryParse(qtyController.text) ?? 0;
+    final next    = current + delta;
+    if (next <= 0) {
+      qtyController.text = '';
+      validateSheet();
+      return;
+    }
+    final effMax = effectiveMaxQty;
+    if (effMax < 999999.0 && next > effMax) {
+      // Reject the entire delta — leave field unchanged.
+      return;
+    }
+    qtyController.text =
+        next % 1 == 0 ? next.toInt().toString() : next.toString();
+    validateSheet();
+  }
+
+  /// Seeds snapshot fields so tests can simulate an already-saved edit-mode
+  /// item without going through the full [initialise] lifecycle.
+  ///
+  /// After calling this, [isFormDirty] and [isFieldsDirty] will return false
+  /// until the caller mutates a TEC or [selectedSerial].
+  void setInitialSnapshot({
+    String qty         = '',
+    String batch       = '',
+    String sourceRack  = '',
+    String targetRack  = '',
+  }) {
+    qtyController.text         = qty;
+    batchController.text       = batch;
+    sourceRackController.text  = sourceRack;
+    targetRackController.text  = targetRack;
+    // Base snapshot (qty, batch, rackController — unused by SE but kept consistent)
+    captureSnapshot();
+    // SE-specific snapshot
+    _snapshotSourceRack = sourceRack;
+    _snapshotTargetRack = targetRack;
   }
 }
