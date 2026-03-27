@@ -44,7 +44,7 @@ class BomFormScreen extends GetView<BomFormController> {
                     : const SizedBox.shrink()),
                 // ── Save (toggle changes only) ──
                 Obx(() => SaveIconButton(
-                      onPressed: controller.save,
+                      onPressed:  controller.save,
                       isSaving:   controller.isSaving.value,
                       isDirty:    controller.isDirty.value,
                       saveResult: controller.saveResult.value,
@@ -63,14 +63,11 @@ class BomFormScreen extends GetView<BomFormController> {
                 ? const Center(child: CircularProgressIndicator())
                 : Column(
                     children: [
-                      // ── Header summary card ──
                       _BomHeaderCard(controller: controller),
-                      // ── Tab views ──
                       Expanded(
                         child: TabBarView(
                           children: [
-                            BomItemsTab(
-                                items: bom?.items ?? []),
+                            BomItemsTab(items: bom?.items ?? []),
                             BomExplodedItemsTab(
                                 items: bom?.explodedItems ?? []),
                             bom != null
@@ -109,7 +106,7 @@ class _BomHeaderCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Item code + name
+            // Item code + name row
             Row(
               children: [
                 Expanded(
@@ -147,8 +144,8 @@ class _BomHeaderCard extends StatelessWidget {
                 Expanded(
                   child: InfoBlock(
                     label: 'Quantity',
-                    value:
-                        '${_fmtQty(bom.quantity)} ${bom.uom}',
+                    // uom is String? — null-coalesce
+                    value: '${_fmtQty(bom.quantity)} ${bom.uom ?? ''}',
                     icon: Icons.numbers_outlined,
                   ),
                 ),
@@ -156,7 +153,10 @@ class _BomHeaderCard extends StatelessWidget {
                 Expanded(
                   child: InfoBlock(
                     label: 'Currency',
-                    value: bom.currency.isNotEmpty ? bom.currency : '-',
+                    // currency is String? — null-coalesce before isNotEmpty
+                    value: (bom.currency?.isNotEmpty ?? false)
+                        ? bom.currency!
+                        : '-',
                     icon: Icons.currency_exchange_outlined,
                   ),
                 ),
@@ -204,7 +204,7 @@ class _BomHeaderCard extends StatelessWidget {
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(3);
 }
 
-// ── Toggle tile ─────────────────────────────────────────────────────────────────────────
+// ── Toggle tile ───────────────────────────────────────────────────────────────────────
 
 class _ToggleTile extends StatelessWidget {
   final String label;
@@ -223,8 +223,7 @@ class _ToggleTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onChanged(!value),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: value
               ? colorScheme.primaryContainer
