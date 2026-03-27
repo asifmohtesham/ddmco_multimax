@@ -1,5 +1,7 @@
 import 'package:multimax/app/modules/bom/bom_binding.dart';
 import 'package:multimax/app/modules/bom/bom_screen.dart';
+import 'package:multimax/app/modules/bom/form/bom_form_binding.dart';
+import 'package:multimax/app/modules/bom/form/bom_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_binding.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
@@ -171,6 +173,12 @@ class AppPages {
       name: AppRoutes.BOM,
       page: () => const BomScreen(),
       binding: BomBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.BOM_FORM,
+      page: () => const BomFormScreen(),
+      binding: BomFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.WORK_ORDER,
