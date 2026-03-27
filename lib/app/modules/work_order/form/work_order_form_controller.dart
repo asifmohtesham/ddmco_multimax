@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
+import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -23,6 +24,11 @@ class WorkOrderFormController extends GetxController {
   final isFetchingBom = false.obs;
   final isFetchingWarehouses = false.obs;
   final isFetchingItems = false.obs;
+
+  // ── Operations state ───────────────────────────────────────────────────────────────
+  final isSubmitting       = false.obs;
+  final isCreatingJobCards = false.obs;
+  final operations         = <WorkOrderOperation>[].obs;
 
   final workOrder = Rx<WorkOrder?>(null);
 
@@ -85,6 +91,27 @@ class WorkOrderFormController extends GetxController {
   bool get canEdit => workOrder.value?.docstatus == 0 || mode == 'new';
   bool get canSave =>
       isDirty.value && isItemValid.value && isBomValid.value && isQtyValid.value;
+
+  // ── Computed: submit & job card guards ────────────────────────────────────────────
+
+  /// True when the Work Order is a saved draft (docstatus 0, not new)
+  /// and no other async operation is in progress.
+  bool get canSubmit =>
+      mode != 'new' &&
+      workOrder.value?.docstatus == 0 &&
+      !isSaving.value &&
+      !isSubmitting.value;
+
+  /// True when the Work Order is submitted (docstatus 1) and at least one
+  /// operation still has pending qty remaining.
+  bool get canCreateJobCards {
+    final wo = workOrder.value;
+    if (wo == null || wo.docstatus != 1) return false;
+    if (isCreatingJobCards.value) return false;
+    return operations.any(
+      (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
+    );
+  }
 
   // ── Init new ───────────────────────────────────────────────────────────────────────
 
@@ -161,6 +188,7 @@ class WorkOrderFormController extends GetxController {
         final wo = WorkOrder.fromJson(res.data['data']);
         workOrder.value = wo;
         _populateControllers(wo);
+        operations.assignAll(wo.operations);
         isDirty.value = false;
       }
     } catch (e) {
@@ -186,7 +214,7 @@ class WorkOrderFormController extends GetxController {
     _validateForm();
   }
 
-  /// Public so the form screen’s onChanged callbacks can call it directly.
+  /// Public so the form screen's onChanged callbacks can call it directly.
   void markDirty() {
     if (!isLoading.value) isDirty.value = true;
   }
@@ -319,14 +347,10 @@ class WorkOrderFormController extends GetxController {
 
   // ── Date + time picker ────────────────────────────────────────────────────────────────
 
-  /// Shows a date picker followed by a time picker.
-  /// Formats the result as `yyyy-MM-dd HH:mm:ss` — the format ERPNext
-  /// Datetime fields expect on the REST API.
   Future<void> pickDate(TextEditingController ctrl) async {
     if (!canEdit) return;
     final now = DateTime.now();
 
-    // Parse existing value (accepts both date-only and datetime formats).
     DateTime initial = now;
     try {
       if (ctrl.text.isNotEmpty) {
@@ -336,7 +360,6 @@ class WorkOrderFormController extends GetxController {
       }
     } catch (_) {}
 
-    // Step 1 — pick date.
     final pickedDate = await showDatePicker(
       context: Get.context!,
       initialDate: initial,
@@ -345,7 +368,6 @@ class WorkOrderFormController extends GetxController {
     );
     if (pickedDate == null) return;
 
-    // Step 2 — pick time (pre-filled from existing value or now).
     final initialTime = TimeOfDay(
       hour:   initial.hour,
       minute: initial.minute,
@@ -426,8 +448,6 @@ class WorkOrderFormController extends GetxController {
                     onTap: () {
                       ctrl.text = filtered[i];
                       markDirty();
-                      // Use NavigatorState.pop() directly to avoid the
-                      // SnackbarController LateInitializationError.
                       Get.key.currentState!.pop();
                     },
                   ),
@@ -479,7 +499,6 @@ class WorkOrderFormController extends GetxController {
                   leading: const Icon(Icons.account_tree_outlined),
                   title: Text(bomOptions[i]),
                   onTap: () {
-                    // Same fix: bypass Get.back() / snackbar queue.
                     Get.key.currentState!.pop();
                     onBomSelected(bomOptions[i]);
                   },
@@ -549,16 +568,90 @@ class WorkOrderFormController extends GetxController {
         }
       }
     } on DioException catch (e) {
-      String msg = 'Save failed';
-      if (e.response?.data is Map) {
-        final ex = e.response!.data['exception']?.toString() ?? '';
-        if (ex.isNotEmpty) msg = ex.split(':').last.trim();
-      }
-      GlobalSnackbar.error(message: msg);
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
     } catch (e) {
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isSaving.value = false;
+    }
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────────────
+
+  /// Submit the Work Order (docstatus 0 → 1).
+  ///
+  /// Guarded by [canSubmit]. Shows a confirmation dialog before proceeding.
+  /// On success refreshes the document so [operations], [canSubmit], and
+  /// [canCreateJobCards] all update reactively in the UI.
+  Future<void> submitWorkOrder() async {
+    if (!canSubmit) return;
+
+    final confirmed = await GlobalDialog.confirm(
+      title: 'Submit Work Order',
+      message:
+          'Submitting will lock this Work Order for editing. Continue?',
+      confirmText: 'Submit',
+    );
+    if (confirmed != true) return;
+
+    isSubmitting.value = true;
+    try {
+      final res = await _provider.submitWorkOrder(name);
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Work Order $name submitted');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to submit Work Order');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Submit failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
+  // ── Create Job Cards ──────────────────────────────────────────────────────────────
+
+  /// Create Job Cards for [selected] operations.
+  ///
+  /// [qtys] maps `WorkOrderOperation.name` → qty to manufacture per Job Card.
+  /// Called by [JobCardCreationSheet] after the user confirms selection.
+  ///
+  /// On success refreshes the document so the operations list reflects the
+  /// updated statuses returned by ERPNext after card creation.
+  Future<void> createJobCards(
+    List<WorkOrderOperation> selected,
+    Map<String, double> qtys,
+  ) async {
+    if (!canCreateJobCards || selected.isEmpty) return;
+
+    isCreatingJobCards.value = true;
+    try {
+      final payload = selected.map((op) {
+        final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
+        return op.toJobCardPayload(qty: qty);
+      }).toList();
+
+      final res = await _provider.makeJobCard(name, payload);
+
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        final count = selected.length;
+        GlobalSnackbar.success(
+          message: '$count Job Card${count == 1 ? '' : 's'} created',
+        );
+      } else {
+        GlobalSnackbar.error(message: 'Failed to create Job Cards');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Job Card creation failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isCreatingJobCards.value = false;
     }
   }
 
@@ -571,5 +664,22 @@ class WorkOrderFormController extends GetxController {
         Get.back();
       },
     );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────────
+
+  /// Extract a human-readable message from a [DioException].
+  /// Falls back to [fallback] when no message can be parsed.
+  String _extractErrorMessage(DioException e, String fallback) {
+    try {
+      if (e.response?.data is Map) {
+        final data = e.response!.data as Map;
+        final exc = data['exception']?.toString() ?? '';
+        if (exc.isNotEmpty) return exc.split(':').last.trim();
+        final msg = data['message']?.toString() ?? '';
+        if (msg.isNotEmpty) return msg;
+      }
+    } catch (_) {}
+    return fallback;
   }
 }
