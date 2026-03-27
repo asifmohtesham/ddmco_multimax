@@ -119,8 +119,7 @@ class _HeaderSummary extends StatelessWidget {
               ),
               _Kpi(
                 label: 'Active',
-                value:
-                    '${(controller.activeRate * 100).toInt()}%',
+                value: '${(controller.activeRate * 100).toInt()}%',
                 color: cs.tertiary,
               ),
               _Kpi(
@@ -140,9 +139,7 @@ class _Kpi extends StatelessWidget {
   final String value;
   final Color color;
   const _Kpi(
-      {required this.label,
-      required this.value,
-      required this.color});
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +186,6 @@ class _BomList extends StatelessWidget {
         itemCount: boms.length + (controller.hasMore.value ? 1 : 0),
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
-          // Load-more sentinel
           if (index == boms.length) {
             controller.fetchBOMs(isLoadMore: true);
             return Padding(
@@ -286,12 +282,15 @@ class _BomCard extends StatelessWidget {
                 const SizedBox(width: 12),
 
                 // Title + subtitle
+                // itemName is String? — guard with ?? fallback to item code
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        bom.itemName.isNotEmpty ? bom.itemName : bom.item,
+                        (bom.itemName?.isNotEmpty ?? false)
+                            ? bom.itemName!
+                            : bom.item,
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 15),
                         maxLines: 1,
@@ -307,13 +306,14 @@ class _BomCard extends StatelessWidget {
                   ),
                 ),
 
-                // Trailing: cost + status pill + WO button
+                // Trailing: cost + status badge + WO button
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // currency is String? — null-coalesce before passing
                     Text(
-                      '${FormattingHelper.getCurrencySymbol(bom.currency)} '
+                      '${FormattingHelper.getCurrencySymbol(bom.currency ?? '')} '
                       '${NumberFormat("#,##0").format(bom.totalCost)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 14),
@@ -322,7 +322,6 @@ class _BomCard extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Active / Inactive badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 2),
@@ -344,7 +343,6 @@ class _BomCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        // Create WO shortcut
                         GestureDetector(
                           onTap: onCreateWo,
                           child: Tooltip(
