@@ -509,11 +509,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         await _updateBatchBalance();
         unawaited(fetchAllRackStocks()); // refresh rackStockMap with batch-filtered data (mirrors base validateBatch)
 
-        // Source-rack autofill is driven by AutoFillRackMixin via the qty-field
-        // listener. The previous unawaited(_autoFillBestSourceRack()) call has
-        // been removed — autofill fires when the operator explicitly enters a
-        // positive qty after batch validation completes.
-
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
           batchError.value =
@@ -780,11 +775,20 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── Test-support helpers ──────────────────────────────────────────────────
   //
-  // These three methods are intentionally public so that unit tests can drive
-  // the controller's pure state-machine logic without going through the async
-  // network paths in initialise() / validateBatch() / validateDualRack().
+  // These methods are intentionally public so that unit tests can drive
+  // the controller's pure state-machine logic without going through the
+  // async network paths in initialise() / validateBatch() / validateDualRack().
   //
   // They must NOT be called from production UI code.
+
+  /// Wires [_parent] directly, without going through the full [initialise]
+  /// lifecycle (no listeners, no async, no WidgetsBinding).
+  ///
+  /// For use by [makeItemCtrl()] in test helpers ONLY.
+  // ignore: use_setters_to_change_properties
+  void testInjectParent(StockEntryFormController parent) {
+    _parent = parent;
+  }
 
   /// Returns true iff the entered qty is positive and does not exceed
   /// [effectiveMaxQty].  Mirrors the qty portion of [validateSheet].
@@ -799,8 +803,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// Clamp-safe stepper that respects [effectiveMaxQty].
   ///
   /// Increments / decrements [qtyController] by [delta]:
-  ///   • Result < 0  → field cleared (empty string, represents 0).
-  ///   • Result == 0 → field cleared.
+  ///   • Result ≤ 0  → field cleared (empty string, represents 0).
   ///   • Result > effectiveMaxQty (when ceiling exists) → rejected; field
   ///     stays at its current value.
   ///   • Otherwise   → field set to integer string (no decimal for whole numbers).
@@ -831,15 +834,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// After calling this, [isFormDirty] and [isFieldsDirty] will return false
   /// until the caller mutates a TEC or [selectedSerial].
   void setInitialSnapshot({
-    String qty         = '',
-    String batch       = '',
-    String sourceRack  = '',
-    String targetRack  = '',
+    String qty        = '',
+    String batch      = '',
+    String sourceRack = '',
+    String targetRack = '',
   }) {
-    qtyController.text         = qty;
-    batchController.text       = batch;
-    sourceRackController.text  = sourceRack;
-    targetRackController.text  = targetRack;
+    qtyController.text        = qty;
+    batchController.text      = batch;
+    sourceRackController.text = sourceRack;
+    targetRackController.text = targetRack;
     // Base snapshot (qty, batch, rackController — unused by SE but kept consistent)
     captureSnapshot();
     // SE-specific snapshot
