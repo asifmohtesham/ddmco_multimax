@@ -16,13 +16,11 @@ class BomScreen extends GetView<BomController> {
     return Scaffold(
       appBar: MainAppBar(
         title: 'Bill of Materials',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Search',
-            onPressed: () => _showSearch(context),
-          ),
-        ],
+        // ── Local-mode search: 🔍 icon opens DocTypeSearchDelegate which
+        // forwards keystrokes to BomController.onSearchChanged.
+        searchDoctype:    'BOM',
+        onSearchChanged:  controller.onSearchChanged,
+        onSearchClear:    controller.clearFilters,
       ),
       drawer: const AppNavDrawer(),
       body: Obx(() {
@@ -38,59 +36,6 @@ class BomScreen extends GetView<BomController> {
       }),
     );
   }
-
-  void _showSearch(BuildContext context) {
-    showSearch(
-      context: context,
-      delegate: _BomSearchDelegate(controller),
-    );
-  }
-}
-
-// ── Search delegate ──────────────────────────────────────────────────────────────────
-
-class _BomSearchDelegate extends SearchDelegate<String> {
-  final BomController _ctrl;
-  _BomSearchDelegate(this._ctrl);
-
-  @override
-  String get searchFieldLabel => 'Search BOMs…';
-
-  @override
-  List<Widget> buildActions(BuildContext context) => [
-        if (query.isNotEmpty)
-          IconButton(
-            icon: const Icon(Icons.clear),
-            onPressed: () {
-              query = '';
-              _ctrl.onSearchChanged('');
-            },
-          ),
-      ];
-
-  @override
-  Widget buildLeading(BuildContext context) => BackButton(
-        onPressed: () {
-          close(context, '');
-          _ctrl.clearFilters();
-        },
-      );
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    _ctrl.onSearchChanged(query);
-    return _buildResults(context);
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    _ctrl.onSearchChanged(query);
-    return _buildResults(context);
-  }
-
-  Widget _buildResults(BuildContext context) => Obx(
-        () => _BomList(controller: _ctrl, shrinkWrap: true),
-      );
 }
 
 // ── Header KPI strip ────────────────────────────────────────────────────────────────────
@@ -267,7 +212,6 @@ class _BomCard extends StatelessWidget {
                 horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                // Avatar
                 CircleAvatar(
                   backgroundColor: isActive
                       ? cs.primaryContainer
@@ -280,9 +224,6 @@ class _BomCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-
-                // Title + subtitle
-                // itemName is String? — guard with ?? fallback to item code
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,13 +246,10 @@ class _BomCard extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                // Trailing: cost + status badge + WO button
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // currency is String? — null-coalesce before passing
                     Text(
                       '${FormattingHelper.getCurrencySymbol(bom.currency ?? '')} '
                       '${NumberFormat("#,##0").format(bom.totalCost)}',
