@@ -130,10 +130,12 @@ class FakeStockEntryProvider extends StockEntryProvider {
 // ---------------------------------------------------------------------------
 class FakePosUploadProvider extends PosUploadProvider {
   @override
-  Future<Response> getPosUploads(
-          {int limit = 20,
-          Map<String, dynamic>? filters,
-          String orderBy = 'modified desc'}) async =>
+  Future<Response> getPosUploads({
+    int limit = 50,
+    int limitStart = 0,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+  }) async =>
       emptyOk();
 }
 
