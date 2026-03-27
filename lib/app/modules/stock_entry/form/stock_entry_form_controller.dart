@@ -427,6 +427,29 @@ class StockEntryFormController extends GetxController
         t == 'Material Receipt';
   }
 
+  /// Public test-support wrapper around [_validateHeaderBeforeScan].
+  ///
+  /// Returns `true` (BLOCKED) when the required warehouse for the current
+  /// SE type has not been selected, `false` (ALLOWED) otherwise.
+  ///
+  /// Mirrors the boolean contract of [_validateHeaderBeforeScan] without
+  /// the [GlobalSnackbar] side-effect that unit tests do not need to assert.
+  ///
+  /// Must NOT be called from production UI code — use [scanBarcode] instead.
+  bool enforceWarehouseBeforeScan() {
+    if (requiresSourceWarehouse &&
+        (selectedFromWarehouse.value == null ||
+            selectedFromWarehouse.value!.isEmpty)) {
+      return true;
+    }
+    if (requiresTargetWarehouse &&
+        (selectedToWarehouse.value == null ||
+            selectedToWarehouse.value!.isEmpty)) {
+      return true;
+    }
+    return false;
+  }
+
   bool _validateHeaderBeforeScan() {
     if (requiresSourceWarehouse &&
         (selectedFromWarehouse.value == null ||
