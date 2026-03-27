@@ -18,33 +18,52 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 
-class _TestableFormController extends StockEntryFormController {
+// ---------------------------------------------------------------------------
+// Stub parent — skips onInit() so no provider / service wiring runs.
+// selectedStockEntryType is set per-test because isValidRacks() reads
+// _parent.selectedStockEntryType internally.
+// ---------------------------------------------------------------------------
+class _ParentCtrl extends StockEntryFormController {
   @override
   void onInit() {}
 }
 
 // ---------------------------------------------------------------------------
-// Helpers to set rack state without going through async validateRack().
+// Stub item controller — skips onInit() so no I/O runs.
+// Exposes the production isValidRacks() / sourceRackController /
+// targetRackController / isSourceRackValid / isTargetRackValid / rackError
+// without any network calls.
 // ---------------------------------------------------------------------------
-void _setSourceRack(_TestableFormController c, String rack,
-    {bool valid = true}) {
-  c.bsSourceRackController.text = rack;
-  c.isSourceRackValid.value = valid;
+class _ItemCtrl extends StockEntryItemFormController {
+  @override
+  void onInit() {}
 }
 
-void _setTargetRack(_TestableFormController c, String rack,
-    {bool valid = true}) {
-  c.bsTargetRackController.text = rack;
-  c.isTargetRackValid.value = valid;
+// ---------------------------------------------------------------------------
+// Helpers to set rack state without going through async validateDualRack().
+// ---------------------------------------------------------------------------
+void _setSourceRack(_ItemCtrl c, String rack, {bool valid = true}) {
+  c.sourceRackController.text = rack;
+  c.isSourceRackValid.value   = valid;
+}
+
+void _setTargetRack(_ItemCtrl c, String rack, {bool valid = true}) {
+  c.targetRackController.text = rack;
+  c.isTargetRackValid.value   = valid;
 }
 
 void main() {
-  late _TestableFormController ctrl;
+  late _ParentCtrl parent;
+  late _ItemCtrl   ctrl;
 
   setUp(() {
     Get.testMode = true;
-    ctrl = _TestableFormController();
+    parent = _ParentCtrl();
+    ctrl   = _ItemCtrl();
+    // Wire child → parent without going through initialise() I/O.
+    ctrl.testInjectParent(parent);
     // Reset any stale rackError that may interfere.
     ctrl.rackError.value = null;
   });
@@ -55,7 +74,7 @@ void main() {
   // Material Issue — source rack only
   // =========================================================================
   group('isValidRacks — Material Issue (source rack required only)', () {
-    setUp(() => ctrl.selectedStockEntryType.value = 'Material Issue');
+    setUp(() => parent.selectedStockEntryType.value = 'Material Issue');
 
     test('INVALID when source rack is empty', () {
       _setSourceRack(ctrl, '', valid: false);
@@ -86,7 +105,7 @@ void main() {
   // Material Receipt — target rack only
   // =========================================================================
   group('isValidRacks — Material Receipt (target rack required only)', () {
-    setUp(() => ctrl.selectedStockEntryType.value = 'Material Receipt');
+    setUp(() => parent.selectedStockEntryType.value = 'Material Receipt');
 
     test('INVALID when target rack is empty', () {
       _setTargetRack(ctrl, '', valid: false);
@@ -116,7 +135,7 @@ void main() {
   // Material Transfer — both racks required, must differ
   // =========================================================================
   group('isValidRacks — Material Transfer (both racks required, must differ)', () {
-    setUp(() => ctrl.selectedStockEntryType.value = 'Material Transfer');
+    setUp(() => parent.selectedStockEntryType.value = 'Material Transfer');
 
     test('INVALID when both racks are empty', () {
       _setSourceRack(ctrl, '', valid: false);
@@ -190,7 +209,7 @@ void main() {
   group('isValidRacks — Material Transfer for Manufacture '
       '(same rules as Material Transfer)', () {
     setUp(() =>
-        ctrl.selectedStockEntryType.value = 'Material Transfer for Manufacture');
+        parent.selectedStockEntryType.value = 'Material Transfer for Manufacture');
 
     test('INVALID when both racks empty', () {
       _setSourceRack(ctrl, '', valid: false);
@@ -216,7 +235,7 @@ void main() {
   // =========================================================================
   group('isValidRacks — no-rack-requirement types', () {
     test('Unknown SE type: VALID even with no racks (no requirement defined)', () {
-      ctrl.selectedStockEntryType.value = 'Some Unknown Type';
+      parent.selectedStockEntryType.value = 'Some Unknown Type';
       _setSourceRack(ctrl, '', valid: false);
       _setTargetRack(ctrl, '', valid: false);
       expect(ctrl.isValidRacks(), isTrue,
@@ -234,9 +253,9 @@ void main() {
 
     test('rackError is set ONLY when both racks are required and identical '
         '(not when just one rack is missing)', () {
-      ctrl.selectedStockEntryType.value = 'Material Transfer';
+      parent.selectedStockEntryType.value = 'Material Transfer';
       _setSourceRack(ctrl, 'DDMCO-A1-01', valid: true);
-      _setTargetRack(ctrl, '', valid: false);  // different — target just missing
+      _setTargetRack(ctrl, '', valid: false); // different — target just missing
       ctrl.isValidRacks();
       expect(ctrl.rackError.value,
           isNot(equals('Source and Target Racks cannot be the same')),
