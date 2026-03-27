@@ -144,10 +144,12 @@ class FakePosUploadProvider extends PosUploadProvider {
 // ---------------------------------------------------------------------------
 class FakeMaterialRequestProvider extends MaterialRequestProvider {
   @override
-  Future<Response> getMaterialRequests(
-          {int limit = 20,
-          Map<String, dynamic>? filters,
-          String orderBy = 'modified desc'}) async =>
+  Future<Response> getMaterialRequests({
+    int limit = 20,
+    int limitStart = 0,
+    Map<String, dynamic>? filters,
+    String orderBy = 'modified desc',
+  }) async =>
       emptyOk();
 }
 
