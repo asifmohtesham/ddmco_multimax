@@ -51,4 +51,27 @@ class BomProvider {
     Map<String, dynamic> data,
   ) async =>
       _apiProvider.updateDocument('BOM', name, data);
+
+  // ── BOM Search report ─────────────────────────────────────────────────────────
+
+  /// Runs the ERPNext v15 "BOM Search" query report.
+  ///
+  /// [itemCode] is required by the report (maps to the `item` filter).
+  /// [bomName] is optional and narrows results to a specific BOM name.
+  ///
+  /// Response shape (Frappe query_report):
+  ///   data.message.columns → List of column definitions
+  ///   data.message.result  → List<List<dynamic>> rows
+  Future<Response> getBomSearch({
+    required String itemCode,
+    String? bomName,
+  }) async {
+    final filters = <String, dynamic>{
+      'item': itemCode,
+    };
+    if (bomName != null && bomName.trim().isNotEmpty) {
+      filters['name'] = bomName.trim();
+    }
+    return _apiProvider.getReport('BOM Search', filters: filters);
+  }
 }
