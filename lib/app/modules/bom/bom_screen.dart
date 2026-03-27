@@ -94,14 +94,15 @@ class _BomScreenState extends State<BomScreen> {
     return Scaffold(
       backgroundColor: cs.surface,
       drawer: const AppNavDrawer(),
+      // ── FAB: New BOM ───────────────────────────────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed(
-          AppRoutes.WORK_ORDER_FORM,
+          AppRoutes.BOM_FORM,
           arguments: {'name': '', 'mode': 'new'},
         ),
-        label: const Text('New WO'),
-        icon: const Icon(Icons.precision_manufacturing_outlined),
-        tooltip: 'Create Work Order from BOM',
+        label: const Text('New BOM'),
+        icon: const Icon(Icons.account_tree_outlined),
+        tooltip: 'Create new Bill of Materials',
       ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchBOMs(clear: true),
@@ -111,7 +112,7 @@ class _BomScreenState extends State<BomScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ──────────────────────────────────────────────
+            // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
               title: 'Bill of Materials',
               searchDoctype:      'BOM',
@@ -123,18 +124,13 @@ class _BomScreenState extends State<BomScreen> {
               onClearAllFilters:  controller.clearFilters,
             ),
 
-            // ── KPI strip + list — single Obx owns all Rx reads ────────────
-            // _BomKpiStrip uses computed getters (no Rx), so it must NOT
-            // be wrapped in its own Obx. It is rebuilt whenever the outer
-            // Obx fires (triggered by controller.boms / isLoading / hasMore).
+            // ── KPI strip + list — single Obx owns all Rx reads ────────
             Obx(() {
-              // ─ loading splash ────────────────────────────────────────
               if (controller.isLoading.value && controller.boms.isEmpty) {
                 return const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()));
               }
 
-              // ─ empty state ───────────────────────────────────────────
               if (controller.boms.isEmpty) {
                 return SliverFillRemaining(
                   hasScrollBody: false,
@@ -167,11 +163,9 @@ class _BomScreenState extends State<BomScreen> {
                 );
               }
 
-              // ─ KPI strip + list ───────────────────────────────────────
               final boms = controller.boms;
               return SliverMainAxisGroup(
                 slivers: [
-                  // KPI strip — plain widget, no inner Obx needed
                   SliverToBoxAdapter(
                     child: _BomKpiStrip(controller: controller),
                   ),
@@ -227,9 +221,7 @@ class _BomScreenState extends State<BomScreen> {
   }
 }
 
-// ── KPI strip ─────────────────────────────────────────────────────────────────────
-// Plain StatelessWidget — no Obx. Rebuilt by the parent Obx whenever
-// controller.boms changes. All values come from plain computed getters.
+// ── KPI strip ──────────────────────────────────────────────────────────────────
 
 class _BomKpiStrip extends StatelessWidget {
   final BomController controller;
@@ -295,7 +287,7 @@ class _Kpi extends StatelessWidget {
   }
 }
 
-// ── BOM card ──────────────────────────────────────────────────────────────────────────
+// ── BOM card ───────────────────────────────────────────────────────────────────
 
 class _BomCard extends StatelessWidget {
   final BOM bom;
