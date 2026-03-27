@@ -1,7 +1,7 @@
 // Mock helpers shared across all Stock Entry unit tests.
 // Uses the Fake pattern (no Mockito codegen required).
-import 'package:dio/dio.dart' hide Response;
-import 'package:get/get.dart';
+import 'package:dio/dio.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
