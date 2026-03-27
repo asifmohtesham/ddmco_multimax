@@ -4,23 +4,25 @@ import 'package:multimax/app/modules/global_widgets/info_block.dart';
 
 /// Read-only costing summary tab.
 /// Mirrors the fields visible in ERPNext’s BOM → Costing section:
-/// raw material cost, operating cost, scrap material cost,
-/// total cost, and process-loss percentage.
+/// raw material cost, operating cost, process-loss %,
+/// total cost, and warehouse defaults.
 class BomCostingTab extends StatelessWidget {
   final BOM bom;
   const BomCostingTab({super.key, required this.bom});
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final currency = bom.currency.isNotEmpty ? bom.currency : 'AED';
+    final cs       = Theme.of(context).colorScheme;
+    final text     = Theme.of(context).textTheme;
+    // currency is String? on the model — fall back to empty string for display.
+    final currency = bom.currency ?? 'AED';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
-        // ── Cost breakdown card ─────────────────────────────────────────────────
-        _SectionHeader(label: 'Cost Breakdown', colorScheme: cs, textTheme: text),
+        // ── Cost breakdown ───────────────────────────────────────────────────────────────
+        _SectionHeader(
+            label: 'Cost Breakdown', colorScheme: cs, textTheme: text),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -42,41 +44,29 @@ class BomCostingTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: InfoBlock(
-                label: 'Scrap Material Cost',
-                value: _fmt(bom.scrapMaterialCost, currency),
-                icon: Icons.delete_outline,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: InfoBlock(
-                label: 'Process Loss',
-                value: bom.processLossPercentage > 0
-                    ? '${bom.processLossPercentage.toStringAsFixed(2)} %'
-                    : '-',
-                icon: Icons.trending_down_outlined,
-              ),
-            ),
-          ],
+        // processLossPercentage is double? on the model
+        InfoBlock(
+          label: 'Process Loss',
+          value: (bom.processLossPercentage ?? 0) > 0
+              ? '${(bom.processLossPercentage!).toStringAsFixed(2)} %'
+              : '-',
+          icon: Icons.trending_down_outlined,
         ),
         const SizedBox(height: 16),
 
-        // ── Total cost highlight card ─────────────────────────────────────────────
-        _SectionHeader(label: 'Total Cost', colorScheme: cs, textTheme: text),
+        // ── Total cost highlight ─────────────────────────────────────────────────────────
+        _SectionHeader(
+            label: 'Total Cost', colorScheme: cs, textTheme: text),
         const SizedBox(height: 10),
         _TotalCostCard(
           totalCost: bom.totalCost,
-          currency: currency,
+          currency:  currency,       // now a non-null String
           colorScheme: cs,
-          textTheme: text,
+          textTheme:   text,
         ),
         const SizedBox(height: 16),
 
-        // ── Production details ─────────────────────────────────────────────────
+        // ── Production details ───────────────────────────────────────────────────────
         _SectionHeader(
             label: 'Production Details', colorScheme: cs, textTheme: text),
         const SizedBox(height: 10),
@@ -85,7 +75,7 @@ class BomCostingTab extends StatelessWidget {
             Expanded(
               child: InfoBlock(
                 label: 'Quantity',
-                value: '${_fmtQty(bom.quantity)} ${bom.uom}',
+                value: '${_fmtQty(bom.quantity)} ${bom.uom ?? ''}',
                 icon: Icons.numbers_outlined,
               ),
             ),
@@ -100,13 +90,15 @@ class BomCostingTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
+        // Model fields: defaultSourceWarehouse / defaultTargetWarehouse
+        // (there are no wip_warehouse / fg_warehouse on BOM header)
         Row(
           children: [
             Expanded(
               child: InfoBlock(
-                label: 'WIP Warehouse',
-                value: (bom.wipWarehouse ?? '').isNotEmpty
-                    ? bom.wipWarehouse
+                label: 'Source Warehouse',
+                value: (bom.defaultSourceWarehouse ?? '').isNotEmpty
+                    ? bom.defaultSourceWarehouse!
                     : '-',
                 icon: Icons.warehouse_outlined,
               ),
@@ -114,9 +106,9 @@ class BomCostingTab extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: InfoBlock(
-                label: 'FG Warehouse',
-                value: (bom.fgWarehouse ?? '').isNotEmpty
-                    ? bom.fgWarehouse
+                label: 'Target Warehouse',
+                value: (bom.defaultTargetWarehouse ?? '').isNotEmpty
+                    ? bom.defaultTargetWarehouse!
                     : '-',
                 icon: Icons.store_outlined,
               ),
@@ -134,7 +126,7 @@ class BomCostingTab extends StatelessWidget {
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(3);
 }
 
-// ── Section header ───────────────────────────────────────────────────────────────────────
+// ── Section header ──────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String label;
@@ -171,7 +163,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Total cost highlight ─────────────────────────────────────────────────────────────────
+// ── Total cost highlight ────────────────────────────────────────────────────────────────
 
 class _TotalCostCard extends StatelessWidget {
   final double totalCost;
@@ -222,7 +214,8 @@ class _TotalCostCard extends StatelessWidget {
               Text(
                 'Total Cost',
                 style: textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
+                  color: colorScheme.onPrimaryContainer
+                      .withValues(alpha: 0.7),
                   fontWeight: FontWeight.w600,
                 ),
               ),
