@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'bom_form_controller.dart';
 import 'widgets/bom_items_tab.dart';
@@ -32,24 +31,20 @@ class BomFormScreen extends GetView<BomFormController> {
             appBar: MainAppBar(
               title: bom?.name ?? controller.bomName,
               status: bom?.status,
+              // ── Native save slot — renders SaveIconButton uniformly.
+              onSave:     controller.isDirty.value ? controller.save : null,
+              isSaving:   controller.isSaving.value,
+              isDirty:    controller.isDirty.value,
+              saveResult: controller.saveResult.value,
+              // ── Extra action: Create Work Order (only when BOM is loaded).
               actions: [
-                // ── Create Work Order action ──
-                Obx(() => bom != null
-                    ? IconButton(
-                        icon: const Icon(
-                            Icons.precision_manufacturing_outlined),
-                        tooltip: 'Create Work Order',
-                        onPressed: controller.createWorkOrder,
-                      )
-                    : const SizedBox.shrink()),
-                // ── Save (toggle changes only) ──
-                Obx(() => SaveIconButton(
-                      onPressed:  controller.save,
-                      isSaving:   controller.isSaving.value,
-                      isDirty:    controller.isDirty.value,
-                      saveResult: controller.saveResult.value,
-                      tooltip:    'Save toggle changes',
-                    )),
+                if (bom != null)
+                  IconButton(
+                    icon: const Icon(
+                        Icons.precision_manufacturing_outlined),
+                    tooltip: 'Create Work Order',
+                    onPressed: controller.createWorkOrder,
+                  ),
               ],
               bottom: const TabBar(
                 tabs: [
@@ -144,7 +139,6 @@ class _BomHeaderCard extends StatelessWidget {
                 Expanded(
                   child: InfoBlock(
                     label: 'Quantity',
-                    // uom is String? — null-coalesce
                     value: '${_fmtQty(bom.quantity)} ${bom.uom ?? ''}',
                     icon: Icons.numbers_outlined,
                   ),
@@ -153,7 +147,6 @@ class _BomHeaderCard extends StatelessWidget {
                 Expanded(
                   child: InfoBlock(
                     label: 'Currency',
-                    // currency is String? — null-coalesce before isNotEmpty
                     value: (bom.currency?.isNotEmpty ?? false)
                         ? bom.currency!
                         : '-',
