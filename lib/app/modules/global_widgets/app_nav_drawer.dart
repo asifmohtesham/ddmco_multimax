@@ -21,6 +21,10 @@ List<String> _extractRoutes(List<Widget> widgets) {
       routes.addAll(_extractRoutes([?widget.child]));
     } else if (widget is Column) {
       routes.addAll(_extractRoutes(widget.children));
+    } else if (widget is _ReportSubGroup) {
+      // Recurse into report sub-group children so the parent
+      // _ModuleGroup auto-expands when a report route is active.
+      routes.addAll(_extractRoutes(widget.children));
     }
   }
   return routes;
@@ -75,7 +79,6 @@ class AppNavDrawer extends StatelessWidget {
                   ? user!.name[0].toUpperCase()
                   : 'G';
 
-              // Build the subtitle: designation · department (both optional)
               final parts = [
                 if (user?.designation?.isNotEmpty == true) user!.designation!,
                 if (user?.department?.isNotEmpty  == true) user!.department!,
@@ -94,7 +97,6 @@ class AppNavDrawer extends StatelessWidget {
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 18),
                 ),
-                // Show designation · department when available; fall back to email
                 accountEmail: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -113,7 +115,6 @@ class AppNavDrawer extends StatelessWidget {
                 ),
                 currentAccountPicture: CircleAvatar(
                   backgroundColor: Colors.white,
-                  // Show real avatar when available; fall back to initial letter
                   backgroundImage: (user?.image?.isNotEmpty == true)
                       ? NetworkImage(user!.image!)
                       : null,
@@ -193,8 +194,6 @@ class AppNavDrawer extends StatelessWidget {
                 return ListView(
                   padding: const EdgeInsets.symmetric(vertical: 12.0),
                   children: [
-                    // Dashboard uses _defaultTap: closes drawer then navigates
-                    // only when not already on /home. No custom onTap needed.
                     _DrawerItem(
                       icon: Icons.dashboard_rounded,
                       title: 'Dashboard',
@@ -287,6 +286,20 @@ class AppNavDrawer extends StatelessWidget {
                             currentRoute: currentRoute,
                           ),
                         ),
+                        // ---- Stock > Reports ----
+                        _ReportSubGroup(
+                          currentRoute: currentRoute,
+                          drawerController: drawerController,
+                          groupKey: 'Stock',
+                          children: [
+                            _DrawerItem(
+                              title: 'Batch-Wise Balance',
+                              icon: Icons.history_toggle_off_rounded,
+                              route: AppRoutes.BATCH_WISE_BALANCE,
+                              currentRoute: currentRoute,
+                            ),
+                          ],
+                        ),
                       ],
                     ),
 
@@ -356,6 +369,20 @@ class AppNavDrawer extends StatelessWidget {
                             route: AppRoutes.JOB_CARD,
                             currentRoute: currentRoute,
                           ),
+                        ),
+                        // ---- Manufacturing > Reports ----
+                        _ReportSubGroup(
+                          currentRoute: currentRoute,
+                          drawerController: drawerController,
+                          groupKey: 'Manufacturing',
+                          children: [
+                            _DrawerItem(
+                              title: 'BOM Search',
+                              icon: Icons.manage_search_rounded,
+                              route: AppRoutes.BOM_SEARCH,
+                              currentRoute: currentRoute,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -495,8 +522,6 @@ class _ModuleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Persistent state: use stored value if present, else auto-expand
-    // when a child route is active.
     final initialExpanded =
         drawerController.isGroupExpanded(title, defaultValue: _hasActiveChild);
 
@@ -525,6 +550,78 @@ class _ModuleGroup extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// _ReportSubGroup — nested ExpansionTile for the Reports subsection
+// ---------------------------------------------------------------------------
+
+/// A second-level collapsible group that lists report screen links.
+/// Sits inside a [_ModuleGroup] as a visually indented sub-section.
+///
+/// [groupKey] must be unique per parent module (e.g. 'Manufacturing')
+/// so that [AppNavDrawerController.expandedGroups] can persist its
+/// open/closed state independently from its parent.
+class _ReportSubGroup extends StatelessWidget {
+  final List<Widget>           children;
+  final String                 currentRoute;
+  final AppNavDrawerController drawerController;
+  /// Unique key scoped to the parent module, e.g. 'Manufacturing'.
+  final String                 groupKey;
+
+  const _ReportSubGroup({
+    required this.children,
+    required this.currentRoute,
+    required this.drawerController,
+    required this.groupKey,
+  });
+
+  String get _stateKey => '$groupKey\_reports';
+
+  bool get _hasActiveChild {
+    final routes = _extractRoutes(children);
+    return routes.any(
+      (r) => r.isNotEmpty && currentRoute == r,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryColor   = Theme.of(context).primaryColor;
+    final initialExpanded =
+        drawerController.isGroupExpanded(_stateKey, defaultValue: _hasActiveChild);
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Padding(
+        // Indent the sub-group relative to its siblings.
+        padding: const EdgeInsets.only(left: 16),
+        child: ExpansionTile(
+          initiallyExpanded: initialExpanded,
+          onExpansionChanged: (v) =>
+              drawerController.setGroupExpanded(_stateKey, v),
+          leading: Icon(
+            Icons.summarize_rounded,
+            size: 18,
+            color: Colors.grey.shade600,
+          ),
+          title: Text(
+            'Reports',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+          childrenPadding: EdgeInsets.zero,
+          iconColor:  primaryColor,
+          textColor:  primaryColor,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // _DrawerItem
 // ---------------------------------------------------------------------------
 
@@ -534,10 +631,6 @@ class _DrawerItem extends StatelessWidget {
   final String   route;
   final String   currentRoute;
 
-  /// Optional override. Receives the widget's own [BuildContext] so
-  /// Navigator.of(ctx).pop() is always available without Get.context.
-  /// Provide this only when extra side-effects are needed alongside
-  /// the default close-then-navigate behaviour.
   final void Function(BuildContext ctx)? onTap;
 
   const _DrawerItem({
@@ -550,8 +643,8 @@ class _DrawerItem extends StatelessWidget {
 
   void _defaultTap(BuildContext ctx) {
     HapticFeedback.lightImpact();
-    Navigator.of(ctx).pop();                               // close drawer safely
-    if (route.isNotEmpty && Get.currentRoute != route) {   // same-route guard
+    Navigator.of(ctx).pop();
+    if (route.isNotEmpty && Get.currentRoute != route) {
       Get.toNamed(route);
     }
   }
@@ -581,7 +674,6 @@ class _DrawerItem extends StatelessWidget {
                   ? primaryColor.withValues(alpha: 0.08)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
-              // Left-edge accent bar replaces the trailing dot indicator
               border: Border(
                 left: BorderSide(
                   color: isSelected ? primaryColor : Colors.transparent,
@@ -617,7 +709,6 @@ class _DrawerItem extends StatelessWidget {
                   letterSpacing: 0.2,
                 ),
               ),
-              // Trailing dot removed — left border is the selection indicator
             ),
           ),
         ),
