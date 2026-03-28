@@ -44,7 +44,7 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [isAddingItemFlag]   wired to _parent.isAddingItem
 ///   • [isScanning]         left at base default (SE scan bar is doc-level)
 ///   • [sheetScanController] left null (SE scan bar is doc-level)
-///   • [qtyInfoText]        SE-specific 'Avail / MR max' string or null
+///   • [qtyInfoText]        POS-aware cap display, or original 'Avail / MR max' string
 ///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
 ///
 /// P1-C: [isSheetLoading] overridden to also cover SE dual-rack validation
@@ -149,14 +149,50 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isValidatingSourceRack.value ||
       isValidatingTargetRack.value;
 
-  // ── Step-2: qtyInfoText ───────────────────────────────────────────────────
+  // ── qtyInfoText: POS-aware cap display ────────────────────────────────────
+  //
+  // When a serial is selected and a POS Upload is loaded, shows:
+  //   'Invoice #N — Remaining: X / Y pcs · Avail: Z'
+  //
+  // Falls back to the original 'Avail / MR max' string otherwise,
+  // so non-POS stock entries are completely unaffected.
 
   @override
   String? get qtyInfoText {
+    final serial = selectedSerial.value;
+
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final serialNo  = int.tryParse(serial) ?? 0;
+      final cap       = _parent.posQtyCapForSerial(serial);
+      final used      = _parent.scannedQtyForSerial(
+        serial,
+        excludeItemName: editingItemName.value,
+      );
+      final remaining = (cap - used).clamp(0.0, cap);
+
+      final capStr = cap % 1 == 0
+          ? cap.toInt().toString()
+          : cap.toStringAsFixed(2);
+      final remStr = remaining % 1 == 0
+          ? remaining.toInt().toString()
+          : remaining.toStringAsFixed(2);
+
+      final effMax = effectiveMaxQty;
+      final availPart = effMax < 999999.0
+          ? ' \u00b7 Avail: ${effMax.toStringAsFixed(0)}'
+          : '';
+
+      return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs$availPart';
+    }
+
+    // Non-POS fallback — original behaviour.
     final effectiveMax = effectiveMaxQty;
     final maxMr        = validationMaxQty.value;
     if (effectiveMax < 999999.0 && maxMr > 0) {
-      return 'Avail: ${effectiveMax.toStringAsFixed(0)} • MR max: ${maxMr.toStringAsFixed(0)}';
+      return 'Avail: ${effectiveMax.toStringAsFixed(0)} \u2022 MR max: ${maxMr.toStringAsFixed(0)}';
     } else if (effectiveMax < 999999.0) {
       return 'Available: ${effectiveMax.toStringAsFixed(0)}';
     } else if (maxMr > 0) {
@@ -186,8 +222,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void initialise({
     required StockEntryFormController parent,
     required String code,
-    required String name,
     required String variantOf,
+    required String name,
     required String itemName,
     String? batchNo,
     StockEntryItem? editingItem,
