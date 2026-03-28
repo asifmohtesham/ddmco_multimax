@@ -44,8 +44,8 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [isAddingItemFlag]   wired to _parent.isAddingItem
 ///   • [isScanning]         left at base default (SE scan bar is doc-level)
 ///   • [sheetScanController] left null (SE scan bar is doc-level)
-///   • [qtyInfoText]        POS-aware cap display (serial chip only),
-///                          or original 'Avail / MR max' string on Qty field
+///   • [qtyInfoText]        simplified to 'Max: N' (Commit C) — for now
+///                          keeps the POS-aware cap display
 ///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
 ///
 /// P1-C: [isSheetLoading] overridden to also cover SE dual-rack validation
@@ -81,6 +81,13 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///     was redundant and caused truncation.
 ///   • SharedSerialField renders qtyInfoText as a _PosCapChip directly
 ///     below the dropdown so feedback appears at the point of serial selection.
+///
+/// Commit A additions:
+///   • [liveRemaining] — Rx<double> written in validateSheet() on every
+///     qty/serial change so SharedSerialField's Obx rebuilds reactively.
+///   • [posSerialCapText] — dedicated getter for the chip label, decoupled
+///     from qtyInfoText so Commit C can simplify qtyInfoText → 'Max: N'
+///     without breaking the chip string.
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
@@ -118,26 +125,27 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // isBatchReadOnly → promoted to base (S1)
   // currentScannedEan8 → promoted to base as currentScannedEan (S1)
 
+  // ── Commit A: reactive remaining qty for serial cap chip ──────────────────
+  /// Written in validateSheet() on every qty / serial change.
+  /// SharedSerialField subscribes to this so the cap chip rebuilds
+  /// immediately as the operator types — without waiting for a serial
+  /// selection event.
+  var liveRemaining = 0.0.obs;
+
   // ── SE dirty-check snapshots (source + target rack extend base) ───────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
 
   // ── AutoFillRackMixin hooks ───────────────────────────────────────────────
 
-  /// Routes autofill writes to the SE source-rack TEC, not the base
-  /// rackController which is unused by SE's submission / validation path.
   @override
   TextEditingController get autoFillRackController => sourceRackController;
 
-  /// Triggers SE's dual-rack validation pipeline for the source side after
-  /// the mixin writes the selected rack name to sourceRackController.
   @override
   void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
-  /// The effective source warehouse for this item, used by both
-  /// stock-balance fetching and AutoFillRackMixin warehouse constraint.
   @override
   String? get resolvedWarehouse =>
       itemSourceWarehouse.value ??
@@ -148,7 +156,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get requiresBatch => true;
 
   @override
-  bool get requiresRack => false; // dual-rack rules handled in isValidRacks()
+  bool get requiresRack => false;
 
   // ── P1-C: isSheetLoading override ────────────────────────────────────────
 
@@ -158,22 +166,37 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isValidatingSourceRack.value ||
       isValidatingTargetRack.value;
 
-  // ── qtyInfoText: POS-aware cap display ────────────────────────────────────
+  // ── posSerialCapText: chip label for SharedSerialField ────────────────────
   //
-  // POS branch (serial selected + POS Upload loaded):
-  //   Returns the invoice cap string shown as a chip UNDER the serial dropdown
-  //   via SharedSerialField._PosCapChip:
-  //       'Invoice #N — Remaining: X / Y pcs'
+  // Returns 'Invoice #N — Remaining: X / Y pcs' when in POS context with a
+  // valid serial selected; null otherwise.
   //
-  //   The '· Avail: Z' suffix was removed (P5): available stock is already
-  //   shown on the Quantity field via the non-POS base fallback, so including
-  //   it here was redundant and caused visible truncation on narrow screens.
-  //
-  // Non-POS fallback:
-  //   Returns the original 'Available / MR max' string which the base
-  //   UniversalItemFormSheet renders next to the Quantity label.
-  //   Non-POS stock entries are completely unaffected.
+  // Decoupled from qtyInfoText so Commit C can simplify qtyInfoText to
+  // 'Max: N' without changing the chip string.
+  String? get posSerialCapText {
+    final serial = selectedSerial.value;
+    if (serial == null || serial == '0' || serial.isEmpty) return null;
+    if (_parent.posUpload.value == null) return null;
 
+    final serialNo  = int.tryParse(serial) ?? 0;
+    final cap       = _parent.posQtyCapForSerial(serial);
+    final used      = _parent.scannedQtyForSerial(
+      serial,
+      excludeItemName: editingItemName.value,
+    );
+    final remaining = (cap - used).clamp(0.0, cap);
+
+    final capStr = cap % 1 == 0
+        ? cap.toInt().toString()
+        : cap.toStringAsFixed(2);
+    final remStr = remaining % 1 == 0
+        ? remaining.toInt().toString()
+        : remaining.toStringAsFixed(2);
+
+    return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs';
+  }
+
+  // ── qtyInfoText: Qty-field label (POS-aware, unchanged until Commit C) ────
   @override
   String? get qtyInfoText {
     final serial = selectedSerial.value;
@@ -197,11 +220,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           ? remaining.toInt().toString()
           : remaining.toStringAsFixed(2);
 
-      // No '· Avail' suffix — available stock is already on the Qty field.
       return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs';
     }
 
-    // Non-POS fallback — original behaviour, rendered next to Quantity label.
     final effectiveMax = effectiveMaxQty;
     final maxMr        = validationMaxQty.value;
     if (effectiveMax < 999999.0 && maxMr > 0) {
@@ -244,7 +265,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     List<Map<String, dynamic>> mrReferenceItems = const [],
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan8; // S1: base field
+    currentScannedEan = scannedEan8;
 
     isAddingItemFlag = _parent.isAddingItem;
 
@@ -270,7 +291,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validationMaxQty.value       = 0.0;
     isLoadingBatchBalance.value  = false;
     isLoadingRackBalance.value   = false;
-    isBatchReadOnly.value        = false; // S1: base field
+    isBatchReadOnly.value        = false;
+    liveRemaining.value          = 0.0;
     sourceRackController.clear();
     targetRackController.clear();
 
@@ -289,12 +311,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo, mrReferenceItems);
     }
 
-    // isAddMode must be set before initAutoFillListener() so the mixin
-    // guard reads the correct value when the qty listener first fires.
     isAddMode = editingItem == null;
 
     initBaseListeners();
-    initAutoFillListener(); // AutoFillRackMixin: qty → sourceRackController autofill
+    initAutoFillListener();
     sourceRackController.addListener(validateSheet);
     targetRackController.addListener(validateSheet);
     ever(selectedSerial, (_) => validateSheet());
@@ -316,7 +336,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     validateSheet();
-    fetchAllRackStocks(); // pre-warm rackStockMap so Browse Rack is never empty on open (mirrors DN)
+    fetchAllRackStocks();
   }
 
   void _loadExistingItem(
@@ -343,7 +363,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     isBatchValid.value           = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value        = isBatchValid.value; // S1: base field
+    isBatchReadOnly.value        = isBatchValid.value;
     isSourceRackValid.value      = item.rack   != null && item.rack!.isNotEmpty;
     isTargetRackValid.value      = item.toRack != null && item.toRack!.isNotEmpty;
     itemSourceWarehouse.value    = item.sWarehouse;
@@ -352,7 +372,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     derivedTargetWarehouse.value = item.tWarehouse;
 
     if (item.batchNo != null && item.batchNo!.contains('-')) {
-      currentScannedEan = item.batchNo!.split('-').first; // S1: base field
+      currentScannedEan = item.batchNo!.split('-').first;
     }
 
     log('[SE:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo}',
@@ -375,10 +395,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     isBatchValid.value    = batchNo != null && batchNo.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value; // S1: base field
+    isBatchReadOnly.value = isBatchValid.value;
 
     if (isBatchValid.value) {
-      validateBatchOnInit(batchNo!); // S1: base method
+      validateBatchOnInit(batchNo!);
     }
 
     log('[SE:ItemSheet] new item code=${itemCode.value} batch=$batchNo',
@@ -391,9 +411,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void validateSheet() {
     bool valid = true;
 
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) valid = false;
+    final qty    = double.tryParse(qtyController.text) ?? 0;
     final effMax = effectiveMaxQty;
+    if (qty <= 0) valid = false;
     if (effMax < 999999.0 && qty > effMax) valid = false;
 
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
@@ -407,6 +427,22 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
 
     if (!validateSerial()) valid = false;
+
+    // ── Commit A: sync liveRemaining so chip Obx rebuilds on qty change ──
+    final serial = selectedSerial.value;
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final cap  = _parent.posQtyCapForSerial(serial);
+      final used = _parent.scannedQtyForSerial(
+        serial,
+        excludeItemName: editingItemName.value,
+      );
+      liveRemaining.value = (cap - used).clamp(0.0, cap);
+    } else {
+      liveRemaining.value = 0.0;
+    }
 
     isFormDirty.value = isFieldsDirty ||
         sourceRackController.text != _snapshotSourceRack ||
@@ -515,7 +551,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateBatch (SE-specific override) ──────────────────────────────────
-  // validateBatchOnInit → removed; use base method (S1)
 
   @override
   Future<void> validateBatch(String batch) async {
@@ -526,7 +561,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final parts = batch.split('-');
       if (parts.length >= 2 && parts[0] == parts[1]) {
         isBatchValid.value    = false;
-        isBatchReadOnly.value = false; // S1: base field
+        isBatchReadOnly.value = false;
         batchError.value      = 'Invalid Batch: Batch ID cannot match EAN';
         validateSheet();
         return;
@@ -546,7 +581,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           (response.data['data'] as List).isNotEmpty) {
         final batchData = response.data['data'][0];
         isBatchValid.value    = true;
-        isBatchReadOnly.value = true; // S1: base field
+        isBatchReadOnly.value = true;
         final double pkgQty =
             (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
         if (pkgQty > 0) {
@@ -556,7 +591,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         }
         await _updateAvailableStock();
         await _updateBatchBalance();
-        unawaited(fetchAllRackStocks()); // refresh rackStockMap with batch-filtered data (mirrors base validateBatch)
+        unawaited(fetchAllRackStocks());
 
         final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
         if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
@@ -569,12 +604,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         }
       } else {
         isBatchValid.value    = false;
-        isBatchReadOnly.value = false; // S1: base field
+        isBatchReadOnly.value = false;
         GlobalSnackbar.error(message: 'Batch not found for this item');
       }
     } catch (e) {
       isBatchValid.value    = false;
-      isBatchReadOnly.value = false; // S1: base field
+      isBatchReadOnly.value = false;
       GlobalSnackbar.error(message: 'Failed to validate batch: $e');
     } finally {
       isValidatingBatch.value = false;
@@ -584,7 +619,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   void resetBatchValidation() {
     isBatchValid.value    = false;
-    isBatchReadOnly.value = false; // S1: base field
+    isBatchReadOnly.value = false;
     batchError.value      = null;
     validateSheet();
   }
@@ -816,15 +851,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   void onClose() {
-    disposeAutoFillListener(); // AutoFillRackMixin: remove qty TEC listener
-    // Remove SE-specific TEC listeners synchronously so no in-flight
-    // notifications can reach validateSheet after the controller closes.
+    disposeAutoFillListener();
     sourceRackController.removeListener(validateSheet);
     targetRackController.removeListener(validateSheet);
-    // Defer dispose() to post-frame — mirrors the base-class B-2 fix.
-    // The sheet's LayoutBuilder sub-frame may still be mounted when GetX
-    // calls onClose(); disposing synchronously causes _AnimatedState to
-    // call addListener() on the already-disposed TEC and crash.
     final src = sourceRackController;
     final tgt = targetRackController;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -835,24 +864,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Test-support helpers ──────────────────────────────────────────────────
-  //
-  // These methods are intentionally public so that unit tests can drive
-  // the controller's pure state-machine logic without going through the
-  // async network paths in initialise() / validateBatch() / validateDualRack().
-  //
-  // They must NOT be called from production UI code.
 
-  /// Wires [_parent] directly, without going through the full [initialise]
-  /// lifecycle (no listeners, no async, no WidgetsBinding).
-  ///
-  /// For use by [makeItemCtrl()] in test helpers ONLY.
   // ignore: use_setters_to_change_properties
   void testInjectParent(StockEntryFormController parent) {
     _parent = parent;
   }
 
-  /// Returns true iff the entered qty is positive and does not exceed
-  /// [effectiveMaxQty].  Mirrors the qty portion of [validateSheet].
   bool isValidQty() {
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return false;
@@ -861,16 +878,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return true;
   }
 
-  /// Clamp-safe stepper that respects [effectiveMaxQty].
-  ///
-  /// Increments / decrements [qtyController] by [delta]:
-  ///   • Result \u2264 0  → field cleared (empty string, represents 0).
-  ///   • Result > effectiveMaxQty (when ceiling exists) → rejected; field
-  ///     stays at its current value.
-  ///   • Otherwise   → field set to integer string (no decimal for whole numbers).
-  ///
-  /// Mirrors the behaviour of [ItemSheetControllerBase.adjustQty] but uses
-  /// [effectiveMaxQty] (the SE multi-ceiling) instead of [maxQty].
   void adjustSheetQty(double delta) {
     final current = double.tryParse(qtyController.text) ?? 0;
     final next    = current + delta;
@@ -880,20 +887,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       return;
     }
     final effMax = effectiveMaxQty;
-    if (effMax < 999999.0 && next > effMax) {
-      // Reject the entire delta — leave field unchanged.
-      return;
-    }
+    if (effMax < 999999.0 && next > effMax) return;
     qtyController.text =
         next % 1 == 0 ? next.toInt().toString() : next.toString();
     validateSheet();
   }
 
-  /// Seeds snapshot fields so tests can simulate an already-saved edit-mode
-  /// item without going through the full [initialise] lifecycle.
-  ///
-  /// After calling this, [isFormDirty] and [isFieldsDirty] will return false
-  /// until the caller mutates a TEC or [selectedSerial].
   void setInitialSnapshot({
     String qty        = '',
     String batch      = '',
@@ -904,9 +903,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     batchController.text      = batch;
     sourceRackController.text = sourceRack;
     targetRackController.text = targetRack;
-    // Base snapshot (qty, batch, rackController — unused by SE but kept consistent)
     captureSnapshot();
-    // SE-specific snapshot
     _snapshotSourceRack = sourceRack;
     _snapshotTargetRack = targetRack;
   }

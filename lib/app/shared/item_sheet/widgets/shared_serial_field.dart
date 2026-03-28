@@ -20,19 +20,14 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 /// The widget renders nothing when [PosSerialMixin.availableSerialNos] is
 /// empty, so callers do not need an `if` guard.
 ///
-/// POS cap chip (added in P5):
-///   When the controller exposes a non-null [qtyInfoText] (duck-typed via
-///   dynamic — only SE's item controller does this in the POS branch),
-///   a teal pill chip is rendered directly below the dropdown showing
-///   the remaining invoice cap, e.g.:
-///       Invoice #1 — Remaining: 3 / 5 pcs
-///   This moves the cap feedback to its semantic home (the serial field)
-///   rather than cluttering the Quantity label row.
+/// POS cap chip (Commit A):
+///   The chip below the serial dropdown reads [posSerialCapText] (duck-typed)
+///   which is a dedicated getter on StockEntryItemFormController, decoupled
+///   from [qtyInfoText]. The Obx also subscribes to [liveRemaining] (duck-typed)
+///   so the chip text re-computes on every qty keystroke, not only on serial
+///   selection changes.
 class SharedSerialField extends StatelessWidget {
-  /// The item-sheet controller. Must implement [PosSerialMixin].
   final ItemSheetControllerBase controller;
-
-  /// Accent colour used for the field group label. Defaults to blueGrey.
   final Color accentColor;
 
   const SharedSerialField({
@@ -43,9 +38,6 @@ class SharedSerialField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Runtime cast — safe because every DocType that shows this field
-    // mixes in PosSerialMixin. If the mixin is absent the field is never
-    // added to customFields, so this path is unreachable in practice.
     final serial = controller as PosSerialMixin;
 
     final serials = serial.availableSerialNos;
@@ -70,23 +62,33 @@ class SharedSerialField extends StatelessWidget {
                 items: serials.map((s) {
                   return DropdownMenuItem(
                     value: s,
-                    child: Text('Serial #$s'),
+                    child: Text('Serial #\$s'),
                   );
                 }).toList(),
                 onChanged: (value) => serial.selectedSerial.value = value,
               )),
 
           // ── POS cap chip ─────────────────────────────────────────────────
-          // Reads qtyInfoText from the controller via duck-typing.
-          // Non-null only when:
-          //   • controller is StockEntryItemFormController, AND
-          //   • a serial is selected, AND
-          //   • a POS Upload is loaded on the parent.
-          // Collapses to nothing for every other DocType / flow.
+          // Reads posSerialCapText via duck-typing.
+          // Also subscribes to liveRemaining (duck-typed) so the chip
+          // rebuilds on every qty keystroke, not only on serial changes.
+          // Both duck-type accesses are guarded in try/catch so non-SE
+          // controllers (which lack these getters) silently collapse to
+          // SizedBox.shrink() — no type guard needed at the call site.
           Obx(() {
             final dynamic c = controller;
-            final String? capText =
-                c.qtyInfoText as String?;
+
+            // Subscribe to liveRemaining to trigger rebuilds on qty change.
+            // The value itself is unused here; posSerialCapText re-reads it.
+            try {
+              final _ = (c.liveRemaining as RxDouble).value;
+            } catch (_) {}
+
+            String? capText;
+            try {
+              capText = c.posSerialCapText as String?;
+            } catch (_) {}
+
             if (capText == null || capText.isEmpty) {
               return const SizedBox.shrink();
             }
@@ -100,9 +102,6 @@ class SharedSerialField extends StatelessWidget {
 
 /// Teal pill chip shown below the Invoice Serial No dropdown when a POS
 /// Upload is loaded and a serial is selected.
-///
-/// Mirrors the visual language of the existing Batch Balance / Rack Balance
-/// chips in the item sheet (rounded container, accent background, small text).
 class _PosCapChip extends StatelessWidget {
   final String text;
   const _PosCapChip({required this.text});
