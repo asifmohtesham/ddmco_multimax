@@ -25,12 +25,22 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///               background guarantees visibility against any AppBar surface.
 ///               A [Badge] overlays the count in the top-right corner using
 ///               onError-on-error colours.
+///
+/// ### Leading button
+/// By default [automaticallyImplyLeading] is `true` and Flutter will insert
+/// a back-arrow when the screen is on top of another route.  Pass `false`
+/// for top-level screens that should show the Drawer menu button instead.
 class DocTypeListHeader extends StatelessWidget {
-  // ── AppBar ──────────────────────────────────────────────────────────────
+  // ── AppBar ────────────────────────────────────────────────────────────
   final String title;
   final List<Widget>? extraActions;
 
-  // ── Search ──────────────────────────────────────────────────────────────
+  /// When `false` the [SliverAppBar] will not insert a back-arrow even when
+  /// the current route has a predecessor on the navigation stack.
+  /// Defaults to `true` to preserve existing behaviour for all other callers.
+  final bool automaticallyImplyLeading;
+
+  // ── Search ────────────────────────────────────────────────────────────
   final String? searchDoctype;
   final String? searchRoute;
 
@@ -40,11 +50,11 @@ class DocTypeListHeader extends StatelessWidget {
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClear;
 
-  // ── Filter ──────────────────────────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────
   final RxMap<String, dynamic>? activeFilters;
   final VoidCallback? onFilterTap;
 
-  // ── Chip row ──────────────────────────────────────────────────────────────
+  // ── Chip row ─────────────────────────────────────────────────────────────
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
@@ -52,6 +62,7 @@ class DocTypeListHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.extraActions,
+    this.automaticallyImplyLeading = true,
     this.searchDoctype,
     this.searchRoute,
     this.searchQuery,
@@ -73,7 +84,7 @@ class DocTypeListHeader extends StatelessWidget {
     );
   }
 
-  // ── AppBar ──────────────────────────────────────────────────────────────
+  // ── AppBar ────────────────────────────────────────────────────────────
 
   Widget _buildAppBar(BuildContext context) {
     final List<Widget> actions = [
@@ -111,7 +122,7 @@ class DocTypeListHeader extends StatelessWidget {
           },
         ),
 
-      // ── Search icon ─────────────────────────────────────────────────────
+      // ── Search icon ────────────────────────────────────────────────────
       //
       // Two distinct code paths to satisfy GetX’s requirement that every
       // Obx closure subscribes to at least one observable:
@@ -208,6 +219,7 @@ class DocTypeListHeader extends StatelessWidget {
     return SliverAppBar.large(
       title: Text(title),
       actions: actions.isEmpty ? null : actions,
+      automaticallyImplyLeading: automaticallyImplyLeading,
       scrolledUnderElevation: 0,
     );
   }
