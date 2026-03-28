@@ -46,7 +46,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ───────────────────────────────────────────────────
+  // ── Document-level state ──────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -54,7 +54,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine ─────────────────────────────────────────────
+  // ── Save result state machine ────────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -79,23 +79,23 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ───────────────────────────────────────────
+  // ── Sheet-open + item-edit loading flags ────────────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ──────────────────────────────────────────────────────────────
+  // ── Warehouse ─────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
 
-  // ── Item warehouse (derived from rack) ─────────────────────────────────────────
+  // ── Item warehouse (derived from rack) ───────────────────────────────────────────
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ───────────────────────────────────────────────────────
+  // ── Customer-level error ─────────────────────────────────────────────────────
   var customerError = RxnString();
 
-  // ── EAN scan context ──────────────────────────────────────────────────────────
+  // ── EAN scan context ───────────────────────────────────────────────────────
   String currentScannedEan = '';
 
   // ── Persistent scan worker ───────────────────────────────────────────────────
@@ -128,7 +128,7 @@ class DeliveryNoteFormController extends GetxController
     super.onClose();
   }
 
-  // ── Raw scan entry point ───────────────────────────────────────────────
+  // ── Raw scan entry point ─────────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
         name: 'DN');
@@ -148,7 +148,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ──────────────────────────────────────────────────────────────────
+  // ── PopScope ───────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -158,7 +158,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Dirty tracking ──────────────────────────────────────────────────────────────
+  // ── Dirty tracking ─────────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -186,7 +186,7 @@ class DeliveryNoteFormController extends GetxController
     isDirty.value = false;
   }
 
-  // ── Data fetching ───────────────────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -252,7 +252,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── OptimisticLockingMixin contract ────────────────────────────────────────────
+  // ── OptimisticLockingMixin contract ──────────────────────────────────────────────
   @override
   Future<void> reloadDocument() async {
     await fetchDeliveryNote();
@@ -269,6 +269,29 @@ class DeliveryNoteFormController extends GetxController
     } catch (e) {
       log('[DN:fetchPosUpload] error: $e', name: 'DN');
     }
+  }
+
+  // ── POS qty-cap helpers ────────────────────────────────────────────────────────
+
+  /// Returns the POS Upload qty cap for [serial] (the idx string),
+  /// or [double.infinity] when there is no POS context.
+  double posQtyCapForSerial(String serial) {
+    final idx = int.tryParse(serial);
+    if (idx == null || posUpload.value == null) return double.infinity;
+    return posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == idx)
+            ?.quantity ??
+        double.infinity;
+  }
+
+  /// Returns the qty already recorded on this DN for [serial],
+  /// optionally excluding a specific row being edited ([excludeItemName]).
+  double scannedQtyForSerial(String serial, {String? excludeItemName}) {
+    return (deliveryNote.value?.items ?? [])
+        .where((i) =>
+            (i.customInvoiceSerialNumber ?? '0') == serial &&
+            i.name != excludeItemName)
+        .fold(0.0, (sum, i) => sum + i.qty);
   }
 
   // ── Item sheet orchestration ──────────────────────────────────────────────────
@@ -458,19 +481,39 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ─────────────────────────────────────────────────────────────────
+  // ── Item CRUD ──────────────────────────────────────────────────────────────
+
   void updateItemLocally(
       String itemNameID, double qty, String rack,
       String? batchNo, String? invoiceSerial) {
-    final items = deliveryNote.value?.items.toList() ?? [];
-    final idx   = items.indexWhere((i) => i.name == itemNameID);
-    if (idx != -1) {
-      items[idx] = items[idx].copyWith(
-          qty: qty, rack: rack, batchNo: batchNo,
-          customInvoiceSerialNumber: invoiceSerial);
-      deliveryNote.update((val) => val?.items.assignAll(items));
-      _triggerItemFeedback(items[idx].itemCode, invoiceSerial ?? '0');
+    final serial = invoiceSerial ?? '0';
+    final items  = deliveryNote.value?.items.toList() ?? [];
+    final idx    = items.indexWhere((i) => i.name == itemNameID);
+    if (idx == -1) return;
+
+    // ── Hard block: POS qty cap ──────────────────────────────────────────────
+    if (serial != '0' && posUpload.value != null) {
+      final cap        = posQtyCapForSerial(serial);
+      final othersQty  = scannedQtyForSerial(serial,
+          excludeItemName: itemNameID);
+      if (othersQty + qty > cap) {
+        final posItem = posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == int.tryParse(serial));
+        GlobalDialog.showQtyCapExceeded(
+          serialNo:   int.parse(serial),
+          itemName:   posItem?.itemName ?? items[idx].itemName ?? '',
+          scannedQty: othersQty,
+          capQty:     cap,
+        );
+        return;
+      }
     }
+
+    items[idx] = items[idx].copyWith(
+        qty: qty, rack: rack, batchNo: batchNo,
+        customInvoiceSerialNumber: invoiceSerial);
+    deliveryNote.update((val) => val?.items.assignAll(items));
+    _triggerItemFeedback(items[idx].itemCode, serial);
   }
 
   void addItemLocally(
@@ -478,6 +521,34 @@ class DeliveryNoteFormController extends GetxController
       String? batchNo, String? invoiceSerial) {
     final items  = deliveryNote.value?.items.toList() ?? [];
     final serial = invoiceSerial ?? '0';
+
+    // ── Hard block: POS qty cap ──────────────────────────────────────────────
+    if (serial != '0' && posUpload.value != null) {
+      final cap = posQtyCapForSerial(serial);
+
+      // If this scan would merge into an existing row, exclude that
+      // row's current qty from alreadyUsed to avoid double-counting.
+      final existingIdx = items.indexWhere((i) =>
+          i.itemCode == itemCode &&
+          (i.batchNo ?? '') == (batchNo ?? '') &&
+          (i.rack ?? '') == rack &&
+          (i.customInvoiceSerialNumber ?? '0') == serial);
+      final mergeQty = existingIdx != -1 ? items[existingIdx].qty : 0.0;
+      final alreadyUsed  = scannedQtyForSerial(serial);
+      final projectedTotal = alreadyUsed - mergeQty + qty;
+
+      if (projectedTotal > cap) {
+        final posItem = posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == int.tryParse(serial));
+        GlobalDialog.showQtyCapExceeded(
+          serialNo:   int.parse(serial),
+          itemName:   posItem?.itemName ?? itemName,
+          scannedQty: alreadyUsed - mergeQty,
+          capQty:     cap,
+        );
+        return;
+      }
+    }
 
     final existingIdx = items.indexWhere((i) =>
         i.itemCode == itemCode &&
@@ -524,7 +595,7 @@ class DeliveryNoteFormController extends GetxController
     showBanner('Item removed', type: BannerType.success);
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────────────
+  // ── Save ────────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -584,7 +655,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── UX helpers ────────────────────────────────────────────────────────────────────
+  // ── UX helpers ─────────────────────────────────────────────────────────────────
   void _triggerItemFeedback(String itemCode, String serial) {
     recentlyAddedItemCode.value = itemCode;
     recentlyAddedSerial.value   = serial;
@@ -625,7 +696,7 @@ class DeliveryNoteFormController extends GetxController
         expandedInvoice.value == key ? '' : key;
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────────────
+  // ── Scan routing ─────────────────────────────────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     if (deliveryNote.value == null) return false;
     if (deliveryNote.value!.customer.isEmpty) {
@@ -652,7 +723,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── INSIDE-SHEET PATH ─────────────────────────────────────────────────────────────────────────
+    // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
       log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
           name: 'DN');
@@ -710,7 +781,7 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // ── OUTSIDE-SHEET PATH ───────────────────────────────────────────────────────────────────────────
+    // ── OUTSIDE-SHEET PATH ────────────────────────────────────────────────────────────────────────────────────────
     log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
         name: 'DN');
     isScanning.value = true;
