@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/bom_search_result.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/bom/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
@@ -16,7 +17,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      // ── AppBar with filter icon ────────────────────────────────────────
+      // ── AppBar with filter icon ───────────────────────────────────────
       appBar: MainAppBar(
         title: 'BOM Search',
         actions: [
@@ -44,7 +45,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
         ],
       ),
 
-      // ── Run Report FAB ───────────────────────────────────────────
+      // ── Run Report FAB ────────────────────────────────────────
       floatingActionButton: Obx(() {
         final enabled =
             controller.canRun.value && !controller.isLoading.value;
@@ -76,7 +77,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Active filter chip strip ──────────────────────────────────
+          // ── Active filter chip strip ──────────────────────────────
           // Shows one dismissible chip per filled Item Code slot.
           // Tapping any chip re-opens the filter sheet.
           Obx(() {
@@ -174,7 +175,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
             );
           }),
 
-          // ── Results ──────────────────────────────────────────────────
+          // ── Results ────────────────────────────────────────────
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
@@ -217,6 +218,10 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) => _BomSearchResultCard(
                   result: controller.results[index],
+                  onTap: () => Get.toNamed(
+                    AppRoutes.BOM_FORM,
+                    arguments: {'name': controller.results[index].bom},
+                  ),
                 ),
               );
             }),
@@ -227,11 +232,12 @@ class BomSearchScreen extends GetView<BomSearchController> {
   }
 }
 
-// ── Result card ──────────────────────────────────────────────────────────────
+// ── Result card ──────────────────────────────────────────────────
 
 class _BomSearchResultCard extends StatelessWidget {
   final BomSearchResult result;
-  const _BomSearchResultCard({required this.result});
+  final VoidCallback    onTap;
+  const _BomSearchResultCard({required this.result, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -250,99 +256,111 @@ class _BomSearchResultCard extends StatelessWidget {
         ),
       ),
       color: cs.surfaceContainerLowest,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header row: BOM name + badges ────────────────────
-            Row(
-              children: [
-                Icon(
-                  Icons.account_tree_rounded,
-                  size: 16,
-                  color: isActive ? cs.primary : cs.outlineVariant,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    result.bom.isNotEmpty ? result.bom : '—',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: cs.onSurface,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header row: BOM name + badges ────────────────────
+              Row(
+                children: [
+                  Icon(
+                    Icons.account_tree_rounded,
+                    size: 16,
+                    color: isActive ? cs.primary : cs.outlineVariant,
                   ),
-                ),
-                const SizedBox(width: 8),
-                _Badge(
-                  label:      isActive ? 'Active' : 'Inactive',
-                  color:      isActive ? cs.tertiary : cs.outline,
-                  background: isActive
-                      ? cs.tertiaryContainer
-                      : cs.surfaceContainerHighest,
-                ),
-                if (isDefault) ...[
                   const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      result.bom.isNotEmpty ? result.bom : '—',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: cs.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   _Badge(
-                    label:      'Default',
-                    color:      cs.primary,
-                    background: cs.primaryContainer,
+                    label:      isActive ? 'Active' : 'Inactive',
+                    color:      isActive ? cs.tertiary : cs.outline,
+                    background: isActive
+                        ? cs.tertiaryContainer
+                        : cs.surfaceContainerHighest,
+                  ),
+                  if (isDefault) ...[
+                    const SizedBox(width: 6),
+                    _Badge(
+                      label:      'Default',
+                      color:      cs.primary,
+                      background: cs.primaryContainer,
+                    ),
+                  ],
+                  // Chevron hint — communicates the card is tappable
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: cs.onSurfaceVariant,
                   ),
                 ],
-              ],
-            ),
-            const Divider(height: 20),
-            // ── Item row ───────────────────────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _Field(
-                    label: 'Item Code',
-                    value: result.item.isNotEmpty ? result.item : '—',
+              ),
+              const Divider(height: 20),
+              // ── Item row ──────────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _Field(
+                      label: 'Item Code',
+                      value: result.item.isNotEmpty ? result.item : '—',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _Field(
-                    label: 'Item Name',
-                    value: result.itemName.isNotEmpty ? result.itemName : '—',
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Field(
+                      label: 'Item Name',
+                      value: result.itemName.isNotEmpty ? result.itemName : '—',
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // ── Qty + UOM row ─────────────────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: _Field(
-                    label: 'Qty',
-                    value: result.qty % 1 == 0
-                        ? result.qty.toInt().toString()
-                        : result.qty.toStringAsFixed(3),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // ── Qty + UOM row ───────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: _Field(
+                      label: 'Qty',
+                      value: result.qty % 1 == 0
+                          ? result.qty.toInt().toString()
+                          : result.qty.toStringAsFixed(3),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _Field(
-                    label: 'UOM',
-                    value: result.uom.isNotEmpty ? result.uom : '—',
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Field(
+                      label: 'UOM',
+                      value: result.uom.isNotEmpty ? result.uom : '—',
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ── _Field ───────────────────────────────────────────────────────────────────
+// ── _Field ──────────────────────────────────────────────────────────────────
 
 class _Field extends StatelessWidget {
   final String label;
