@@ -58,6 +58,11 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///     — no extra network call. Used by effectiveMaxQty (DN-C) and
 ///     qtyInfoTooltip (DN-D).
 ///
+/// DN-C:
+///   • [effectiveMaxQty] — ceiling chain: POS serial remaining → batch balance
+///     (maxQty) → rack balance (rackBalance). Returns 999999.0 when no ceiling
+///     is active. Used by validateSheet() qty guard and qtyInfoText (DN-D).
+///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
 ///   • Sheet dismissal is owned exclusively by the parent coordinator
@@ -102,6 +107,47 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
+  // ── DN-C: effectiveMaxQty ceiling chain ───────────────────────────────────
+  //
+  // Lowest ceiling wins. Returns 999999.0 when no ceiling is active
+  // (same sentinel as SE) so callers can use `eff >= 999999.0` as the
+  // "no ceiling" guard.
+  //
+  // Chain:
+  //   1. POS serial remaining  — posQtyCapForSerial − scannedQtyForSerial
+  //                              (excludes the row currently being edited)
+  //   2. Batch balance         — maxQty.value (set by validateBatch in base)
+  //   3. Rack balance          — rackBalance.value (DN-B)
+  //
+  // No MR cap — DN has no Material Request reference.
+  // No dual-rack — DN has a single rack field.
+
+  double get effectiveMaxQty {
+    double limit = 999999.0;
+
+    // 1. POS serial remaining
+    final serial = selectedSerial.value;
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final cap  = _parent.posQtyCapForSerial(serial);
+      final used = _parent.scannedQtyForSerial(
+          serial, excludeItemName: editingItemName.value);
+      final rem  = (cap - used).clamp(0.0, double.infinity);
+      if (rem < limit) limit = rem;
+    }
+
+    // 2. Batch balance
+    if (maxQty.value > 0 && maxQty.value < limit) limit = maxQty.value;
+
+    // 3. Rack balance
+    if (isRackValid.value && rackBalance.value > 0 && rackBalance.value < limit)
+      limit = rackBalance.value;
+
+    return limit;
+  }
+
   // ── qtyInfoText: POS-aware cap display (← to be replaced in DN-D) ─────────
   //
   // When a serial is selected and a POS Upload is loaded, shows:
@@ -134,11 +180,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
           : remaining.toStringAsFixed(2);
 
       final batchPart = maxQty.value > 0
-          ? ' \u00b7 Batch stock: '
+          ? ' · Batch stock: '
             '${maxQty.value % 1 == 0 ? maxQty.value.toInt() : maxQty.value}'
           : '';
 
-      return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs$batchPart';
+      return 'Invoice #$serialNo — Remaining: $remStr / $capStr pcs$batchPart';
     }
 
     // Non-POS fallback — original behaviour.
