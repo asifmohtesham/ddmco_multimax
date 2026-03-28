@@ -268,8 +268,18 @@ class StockEntryFormController extends GetxController
     _scanWorker?.dispose();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
-    barcodeController.dispose();
-    customReferenceNoController.dispose();
+    // Capture refs before super.onClose() so the post-frame callback closure
+    // doesn't hold a reference to `this` after the controller is torn down.
+    // Deferring to post-frame ensures any in-flight LayoutBuilder re-layout or
+    // _AnimatedState.didUpdateWidget that still holds a listener on these
+    // controllers fires before dispose() is called, preventing:
+    //   "A TextEditingController was used after being disposed."
+    final bcc = barcodeController;
+    final crc = customReferenceNoController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      bcc.dispose();
+      crc.dispose();
+    });
     super.onClose();
   }
 
