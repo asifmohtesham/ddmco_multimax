@@ -7,9 +7,9 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchController extends GetxController {
-  final ApiProvider      _api  = Get.find&lt;ApiProvider&gt;();
-  final DataWedgeService _dw   = Get.find&lt;DataWedgeService&gt;();
-  final ScanService      _scan = Get.find&lt;ScanService&gt;();
+  final ApiProvider      _api  = Get.find<ApiProvider>();
+  final DataWedgeService _dw   = Get.find<DataWedgeService>();
+  final ScanService      _scan = Get.find<ScanService>();
 
   // ── Filter controllers ────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ class BomSearchController extends GetxController {
   final item4Controller = TextEditingController();
   final item5Controller = TextEditingController();
 
-  late final Map&lt;String, TextEditingController&gt; filterControllers;
+  late final Map<String, TextEditingController> filterControllers;
 
   // ── Focus nodes (one per scannable item-code slot) ──────────────────────
 
@@ -38,14 +38,14 @@ class BomSearchController extends GetxController {
 
   // ── Ordered list used for focus-advance logic ─────────────────────────
 
-  late final List&lt;String&gt; _scanKeys;
+  late final List<String> _scanKeys;
 
   // ── State ──────────────────────────────────────────────────────────────
 
   final isLoading     = false.obs;
   final isResolving   = false.obs;
-  final reportData    = &lt;Map&lt;String, dynamic&gt;&gt;[].obs;
-  final activeFilters = &lt;String, String&gt;{}.obs;
+  final reportData    = <Map<String, dynamic>>[].obs;
+  final activeFilters = <String, String>{}.obs;
 
   // ── Lifecycle ───────────────────────────────────────────────────────
 
@@ -115,13 +115,13 @@ class BomSearchController extends GetxController {
     _resolveAndWrite(code, targetKey);
   }
 
-  Future&lt;void&gt; _resolveAndWrite(String code, String targetKey) async {
+  Future<void> _resolveAndWrite(String code, String targetKey) async {
     isResolving.value = true;
     try {
       final result = await _scan.processScan(code);
 
       String resolvedCode;
-      if (result.isSuccess &amp;&amp; result.itemData != null) {
+      if (result.isSuccess && result.itemData != null) {
         resolvedCode = result.itemData!.itemCode;
       } else {
         // Fallback: derive the best-effort item code from the raw scan.
@@ -141,7 +141,7 @@ class BomSearchController extends GetxController {
 
       // Advance focus to the next empty slot (wrap around if all filled).
       final currentIndex = _scanKeys.indexOf(targetKey);
-      for (var i = 1; i &lt;= _scanKeys.length; i++) {
+      for (var i = 1; i <= _scanKeys.length; i++) {
         final nextKey = _scanKeys[(currentIndex + i) % _scanKeys.length];
         if (filterControllers[nextKey]?.text.trim().isEmpty ?? true) {
           _focusedKey = nextKey;
@@ -180,13 +180,13 @@ class BomSearchController extends GetxController {
   /// (Does NOT verify the check digit — that is intentional: even a barcode
   /// whose check digit failed validation still encodes the item code in the
   /// first 7 digits and is more useful in the filter than the raw 8 chars.)
-  bool _looksLikeEan8(String code) =&gt;
-      code.length == 8 &amp;&amp; RegExp(r'^\d{8}$').hasMatch(code);
+  bool _looksLikeEan8(String code) =>
+      code.length == 8 && RegExp(r'^\d{8}$').hasMatch(code);
 
   // ── Public API ─────────────────────────────────────────────────────
 
-  int get activeFilterCount =&gt;
-      filterControllers.values.where((c) =&gt; c.text.trim().isNotEmpty).length;
+  int get activeFilterCount =>
+      filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
 
   void clearFilters() {
     for (final c in filterControllers.values) c.clear();
@@ -200,7 +200,7 @@ class BomSearchController extends GetxController {
     activeFilters.remove(key);
   }
 
-  Future&lt;void&gt; runReport() async {
+  Future<void> runReport() async {
     _rebuildActiveFilters();
     isLoading.value = true;
     reportData.clear();
@@ -217,10 +217,10 @@ class BomSearchController extends GetxController {
       );
 
       if (response.statusCode == 200) {
-        final message = response.data['message'] as Map&lt;String, dynamic&gt;?;
+        final message = response.data['message'] as Map<String, dynamic>?;
         if (message != null) {
-          final rawColumns = message['columns'] as List&lt;dynamic&gt;? ?? [];
-          final rawRows    = message['result']  as List&lt;dynamic&gt;? ?? [];
+          final rawColumns = message['columns'] as List<dynamic>? ?? [];
+          final rawRows    = message['result']  as List<dynamic>? ?? [];
 
           String fieldname(dynamic col) {
             if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
@@ -228,12 +228,12 @@ class BomSearchController extends GetxController {
           }
 
           final colKeys = rawColumns.map(fieldname).toList();
-          final rows    = &lt;Map&lt;String, dynamic&gt;&gt;[];
+          final rows    = <Map<String, dynamic>>[];
 
           for (final row in rawRows) {
             if (row is! List) continue;
-            final map = &lt;Map&lt;String, dynamic&gt;&gt;{}  as Map&lt;String, dynamic&gt;;
-            for (var i = 0; i &lt; colKeys.length &amp;&amp; i &lt; row.length; i++) {
+            final map = <Map<String, dynamic>>{}  as Map<String, dynamic>;
+            for (var i = 0; i < colKeys.length && i < row.length; i++) {
               map[colKeys[i]] = row[i];
             }
             rows.add(map);
