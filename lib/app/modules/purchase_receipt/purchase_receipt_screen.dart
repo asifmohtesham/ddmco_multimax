@@ -64,7 +64,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
   // ---------------------------------------------------------------------------
   // Active filter chips
   // ---------------------------------------------------------------------------
-  // ── Active filter chips ─────────────────────────────────────────────────
+  // ── Active filter chips ──────────────────────────────────────────────────
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final f = controller.activeFilters;
@@ -317,7 +317,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
       floatingActionButton: Obx(() => _isFarFromTop.value
           ? FloatingActionButton(
               onPressed: controller.openCreateDialog,
-              tooltip: 'Create Purchase Receipt',
+              tooltip: 'New Purchase Receipt',
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
               elevation: 4,
@@ -325,8 +325,9 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
             )
           : FloatingActionButton.extended(
               onPressed: controller.openCreateDialog,
+              tooltip: 'New Purchase Receipt',
               icon: const Icon(Icons.add),
-              label: const Text('Create'),
+              label: const Text('New Purchase Receipt'),
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
               elevation: 4,
