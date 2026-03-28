@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -300,9 +301,7 @@ class HomeController extends GetxController {
 
   // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
-    // 1. Prevent Double Trigger / Re-entry
     if (isScanning.value) return;
-
     if (code.isEmpty) return;
 
     isScanning.value = true;
@@ -315,10 +314,8 @@ class HomeController extends GetxController {
       else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
         _openItemDetailSheet(result.itemData!.itemCode);
       }
-      // NEW: Handle Variant Of Scan
       else if (result.type == ScanType.variant_of) {
         barcodeController.clear();
-        // Open Item List with Filter
         Get.toNamed(AppRoutes.ITEM, arguments: {
           'filters': {
             'variant_of': ['like', '%${result.rawCode}%']
@@ -327,7 +324,6 @@ class HomeController extends GetxController {
         });
       }
       else if (result.type == ScanType.multiple && result.candidates != null) {
-        // Open Disambiguation Sheet
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -348,12 +344,14 @@ class HomeController extends GetxController {
     }
   }
 
-  void _openItemDetailSheet(String itemCode) async {
-    final itemFormController = Get.put(ItemFormController());
-    itemFormController.loadItem(itemCode);
+  void _openItemDetailSheet(String itemCode) {
+    // Register the ticker controller FIRST so ItemFormScreen's build()
+    // can call Get.find<ItemTabController>() without a GetNotFound error.
+    Get.put(ItemTabController());
+    Get.put(ItemFormController())..loadItem(itemCode);
     barcodeController.clear();
 
-    await Get.bottomSheet(
+    Get.bottomSheet(
       FractionallySizedBox(
         heightFactor: 0.9,
         child: ClipRRect(
@@ -364,25 +362,29 @@ class HomeController extends GetxController {
       isScrollControlled: true,
       enableDrag: true,
       backgroundColor: Colors.white,
-    );
-    Get.delete<ItemFormController>();
+    ).then((_) {
+      // .then() fires after the close animation completes and Flutter has
+      // fully deactivated the overlay entry from the widget tree.
+      // Deleting here guarantees no InheritedWidget subscriptions remain
+      // active at the point of disposal.
+      Get.delete<ItemTabController>(force: true);
+      Get.delete<ItemFormController>(force: true);
+    });
   }
 
   Future<void> _handleRackScan(String rackCode) async {
     isRackScanning.value = true;
-    barcodeController.clear(); // Clear immediately for UX
+    barcodeController.clear();
     try {
       final parts = rackCode.split('-');
       if (parts.length < 3) throw Exception('Invalid Rack Format');
       final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
 
-      // Call provider which now uses "Stock Balance - Custom"
       final response = await _itemProvider.getWarehouseStock(warehouse);
 
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
 
-        // Filter results for the specific scanned rack
         final rackItems = data.where((row) {
           final rowRack = row['rack']?.toString() ?? '';
           return rowRack == rackCode;
@@ -391,7 +393,6 @@ class HomeController extends GetxController {
         if (rackItems.isEmpty) {
           GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         } else {
-          // Open the updated RackContentsSheet
           Get.bottomSheet(
             RackContentsSheet(rackId: rackCode, items: rackItems),
             isScrollControlled: true,
@@ -418,8 +419,6 @@ class HomeController extends GetxController {
       if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         _allFulfillmentUploads = (data as List).map((e)=>PosUpload.fromJson(e)).toList();
-
-        // Re-apply filters to the fresh data
         filterFulfillmentList(fulfillmentSearchQuery.value);
       }
     } catch(e){
@@ -431,9 +430,7 @@ class HomeController extends GetxController {
 
   void setFulfillmentPrefixFilter(List<String> prefixes) {
     _fulfillmentPrefixFilters = prefixes;
-    // Clear search query when switching modes to avoid confusion
     fulfillmentSearchQuery.value = '';
-    // Apply filters immediately if data exists
     if (_allFulfillmentUploads.isNotEmpty) {
       filterFulfillmentList('');
     }
@@ -443,14 +440,12 @@ class HomeController extends GetxController {
     fulfillmentSearchQuery.value = query;
     List<PosUpload> filtered = _allFulfillmentUploads;
 
-    // 1. Apply Prefix Filter (if any)
     if (_fulfillmentPrefixFilters.isNotEmpty) {
       filtered = filtered.where((doc) {
         return _fulfillmentPrefixFilters.any((prefix) => doc.name.startsWith(prefix));
       }).toList();
     }
 
-    // 2. Apply Search Query
     if (query.isNotEmpty) {
       filtered = filtered.where((d) =>
       d.name.toLowerCase().contains(query.toLowerCase()) ||
@@ -523,8 +518,8 @@ class HomeController extends GetxController {
       case AppRoutes.POS_UPLOAD: activeScreen.value = ActiveScreen.posUpload; selectedDrawerIndex.value = 5; break;
       case AppRoutes.TODO: activeScreen.value = ActiveScreen.todo; selectedDrawerIndex.value = 6; break;
       case AppRoutes.ITEM: activeScreen.value = ActiveScreen.item; selectedDrawerIndex.value = 7; break;
-      case AppRoutes.WORK_ORDER: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 8; break; // Assuming Work Order uses index 8
-      case AppRoutes.JOB_CARD: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 9; break;  // Assuming Job Card uses index 9
+      case AppRoutes.WORK_ORDER: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 8; break;
+      case AppRoutes.JOB_CARD: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 9; break;
       case AppRoutes.BATCH: activeScreen.value = ActiveScreen.batch; selectedDrawerIndex.value = 10; break;
     }
   }
