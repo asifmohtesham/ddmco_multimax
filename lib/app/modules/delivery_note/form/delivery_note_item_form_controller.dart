@@ -25,7 +25,7 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [isAddingItemFlag]    wired to _parent.isAddingItem
 ///   • [isScanning]         wired to _parent.isScanning
 ///   • [sheetScanController] wired to _parent.barcodeController
-///   • [qtyInfoText]        'Max Available: N' or null
+///   • [qtyInfoText]        POS-aware cap display, or 'Max Available: N'
 ///   • [deleteCurrentItem]  resolves item + calls parent.confirmAndDeleteItem
 ///
 /// P1-A: _loadNewItem no longer hard-codes qty '6'; clears the field instead.
@@ -89,10 +89,45 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
-  // ── Step-2: qtyInfoText ───────────────────────────────────────────────────
+  // ── qtyInfoText: POS-aware cap display ───────────────────────────────────
+  //
+  // When a serial is selected and a POS Upload is loaded, shows:
+  //   'Invoice #N — Remaining: X / Y pcs · Batch stock: Z'
+  //
+  // Falls back to the original 'Max Available: N' string otherwise,
+  // so non-POS delivery notes are completely unaffected.
 
   @override
   String? get qtyInfoText {
+    final serial = selectedSerial.value;
+
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final serialNo  = int.tryParse(serial) ?? 0;
+      final cap       = _parent.posQtyCapForSerial(serial);
+      final used      = _parent.scannedQtyForSerial(
+        serial,
+        excludeItemName: editingItemName.value,
+      );
+      final remaining = (cap - used).clamp(0.0, cap);
+
+      final capStr  = cap % 1 == 0 ? cap.toInt().toString()
+                                   : cap.toStringAsFixed(2);
+      final remStr  = remaining % 1 == 0
+          ? remaining.toInt().toString()
+          : remaining.toStringAsFixed(2);
+
+      final batchPart = maxQty.value > 0
+          ? ' \u00b7 Batch stock: '
+            '${maxQty.value % 1 == 0 ? maxQty.value.toInt() : maxQty.value}'
+          : '';
+
+      return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs$batchPart';
+    }
+
+    // Non-POS fallback — original behaviour.
     final max = maxQty.value;
     if (max <= 0) return null;
     return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
