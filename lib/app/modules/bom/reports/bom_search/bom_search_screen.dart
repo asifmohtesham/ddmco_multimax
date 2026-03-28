@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/bom_search_result.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/bom/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
@@ -214,10 +213,9 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) => _BomSearchResultCard(
                   result: controller.results[index],
-                  onTap: () => Get.toNamed(
-                    AppRoutes.BOM_FORM,
-                    arguments: {'name': controller.results[index].bom},
-                  ),
+                  // Delegate navigation to controller — keeps screen logic-free
+                  onTap: () => controller.navigateToBom(
+                      controller.results[index].bom),
                 ),
               );
             }),
