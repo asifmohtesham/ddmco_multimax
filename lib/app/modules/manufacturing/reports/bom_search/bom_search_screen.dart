@@ -96,7 +96,8 @@ class BomSearchScreen extends GetView<BomSearchController> {
             slivers: [
               // ── Unified header ─────────────────────────────────────────────────────
               DocTypeListHeader(
-                title: 'BOM Search',
+                title:                    'BOM Search',
+                automaticallyImplyLeading: false,
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,
