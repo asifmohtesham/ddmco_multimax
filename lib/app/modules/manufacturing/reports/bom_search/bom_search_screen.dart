@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
@@ -7,7 +8,7 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BomSearchScreen extends GetView<BomSearchController> {
   const BomSearchScreen({super.key});
 
-  // ── Filter field descriptors ─────────────────────────────────────────────────────────
+  // ── Filter field descriptors ───────────────────────────────────────────────────
   //
   // FocusNodes come from the controller so DataWedge knows which slot to
   // write into. Cannot be static const because FocusNode is a runtime object.
@@ -48,7 +49,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
 
   static const _sectionLabels = <String, String>{};
 
-  // ── Filter chip builder ────────────────────────────────────────────────────
+  // ── Filter chip builder ────────────────────────────────────────────────
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
@@ -78,7 +79,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
     return chips;
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────────
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +95,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ─────────────────────────────────────────────────────
+              // ── Unified header ────────────────────────────────────────────────
               DocTypeListHeader(
                 title:                    'BOM Search',
                 automaticallyImplyLeading: false,
@@ -114,7 +115,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 onClearAllFilters:  controller.clearFilters,
               ),
 
-              // ── Results ────────────────────────────────────────────────────────────
+              // ── Results ────────────────────────────────────────────────────────
               if (controller.isLoading.value)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -186,8 +187,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
 
 /// Displays a single row from the BOM Search report.
 ///
-/// The Frappe query_report.run response for this report returns exactly
-/// two columns per row:
+/// The Frappe query_report.run response for this report returns rows with:
 ///   - `parent`  – the BOM document name  (e.g. "BOM-3000015-001")
 ///   - `doctype` – the linked DocType name (always "BOM")
 class _BomSearchTile extends StatelessWidget {
@@ -208,10 +208,10 @@ class _BomSearchTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          // TODO: navigate to BOM form
-          // Get.toNamed(Routes.BOM_FORM, arguments: bom);
-        },
+        onTap: () => Get.toNamed(
+          AppRoutes.BOM_FORM,
+          arguments: {'name': bom},
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
