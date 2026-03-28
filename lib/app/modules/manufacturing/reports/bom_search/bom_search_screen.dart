@@ -7,25 +7,17 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BomSearchScreen extends GetView<BomSearchController> {
   const BomSearchScreen({super.key});
 
-  // ── Filter field descriptors ──────────────────────────────────────────────
+  // ── Filter field descriptors ────────────────────────────────────────────────
+  //
+  // Item (finished good) and BOM No have been intentionally removed.
+  // Only the 5 sub-assembly Item Code slots are exposed in the sheet.
 
   static const _fields = [
-    // Section 1 – BOM Header
-    ReportFilterField(
-      key:        'item',
-      label:      'Item (finished good)',
-      prefixIcon: Icons.inventory_2_outlined,
-    ),
-    ReportFilterField(
-      key:        'bom',
-      label:      'BOM No',
-      prefixIcon: Icons.account_tree_outlined,
-    ),
-    // Section 2 – Item Codes 1-5 (sub-assembly search)
     ReportFilterField(
       key:        'item1',
-      label:      'Item Code 1',
+      label:      'Item Code 1 *',
       prefixIcon: Icons.looks_one_outlined,
+      required:   true,
     ),
     ReportFilterField(
       key:        'item2',
@@ -49,11 +41,10 @@ class BomSearchScreen extends GetView<BomSearchController> {
     ),
   ];
 
-  static const _sectionLabels = {
-    'item1': 'Search in sub-assemblies',
-  };
+  // No section-label break needed once we drop the BOM-header section.
+  static const _sectionLabels = <String, String>{};
 
-  // ── Filter chip builder ─────────────────────────────────────────────────
+  // ── Filter chip builder ───────────────────────────────────────────
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
@@ -83,7 +74,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
     return chips;
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +90,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ───────────────────────────────────────────
+              // ── Unified header ─────────────────────────────────────────
               DocTypeListHeader(
                 title: 'BOM Search',
                 activeFilters: controller.activeFilters
@@ -118,7 +109,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 onClearAllFilters:  controller.clearFilters,
               ),
 
-              // ── Results ───────────────────────────────────────────────────
+              // ── Results ───────────────────────────────────────────────
               if (controller.isLoading.value)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -139,7 +130,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Set filters and tap Run Report to search BOMs',
+                            'Set Item Code 1 and tap Run Report',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: cs.onSurfaceVariant),
@@ -190,7 +181,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
   }
 }
 
-// ── Result tile ───────────────────────────────────────────────────────────────────
+// ── Result tile ──────────────────────────────────────────────────────────────
 
 class _BomSearchTile extends StatelessWidget {
   final Map<String, dynamic> row;
