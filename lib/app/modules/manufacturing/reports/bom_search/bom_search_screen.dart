@@ -9,42 +9,46 @@ class BomSearchScreen extends GetView<BomSearchController> {
 
   // ── Filter field descriptors ────────────────────────────────────────────────
   //
-  // Item (finished good) and BOM No have been intentionally removed.
-  // Only the 5 sub-assembly Item Code slots are exposed in the sheet.
+  // FocusNodes come from the controller so DataWedge knows which slot to
+  // write into. Cannot be static const because FocusNode is a runtime object.
 
-  static const _fields = [
+  List<ReportFilterField> get _fields => [
     ReportFilterField(
       key:        'item1',
       label:      'Item Code 1 *',
       prefixIcon: Icons.looks_one_outlined,
       required:   true,
+      focusNode:  controller.item1Focus,
     ),
     ReportFilterField(
       key:        'item2',
       label:      'Item Code 2',
       prefixIcon: Icons.looks_two_outlined,
+      focusNode:  controller.item2Focus,
     ),
     ReportFilterField(
       key:        'item3',
       label:      'Item Code 3',
       prefixIcon: Icons.looks_3_outlined,
+      focusNode:  controller.item3Focus,
     ),
     ReportFilterField(
       key:        'item4',
       label:      'Item Code 4',
       prefixIcon: Icons.looks_4_outlined,
+      focusNode:  controller.item4Focus,
     ),
     ReportFilterField(
       key:        'item5',
       label:      'Item Code 5',
       prefixIcon: Icons.looks_5_outlined,
+      focusNode:  controller.item5Focus,
     ),
   ];
 
-  // No section-label break needed once we drop the BOM-header section.
   static const _sectionLabels = <String, String>{};
 
-  // ── Filter chip builder ───────────────────────────────────────────
+  // ── Filter chip builder ────────────────────────────────────────────
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
@@ -132,8 +136,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
                           Text(
                             'Set Item Code 1 and tap Run Report',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant),
+                            style: TextStyle(color: cs.onSurfaceVariant),
                           ),
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
@@ -156,16 +159,13 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 )
               else
                 SliverPadding(
-                  padding:
-                      const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        final row =
-                            controller.reportData[index];
+                        final row = controller.reportData[index];
                         return Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.only(bottom: 10),
                           child: _BomSearchTile(row: row),
                         );
                       },
@@ -204,7 +204,6 @@ class _BomSearchTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // BOM No + badges row
             Row(
               children: [
                 Expanded(
@@ -221,8 +220,7 @@ class _BomSearchTile extends StatelessWidget {
                       label: 'Default',
                       bg: cs.primaryContainer,
                       fg: cs.onPrimaryContainer),
-                if (isDefault && isActive)
-                  const SizedBox(width: 6),
+                if (isDefault && isActive) const SizedBox(width: 6),
                 if (isActive)
                   _Badge(
                       label: 'Active',
@@ -231,18 +229,14 @@ class _BomSearchTile extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-
-            // Item (finished good)
             if ((row['item']?.toString() ?? '').isNotEmpty)
               _Detail(
-                  icon: Icons.inventory_2_outlined,
-                  label: row['item_name']?.toString() ??
-                      row['item']?.toString() ??
-                      ''),
-
+                icon: Icons.inventory_2_outlined,
+                label: row['item_name']?.toString() ??
+                    row['item']?.toString() ??
+                    '',
+              ),
             const SizedBox(height: 6),
-
-            // Qty + UOM
             Row(
               children: [
                 _Detail(
@@ -288,9 +282,7 @@ class _Badge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: fg),
+            fontSize: 11, fontWeight: FontWeight.w700, color: fg),
       ),
     );
   }
@@ -311,8 +303,7 @@ class _Detail extends StatelessWidget {
         Flexible(
           child: Text(
             label,
-            style: TextStyle(
-                fontSize: 13, color: cs.onSurface),
+            style: TextStyle(fontSize: 13, color: cs.onSurface),
             overflow: TextOverflow.ellipsis,
           ),
         ),
