@@ -6,27 +6,14 @@ import 'package:get/get.dart';
 /// A quantity input row with press-and-hold increment / decrement buttons.
 ///
 /// [QuantityInputWidget] is a pure [StatelessWidget]; mutable repeat-timer
-/// state lives in a [_QtyRepeatController] that is scoped per button via
-/// an explicit [Get.put] call keyed on [key.toString()].
+/// state lives in a [_QtyRepeatController] scoped per button via an explicit
+/// [Get.put] call keyed on [key.toString()].
 ///
-/// ## Why not GetWidget?
-///
-/// [GetWidget] derives its controller tag from [widget.hashCode]. When a
-/// parent [StatelessWidget] is rebuilt (e.g. by an [Obx]), Flutter constructs
-/// a new widget object for every child, giving [_QtyActionButton] a new
-/// [hashCode] on each rebuild. [GetWidget.controller] then calls
-/// [Get.find(tag: newHash)] before [Get.put] has fired for that tag,
-/// returning null and crashing with:
-///   "type 'Null' is not a subtype of type '_QtyRepeatController'"
-///
-/// ## Fix
-///
-/// [_QtyActionButton] is now a plain [StatelessWidget]. The controller tag
-/// is derived from [key.toString()] — stable because [_decKey] / [_incKey]
-/// are `final` fields created **once** in the [QuantityInputWidget]
-/// constructor, not in [build()]. The same [UniqueKey] object (and therefore
-/// the same [toString()] string) is reused on every rebuild of the parent,
-/// so [Get.find] always resolves to the same already-registered controller.
+/// Commit C-3: tappable Max badge
+///   When [onInfoTap] is provided the infoText badge becomes an [InkWell]
+///   with a small info_outline icon appended to signal tappability.
+///   When null the badge renders exactly as before — no visual regression
+///   for callers that do not supply the callback.
 class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
@@ -34,8 +21,14 @@ class QuantityInputWidget extends StatelessWidget {
   final String label;
   final bool isReadOnly;
 
-  /// Additional context shown as a badge, e.g. "Available: 50".
+  /// Short badge string rendered next to the label, e.g. 'Max: 3'.
   final String? infoText;
+
+  /// Optional callback fired when the user taps the info badge.
+  /// Supply this to show a breakdown dialog/sheet (e.g. tooltip).
+  /// When null the badge is non-interactive.
+  final VoidCallback? onInfoTap;
+
   final Color color;
   final Function(String)? onChanged;
 
@@ -47,13 +40,11 @@ class QuantityInputWidget extends StatelessWidget {
     this.label = 'Quantity',
     this.isReadOnly = false,
     this.infoText,
+    this.onInfoTap,
     this.color = Colors.black87,
     this.onChanged,
   });
 
-  // Stable UniqueKeys — created once per QuantityInputWidget instance.
-  // Because these are final fields (not computed in build()), the same
-  // key objects survive every rebuild, keeping the GetX tag stable.
   final UniqueKey _decKey = UniqueKey();
   final UniqueKey _incKey = UniqueKey();
 
@@ -81,27 +72,16 @@ class QuantityInputWidget extends StatelessWidget {
                   ),
                 ),
                 if (infoText != null && infoText!.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      infoText!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: primaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  _InfoBadge(
+                    text: infoText!,
+                    primaryColor: primaryColor,
+                    onTap: onInfoTap,
                   ),
               ],
             ),
           ),
 
-        // ── Input row ─────────────────────────────────────────────────────
+        // ── Input row ─────────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
@@ -120,7 +100,6 @@ class QuantityInputWidget extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // ── Text field ────────────────────────────────────────────
               Expanded(
                 child: TextFormField(
                   controller: controller,
@@ -155,12 +134,9 @@ class QuantityInputWidget extends StatelessWidget {
                   },
                 ),
               ),
-
-              // ── Buttons Group (Right Side) ──────────────────────────────
               if (!isReadOnly) ...[
                 Container(
                     width: 1, height: 32, color: Colors.grey.shade200),
-
                 _QtyActionButton(
                   key: _decKey,
                   icon: Icons.remove,
@@ -169,7 +145,6 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
                 Container(
                     width: 1, height: 32, color: Colors.grey.shade200),
-
                 _QtyActionButton(
                   key: _incKey,
                   icon: Icons.add,
@@ -188,9 +163,67 @@ class QuantityInputWidget extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// _InfoBadge
+//
+// Renders the infoText pill.
+//   • When [onTap] is null  → plain Container, identical to the old badge.
+//   • When [onTap] is given → InkWell wraps the pill; a small info_outline
+//     icon is appended to signal interactivity.
+// ---------------------------------------------------------------------------
+class _InfoBadge extends StatelessWidget {
+  final String text;
+  final Color primaryColor;
+  final VoidCallback? onTap;
+
+  const _InfoBadge({
+    required this.text,
+    required this.primaryColor,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: primaryColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.info_outline,
+              size: 12,
+              color: primaryColor.withValues(alpha: 0.7),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return badge;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: badge,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GetxController: owns the repeat Timer for a single button.
-// Unchanged — remains a GetxController so it participates in Get.delete
-// lifecycle management correctly.
 // ---------------------------------------------------------------------------
 class _QtyRepeatController extends GetxController {
   Timer? _repeatTimer;
@@ -215,28 +248,7 @@ class _QtyRepeatController extends GetxController {
 }
 
 // ---------------------------------------------------------------------------
-// Press-and-hold button — plain StatelessWidget with explicit GetX tag.
-//
-// WHY NOT GetWidget:
-//   GetWidget derives instanceKey from widget.hashCode. A new widget object
-//   is created on every parent rebuild (Obx, setState, etc.), giving a new
-//   hashCode on each call. GetWidget.controller then calls
-//   Get.find(tag: newHash) before Get.put has fired → null → crash.
-//
-// FIX — explicit tag from key.toString():
-//   _QtyActionButton receives a UniqueKey that is a `final` field of
-//   QuantityInputWidget (created once in the constructor, not in build()).
-//   UniqueKey.toString() is therefore stable for the lifetime of the
-//   parent widget instance and survives every Obx / parent rebuild.
-//
-//   Get.isRegistered guard: ensures Get.put is called exactly once per
-//   tag, even if build() is invoked multiple times before the controller
-//   is deleted (e.g. rapid rebuilds before the first frame settles).
-//
-//   Cleanup: the controller is deleted in a post-frame callback when the
-//   widget is removed from the tree. Because QuantityInputWidget creates
-//   its keys as final fields, this only happens on a genuine unmount —
-//   not on a parent Obx rebuild — matching the original GetWidget intent.
+// Press-and-hold button.
 // ---------------------------------------------------------------------------
 class _QtyActionButton extends StatelessWidget {
   final IconData icon;
@@ -252,7 +264,6 @@ class _QtyActionButton extends StatelessWidget {
     this.borderRadius,
   });
 
-  // Resolves or registers the controller for this button's stable tag.
   _QtyRepeatController _controller() {
     final tag = key.toString();
     if (!Get.isRegistered<_QtyRepeatController>(tag: tag)) {
@@ -277,11 +288,7 @@ class _QtyActionButton extends StatelessWidget {
         child: SizedBox(
           width: 56,
           height: double.infinity,
-          child: Icon(
-            icon,
-            color: color,
-            size: 22,
-          ),
+          child: Icon(icon, color: color, size: 22),
         ),
       ),
     );
