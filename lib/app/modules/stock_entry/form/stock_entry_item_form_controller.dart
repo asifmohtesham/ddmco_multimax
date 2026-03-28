@@ -44,7 +44,8 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [isAddingItemFlag]   wired to _parent.isAddingItem
 ///   • [isScanning]         left at base default (SE scan bar is doc-level)
 ///   • [sheetScanController] left null (SE scan bar is doc-level)
-///   • [qtyInfoText]        POS-aware cap display, or original 'Avail / MR max' string
+///   • [qtyInfoText]        POS-aware cap display (serial chip only),
+///                          or original 'Avail / MR max' string on Qty field
 ///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
 ///
 /// P1-C: [isSheetLoading] overridden to also cover SE dual-rack validation
@@ -72,6 +73,14 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • Sheet dismissal is owned exclusively by the parent coordinator
 ///     (_openItemSheet onSubmit lambda), matching the SRP boundary
 ///     established in Phase-1 (commit f2aeb9a).
+///
+/// P5 — qtyInfoText serial chip:
+///   • POS branch now returns only the cap string (no '· Avail' suffix).
+///     The available-stock figure is already shown on the Quantity field
+///     via the non-POS base fallback; duplicating it in the serial chip
+///     was redundant and caused truncation.
+///   • SharedSerialField renders qtyInfoText as a _PosCapChip directly
+///     below the dropdown so feedback appears at the point of serial selection.
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
@@ -151,11 +160,19 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── qtyInfoText: POS-aware cap display ────────────────────────────────────
   //
-  // When a serial is selected and a POS Upload is loaded, shows:
-  //   'Invoice #N — Remaining: X / Y pcs · Avail: Z'
+  // POS branch (serial selected + POS Upload loaded):
+  //   Returns the invoice cap string shown as a chip UNDER the serial dropdown
+  //   via SharedSerialField._PosCapChip:
+  //       'Invoice #N — Remaining: X / Y pcs'
   //
-  // Falls back to the original 'Avail / MR max' string otherwise,
-  // so non-POS stock entries are completely unaffected.
+  //   The '· Avail: Z' suffix was removed (P5): available stock is already
+  //   shown on the Quantity field via the non-POS base fallback, so including
+  //   it here was redundant and caused visible truncation on narrow screens.
+  //
+  // Non-POS fallback:
+  //   Returns the original 'Available / MR max' string which the base
+  //   UniversalItemFormSheet renders next to the Quantity label.
+  //   Non-POS stock entries are completely unaffected.
 
   @override
   String? get qtyInfoText {
@@ -180,15 +197,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           ? remaining.toInt().toString()
           : remaining.toStringAsFixed(2);
 
-      final effMax = effectiveMaxQty;
-      final availPart = effMax < 999999.0
-          ? ' \u00b7 Avail: ${effMax.toStringAsFixed(0)}'
-          : '';
-
-      return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs$availPart';
+      // No '· Avail' suffix — available stock is already on the Qty field.
+      return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs';
     }
 
-    // Non-POS fallback — original behaviour.
+    // Non-POS fallback — original behaviour, rendered next to Quantity label.
     final effectiveMax = effectiveMaxQty;
     final maxMr        = validationMaxQty.value;
     if (effectiveMax < 999999.0 && maxMr > 0) {
@@ -851,7 +864,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// Clamp-safe stepper that respects [effectiveMaxQty].
   ///
   /// Increments / decrements [qtyController] by [delta]:
-  ///   • Result ≤ 0  → field cleared (empty string, represents 0).
+  ///   • Result \u2264 0  → field cleared (empty string, represents 0).
   ///   • Result > effectiveMaxQty (when ceiling exists) → rejected; field
   ///     stays at its current value.
   ///   • Otherwise   → field set to integer string (no decimal for whole numbers).
