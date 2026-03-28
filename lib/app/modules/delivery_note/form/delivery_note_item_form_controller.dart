@@ -52,6 +52,12 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • fetchAllRackStocks() is NOT overridden here; the base populates
 ///     rackStockMap independently of autofill.
 ///
+/// DN-B:
+///   • [rackBalance] — RxDouble mirroring SE; written by _updateRackBalance()
+///     on every validateSheet() call. Reads rackStockMap[rackController.text]
+///     — no extra network call. Used by effectiveMaxQty (DN-C) and
+///     qtyInfoTooltip (DN-D).
+///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
 ///   • Sheet dismissal is owned exclusively by the parent coordinator
@@ -63,11 +69,18 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
   // currentScannedEan8  → base field currentScannedEan (S1)
   // validateBatchOnInit → base method (S1)
+
+  // ── DN-B: rack balance (mirrors SE rackBalance) ───────────────────────────
+  //
+  // Written by _updateRackBalance() which is called inside validateSheet().
+  // No extra network call — value is read from rackStockMap which is already
+  // populated by the base fetchAllRackStocks() on batch/rack validation.
+  var rackBalance = 0.0.obs;
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
 
@@ -81,7 +94,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false;
 
-  // ── P2-D: isSheetLoading override ─────────────────────────────────────────
+  // ── P2-D: isSheetLoading override ──────────────────────────────────────────
   //
   // Base already covers isValidatingBatch + isValidatingRack + isAddingItemFlag.
   // Override kept as an explicit extension point for future DN-specific flags.
@@ -89,13 +102,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
-  // ── qtyInfoText: POS-aware cap display ───────────────────────────────────
+  // ── qtyInfoText: POS-aware cap display (← to be replaced in DN-D) ─────────
   //
   // When a serial is selected and a POS Upload is loaded, shows:
   //   'Invoice #N — Remaining: X / Y pcs · Batch stock: Z'
   //
   // Falls back to the original 'Max Available: N' string otherwise,
   // so non-POS delivery notes are completely unaffected.
+  // NOTE: this getter will be fully replaced in commit DN-D.
 
   @override
   String? get qtyInfoText {
@@ -133,7 +147,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
   }
 
-  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────────
+  // ── Step-2: deleteCurrentItem ───────────────────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -144,7 +158,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── PosSerialMixin contract ────────────────────────────────────────────────
+  // ── PosSerialMixin contract ──────────────────────────────────────────────────
 
   @override
   List<String> get availableSerialNos =>
@@ -153,7 +167,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
           .toList() ??
       [];
 
-  // ── Initialisation ─────────────────────────────────────────────────────
+  // ── Initialisation ─────────────────────────────────────────────────────────────
 
   void initialise({
     required DeliveryNoteFormController parent,
@@ -174,6 +188,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     itemCode.value = code;
     itemName.value = name;
     maxQty.value   = initialMaxQty;
+    rackBalance.value = 0.0; // DN-B: reset on every sheet open
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
@@ -253,7 +268,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── S7: applyRackScan ──────────────────────────────────────────────────────
+  // ── S7: applyRackScan ────────────────────────────────────────────────────────
 
   void applyRackScan(String rackId) {
     rackController.text = rackId;
@@ -267,10 +282,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     super.resetRack();
   }
 
-  // ── validateSheet ─────────────────────────────────────────────────────────
+  // ── DN-B: _updateRackBalance ───────────────────────────────────────────────────
+  //
+  // Reads the already-populated rackStockMap for the currently entered rack.
+  // Called from validateSheet() so rackBalance stays current on every
+  // qty/rack TEC change without any extra network call.
+
+  void _updateRackBalance() {
+    final rack = rackController.text.trim();
+    if (rack.isEmpty || !isRackValid.value) {
+      rackBalance.value = 0.0;
+      return;
+    }
+    rackBalance.value = rackStockMap[rack] ?? 0.0;
+  }
+
+  // ── validateSheet ─────────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
+    _updateRackBalance(); // DN-B: keep rackBalance in sync on every call
+
     bool valid = baseValidate();
 
     if (!validateSerial()) valid = false;
@@ -298,7 +330,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
