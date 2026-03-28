@@ -177,7 +177,7 @@ class StockEntryFormController extends GetxController
   ///   = same sum but skipping the named row (used for projection checks
   ///     during edits so the row's OLD qty is not double-counted).
   double scannedQtyForSerial(String serial, {String? excludeItemName}) {
-    return (stockEntry.value?.items ?? [])
+    return items
         .where((i) =>
             (i.customInvoiceSerialNumber ?? '0') == serial &&
             i.name != excludeItemName)
