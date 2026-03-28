@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchController extends GetxController {
-  final ApiProvider      _api = Get.find<ApiProvider>();
-  final DataWedgeService _dw  = Get.find<DataWedgeService>();
+  final ApiProvider      _api  = Get.find<ApiProvider>();
+  final DataWedgeService _dw   = Get.find<DataWedgeService>();
+  final ScanService      _scan = Get.find<ScanService>();
 
   // ── Filter controllers ────────────────────────────────────────────────────
 
@@ -40,8 +42,9 @@ class BomSearchController extends GetxController {
 
   // ── State ──────────────────────────────────────────────────────────────
 
-  final isLoading  = false.obs;
-  final reportData = <Map<String, dynamic>>[].obs;
+  final isLoading     = false.obs;
+  final isResolving   = false.obs;
+  final reportData    = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
 
   // ── Lifecycle ───────────────────────────────────────────────────────
@@ -93,20 +96,55 @@ class BomSearchController extends GetxController {
 
   // ── Scan handler ────────────────────────────────────────────────────
 
+  /// Called by the [ever] worker on every non-empty scan from DataWedge.
+  ///
+  /// Delegates to [ScanService.processScan] so that:
+  /// - A raw EAN-8 is resolved to its 7-digit Item Code.
+  /// - An EAN-8 with batch suffix (e.g. `12345670-ABC`) resolves the Item Code
+  ///   from the EAN-8 prefix.
+  /// - A plain Batch No resolves to its parent Item Code.
+  ///
+  /// On failure the raw scanned code is written as a fallback so the user
+  /// can still correct it manually, and a warning snackbar is shown.
   void _handleScan(String code) {
     if (code.isEmpty) return;
+    // Capture the slot that was active at the moment the scan fired,
+    // so async resolution always writes to the correct field even if
+    // the user taps a different field while the API call is in-flight.
+    final targetKey = _focusedKey;
+    _resolveAndWrite(code, targetKey);
+  }
 
-    // Write barcode into the currently focused slot.
-    filterControllers[_focusedKey]?.text = code;
+  Future<void> _resolveAndWrite(String code, String targetKey) async {
+    isResolving.value = true;
+    try {
+      final result = await _scan.processScan(code);
 
-    // Advance focus to the next empty slot (wrap around if all filled).
-    final currentIndex = _scanKeys.indexOf(_focusedKey);
-    for (var i = 1; i <= _scanKeys.length; i++) {
-      final nextKey = _scanKeys[(currentIndex + i) % _scanKeys.length];
-      if (filterControllers[nextKey]?.text.trim().isEmpty ?? true) {
-        _focusedKey = nextKey;
-        break;
+      String resolvedCode;
+      if (result.isSuccess && result.itemData != null) {
+        resolvedCode = result.itemData!.itemCode;
+      } else {
+        // Fallback: write the raw scan so the user can see what came in.
+        resolvedCode = code;
+        GlobalSnackbar.warning(
+          title:   'Item Not Resolved',
+          message: result.message ?? 'Could not resolve item for: $code',
+        );
       }
+
+      filterControllers[targetKey]?.text = resolvedCode;
+
+      // Advance focus to the next empty slot (wrap around if all filled).
+      final currentIndex = _scanKeys.indexOf(targetKey);
+      for (var i = 1; i <= _scanKeys.length; i++) {
+        final nextKey = _scanKeys[(currentIndex + i) % _scanKeys.length];
+        if (filterControllers[nextKey]?.text.trim().isEmpty ?? true) {
+          _focusedKey = nextKey;
+          break;
+        }
+      }
+    } finally {
+      isResolving.value = false;
     }
   }
 
