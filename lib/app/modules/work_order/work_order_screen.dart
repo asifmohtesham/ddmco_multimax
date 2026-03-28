@@ -104,8 +104,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           AppRoutes.WORK_ORDER_FORM,
           arguments: {'name': '', 'mode': 'new'},
         ),
-        label: const Text('New Order'),
+        tooltip: 'New Work Order',
         icon: const Icon(Icons.add),
+        label: const Text('New Work Order'),
+        backgroundColor: cs.primaryContainer,
+        foregroundColor: cs.onPrimaryContainer,
       ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchWorkOrders(clear: true),

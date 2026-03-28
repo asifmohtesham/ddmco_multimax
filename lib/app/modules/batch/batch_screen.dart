@@ -79,6 +79,7 @@ class BatchScreen extends GetView<BatchController> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => controller.openBatchForm(null),
+        tooltip: 'New Batch',
         icon: const Icon(Icons.add),
         label: const Text('New Batch'),
         backgroundColor: colorScheme.primaryContainer,

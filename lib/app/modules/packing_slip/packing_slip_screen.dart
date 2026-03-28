@@ -289,8 +289,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: controller.openCreateDialog,
+        tooltip: 'New Packing Slip',
         icon: const Icon(Icons.add),
-        label: const Text('Create'),
+        label: const Text('New Packing Slip'),
         backgroundColor: colorScheme.primaryContainer,
         foregroundColor: colorScheme.onPrimaryContainer,
       ),
