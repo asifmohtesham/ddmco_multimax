@@ -36,8 +36,8 @@ class ItemGroupCard extends StatelessWidget {
     switch (code?.toUpperCase()) {
       case 'AED': return 'AED';
       case 'USD': return '\$';
-      case 'EUR': return '€';
-      case 'GBP': return '£';
+      case 'EUR': return '\u20ac';
+      case 'GBP': return '\u00a3';
       case 'SAR': return 'SAR';
       case 'KWD': return 'KWD';
       case 'QAR': return 'QAR';
@@ -55,7 +55,10 @@ class ItemGroupCard extends StatelessWidget {
 
     // Semantic colour alias — resolved once, used for rail, border,
     // status label, progress ring, and Scanned stat chip.
-    final completionColor = isCompleted ? cs.tertiary : cs.primary;
+    // Pinned to Colors.green.shade600 on completion so the success
+    // state is unambiguous regardless of the active theme's tertiary.
+    final completionColor =
+        isCompleted ? Colors.green.shade600 : cs.primary;
 
     final currSymbol  = _currencySymbol(currency);
     final rateDisplay = currSymbol.isEmpty
@@ -68,7 +71,7 @@ class ItemGroupCard extends StatelessWidget {
         color: cs.surface,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? cs.tertiary : cs.outlineVariant,
+          color: isCompleted ? Colors.green.shade600 : cs.outlineVariant,
           width: 1,
         ),
       ),
@@ -78,7 +81,7 @@ class ItemGroupCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Completion rail ───────────────────────────────────────────
+            // ── Completion rail ────────────────────────────────────────────────
             // 4dp coloured left-edge accent. Rounded on the left side
             // to sit flush inside the card border-radius.
             Container(
@@ -92,7 +95,7 @@ class ItemGroupCard extends StatelessWidget {
               ),
             ),
 
-            // ── Card content ───────────────────────────────────────────────
+            // ── Card content ──────────────────────────────────────────────────
             Expanded(
               child: Column(
                 children: [
@@ -158,7 +161,7 @@ class ItemGroupCard extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Stats row — always visible ─────────────────────────
+                  // ── Stats row — always visible ─────────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 16, 12),
                     child: Row(
@@ -189,7 +192,7 @@ class ItemGroupCard extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Collapsible child items ────────────────────────────
+                  // ── Collapsible child items ──────────────────────────────
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
