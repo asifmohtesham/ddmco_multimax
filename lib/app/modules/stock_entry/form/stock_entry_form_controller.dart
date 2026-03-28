@@ -31,8 +31,6 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 // ── SE-module-local widgets ──────────────────────────────────────────────────
 
 import 'widgets/item_form_sheet/rack_section.dart';
-// (stock_entry_item_form_sheet.dart is now a stub re-export)
-// (batch_field.dart retired — P4-2: replaced by SharedBatchField)
 
 enum StockEntrySource { manual, materialRequest, posUpload }
 
@@ -177,7 +175,7 @@ class StockEntryFormController extends GetxController
   ///
   /// With [excludeItemName]:
   ///   = same sum but skipping the named row (used for projection checks
-  ///     during edits so the row's OLD qty is not double-counted).
+  ///     during edits so the row’s OLD qty is not double-counted).
   double scannedQtyForSerial(String serial, {String? excludeItemName}) {
     return (stockEntry.value?.items ?? [])
         .where((i) =>
@@ -352,7 +350,6 @@ class StockEntryFormController extends GetxController
     isDirty.value   = true;
   }
 
-  /// Determines [entrySource] from the SE type and reference number.
   void determineSource(String type, String ref) {
     if (Get.arguments?['items'] != null) {
       entrySource = StockEntrySource.materialRequest;
@@ -585,24 +582,14 @@ class StockEntryFormController extends GetxController
     // ── Hard block: POS qty cap ───────────────────────────────────────────
     final resolvedSerial = serial ?? '0';
     if (resolvedSerial != '0' && posUpload.value != null) {
-      final cap = posQtyCapForSerial(resolvedSerial);
-
-      // othersQty = total for this serial across all rows EXCEPT the one
-      // being edited (so the old qty of this row is not double-counted in
-      // the projection check).
-      final othersQty = scannedQtyForSerial(resolvedSerial,
+      final cap           = posQtyCapForSerial(resolvedSerial);
+      final othersQty     = scannedQtyForSerial(resolvedSerial,
           excludeItemName: uniqueId);
+      final currentRowQty = items[idx].qty;
 
       if (othersQty + qty > cap) {
         final posItem = posUpload.value!.items
             .firstWhereOrNull((i) => i.idx == int.tryParse(resolvedSerial));
-
-        // scannedQty passed to the dialog = actual total currently consumed
-        // BEFORE this edit = othersQty + current row's old qty.
-        // This ensures: Remaining shown = cap − (othersQty + oldQty)
-        // i.e. Remaining = cap − Σ(all item qtys for that serial)
-        final currentRowQty = items[idx].qty;
-
         GlobalDialog.showQtyCapExceeded(
           serialNo:   int.parse(resolvedSerial),
           itemName:   posItem?.itemName ?? items[idx].itemName ?? '',
@@ -648,26 +635,34 @@ class StockEntryFormController extends GetxController
 
     // ── Hard block: POS qty cap ───────────────────────────────────────────
     if (resolvedSerial != '0' && posUpload.value != null) {
-      final items = stockEntry.value?.items.toList() ?? [];
-      final cap   = posQtyCapForSerial(resolvedSerial);
+      final items       = stockEntry.value?.items.toList() ?? [];
+      final cap         = posQtyCapForSerial(resolvedSerial);
+      final alreadyUsed = scannedQtyForSerial(resolvedSerial);
 
+      // Identify a mergeable row: same item code + batch + rack + serial.
+      // If found, the add will replace it rather than append, so its old
+      // qty is subtracted from the projection to avoid double-counting.
       final existingIdx = items.indexWhere((i) =>
           i.itemCode.trim().toLowerCase() ==
               currentItemCode.trim().toLowerCase() &&
-          (i.batchNo  ?? '') == (batch  ?? '') &&
-          (i.rack     ?? '') == (sourceRack ?? '') &&
+          (i.batchNo  ?? '') == (batch       ?? '') &&
+          (i.rack     ?? '') == (sourceRack  ?? '') &&
           (i.customInvoiceSerialNumber ?? '0') == resolvedSerial);
-      final mergeQty    = existingIdx != -1 ? items[existingIdx].qty : 0.0;
-      final alreadyUsed = scannedQtyForSerial(resolvedSerial);
-      final projected   = alreadyUsed - mergeQty + qty;
+      final mergeQty  = existingIdx != -1 ? items[existingIdx].qty : 0.0;
+      final projected = alreadyUsed - mergeQty + qty;
 
       if (projected > cap) {
         final posItem = posUpload.value!.items
             .firstWhereOrNull((i) => i.idx == int.tryParse(resolvedSerial));
+
+        // scannedQty passed to the dialog = alreadyUsed (the real total
+        // currently on the SE for this serial, including the merge row).
+        // Remaining shown = cap − alreadyUsed
+        // = cap − (Item1 + Item2 + … + ItemN)  ✓
         GlobalDialog.showQtyCapExceeded(
           serialNo:   int.parse(resolvedSerial),
           itemName:   posItem?.itemName ?? currentItemName,
-          scannedQty: alreadyUsed - mergeQty,
+          scannedQty: alreadyUsed,
           capQty:     cap,
         );
         return;
@@ -717,7 +712,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Delete ──────────────────────────────────────────────────────────────
 
   void confirmAndDeleteItem(StockEntryItem item) {
     if (isItemSheetOpen.value) {
@@ -1115,7 +1110,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Misc ──────────────────────────────────────────────────────────────────
+  // ── Misc ─────────────────────────────────────────────────────────────────
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
