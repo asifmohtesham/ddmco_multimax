@@ -424,7 +424,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateForm,
-                    tooltip: 'Create Material Request',
+                    tooltip: 'New Material Request',
                     backgroundColor: colorScheme.primaryContainer,
                     foregroundColor: colorScheme.onPrimaryContainer,
                     elevation: 4,
@@ -432,8 +432,9 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                   )
                 : FloatingActionButton.extended(
                     onPressed: controller.openCreateForm,
+                    tooltip: 'New Material Request',
                     icon: const Icon(Icons.add),
-                    label: const Text('Create'),
+                    label: const Text('New Material Request'),
                     backgroundColor: colorScheme.primaryContainer,
                     foregroundColor: colorScheme.onPrimaryContainer,
                     elevation: 4,
