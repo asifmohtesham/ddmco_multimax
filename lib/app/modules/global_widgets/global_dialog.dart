@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+// ── POS Upload error reason ─────────────────────────────────────────────────
+
+/// Classifies why a POS Upload fetch failed so [GlobalDialog.showPosUploadError]
+/// can display the most actionable message copy to the operator.
+enum PosUploadErrorReason {
+  /// The server returned 404 — the document name was not found.
+  notFound,
+
+  /// Any other failure: network timeout, server error, parse error, etc.
+  networkError,
+}
+
 class GlobalDialog {
   /// Async confirmation bottom-sheet — resolves to [true] when the user
   /// taps the confirm button, [false] on cancel or barrier dismiss.
@@ -358,6 +370,215 @@ class GlobalDialog {
       isScrollControlled: true,
       isDismissible: false,
       enableDrag: false,
+    );
+  }
+
+  /// Shows a bottom-sheet when a POS Upload document cannot be fetched.
+  ///
+  /// The [reason] drives the message copy:
+  /// - [PosUploadErrorReason.notFound]     → 404: document missing / renamed
+  /// - [PosUploadErrorReason.networkError] → connectivity / unexpected error
+  ///
+  /// Two-button layout:
+  ///   • **Continue without POS** – dismisses; the SE opens without POS
+  ///     context (serial dropdown will not appear).
+  ///   • **Retry** (shown only when [onRetry] is supplied) – dismisses then
+  ///     re-fires the fetch.
+  ///
+  /// Amber palette signals a recoverable warning, not a hard block —
+  /// the Stock Entry document itself remains accessible.
+  ///
+  /// ```dart
+  /// GlobalDialog.showPosUploadError(
+  ///   posId:   'KX-2O25-5963-1',
+  ///   reason:  PosUploadErrorReason.notFound,
+  ///   onRetry: () => fetchPosUpload(posId),
+  /// );
+  /// ```
+  static void showPosUploadError({
+    required String posId,
+    required PosUploadErrorReason reason,
+    VoidCallback? onRetry,
+  }) {
+    final String title;
+    final String body;
+    final String hint;
+
+    switch (reason) {
+      case PosUploadErrorReason.notFound:
+        title = 'POS Upload Not Found';
+        body  = 'The reference "$posId" was not found on the server.';
+        hint  = 'It may have been deleted, renamed, or the reference '
+                'number may contain a typo. You can continue and the '
+                'invoice serial selector will not be available.';
+        break;
+      case PosUploadErrorReason.networkError:
+        title = 'Could Not Load POS Upload';
+        body  = 'A connection error occurred while fetching "$posId".';
+        hint  = 'Check your network and tap Retry, or continue without '
+                'POS context — the invoice serial selector will not be '
+                'available until the document is loaded.';
+        break;
+    }
+
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    color: Colors.amber,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Primary message ───────────────────────────────────────
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+
+                // ── Hint / explanation ────────────────────────────────────
+                Text(
+                  hint,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Reference token chip ──────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tag,
+                          size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Text(
+                        posId,
+                        style: TextStyle(
+                          fontFamily: 'ShureTechMono',
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Action buttons ────────────────────────────────────────
+                if (onRetry != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            side: BorderSide(
+                                color: Colors.grey.shade300),
+                          ),
+                          child: const Text(
+                            'Continue without POS',
+                            style: TextStyle(
+                                color: Colors.black87, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            onRetry();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text(
+                            'Retry',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            backgroundColor: Colors.amber.shade700,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text(
+                        'Continue without POS',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
     );
   }
 
