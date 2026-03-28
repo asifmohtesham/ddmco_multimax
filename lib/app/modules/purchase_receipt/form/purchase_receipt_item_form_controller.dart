@@ -257,7 +257,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
               ? pkgQty.toInt().toString()
               : pkgQty.toString();
         }
-        batchInfoTooltip.value = pkgQty > 0 ? 'Packaging Qty: \$pkgQty' : null;
+        batchInfoTooltip.value = pkgQty > 0 ? 'Packaging Qty: $pkgQty' : null;
         GlobalSnackbar.success(message: 'Existing Batch found');
       } else {
         GlobalSnackbar.info(message: 'New Batch will be created');
@@ -271,7 +271,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       isBatchReadOnly.value = false;
       batchError.value      = 'Error validating batch';
       GlobalSnackbar.error(message: 'Error validating batch');
-      log('[PR:ItemSheet] validateBatch error: \$e', name: 'PR:ItemSheet');
+      log('[PR:ItemSheet] validateBatch error: $e', name: 'PR:ItemSheet');
     } finally {
       isValidatingBatch.value = false;
       validateSheet();
