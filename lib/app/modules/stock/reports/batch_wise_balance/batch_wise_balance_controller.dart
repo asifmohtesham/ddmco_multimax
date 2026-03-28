@@ -2,45 +2,115 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BatchWiseBalanceController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Filter field controllers ────────────────────────────────────────────────
+  // ── Filter field controllers ──────────────────────────────────────────────
 
-  final TextEditingController fromDateController  = TextEditingController();
-  final TextEditingController toDateController    = TextEditingController();
-  final TextEditingController itemCodeController  = TextEditingController();
-  final TextEditingController batchNoController   = TextEditingController();
-  final TextEditingController warehouseController = TextEditingController();
+  final fromDateController  = TextEditingController();
+  final toDateController    = TextEditingController();
+  final itemCodeController  = TextEditingController();
+  final batchNoController   = TextEditingController();
+  final warehouseController = TextEditingController();
 
-  // ── State ────────────────────────────────────────────────────────────────────────
+  late final Map<String, TextEditingController> filterControllers;
 
-  final RxBool isLoading = false.obs;
-  final RxList<Map<String, dynamic>> reportData = <Map<String, dynamic>>[].obs;
+  // ── State ────────────────────────────────────────────────────────────────────
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────────
+  final isLoading  = false.obs;
+  final reportData = <Map<String, dynamic>>[].obs;
+
+  /// Reactive map driving active filter chips in the screen.
+  final activeFilters = <String, String>{}.obs;
+
+  // ── Filter field descriptors (passed to ReportFilterSheet) ──────────────
+
+  static const filterFields = [
+    ReportFilterField(
+      key:        'from_date',
+      label:      'From Date',
+      type:       ReportFilterType.datePicker,
+      prefixIcon: Icons.calendar_today_outlined,
+    ),
+    ReportFilterField(
+      key:        'to_date',
+      label:      'To Date',
+      type:       ReportFilterType.datePicker,
+      prefixIcon: Icons.calendar_today_outlined,
+    ),
+    ReportFilterField(
+      key:        'item_code',
+      label:      'Item Code *',
+      prefixIcon: Icons.category_outlined,
+      required:   true,
+    ),
+    ReportFilterField(
+      key:        'batch_no',
+      label:      'Batch No *',
+      prefixIcon: Icons.qr_code_2_outlined,
+      required:   true,
+    ),
+    ReportFilterField(
+      key:        'warehouse',
+      label:      'Warehouse',
+      prefixIcon: Icons.warehouse_outlined,
+    ),
+  ];
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+    filterControllers = {
+      'from_date' : fromDateController,
+      'to_date'   : toDateController,
+      'item_code' : itemCodeController,
+      'batch_no'  : batchNoController,
+      'warehouse' : warehouseController,
+    };
     // Pre-fill date range: today as both from and to.
     final today = _formatDate(DateTime.now());
     fromDateController.text = today;
     toDateController.text   = today;
+    // Reflect pre-filled dates in active filters immediately.
+    _rebuildActiveFilters();
   }
 
   @override
   void onClose() {
-    fromDateController.dispose();
-    toDateController.dispose();
-    itemCodeController.dispose();
-    batchNoController.dispose();
-    warehouseController.dispose();
+    for (final c in filterControllers.values) {
+      c.dispose();
+    }
     super.onClose();
   }
 
-  // ── Public API ────────────────────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────────────
+
+  int get activeFilterCount =>
+      filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
+
+  void clearFilters() {
+    itemCodeController.clear();
+    batchNoController.clear();
+    warehouseController.clear();
+    // Keep dates at today on clear.
+    final today = _formatDate(DateTime.now());
+    fromDateController.text = today;
+    toDateController.text   = today;
+    _rebuildActiveFilters();
+    reportData.clear();
+  }
+
+  void clearFilter(String key) {
+    filterControllers[key]?.clear();
+    if (key == 'from_date' || key == 'to_date') {
+      filterControllers[key]!.text = _formatDate(DateTime.now());
+    }
+    _rebuildActiveFilters();
+  }
 
   /// Runs the Batch-Wise Balance History report with current filter values.
   Future<void> runReport() async {
@@ -55,6 +125,7 @@ class BatchWiseBalanceController extends GetxController {
       return;
     }
 
+    _rebuildActiveFilters();
     isLoading.value = true;
     reportData.clear();
 
@@ -69,36 +140,29 @@ class BatchWiseBalanceController extends GetxController {
       if (response.statusCode == 200) {
         final message = response.data['message'] as Map<String, dynamic>?;
         if (message != null) {
-          // Frappe query_report shape:
-          //   message.columns  → List of column definitions
-          //   message.result   → List<List<dynamic>> rows
           final rawColumns = message['columns'] as List<dynamic>? ?? [];
           final rawRows    = message['result']  as List<dynamic>? ?? [];
 
-          // Resolve fieldname from column definition (Map or plain String).
           String fieldname(dynamic col) {
             if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
             return col.toString().toLowerCase();
           }
 
-          // Also resolve the human-readable label for display.
           String label(dynamic col) {
             if (col is Map) return (col['label'] as String? ?? col['fieldname'] as String? ?? '');
             return col.toString();
           }
 
-          final colKeys    = rawColumns.map(fieldname).toList();
-          final colLabels  = rawColumns.map(label).toList();
+          final colKeys   = rawColumns.map(fieldname).toList();
+          final colLabels = rawColumns.map(label).toList();
 
-          // Convert each row array to a named Map for the list-view.
-          final List<Map<String, dynamic>> rows = [];
+          final rows = <Map<String, dynamic>>[];
           for (final row in rawRows) {
             if (row is! List) continue;
-            final Map<String, dynamic> map = {};
+            final map = <String, dynamic>{};
             for (int i = 0; i < colKeys.length && i < row.length; i++) {
               map[colKeys[i]] = row[i];
             }
-            // Attach label map for display convenience.
             map['_labels'] = colLabels;
             rows.add(map);
           }
@@ -115,24 +179,25 @@ class BatchWiseBalanceController extends GetxController {
     }
   }
 
-  /// Opens a [DatePickerDialog] and writes the selected date into [controller].
-  Future<void> selectDate(
-    BuildContext context,
-    TextEditingController controller,
-  ) async {
-    final now    = DateTime.now();
-    final picked = await showDatePicker(
-      context:     context,
-      initialDate: now,
-      firstDate:   DateTime(now.year - 5),
-      lastDate:    DateTime(now.year + 1),
-    );
-    if (picked != null) {
-      controller.text = _formatDate(picked);
-    }
-  }
+  // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  static const _filterLabels = {
+    'from_date' : 'From',
+    'to_date'   : 'To',
+    'item_code' : 'Item',
+    'batch_no'  : 'Batch',
+    'warehouse' : 'Warehouse',
+  };
+
+  void _rebuildActiveFilters() {
+    activeFilters.clear();
+    filterControllers.forEach((key, ctrl) {
+      final v = ctrl.text.trim();
+      if (v.isNotEmpty) {
+        activeFilters[key] = '${_filterLabels[key] ?? key}: $v';
+      }
+    });
+  }
 
   String _formatDate(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-'

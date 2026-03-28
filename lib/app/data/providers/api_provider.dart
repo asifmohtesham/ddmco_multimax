@@ -279,36 +279,52 @@ class ApiProvider {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // BOM SEARCH
+  // ---------------------------------------------------------------------------
+
+  /// Runs the ERPNext **BOM Search** script report.
+  ///
+  /// Matches the web filter pane:
+  ///   - [item]  : finished-good Item Code (BOM ‘Item’ filter)
+  ///   - [bom]   : BOM No filter
+  ///   - [item1]–[item5] : sub-assembly Item Code search fields
+  ///
+  /// All parameters are optional; pass empty string or null to omit.
+  Future<Response> searchBom({
+    String? item,
+    String? bom,
+    String? item1,
+    String? item2,
+    String? item3,
+    String? item4,
+    String? item5,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final filters = <String, dynamic>{};
+    if (item?.isNotEmpty  == true) filters['item']   = item;
+    if (bom?.isNotEmpty   == true) filters['bom']    = bom;
+    if (item1?.isNotEmpty == true) filters['item1']  = item1;
+    if (item2?.isNotEmpty == true) filters['item2']  = item2;
+    if (item3?.isNotEmpty == true) filters['item3']  = item3;
+    if (item4?.isNotEmpty == true) filters['item4']  = item4;
+    if (item5?.isNotEmpty == true) filters['item5']  = item5;
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'          : 'BOM Search',
+        'filters'              : json.encode(filters),
+        'ignore_prepared_report': 'true',
+        'are_default_filters'  : 'false',
+        '_'                    : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
   /// Fetches per-rack available quantity for [itemCode] + [batchNo] within
   /// [warehouse] from the Stock Ledger report.
-  ///
-  /// ## Why Stock Ledger?
-  /// Stock Balance gives rack → total qty; Batch-Wise Balance gives
-  /// batch → total qty.  Only Stock Ledger provides rack + batch → qty
-  /// in a single query.
-  ///
-  /// ## Return value
-  /// `Map<String, double>` where each key is a rack asset-code name and
-  /// the value is the **latest** `qty_after_transaction` for that rack
-  /// (i.e. the running balance).  Rows are server-ordered by `timestamp`
-  /// ascending, so iterating forward and overwriting naturally yields the
-  /// last (most recent) balance per rack.
-  ///
-  /// ## Column resolution
-  /// The Frappe query_report response is columnar:
-  /// ```json
-  /// { "result": {
-  ///     "columns": [ { "fieldname": "rack" }, … ],
-  ///     "result":  [ [ "KA-WH-DXB1-101A", …, 12.0 ], … ]
-  /// }}
-  /// ```
-  /// Column positions are resolved at runtime by `fieldname` so that
-  /// future ERPNext column-order changes cannot silently corrupt the data.
-  ///
-  /// ## Error behaviour
-  /// Returns an **empty map** on any error or empty result set.
-  /// The caller ([RackPickerController]) falls back gracefully to the
-  /// `rackStockMap` already held in [ItemSheetControllerBase].
   Future<Map<String, double>> getRackBatchStock({
     required String itemCode,
     required String batchNo,
@@ -320,17 +336,15 @@ class ApiProvider {
     final company  = storage.getCompany();
     final today    = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    // ── 1. Build filters ────────────────────────────────────────────────────
     final filters = <String, dynamic>{
       'company'  : company,
       'item_code': itemCode,
       'batch_no' : batchNo,
       'warehouse': warehouse,
-      'from_date': '2000-01-01', // full history needed for running balance
+      'from_date': '2000-01-01',
       'to_date'  : today,
     };
 
-    // ── 2. Call report ────────────────────────────────────────────────────
     late final Response response;
     try {
       response = await _dio.get(
@@ -351,12 +365,6 @@ class ApiProvider {
 
     if (response.statusCode != 200) return {};
 
-    // ── 3. Parse columnar response ───────────────────────────────────────────
-    // Frappe query_report shape:
-    //   response.data['message']['columns'] = List of column definitions
-    //   response.data['message']['result']  = List<List<dynamic>> rows
-    // Column definitions can be either a Map with 'fieldname' key or a
-    // plain String fieldname — handle both defensively.
     try {
       final message = response.data['message'] as Map<String, dynamic>?;
       if (message == null) return {};
@@ -365,22 +373,17 @@ class ApiProvider {
       final rawRows    = message['result']  as List<dynamic>?;
       if (rawColumns == null || rawRows == null || rawRows.isEmpty) return {};
 
-      // Resolve fieldname from column definition (Map or String).
       String _fieldname(dynamic col) {
         if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         return col.toString().toLowerCase();
       }
 
-      // Locate required column indices.
       final colNames = rawColumns.map(_fieldname).toList();
       final rackIdx  = colNames.indexOf('rack');
       final qtyIdx   = colNames.indexOf('qty_after_transaction');
 
       if (rackIdx == -1 || qtyIdx == -1) return {};
 
-      // ── 4. Build rack → latest-qty map ──────────────────────────────────────
-      // Rows arrive ordered by timestamp asc — iterating forward and
-      // overwriting gives the most-recent balance per rack.
       final result = <String, double>{};
       for (final row in rawRows) {
         if (row is! List || row.length <= rackIdx || row.length <= qtyIdx) {

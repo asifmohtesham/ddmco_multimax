@@ -1,11 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_controller.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
-class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
-  const BatchWiseBalanceScreen({super.key});
+class BomSearchScreen extends GetView<BomSearchController> {
+  const BomSearchScreen({super.key});
+
+  // ── Filter field descriptors ──────────────────────────────────────────────
+
+  static const _fields = [
+    // Section 1 – BOM Header
+    ReportFilterField(
+      key:        'item',
+      label:      'Item (finished good)',
+      prefixIcon: Icons.inventory_2_outlined,
+    ),
+    ReportFilterField(
+      key:        'bom',
+      label:      'BOM No',
+      prefixIcon: Icons.account_tree_outlined,
+    ),
+    // Section 2 – Item Codes 1-5 (sub-assembly search)
+    ReportFilterField(
+      key:        'item1',
+      label:      'Item Code 1',
+      prefixIcon: Icons.looks_one_outlined,
+    ),
+    ReportFilterField(
+      key:        'item2',
+      label:      'Item Code 2',
+      prefixIcon: Icons.looks_two_outlined,
+    ),
+    ReportFilterField(
+      key:        'item3',
+      label:      'Item Code 3',
+      prefixIcon: Icons.looks_3_outlined,
+    ),
+    ReportFilterField(
+      key:        'item4',
+      label:      'Item Code 4',
+      prefixIcon: Icons.looks_4_outlined,
+    ),
+    ReportFilterField(
+      key:        'item5',
+      label:      'Item Code 5',
+      prefixIcon: Icons.looks_5_outlined,
+    ),
+  ];
+
+  static const _sectionLabels = {
+    'item1': 'Search in sub-assemblies',
+  };
 
   // ── Filter chip builder ─────────────────────────────────────────────────
 
@@ -55,17 +101,18 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
             slivers: [
               // ── Unified header ───────────────────────────────────────────
               DocTypeListHeader(
-                title: 'Batch-Wise Balance',
+                title: 'BOM Search',
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,
                 onFilterTap: () => showReportFilterSheet(
-                  context: context,
-                  title:   'Batch-Wise Balance Filters',
-                  fields:  BatchWiseBalanceController.filterFields,
-                  controllers: controller.filterControllers,
-                  onRun:   controller.runReport,
-                  onClear: controller.clearFilters,
+                  context:       context,
+                  title:         'BOM Search Filters',
+                  fields:        _fields,
+                  controllers:   controller.filterControllers,
+                  onRun:         controller.runReport,
+                  onClear:       controller.clearFilters,
+                  sectionLabels: _sectionLabels,
                 ),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters:  controller.clearFilters,
@@ -86,13 +133,13 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.history_toggle_off_outlined,
+                            Icons.account_tree_outlined,
                             size: 64,
                             color: cs.outlineVariant,
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Enter filters and tap the filter icon to run the report',
+                            'Set filters and tap Run Report to search BOMs',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: cs.onSurfaceVariant),
@@ -100,12 +147,13 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
                             onPressed: () => showReportFilterSheet(
-                              context: context,
-                              title:  'Batch-Wise Balance Filters',
-                              fields: BatchWiseBalanceController.filterFields,
-                              controllers: controller.filterControllers,
-                              onRun:  controller.runReport,
-                              onClear: controller.clearFilters,
+                              context:       context,
+                              title:         'BOM Search Filters',
+                              fields:        _fields,
+                              controllers:   controller.filterControllers,
+                              onRun:         controller.runReport,
+                              onClear:       controller.clearFilters,
+                              sectionLabels: _sectionLabels,
                             ),
                             icon: const Icon(Icons.filter_alt_outlined),
                             label: const Text('Set Filters'),
@@ -125,8 +173,9 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                         final row =
                             controller.reportData[index];
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _BalanceTile(row: row),
+                          padding:
+                              const EdgeInsets.only(bottom: 10),
+                          child: _BomSearchTile(row: row),
                         );
                       },
                       childCount: controller.reportData.length,
@@ -143,14 +192,17 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
 
 // ── Result tile ───────────────────────────────────────────────────────────────────
 
-class _BalanceTile extends StatelessWidget {
+class _BomSearchTile extends StatelessWidget {
   final Map<String, dynamic> row;
-  const _BalanceTile({required this.row});
+  const _BomSearchTile({required this.row});
 
   @override
   Widget build(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+
+    final isDefault = _truthy(row['is_default']);
+    final isActive  = _truthy(row['is_active']);
 
     return Material(
       color: cs.surface,
@@ -161,97 +213,117 @@ class _BalanceTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // BOM No + badges row
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row['item'] ?? 'Unknown Item',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15),
-                      ),
-                      if ((row['item_name'] ?? '') != '' &&
-                          row['item_name'] != row['item'])
-                        Text(
-                          row['item_name'],
-                          style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 12),
-                        ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color:
-                            cs.tertiary.withValues(alpha: 0.3)),
-                  ),
                   child: Text(
-                    '${row['balance_qty'] ?? 0}',
-                    style: TextStyle(
-                        color: cs.onTertiaryContainer,
-                        fontWeight: FontWeight.bold),
+                    row['name']?.toString() ??
+                        row['bom_no']?.toString() ??
+                        '—',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700),
                   ),
+                ),
+                if (isDefault)
+                  _Badge(
+                      label: 'Default',
+                      bg: cs.primaryContainer,
+                      fg: cs.onPrimaryContainer),
+                if (isDefault && isActive)
+                  const SizedBox(width: 6),
+                if (isActive)
+                  _Badge(
+                      label: 'Active',
+                      bg: cs.tertiaryContainer,
+                      fg: cs.onTertiaryContainer),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Item (finished good)
+            if ((row['item']?.toString() ?? '').isNotEmpty)
+              _Detail(
+                  icon: Icons.inventory_2_outlined,
+                  label: row['item_name']?.toString() ??
+                      row['item']?.toString() ??
+                      ''),
+
+            const SizedBox(height: 6),
+
+            // Qty + UOM
+            Row(
+              children: [
+                _Detail(
+                  icon: Icons.numbers_outlined,
+                  label:
+                      'Qty: ${row['quantity']?.toString() ?? row['qty']?.toString() ?? '—'}'
+                      '${(row['uom']?.toString() ?? '').isNotEmpty ? ' ${row['uom']}' : ''}',
                 ),
               ],
             ),
-            const Divider(height: 20),
-            Row(
-              children: [
-                Expanded(
-                    child: _Detail(
-                        label: 'Batch',
-                        value: row['batch'])),
-                Expanded(
-                    child: _Detail(
-                        label: 'Warehouse',
-                        value: row['warehouse'])),
-              ],
-            ),
-            if ((row['expiry_date'] ?? '') != '') ...[
-              const SizedBox(height: 8),
-              _Detail(
-                  label: 'Expiry',
-                  value: row['expiry_date']),
-            ],
           ],
         ),
+      ),
+    );
+  }
+
+  bool _truthy(dynamic val) {
+    if (val == null) return false;
+    if (val is bool) return val;
+    if (val is num) return val != 0;
+    return val.toString() == '1' || val.toString().toLowerCase() == 'true';
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String label;
+  final Color  bg;
+  final Color  fg;
+  const _Badge({
+    required this.label,
+    required this.bg,
+    required this.fg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: fg),
       ),
     );
   }
 }
 
 class _Detail extends StatelessWidget {
-  final String  label;
-  final dynamic value;
-  const _Detail({required this.label, this.value});
+  final IconData icon;
+  final String   label;
+  const _Detail({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text(label,
+        Icon(icon, size: 14, color: cs.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
             style: TextStyle(
-                fontSize: 11, color: cs.onSurfaceVariant)),
-        const SizedBox(height: 2),
-        Text(
-          value?.toString().isNotEmpty == true
-              ? value.toString()
-              : '—',
-          style: const TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w500),
+                fontSize: 13, color: cs.onSurface),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
