@@ -64,7 +64,7 @@ class ScanService extends GetxService {
       }
     }
 
-    // If it looks like a valid EAN-8 Item, try to fetch it directly
+    // If it looks like a valid EAN-8 Item, try to fetch it directly by derived code
     if (isEan8Candidate && derivedItemCode != null) {
       try {
         final response = await _apiProvider.getDocument('Item', derivedItemCode);
@@ -80,7 +80,7 @@ class ScanService extends GetxService {
         }
       } on DioException catch (e) {
         // If network error (not 404), return error.
-        // If 404, we intentionally fall through to the Variant Check.
+        // If 404, fall through to Step 3b: Item Barcode lookup.
         if (e.response?.statusCode != 404) {
           return ScanResult(
               type: ScanType.error,
@@ -91,10 +91,59 @@ class ScanService extends GetxService {
       } catch (e) {
         return ScanResult(type: ScanType.error, rawCode: cleanCode, message: "Scan Error: $e");
       }
+
+      // 3b. ITEM BARCODE LOOKUP
+      // The derived item code (EAN prefix) didn't match an Item name/code directly.
+      // The full EAN may be stored on the Item Barcode child table as the barcode
+      // value, with the real Item Code as the parent. Query that table using the
+      // full raw barcode (e.g. 20014230) to find the correct parent item code.
+      try {
+        // For hyphenated barcodes (EAN8-batch), look up only the EAN prefix part.
+        final barcodeToLookup = parsedBatchNo != null
+            ? cleanCode.split('-').first
+            : cleanCode;
+
+        final barcodeResponse = await _apiProvider.getDocumentList(
+            'Item Barcode',
+            filters: {'barcode': barcodeToLookup},
+            limit: 1,
+            fields: ['parent', 'barcode']
+        );
+
+        if (barcodeResponse.statusCode == 200 &&
+            barcodeResponse.data['data'] != null) {
+          final List barcodeData = barcodeResponse.data['data'];
+          if (barcodeData.isNotEmpty) {
+            final String resolvedItemCode = barcodeData.first['parent'];
+
+            // Fetch the full Item document using the resolved code
+            try {
+              final itemResponse =
+                  await _apiProvider.getDocument('Item', resolvedItemCode);
+              if (itemResponse.statusCode == 200 &&
+                  itemResponse.data['data'] != null) {
+                final item = Item.fromJson(itemResponse.data['data']);
+                return ScanResult(
+                  type: parsedBatchNo != null ? ScanType.batch : ScanType.item,
+                  rawCode: cleanCode,
+                  itemCode: item.itemCode,
+                  batchNo: parsedBatchNo,
+                  itemData: item,
+                );
+              }
+            } catch (_) {
+              // Fall through to variant_of check
+            }
+          }
+        }
+      } catch (_) {
+        // Fall through to variant_of check
+      }
     }
 
     // 4. VARIANT OF DETECTION (Fallback)
-    // If not EAN-8, or EAN-8 Item not found, check if it matches a 'variant_of' group.
+    // If not EAN-8, or EAN-8 Item not found via direct lookup or Item Barcode,
+    // check if it matches a 'variant_of' group.
     try {
       final response = await _apiProvider.getDocumentList(
           'Item',
