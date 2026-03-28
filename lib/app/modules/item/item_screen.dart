@@ -6,7 +6,7 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 
 class ItemScreen extends StatefulWidget {
@@ -35,7 +35,7 @@ class _ItemScreenState extends State<ItemScreen> {
     super.dispose();
   }
 
-  // ── build ──────────────────────────────────────────────────────────────────
+  // ── build ───────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -43,20 +43,18 @@ class _ItemScreenState extends State<ItemScreen> {
 
     // Fix #1: wrap in NotificationListener to fire load-more only once at
     // scroll end, preventing double-fire from _stockLevelsCache obs updates.
-    return NotificationListener<ScrollEndNotification>(
-      onNotification: (notification) {
-        final metrics = notification.metrics;
-        if (metrics.pixels >= metrics.maxScrollExtent * 0.9 &&
-            controller.hasMore.value &&
-            !controller.isFetchingMore.value) {
-          controller.fetchItems(isLoadMore: true);
-        }
-        return false;
-      },
-      child: Scaffold(
-        backgroundColor: cs.surface,
-        drawer: const AppNavDrawer(),
-        body: RefreshIndicator(
+    return AppShellScaffold(
+      body: NotificationListener<ScrollEndNotification>(
+        onNotification: (notification) {
+          final metrics = notification.metrics;
+          if (metrics.pixels >= metrics.maxScrollExtent * 0.9 &&
+              controller.hasMore.value &&
+              !controller.isFetchingMore.value) {
+            controller.fetchItems(isLoadMore: true);
+          }
+          return false;
+        },
+        child: RefreshIndicator(
           onRefresh: () => controller.fetchItems(clear: true),
           child: CustomScrollView(
             controller: _scrollController,
@@ -92,7 +90,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── grid ───────────────────────────────────────────────────────────────────
+  // ── grid ──────────────────────────────────────────────────────────────────────
 
   Widget _buildGrid(ColorScheme cs) {
     final items = controller.displayedItems;
@@ -127,7 +125,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list ───────────────────────────────────────────────────────────────────
+  // ── list ───────────────────────────────────────────────────────────────────────
 
   Widget _buildList() {
     final itemCount = controller.displayedItems.length +
@@ -150,7 +148,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── empty state ────────────────────────────────────────────────────────────
+  // ── empty state ────────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -205,7 +203,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list card ──────────────────────────────────────────────────────────────
+  // ── list card ───────────────────────────────────────────────────────────────────
 
   Widget _buildListCard(Item item) {
     return Obx(() {
@@ -251,7 +249,7 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // ── grid card ──────────────────────────────────────────────────────────────
+  // ── grid card ───────────────────────────────────────────────────────────────────
 
   Widget _buildGridCard(Item item) {
     final cs = Theme.of(context).colorScheme;
@@ -415,9 +413,9 @@ class _ItemScreenState extends State<ItemScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
 // _ItemImage  (Fix #6: extracted to StatelessWidget with key)
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
 
 class _ItemImage extends StatelessWidget {
   final String? imageUrl;
@@ -488,10 +486,10 @@ class _ItemImage extends StatelessWidget {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
 // _ExpandedContent  (Fix #9: theme colours throughout)
 // Shared by list card expanded section and grid preview bottom sheet.
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
 
 class _ExpandedContent extends StatelessWidget {
   final Item item;
