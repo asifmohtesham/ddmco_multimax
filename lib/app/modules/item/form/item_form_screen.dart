@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
@@ -16,6 +17,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
   Widget build(BuildContext context) {
     final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
     final cs = Theme.of(context).colorScheme;
+    final tabCtrl = Get.find<ItemTabController>();
 
     return Scaffold(
       appBar: MainAppBar(
@@ -37,7 +39,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               )
             : null,
         bottom: TabBar(
-          controller: controller.tabController,
+          controller: tabCtrl.tabController,
           isScrollable: true,
           tabs: const [
             Tab(text: 'Overview'),
@@ -64,7 +66,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
         }
 
         return TabBarView(
-          controller: controller.tabController,
+          controller: tabCtrl.tabController,
           children: [
             _buildOverviewTab(context, item, cs),
             _buildStockLevelsTab(context, cs),
@@ -76,7 +78,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Overview Tab ────────────────────────────────────────────────────────
+  // ── Overview Tab ──────────────────────────────────────────────────────────
 
   Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
@@ -222,7 +224,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Stock Levels Tab ────────────────────────────────────────────────────
+  // ── Stock Levels Tab ──────────────────────────────────────────────────────
 
   Widget _buildStockLevelsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -236,9 +238,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── Warehouse filter chips ─────────────────────────────────
-            // Hidden when there is only one warehouse (filtering adds no
-            // value) or while data is still loading.
+            // ── Warehouse filter chips ────────────────────────────────────
             Obx(() {
               final warehouses = controller.availableWarehouses;
               if (controller.isLoadingStock.value || warehouses.length <= 1) {
@@ -260,7 +260,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        // ── "All" chip ──────────────────────────────────
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: FilterChip(
@@ -284,11 +283,8 @@ class ItemFormScreen extends GetView<ItemFormController> {
                             visualDensity: VisualDensity.compact,
                           ),
                         ),
-                        // ── Per-warehouse chips ─────────────────────────
                         ...warehouses.map((wh) {
                           final isActive = selected == wh;
-                          // Shorten long warehouse names:
-                          // "Main Warehouse - DDMCO" → "Main Warehouse"
                           final label = wh.contains(' - ')
                               ? wh.split(' - ').first.trim()
                               : wh;
@@ -324,7 +320,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               );
             }),
 
-            // 1. Warehouse Balance ─────────────────────────────────────
+            // 1. Warehouse Balance
             Text(
               'Warehouse Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -348,8 +344,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       : 'No stock available in any warehouse.',
                 );
               }
-              // ValueKey forces the chart to repaint when the filter changes,
-              // preventing stale bar animations from a previous selection.
               return StockBalanceChart(
                 key: ValueKey(controller.selectedWarehouse.value),
                 stockLevels: levels,
@@ -358,7 +352,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance ────────────────────────────────────
+            // 2. Batch-Wise Balance
             Text(
               'Batch-Wise Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -459,7 +453,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 3. Stock Ledger (untouched) ──────────────────────────────
+            // 3. Stock Ledger
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -626,7 +620,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Attributes Tab ──────────────────────────────────────────────────────
+  // ── Attributes Tab ────────────────────────────────────────────────────────
 
   Widget _buildAttributesTab(BuildContext context, Item item, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -666,7 +660,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Attachments Tab ──────────────────────────────────────────────────────
+  // ── Attachments Tab ───────────────────────────────────────────────────────
 
   Widget _buildAttachmentsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);

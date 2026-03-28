@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -95,11 +96,6 @@ class HomeController extends GetxController {
     _initDashboard();
 
     // ── DataWedge hardware-scan worker ────────────────────────────────────
-    // BarcodeInputWidget runs in manual-input-only mode and no longer
-    // attaches its own ever() worker.  Each consuming controller must
-    // subscribe here.  The route guard ensures this handler is a no-op
-    // while the user has navigated to a sub-screen (DN, SE, PR, etc.)
-    // whose controller has its own dedicated worker.
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isEmpty) return;
       if (Get.currentRoute != AppRoutes.HOME) return;
@@ -370,12 +366,14 @@ class HomeController extends GetxController {
     }
   }
 
-  void _openItemDetailSheet(String itemCode) async {
-    final itemFormController = Get.put(ItemFormController());
-    itemFormController.loadItem(itemCode);
+  void _openItemDetailSheet(String itemCode) {
+    // Register the ticker controller FIRST so ItemFormScreen's build()
+    // can call Get.find<ItemTabController>() without a GetNotFound error.
+    Get.put(ItemTabController());
+    Get.put(ItemFormController())..loadItem(itemCode);
     barcodeController.clear();
 
-    await Get.bottomSheet(
+    Get.bottomSheet(
       FractionallySizedBox(
         heightFactor: 0.9,
         child: ClipRRect(
@@ -386,8 +384,12 @@ class HomeController extends GetxController {
       isScrollControlled: true,
       enableDrag: true,
       backgroundColor: Colors.white,
-    );
-    Get.delete<ItemFormController>();
+    ).then((_) {
+      // .then() fires after the close animation completes and Flutter has
+      // fully deactivated the overlay entry from the widget tree.
+      Get.delete<ItemTabController>(force: true);
+      Get.delete<ItemFormController>(force: true);
+    });
   }
 
   Future<void> _handleRackScan(String rackCode) async {
@@ -545,8 +547,6 @@ class HomeController extends GetxController {
 
   /// Navigates to [route] only when it differs from the current route,
   /// preventing GetX from tearing down the active controller on same-route taps.
-  /// Drawer closing is handled by the _DrawerItem onTap / _defaultTap at the
-  /// call site — do NOT call Navigator.pop() here.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
     if (Get.currentRoute != route) {

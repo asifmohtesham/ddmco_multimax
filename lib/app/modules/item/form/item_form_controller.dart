@@ -12,12 +12,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 
-class ItemFormController extends GetxController
-    with GetTickerProviderStateMixin {
+class ItemFormController extends GetxController {
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-
-  late final TabController tabController;
 
   String itemCode = '';
   var item = Rx<Item?>(null);
@@ -35,7 +32,7 @@ class ItemFormController extends GetxController
   var isLoadingLedger = false.obs;
   var isLoadingBatches = false.obs;
 
-  // ── Warehouse filter ────────────────────────────────────────────────────
+  // ── Warehouse filter ──────────────────────────────────────────────────────
   /// null = All Warehouses (no filter applied).
   var selectedWarehouse = Rx<String?>(null);
 
@@ -76,7 +73,7 @@ class ItemFormController extends GetxController
   void clearWarehouseFilter() {
     selectedWarehouse.value = null;
   }
-  // ────────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
 
   bool _stockTabLoaded = false;
   bool _attachmentsTabLoaded = false;
@@ -86,9 +83,6 @@ class ItemFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    tabController = TabController(length: 4, vsync: this);
-    tabController.addListener(_onTabChanged);
-
     final args = Get.arguments;
     if (args != null) {
       if (args is Map && args['itemCode'] != null) {
@@ -101,16 +95,11 @@ class ItemFormController extends GetxController
     }
   }
 
-  @override
-  void onClose() {
-    tabController.removeListener(_onTabChanged);
-    tabController.dispose();
-    super.onClose();
-  }
-
-  void _onTabChanged() {
-    if (tabController.indexIsChanging) return;
-    switch (tabController.index) {
+  /// Called by [ItemTabController]'s tab listener on every settled
+  /// tab-index change.  Triggers lazy data loads for Stock and Attachments
+  /// tabs the first time they are visited.
+  void onTabChanged(int index) {
+    switch (index) {
       case 1:
         if (!_stockTabLoaded) {
           _stockTabLoaded = true;
@@ -128,6 +117,10 @@ class ItemFormController extends GetxController
 
   void loadItem(String code) {
     itemCode = code;
+    // Reset lazy-load flags so every fresh open of the sheet reloads
+    // Stock and Attachments tabs when visited for the first time.
+    _stockTabLoaded = false;
+    _attachmentsTabLoaded = false;
     _loadCoreData();
   }
 
@@ -291,7 +284,7 @@ class ItemFormController extends GetxController
     isLoadingBatches.value = true;
     try {
       final response = await _provider.getBatchWiseHistory(itemCode);
-      if (response.statusCode == 200&&
+      if (response.statusCode == 200 &&
           response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
         List<Map<String, dynamic>> historyList =
