@@ -294,6 +294,20 @@ class DeliveryNoteFormController extends GetxController
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
+  /// Returns the live remaining qty for [serial] against the POS Upload cap.
+  ///
+  /// Formula:
+  ///   Remaining = posQtyCapForSerial(serial) − scannedQtyForSerial(serial)
+  ///
+  /// Returns [double.infinity] when there is no POS context so callers
+  /// require no POS-entry guard before calling.
+  double remainingQtyForSerial(String serial) {
+    final cap = posQtyCapForSerial(serial);
+    if (cap == double.infinity) return double.infinity;
+    final used = scannedQtyForSerial(serial);
+    return (cap - used).clamp(0.0, cap);
+  }
+
   // ── Item sheet orchestration ──────────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
