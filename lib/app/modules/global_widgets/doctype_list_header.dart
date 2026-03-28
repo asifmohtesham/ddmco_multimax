@@ -6,12 +6,12 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///
 /// Owns two sequential concerns:
 ///
-///   1. [SliverAppBar.large] — collapsing title + optional extra actions +
-///      two action icons: a **filter** [IconButton] (badged) and a **search**
-///      [IconButton], both always reachable with a single tap.
+/// 1. [SliverAppBar.large] — collapsing title + optional extra actions +
+///    two action icons: a **filter** [IconButton] (badged) and a **search**
+///    [IconButton], both always reachable with a single tap.
 ///
-///   2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
-///      the caller via [filterChipsBuilder].
+/// 2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
+///    the caller via [filterChipsBuilder].
 ///
 /// ---
 ///
@@ -36,18 +36,19 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///
 /// ## Search icon
 /// When [searchQuery] is non-null the icon is wrapped in [Obx] so the
-/// active-dot indicator reacts to query changes.  When [searchQuery] is
+/// active-dot indicator reacts to query changes. When [searchQuery] is
 /// null no [Obx] is created — GetX requires at least one observable inside
 /// every [Obx] closure and would throw otherwise.
 ///
 /// ## Filter icon states
-/// • **Idle**   : plain [Icons.filter_list] icon button, default colour.
+/// • **Idle** : plain [Icons.filter_list] icon button, default colour.
 /// • **Active** : [IconButton.filled] ([Icons.filter_alt]) — solid primary
-///               background guarantees visibility against any AppBar surface.
-///               A [Badge] overlays the count in the top-right corner using
-///               onError-on-error colours.
+///   background guarantees visibility against any AppBar surface.
+///   A [Badge] overlays the count in the top-right corner using
+///   onError-on-error colours.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
+
   final String title;
   final List<Widget>? extraActions;
 
@@ -68,20 +69,23 @@ class DocTypeListHeader extends StatelessWidget {
   final bool automaticallyImplyLeading;
 
   // ── Search ────────────────────────────────────────────────────────────
+
   final String? searchDoctype;
   final String? searchRoute;
 
   /// When non-null the search icon shows an active-dot indicator and the
-  /// [Obx] wrapper is applied.  When null no [Obx] is created.
+  /// [Obx] wrapper is applied. When null no [Obx] is created.
   final RxString? searchQuery;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClear;
 
   // ── Filter ────────────────────────────────────────────────────────────
+
   final RxMap<String, dynamic>? activeFilters;
   final VoidCallback? onFilterTap;
 
   // ── Chip row ─────────────────────────────────────────────────────────────
+
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
@@ -151,11 +155,11 @@ class DocTypeListHeader extends StatelessWidget {
 
       // ── Search icon ────────────────────────────────────────────────────
       //
-      // Two distinct code paths to satisfy GetX’s requirement that every
+      // Two distinct code paths to satisfy GetX's requirement that every
       // Obx closure subscribes to at least one observable:
       //
       //   searchQuery != null → Obx that reads searchQuery!.value for the
-      //                         active-dot indicator.  Observable guaranteed.
+      //                         active-dot indicator. Observable guaranteed.
       //   searchQuery == null → No dot needed, no Obx created at all.
       if (searchQuery != null ||
           (searchDoctype != null && searchRoute != null))
@@ -167,6 +171,7 @@ class DocTypeListHeader extends StatelessWidget {
               return Obx(() {
                 // searchQuery!.value is the observable that drives Obx.
                 final hasActive = searchQuery!.value.isNotEmpty;
+
                 return SizedBox(
                   width: 48,
                   height: 48,
@@ -255,41 +260,14 @@ class DocTypeListHeader extends StatelessWidget {
   // ── Active filter chip row ────────────────────────────────────────────────
 
   Widget _buildFilterChips(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Obx(() {
-        final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
-        final hasFilters = (activeFilters?.isNotEmpty ?? false);
-        if (!hasSearch && !hasFilters) return const SizedBox.shrink();
-
-        final chips = filterChipsBuilder!(context);
-        if (chips.isEmpty) return const SizedBox.shrink();
-
-        final colorScheme = Theme.of(context).colorScheme;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ...chips,
-              if (chips.length > 1 && onClearAllFilters != null)
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: colorScheme.error,
-                    visualDensity: VisualDensity.compact,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  onPressed: onClearAllFilters,
-                  icon: const Icon(Icons.clear_all, size: 16),
-                  label: const Text('Clear all'),
-                ),
-            ],
-          ),
-        );
-      }),
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _FilterChipHeaderDelegate(
+        searchQuery: searchQuery,
+        activeFilters: activeFilters,
+        filterChipsBuilder: filterChipsBuilder!,
+        onClearAllFilters: onClearAllFilters,
+      ),
     );
   }
 }
@@ -300,10 +278,87 @@ class DocTypeListHeader extends StatelessWidget {
 
 class MultiSliver extends StatelessWidget {
   final List<Widget> children;
+
   const MultiSliver({super.key, required this.children});
 
   @override
   Widget build(BuildContext context) {
     return SliverMainAxisGroup(slivers: children);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Filter chip persistent header delegate
+// ---------------------------------------------------------------------------
+
+class _FilterChipHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final RxString? searchQuery;
+  final RxMap<String, dynamic>? activeFilters;
+  final List<Widget> Function(BuildContext context) filterChipsBuilder;
+  final VoidCallback? onClearAllFilters;
+
+  _FilterChipHeaderDelegate({
+    required this.searchQuery,
+    required this.activeFilters,
+    required this.filterChipsBuilder,
+    required this.onClearAllFilters,
+  });
+
+  @override
+  double get minExtent {
+    // Reactive check: if either search or filters are active, pin with height.
+    // Otherwise collapse to zero.
+    final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
+    final hasFilters = (activeFilters?.isNotEmpty ?? false);
+    return (hasSearch || hasFilters) ? 56.0 : 0.0;
+  }
+
+  @override
+  double get maxExtent => minExtent;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Obx(() {
+      final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
+      final hasFilters = (activeFilters?.isNotEmpty ?? false);
+
+      if (!hasSearch && !hasFilters) return const SizedBox.shrink();
+
+      final chips = filterChipsBuilder(context);
+      if (chips.isEmpty) return const SizedBox.shrink();
+
+      final colorScheme = Theme.of(context).colorScheme;
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ...chips,
+            if (chips.length > 1 && onClearAllFilters != null)
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: colorScheme.error,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                onPressed: onClearAllFilters,
+                icon: const Icon(Icons.clear_all, size: 16),
+                label: const Text('Clear all'),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  @override
+  bool shouldRebuild(covariant _FilterChipHeaderDelegate oldDelegate) {
+    // Rely on Obx for reactive rebuilds; only rebuild if builder/callbacks change.
+    return filterChipsBuilder != oldDelegate.filterChipsBuilder ||
+        onClearAllFilters != oldDelegate.onClearAllFilters;
   }
 }
