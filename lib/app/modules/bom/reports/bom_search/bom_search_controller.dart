@@ -14,8 +14,9 @@ class BomSearchController extends GetxController {
       List.generate(5, (_) => TextEditingController());
 
   // ── Rx state ────────────────────────────────────────────────────────────────
-  final results   = <BomSearchResult>[].obs;
-  final isLoading = false.obs;
+  final results    = <BomSearchResult>[].obs;
+  final isLoading  = false.obs;
+  final isScanning = false.obs;
 
   /// Number of filled Item Code slots (drives chip strip + badge).
   final activeCount = 0.obs;
@@ -70,11 +71,29 @@ class BomSearchController extends GetxController {
     results.clear();
 
     try {
-      final response = await _provider.bomSearch(itemCodes: itemCodes);
+      final response = await _provider.getBomSearch(
+        itemCode: itemCodes[0],
+        subAssemblyItems: itemCodes.length > 1 ? itemCodes.sublist(1) : null,
+      );
       if (response.statusCode == 200 && response.data['message'] != null) {
-        final raw = response.data['message'] as List<dynamic>;
-        results.assignAll(raw.map((e) => BomSearchResult.fromJson(
-            e as Map<String, dynamic>)));
+        final message = response.data['message'] as Map<String, dynamic>;
+        final columns = message['columns'] as List<dynamic>? ?? [];
+        final rows    = message['result']  as List<dynamic>? ?? [];
+
+        // Resolve ordered fieldname keys from column definitions.
+        // Each column entry is either a plain String fieldname or a Map
+        // with a 'fieldname' key (Frappe query-report format).
+        final colKeys = columns.map((col) {
+          if (col is String) return col.toLowerCase();
+          if (col is Map)    return (col['fieldname']?.toString() ?? '').toLowerCase();
+          return '';
+        }).toList();
+
+        results.assignAll(
+          rows
+              .whereType<List<dynamic>>()
+              .map((row) => BomSearchResult.fromColumnar(colKeys, row)),
+        );
       }
     } catch (e) {
       if (kDebugMode) debugPrint('BomSearchController.runReport error: $e');
