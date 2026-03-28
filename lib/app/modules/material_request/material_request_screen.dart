@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
@@ -190,9 +190,28 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     final colorScheme  = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(() => RoleGuard(
+            roles: controller.writeRoles.toList(),
+            child: _isFarFromTop.value
+                ? FloatingActionButton(
+                    onPressed: controller.openCreateForm,
+                    tooltip: 'New Material Request',
+                    backgroundColor: colorScheme.primaryContainer,
+                    foregroundColor: colorScheme.onPrimaryContainer,
+                    elevation: 4,
+                    child: const Icon(Icons.add),
+                  )
+                : FloatingActionButton.extended(
+                    onPressed: controller.openCreateForm,
+                    tooltip: 'New Material Request',
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Material Request'),
+                    backgroundColor: colorScheme.primaryContainer,
+                    foregroundColor: colorScheme.onPrimaryContainer,
+                    elevation: 4,
+                  ),
+          )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchMaterialRequests(clear: true),
         color: colorScheme.primary,
@@ -201,9 +220,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── AppBar + search/filter icons + active-filter chip row ───────
-            // DocTypeListHeader owns all three concerns in one widget,
-            // consistent with Batch, StockEntry, and every other list screen.
+            // ── AppBar + search/filter icons + active-filter chip row ─────────
             DocTypeListHeader(
               title: 'Material Requests',
               searchQuery: controller.searchQuery,
@@ -419,27 +436,6 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           ],
         ),
       ),
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
-            child: _isFarFromTop.value
-                ? FloatingActionButton(
-                    onPressed: controller.openCreateForm,
-                    tooltip: 'New Material Request',
-                    backgroundColor: colorScheme.primaryContainer,
-                    foregroundColor: colorScheme.onPrimaryContainer,
-                    elevation: 4,
-                    child: const Icon(Icons.add),
-                  )
-                : FloatingActionButton.extended(
-                    onPressed: controller.openCreateForm,
-                    tooltip: 'New Material Request',
-                    icon: const Icon(Icons.add),
-                    label: const Text('New Material Request'),
-                    backgroundColor: colorScheme.primaryContainer,
-                    foregroundColor: colorScheme.onPrimaryContainer,
-                    elevation: 4,
-                  ),
-          )),
     );
   }
 
