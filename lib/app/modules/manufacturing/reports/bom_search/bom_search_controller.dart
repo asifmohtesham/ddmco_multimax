@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchController extends GetxController {
-  final ApiProvider _api = Get.find<ApiProvider>();
+  final ApiProvider      _api = Get.find<ApiProvider>();
+  final DataWedgeService _dw  = Get.find<DataWedgeService>();
 
-  // ── Filter controllers (order matches web BOM Search filter pane) ──────────
-  //
-  // Section 1 – BOM header
-  //   item        : finished good item code
-  //   bom         : BOM No
-  //
-  // Section 2 – Search in sub-assemblies (Item Code 1-5)
-  //   item1..item5 : component item codes
-  
+  // ── Filter controllers ────────────────────────────────────────────────────
+
   final itemController  = TextEditingController();
   final bomController   = TextEditingController();
   final item1Controller = TextEditingController();
@@ -24,22 +19,37 @@ class BomSearchController extends GetxController {
   final item4Controller = TextEditingController();
   final item5Controller = TextEditingController();
 
-  /// Flat map for passing to [showReportFilterSheet] and [activeFilterCount].
   late final Map<String, TextEditingController> filterControllers;
 
-  // ── State ────────────────────────────────────────────────────────────────────
+  // ── Focus nodes (one per scannable item-code slot) ──────────────────────
+
+  final item1Focus = FocusNode();
+  final item2Focus = FocusNode();
+  final item3Focus = FocusNode();
+  final item4Focus = FocusNode();
+  final item5Focus = FocusNode();
+
+  /// The filter key whose field currently has focus in the sheet.
+  /// Defaults to 'item1' so the first scan always lands there even if
+  /// the user has not tapped a field yet.
+  String _focusedKey = 'item1';
+
+  // ── Ordered list used for focus-advance logic ─────────────────────────
+
+  late final List<String> _scanKeys;
+
+  // ── State ──────────────────────────────────────────────────────────────
 
   final isLoading  = false.obs;
   final reportData = <Map<String, dynamic>>[].obs;
-
-  /// Reactive map of key → display-value for active filter chips.
   final activeFilters = <String, String>{}.obs;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+
     filterControllers = {
       'item'  : itemController,
       'bom'   : bomController,
@@ -49,27 +59,67 @@ class BomSearchController extends GetxController {
       'item4' : item4Controller,
       'item5' : item5Controller,
     };
+
+    _scanKeys = ['item1', 'item2', 'item3', 'item4', 'item5'];
+
+    // Wire focus nodes → update _focusedKey whenever a field gains focus.
+    final focusMap = {
+      'item1': item1Focus,
+      'item2': item2Focus,
+      'item3': item3Focus,
+      'item4': item4Focus,
+      'item5': item5Focus,
+    };
+    focusMap.forEach((key, node) {
+      node.addListener(() {
+        if (node.hasFocus) _focusedKey = key;
+      });
+    });
+
+    // Subscribe to DataWedge scan stream.
+    ever(_dw.scannedCode, _handleScan);
   }
 
   @override
   void onClose() {
-    for (final c in filterControllers.values) {
-      c.dispose();
-    }
+    for (final c in filterControllers.values) c.dispose();
+    item1Focus.dispose();
+    item2Focus.dispose();
+    item3Focus.dispose();
+    item4Focus.dispose();
+    item5Focus.dispose();
     super.onClose();
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  // ── Scan handler ────────────────────────────────────────────────────
+
+  void _handleScan(String code) {
+    if (code.isEmpty) return;
+
+    // Write barcode into the currently focused slot.
+    filterControllers[_focusedKey]?.text = code;
+
+    // Advance focus to the next empty slot (wrap around if all filled).
+    final currentIndex = _scanKeys.indexOf(_focusedKey);
+    for (var i = 1; i <= _scanKeys.length; i++) {
+      final nextKey = _scanKeys[(currentIndex + i) % _scanKeys.length];
+      if (filterControllers[nextKey]?.text.trim().isEmpty ?? true) {
+        _focusedKey = nextKey;
+        break;
+      }
+    }
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────
 
   int get activeFilterCount =>
       filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
 
   void clearFilters() {
-    for (final c in filterControllers.values) {
-      c.clear();
-    }
+    for (final c in filterControllers.values) c.clear();
     activeFilters.clear();
     reportData.clear();
+    _focusedKey = 'item1';
   }
 
   void clearFilter(String key) {
@@ -78,9 +128,7 @@ class BomSearchController extends GetxController {
   }
 
   Future<void> runReport() async {
-    // Rebuild active filter chip map from current controller values.
     _rebuildActiveFilters();
-
     isLoading.value = true;
     reportData.clear();
 
@@ -107,8 +155,8 @@ class BomSearchController extends GetxController {
           }
 
           final colKeys = rawColumns.map(fieldname).toList();
+          final rows    = <Map<String, dynamic>>[];
 
-          final rows = <Map<String, dynamic>>[];
           for (final row in rawRows) {
             if (row is! List) continue;
             final map = <String, dynamic>{};
@@ -130,7 +178,7 @@ class BomSearchController extends GetxController {
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────
 
   static const _labels = {
     'item'  : 'Item',
@@ -146,9 +194,7 @@ class BomSearchController extends GetxController {
     activeFilters.clear();
     filterControllers.forEach((key, ctrl) {
       final v = ctrl.text.trim();
-      if (v.isNotEmpty) {
-        activeFilters[key] = '${_labels[key] ?? key}: $v';
-      }
+      if (v.isNotEmpty) activeFilters[key] = '${_labels[key] ?? key}: $v';
     });
   }
 }
