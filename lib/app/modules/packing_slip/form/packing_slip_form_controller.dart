@@ -89,7 +89,7 @@ class PackingSlipFormController extends GetxController
 
   /// True once the DataWedge ever() worker has been successfully subscribed
   /// in [onInit]. Read by [PackingSlipFormScreen] for the smoke-test log trace:
-  ///   log('DataWedge worker active: \${controller.scanWorkerActive}',
+  ///   log('DataWedge worker active: ${controller.scanWorkerActive}',
   ///       name: 'PackingSlipScreen');
   bool get scanWorkerActive => _scanWorker != null;
 

@@ -62,7 +62,7 @@ class SharedSerialField extends StatelessWidget {
                 items: serials.map((s) {
                   return DropdownMenuItem(
                     value: s,
-                    child: Text('Serial #\$s'),
+                    child: Text('Serial #$s'),
                   );
                 }).toList(),
                 onChanged: (value) => serial.selectedSerial.value = value,
