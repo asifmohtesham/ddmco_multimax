@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BomSearchScreen extends GetView<BomSearchController> {
   const BomSearchScreen({super.key});
 
-  // ── Filter field descriptors ────────────────────────────────────────────────
+  // ── Filter field descriptors ─────────────────────────────────────────────────────────
   //
   // FocusNodes come from the controller so DataWedge knows which slot to
   // write into. Cannot be static const because FocusNode is a runtime object.
@@ -48,7 +48,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
 
   static const _sectionLabels = <String, String>{};
 
-  // ── Filter chip builder ────────────────────────────────────────────
+  // ── Filter chip builder ────────────────────────────────────────────────────
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
@@ -78,7 +78,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
     return chips;
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +94,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ─────────────────────────────────────────
+              // ── Unified header ─────────────────────────────────────────────────────
               DocTypeListHeader(
                 title: 'BOM Search',
                 activeFilters: controller.activeFilters
@@ -113,7 +113,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
                 onClearAllFilters:  controller.clearFilters,
               ),
 
-              // ── Results ───────────────────────────────────────────────
+              // ── Results ────────────────────────────────────────────────────────────
               if (controller.isLoading.value)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -181,8 +181,14 @@ class BomSearchScreen extends GetView<BomSearchController> {
   }
 }
 
-// ── Result tile ──────────────────────────────────────────────────────────────
+// ── Result tile ──────────────────────────────────────────────────────────────────
 
+/// Displays a single row from the BOM Search report.
+///
+/// The Frappe query_report.run response for this report returns exactly
+/// two columns per row:
+///   - `parent`  – the BOM document name  (e.g. "BOM-3000015-001")
+///   - `doctype` – the linked DocType name (always "BOM")
 class _BomSearchTile extends StatelessWidget {
   final Map<String, dynamic> row;
   const _BomSearchTile({required this.row});
@@ -192,122 +198,67 @@ class _BomSearchTile extends StatelessWidget {
     final cs    = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
-    final isDefault = _truthy(row['is_default']);
-    final isActive  = _truthy(row['is_active']);
+    final bom     = row['parent']?.toString()  ?? '—';
+    final doctype = row['doctype']?.toString() ?? '';
 
     return Material(
       color: cs.surface,
       elevation: 1,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    row['name']?.toString() ??
-                        row['bom_no']?.toString() ??
-                        '—',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700),
-                  ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // TODO: navigate to BOM form
+          // Get.toNamed(Routes.BOM_FORM, arguments: bom);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                if (isDefault)
-                  _Badge(
-                      label: 'Default',
-                      bg: cs.primaryContainer,
-                      fg: cs.onPrimaryContainer),
-                if (isDefault && isActive) const SizedBox(width: 6),
-                if (isActive)
-                  _Badge(
-                      label: 'Active',
-                      bg: cs.tertiaryContainer,
-                      fg: cs.onTertiaryContainer),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if ((row['item']?.toString() ?? '').isNotEmpty)
-              _Detail(
-                icon: Icons.inventory_2_outlined,
-                label: row['item_name']?.toString() ??
-                    row['item']?.toString() ??
-                    '',
+                child: Icon(
+                  Icons.account_tree_outlined,
+                  size: 20,
+                  color: cs.onPrimaryContainer,
+                ),
               ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                _Detail(
-                  icon: Icons.numbers_outlined,
-                  label:
-                      'Qty: ${row['quantity']?.toString() ?? row['qty']?.toString() ?? '—'}'
-                      '${(row['uom']?.toString() ?? '').isNotEmpty ? ' ${row['uom']}' : ''}',
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      bom,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (doctype.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        doctype,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  bool _truthy(dynamic val) {
-    if (val == null) return false;
-    if (val is bool) return val;
-    if (val is num) return val != 0;
-    return val.toString() == '1' || val.toString().toLowerCase() == 'true';
-  }
-}
-
-class _Badge extends StatelessWidget {
-  final String label;
-  final Color  bg;
-  final Color  fg;
-  const _Badge({
-    required this.label,
-    required this.bg,
-    required this.fg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w700, color: fg),
-      ),
-    );
-  }
-}
-
-class _Detail extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  const _Detail({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: cs.onSurfaceVariant),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13, color: cs.onSurface),
-            overflow: TextOverflow.ellipsis,
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: cs.outlineVariant,
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
