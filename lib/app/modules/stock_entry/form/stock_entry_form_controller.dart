@@ -149,6 +149,10 @@ class StockEntryFormController extends GetxController
   }
 
   // ── POS qty-cap helpers ───────────────────────────────────────────────────────
+  //
+  // Used by addItemLocally / updateItemLocally to hard-block qty that exceeds
+  // the POS Upload invoice serial cap.  Silently no-ops (returns infinity / 0)
+  // on non-POS entries so no existing behaviour is affected.
 
   /// Returns the POS Upload qty cap for [serial] (the idx string),
   /// or [double.infinity] when there is no POS context.
@@ -171,55 +175,205 @@ class StockEntryFormController extends GetxController
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
-  // ── onInit / onClose ─────────────────────────────────────────────────────────
+  // ── MR helpers ─────────────────────────────────────────────────────────────────
+
+  bool get isMaterialRequestEntry =>
+      customReferenceNoController.text.startsWith('MAT-MR-');
+
+  List<MrItemRow> get mrAllItems {
+    final entry = stockEntry.value;
+    return mrReferenceItems.map((ref) {
+      final code         = ref['item_code'] as String? ?? '';
+      final requestedQty = (ref['qty'] as num?)?.toDouble() ?? 0.0;
+      final matReq       = ref['material_request'] as String? ?? '';
+      final matReqItem   = ref['material_request_item'] as String? ?? '';
+      final scannedQty   = entry?.items
+              .where((i) => i.itemCode.trim().toLowerCase() ==
+                  code.trim().toLowerCase())
+              .fold(0.0, (sum, i) => sum + i.qty) ??
+          0.0;
+      return MrItemRow(
+        itemCode: code, requestedQty: requestedQty, scannedQty: scannedQty,
+        materialRequest: matReq, materialRequestItem: matReqItem,
+      );
+    }).toList();
+  }
+
+  List<MrItemRow> get mrFilteredItems {
+    final all = mrAllItems;
+    switch (mrItemFilter.value) {
+      case 'Pending':   return all.where((r) => r.isPending).toList();
+      case 'Completed': return all.where((r) => r.isCompleted).toList();
+      default:          return all;
+    }
+  }
+
+  // ── POS helpers ────────────────────────────────────────────────────────────────
+
+  Future<void> fetchPosUpload(String posId) async {
+    try {
+      final response = await _posProvider.getPosUpload(posId);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final pos = PosUpload.fromJson(response.data['data']);
+        posUpload.value = pos;
+        final count = pos.items.length;
+        posUploadSerialOptions.value =
+            List.generate(count, (i) => (i + 1).toString());
+      }
+    } catch (e) {
+      debugPrint('Error fetching POS Upload: $e');
+    }
+  }
+
+  // ── Lifecycle ───────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
-    _dataWedgeService.startListening();
-    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty) {
-        barcodeController.text = code;
-        scanBarcode(code);
-      }
-    });
-    _fetchStockEntryTypes();
-    _fetchWarehouses();
-    if (argStockEntryType != null) {
-      selectedStockEntryType.value = argStockEntryType!;
-    }
-    if (argCustomReferenceNo != null) {
-      customReferenceNoController.text = argCustomReferenceNo!;
-      _initialReferenceNo = argCustomReferenceNo!;
-    }
-    if (name.isEmpty || name == 'new') {
-      mode = 'new';
+    _initDependencies();
+    if (mode == 'new') {
       _initNewStockEntry();
     } else {
       fetchStockEntry();
     }
   }
 
+  void _initDependencies() {
+    fetchWarehouses();
+    fetchStockEntryTypes();
+
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isNotEmpty) scanBarcode(code);
+    });
+
+    ever(selectedFromWarehouse,    (_) => _markDirty());
+    ever(selectedToWarehouse,      (_) => _markDirty());
+    ever(selectedStockEntryType,   (_) => _markDirty());
+
+    customReferenceNoController.addListener(() {
+      final current = customReferenceNoController.text;
+      if (current != _initialReferenceNo) _markDirty();
+      if (entrySource == StockEntrySource.manual &&
+          selectedStockEntryType.value == 'Material Issue' &&
+          current.isNotEmpty) {
+        if (current.startsWith('KX') || current.startsWith('MX')) {
+          fetchPosUpload(current);
+        }
+      }
+    });
+  }
+
   @override
   void onClose() {
     _scanWorker?.dispose();
-    _saveResultTimer?.cancel();
     _autoSubmitTimer?.cancel();
+    _saveResultTimer?.cancel();
     barcodeController.dispose();
     customReferenceNoController.dispose();
-    scrollController.dispose();
     super.onClose();
   }
 
-  // ── Stale-check (OptimisticLockingMixin) ─────────────────────────────────────
-
-  @override
-  Future<void> reloadDocument() async {
-    await fetchStockEntry();
-    isStale.value = false;
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
   }
 
-  // ── Fetch ───────────────────────────────────────────────────────────────────
+  // ── New entry init ────────────────────────────────────────────────────────────────
+
+  Future<void> _initNewStockEntry() async {
+    isLoading.value = true;
+    final now  = DateTime.now();
+    final type = argStockEntryType    ?? 'Material Transfer';
+    final ref  = argCustomReferenceNo ?? '';
+
+    selectedStockEntryType.value     = type;
+    customReferenceNoController.text = ref;
+    _initialReferenceNo              = ref;
+
+    determineSource(type, ref);
+
+    if (entrySource == StockEntrySource.materialRequest) {
+      await _initMaterialRequestFlow(ref);
+    } else if (entrySource == StockEntrySource.posUpload) {
+      await fetchPosUpload(ref);
+    }
+
+    stockEntry.value = StockEntry(
+      name:          'New Stock Entry',
+      purpose:        selectedStockEntryType.value,
+      totalAmount:    0.0,
+      postingDate:    DateFormat('yyyy-MM-dd').format(now),
+      modified:       '',
+      creation:       now.toString(),
+      status:         'Draft',
+      docstatus:      0,
+      stockEntryType: selectedStockEntryType.value,
+      postingTime:    DateFormat('HH:mm:ss').format(now),
+      customTotalQty: 0.0,
+      customReferenceNo: ref,
+      currency:       'AED',
+      items:          [],
+    );
+
+    isLoading.value = false;
+    isDirty.value   = true;
+  }
+
+  /// Determines [entrySource] from the SE type and reference number.
+  ///
+  /// Public so unit tests can exercise the logic directly without
+  /// triggering the full [_initNewStockEntry] network flow.
+  void determineSource(String type, String ref) {
+    if (Get.arguments?['items'] != null) {
+      entrySource = StockEntrySource.materialRequest;
+    } else if (type == 'Material Issue' &&
+        (ref.startsWith('KX') || ref.startsWith('MX'))) {
+      entrySource = StockEntrySource.posUpload;
+    } else if (ref.isNotEmpty) {
+      entrySource = StockEntrySource.materialRequest;
+    } else {
+      entrySource = StockEntrySource.manual;
+    }
+  }
+
+  Future<void> _initMaterialRequestFlow(String ref) async {
+    if (Get.arguments?['items'] is List &&
+        (Get.arguments?['items'] as List).isNotEmpty) {
+      final rawItems = Get.arguments['items'] as List;
+      mrReferenceItems =
+          rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } else {
+      try {
+        final response =
+            await _apiProvider.getDocument('Material Request', ref);
+        if (response.statusCode == 200 && response.data['data'] != null) {
+          final data = response.data['data'];
+          if (data['material_request_type'] != null) {
+            selectedStockEntryType.value = data['material_request_type'];
+          }
+          final items = data['items'] as List? ?? [];
+          mrReferenceItems = items
+              .map((i) => {
+                    'item_code': i['item_code'],
+                    'qty': i['qty'],
+                    'material_request': ref,
+                    'material_request_item': i['name'],
+                  })
+              .toList();
+        } else {
+          GlobalSnackbar.error(
+              message: 'Failed to fetch Material Request details');
+        }
+      } catch (e) {
+        GlobalSnackbar.error(message: 'Error fetching Material Request: $e');
+      }
+    }
+  }
+
+  // ── Fetch document ────────────────────────────────────────────────────────────────
 
   Future<void> fetchStockEntry() async {
     isLoading.value = true;
@@ -228,25 +382,48 @@ class StockEntryFormController extends GetxController
       if (response.statusCode == 200 && response.data['data'] != null) {
         final entry = StockEntry.fromJson(response.data['data']);
         stockEntry.value = entry;
-        selectedFromWarehouse.value = entry.fromWarehouse;
-        selectedToWarehouse.value   = entry.toWarehouse;
-        selectedStockEntryType.value =
-            entry.stockEntryType ?? selectedStockEntryType.value;
-        customReferenceNoController.text = entry.customReferenceNo ?? '';
-        _initialReferenceNo = entry.customReferenceNo ?? '';
 
-        await _detectEntrySource(entry);
+        selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
+        selectedFromWarehouse.value  = entry.fromWarehouse;
+        selectedToWarehouse.value    = entry.toWarehouse;
+
+        final ref = entry.customReferenceNo ?? '';
+        _initialReferenceNo              = ref;
+        customReferenceNoController.text = ref;
+
+        if (entry.stockEntryType == 'Material Issue' &&
+            entry.customReferenceNo != null) {
+          final refNo = entry.customReferenceNo!;
+          if (refNo.startsWith('KX') || refNo.startsWith('MX')) {
+            entrySource = StockEntrySource.posUpload;
+            await fetchPosUpload(refNo);
+          } else if (entry.items.any((i) => i.materialRequest != null)) {
+            entrySource = StockEntrySource.materialRequest;
+            final first = entry.items
+                .firstWhereOrNull((i) => i.materialRequest != null);
+            if (first != null && first.materialRequest!.isNotEmpty) {
+              await _initMaterialRequestFlow(first.materialRequest!);
+            }
+          } else {
+            entrySource = StockEntrySource.manual;
+          }
+        } else {
+          entrySource = StockEntrySource.manual;
+        }
+
+        isDirty.value = false;
       } else {
         GlobalDialog.showError(
-          title:   'Failed to load Stock Entry',
-          message: 'Server returned an unexpected response.',
+          title:   'Could not load Stock Entry',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
           onRetry: fetchStockEntry,
         );
       }
     } catch (e) {
       GlobalDialog.showError(
-        title:   'Failed to load Stock Entry',
-        message: 'Check your connection and try again.',
+        title:   'Could not load Stock Entry',
+        message: e.toString(),
         onRetry: fetchStockEntry,
       );
     } finally {
@@ -254,120 +431,293 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  Future<void> _detectEntrySource(StockEntry entry) async {
-    final refNo = entry.customReferenceNo ?? '';
-    if (refNo.startsWith('MAT-STE-')) {
-      final mr = await _fetchMrItems(refNo);
-      if (mr.isNotEmpty) {
-        entrySource    = StockEntrySource.materialRequest;
-        mrReferenceItems = mr;
-        return;
-      }
-    }
-    if (refNo.startsWith('POS-UPL-')) {
-      final loaded = await _loadPosUpload(refNo);
-      if (loaded) {
-        entrySource = StockEntrySource.posUpload;
-        return;
-      }
-    }
-    entrySource = StockEntrySource.manual;
+  Future<void> reloadDocument() async {
+    await fetchStockEntry();
+    isStale.value    = false;
+    isScanning.value = false;
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
-  Future<List<Map<String, dynamic>>> _fetchMrItems(String mrName) async {
-    try {
-      final response = await _apiProvider.getDocument(
-          'Material Request', mrName);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final items = response.data['data']['items'] as List?;
-        if (items != null) {
-          return items.cast<Map<String, dynamic>>();
-        }
-      }
-    } catch (_) {}
-    return [];
+  // ── Warehouse helpers ───────────────────────────────────────────────────────────────
+
+  bool get requiresSourceWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Issue';
   }
 
-  Future<bool> _loadPosUpload(String posName) async {
-    try {
-      final response = await _posProvider.getPosUpload(posName);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        posUpload.value = PosUpload.fromJson(response.data['data']);
-        posUploadSerialOptions.value = posUpload.value!.items
-            .map((i) => i.idx.toString())
-            .toList();
-        return true;
-      }
-    } catch (_) {}
+  bool get requiresTargetWarehouse {
+    final t = selectedStockEntryType.value;
+    return t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture' ||
+        t == 'Material Receipt';
+  }
+
+  /// Public test-support wrapper around [_validateHeaderBeforeScan].
+  ///
+  /// Returns `true` (BLOCKED) when the required warehouse for the current
+  /// SE type has not been selected, `false` (ALLOWED) otherwise.
+  ///
+  /// Must NOT be called from production UI code — use [scanBarcode] instead.
+  bool enforceWarehouseBeforeScan() {
+    if (requiresSourceWarehouse &&
+        (selectedFromWarehouse.value == null ||
+            selectedFromWarehouse.value!.isEmpty)) {
+      return true;
+    }
+    if (requiresTargetWarehouse &&
+        (selectedToWarehouse.value == null ||
+            selectedToWarehouse.value!.isEmpty)) {
+      return true;
+    }
     return false;
   }
 
-  void _initNewStockEntry() {
-    stockEntry.value = StockEntry(
-      name:            'New Stock Entry',
-      stockEntryType:  selectedStockEntryType.value,
-      docstatus:       0,
-      items:           [],
-      fromWarehouse:   null,
-      toWarehouse:     null,
-      customReferenceNo: argCustomReferenceNo,
+  bool _validateHeaderBeforeScan() {
+    if (requiresSourceWarehouse &&
+        (selectedFromWarehouse.value == null ||
+            selectedFromWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message: 'Please set the Source Warehouse (Details tab) before scanning.');
+      return false;
+    }
+    if (requiresTargetWarehouse &&
+        (selectedToWarehouse.value == null ||
+            selectedToWarehouse.value!.isEmpty)) {
+      GlobalSnackbar.warning(
+          message: 'Please set the Target Warehouse (Details tab) before scanning.');
+      return false;
+    }
+    return true;
+  }
+
+  bool _validateScanContext(ScanResult result) {
+    if (entrySource == StockEntrySource.materialRequest) {
+      if (mrReferenceItems.isEmpty) return true;
+      final scanned = result.itemData?.itemCode ?? '';
+      final found = mrReferenceItems.any((r) =>
+          r['item_code'].toString().trim().toLowerCase() ==
+          scanned.trim().toLowerCase());
+      if (!found) {
+        GlobalSnackbar.error(
+            message: 'Item $scanned not found in Material Request');
+        return false;
+      }
+    }
+    return true;
+  }
+
+  StockEntryItem _enrichItemWithSourceData(StockEntryItem item) {
+    String? matReq     = item.materialRequest;
+    String? matReqItem = item.materialRequestItem;
+    String? serial     = item.customInvoiceSerialNumber;
+
+    if (entrySource == StockEntrySource.materialRequest &&
+        mrReferenceItems.isNotEmpty) {
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+          r['item_code'].toString().trim().toLowerCase() ==
+          item.itemCode.trim().toLowerCase());
+      if (ref != null) {
+        matReq     = ref['material_request'];
+        matReqItem = ref['material_request_item'];
+        serial     = '0';
+      }
+    } else if (entrySource == StockEntrySource.posUpload) {
+      serial = item.customInvoiceSerialNumber;
+    }
+
+    return StockEntryItem(
+      name:       item.name,
+      itemCode:   item.itemCode,
+      qty:        item.qty,
+      basicRate:  item.basicRate,
+      itemGroup:  item.itemGroup,
+      customVariantOf: item.customVariantOf,
+      batchNo:    item.batchNo,
+      itemName:   item.itemName,
+      rack:       item.rack,
+      toRack:     item.toRack,
+      sWarehouse: item.sWarehouse,
+      tWarehouse: item.tWarehouse,
+      customInvoiceSerialNumber: serial,
+      materialRequest:     matReq,
+      materialRequestItem: matReqItem,
+      owner:       item.owner,
+      creation:    item.creation,
+      modified:    item.modified,
+      modifiedBy:  item.modifiedBy,
     );
-    isLoading.value = false;
   }
 
-  Future<void> _fetchStockEntryTypes() async {
-    isFetchingTypes.value = true;
-    try {
-      final response = await _apiProvider.getDocumentList(
-          'Stock Entry Type', fields: ['name']);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        stockEntryTypes.value = (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+  // ── Item CRUD ──────────────────────────────────────────────────────────────────
+
+  void updateItemLocally(
+    String uniqueId, double qty, String? batch,
+    String? sourceRack, String? targetRack,
+    String? sWarehouse, String? tWarehouse, String? serial,
+  ) {
+    final items = stockEntry.value?.items.toList() ?? [];
+    final idx   = items.indexWhere((i) => i.name == uniqueId);
+    if (idx == -1) return;
+
+    // ── Hard block: POS qty cap ───────────────────────────────────────────────
+    final resolvedSerial = serial ?? '0';
+    if (resolvedSerial != '0' && posUpload.value != null) {
+      final cap       = posQtyCapForSerial(resolvedSerial);
+      final othersQty = scannedQtyForSerial(resolvedSerial,
+          excludeItemName: uniqueId);
+      if (othersQty + qty > cap) {
+        final posItem = posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == int.tryParse(resolvedSerial));
+        GlobalDialog.showQtyCapExceeded(
+          serialNo:   int.parse(resolvedSerial),
+          itemName:   posItem?.itemName ?? items[idx].itemName ?? '',
+          scannedQty: othersQty,
+          capQty:     cap,
+        );
+        return;
       }
-    } catch (_) {}
-    isFetchingTypes.value = false;
+    }
+
+    final existing = items[idx];
+    var updated = StockEntryItem(
+      name:       existing.name,
+      itemCode:   existing.itemCode,
+      qty:        qty,
+      basicRate:  existing.basicRate,
+      itemGroup:  existing.itemGroup,
+      customVariantOf: existing.customVariantOf,
+      batchNo:    batch,
+      itemName:   existing.itemName,
+      rack:       sourceRack,
+      toRack:     targetRack,
+      sWarehouse: sWarehouse,
+      tWarehouse: tWarehouse,
+      customInvoiceSerialNumber: serial,
+      materialRequest:     existing.materialRequest,
+      materialRequestItem: existing.materialRequestItem,
+      owner:      existing.owner,
+      creation:   existing.creation,
+      modified:   existing.modified,
+      modifiedBy: existing.modifiedBy,
+    );
+    updated = _enrichItemWithSourceData(updated);
+    items[idx] = updated;
+    stockEntry.update((val) => val?.items.assignAll(items));
   }
 
-  Future<void> _fetchWarehouses() async {
-    isFetchingWarehouses.value = true;
-    try {
-      final response = await _apiProvider.getDocumentList(
-          'Warehouse', filters: {'is_group': 0}, limit: 100);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        warehouses.value = (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+  void addItemLocally(
+    double qty, String? batch, String? sourceRack, String? targetRack,
+    String? sWarehouse, String? tWarehouse, String? serial,
+  ) {
+    final resolvedSerial = serial ?? '0';
+
+    // ── Hard block: POS qty cap ───────────────────────────────────────────────
+    if (resolvedSerial != '0' && posUpload.value != null) {
+      final items = stockEntry.value?.items.toList() ?? [];
+      final cap   = posQtyCapForSerial(resolvedSerial);
+
+      final existingIdx = items.indexWhere((i) =>
+          i.itemCode.trim().toLowerCase() ==
+              currentItemCode.trim().toLowerCase() &&
+          (i.batchNo  ?? '') == (batch  ?? '') &&
+          (i.rack     ?? '') == (sourceRack ?? '') &&
+          (i.customInvoiceSerialNumber ?? '0') == resolvedSerial);
+      final mergeQty    = existingIdx != -1 ? items[existingIdx].qty : 0.0;
+      final alreadyUsed = scannedQtyForSerial(resolvedSerial);
+      final projected   = alreadyUsed - mergeQty + qty;
+
+      if (projected > cap) {
+        final posItem = posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == int.tryParse(resolvedSerial));
+        GlobalDialog.showQtyCapExceeded(
+          serialNo:   int.parse(resolvedSerial),
+          itemName:   posItem?.itemName ?? currentItemName,
+          scannedQty: alreadyUsed - mergeQty,
+          capQty:     cap,
+        );
+        return;
       }
-    } catch (_) {}
-    isFetchingWarehouses.value = false;
+    }
+
+    final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+    var newItem = StockEntryItem(
+      name:       uniqueId,
+      itemCode:   currentItemCode,
+      qty:        qty,
+      basicRate:  0.0,
+      itemGroup:  null,
+      customVariantOf: currentVariantOf,
+      batchNo:    batch,
+      itemName:   currentItemName,
+      rack:       sourceRack,
+      toRack:     targetRack,
+      sWarehouse: sWarehouse,
+      tWarehouse: tWarehouse,
+      customInvoiceSerialNumber: serial,
+    );
+    newItem = _enrichItemWithSourceData(newItem);
+    ensureItemKey(newItem);
+    final items = stockEntry.value?.items.toList() ?? [];
+    items.add(newItem);
+    stockEntry.update((val) => val?.items.assignAll(items));
   }
 
-  // ── Item sheet orchestration ────────────────────────────────────────────────
+  // ── addItem coordinator ──────────────────────────────────────────────────────────────
 
-  Future<void> openItemSheet({
-    required String code,
-    required String variantOf,
-    required String itemName,
-    String?  batchNo,
-    StockEntryItem? editingItem,
-    String   scannedEan8 = '',
-  }) async {
-    currentItemCode  = code;
-    currentVariantOf = variantOf;
-    currentItemName  = itemName;
+  Future<void> addItem() async {
+    _autoSubmitTimer?.cancel();
+    final child = Get.find<StockEntryItemFormController>();
+    await child.submit();
+    final items = stockEntry.value?.items ?? [];
+    final String highlightKey = child.editingItemName.value ??
+        (items.lastOrNull?.name ?? '');
+    barcodeController.clear();
+    triggerHighlight(highlightKey);
+    if (Get.isBottomSheetOpen == true) Get.back();
+    if (mode == 'new') {
+      saveStockEntry();
+    } else {
+      isDirty.value = true;
+      saveStockEntry().catchError((e) => debugPrint('Background save: $e'));
+    }
+  }
+
+  // ── Delete ───────────────────────────────────────────────────────────────────────────
+
+  void confirmAndDeleteItem(StockEntryItem item) {
+    if (isItemSheetOpen.value) {
+      if (Get.isBottomSheetOpen == true) Get.back();
+    }
+    GlobalDialog.showConfirmation(
+      title:   'Remove Item?',
+      message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
+      onConfirm: () {
+        final items = stockEntry.value?.items.toList() ?? [];
+        items.removeWhere((i) => i.name == item.name);
+        stockEntry.update((val) => val?.items.assignAll(items));
+        isDirty.value = true;
+        GlobalSnackbar.success(message: 'Item removed');
+      },
+    );
+  }
+
+  // ── Sheet lifecycle ───────────────────────────────────────────────────────────────
+
+  void _openNewItemSheet({String? scannedBatch}) {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
     final child = Get.put(StockEntryItemFormController());
     child.initialise(
       parent:           this,
-      code:             code,
-      variantOf:        variantOf,
-      name:             itemName,
-      itemName:         itemName,
-      batchNo:          batchNo,
-      editingItem:      editingItem,
-      scannedEan8:      scannedEan8,
+      code:             currentItemCode,
+      name:             currentItemCode,
+      variantOf:        currentVariantOf,
+      itemName:         currentItemName,
+      batchNo:          scannedBatch,
       mrReferenceItems: mrReferenceItems,
+      scannedEan8:      currentScannedEan,
     );
 
     child.setupAutoSubmit(
@@ -377,351 +727,415 @@ class StockEntryFormController extends GetxController
       isSubmittable: () => isEditable,
       onAutoSubmit:  () async {
         isAddingItem.value = true;
-        try {
-          await child.submit();
-          isDirty.value = true;
-          await saveStockEntry();
-        } finally {
-          isAddingItem.value = false;
-        }
-        final nav = Get.key.currentState;
-        if (nav != null && nav.canPop()) nav.pop();
+        await Future.delayed(const Duration(milliseconds: 500));
+        await addItem();
+        isAddingItem.value = false;
       },
     );
 
-    isItemSheetOpen.value = true;
-
-    await Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.65,
-        minChildSize:     0.4,
-        maxChildSize:     0.95,
-        builder: (context, sc) {
-          Future<void> onSubmit() async {
-            isAddingItem.value = true;
-            try {
-              final bool saved = await child.submitWithFeedback();
-              if (saved) {
-                isDirty.value = true;
-                await saveStockEntry();
-                if (context.mounted) Navigator.of(context).pop();
-              }
-            } finally {
-              isAddingItem.value = false;
-            }
-          }
-
-          return UniversalItemFormSheet(
-            controller:       child,
-            scrollController: sc,
-            onSubmit:         onSubmit,
-            onScan:           (code) => scanBarcode(code),
-            customFields: [
-              SharedSerialField(
-                controller:  child,
-                accentColor: Colors.blueGrey,
-              ),
-              SharedBatchField(
-                c:           child,
-                accentColor: Colors.purple,
-                editMode:    true,
-                fieldKey:    'se_batch_field',
-              ),
-              SEDualRackSection(controller: child),
-            ],
-          );
-        },
-      ),
-      isScrollControlled: true,
-    );
-
-    isItemSheetOpen.value = false;
-    barcodeController.clear();
-    if (Get.isRegistered<StockEntryItemFormController>()) {
-      Get.delete<StockEntryItemFormController>();
-    }
+    _openItemSheet(child);
   }
 
   Future<void> editItem(StockEntryItem item) async {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
+
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
+
     try {
-      await openItemSheet(
-        code:        item.itemCode ?? '',
-        variantOf:   item.variantOf ?? '',
-        itemName:    item.itemName  ?? '',
-        batchNo:     item.batchNo,
-        editingItem: item,
-        scannedEan8: item.batchNo?.split('-').firstOrNull ?? '',
+      currentItemCode  = item.itemCode;
+      currentVariantOf = item.customVariantOf ?? '';
+      currentItemName  = item.itemName ?? '';
+
+      final child = Get.put(StockEntryItemFormController());
+      child.initialise(
+        parent:           this,
+        code:             item.itemCode,
+        name:             item.itemCode,
+        variantOf:        currentVariantOf,
+        itemName:         currentItemName,
+        editingItem:      item,
+        mrReferenceItems: mrReferenceItems,
+        scannedEan8:      currentScannedEan,
       );
+
+      child.setupAutoSubmit(
+        enabled:      _storageService.getAutoSubmitEnabled(),
+        delaySeconds: _storageService.getAutoSubmitDelay(),
+        isSheetOpen:  isItemSheetOpen,
+        isSubmittable: () => isEditable,
+        onAutoSubmit: () async {
+          isAddingItem.value = true;
+          await Future.delayed(const Duration(milliseconds: 500));
+          await addItem();
+          isAddingItem.value = false;
+        },
+      );
+
+      ensureItemKey(item);
+      _openItemSheet(child);
     } finally {
       isLoadingItemEdit.value  = false;
       loadingForItemName.value = null;
     }
   }
 
-  // ── Item CRUD ────────────────────────────────────────────────────────────────
-
-  void addItemLocally(
-      double qty, String batch, String sourceRack, String targetRack,
-      String? sWh, String? tWh, String? invoiceSerial) {
-    final items  = stockEntry.value?.items.toList() ?? [];
-    final serial = invoiceSerial ?? '0';
-
-    // ── Hard block: POS qty cap ──────────────────────────────────────────────
-    if (serial != '0' && posUpload.value != null) {
-      final cap = posQtyCapForSerial(serial);
-
-      final existingIdx = items.indexWhere((i) =>
-          (i.itemCode ?? '') == currentItemCode &&
-          (i.batchNo  ?? '') == batch &&
-          (i.rack     ?? '') == sourceRack &&
-          (i.customInvoiceSerialNumber ?? '0') == serial);
-      final mergeQty     = existingIdx != -1 ? items[existingIdx].qty : 0.0;
-      final alreadyUsed  = scannedQtyForSerial(serial);
-      final projectedTotal = alreadyUsed - mergeQty + qty;
-
-      if (projectedTotal > cap) {
-        final posItem = posUpload.value!.items
-            .firstWhereOrNull((i) => i.idx == int.tryParse(serial));
-        GlobalDialog.showQtyCapExceeded(
-          serialNo:   int.parse(serial),
-          itemName:   posItem?.itemName ?? currentItemName,
-          scannedQty: alreadyUsed - mergeQty,
-          capQty:     cap,
-        );
-        return;
-      }
-    }
-
-    final existingIdx = items.indexWhere((i) =>
-        (i.itemCode ?? '') == currentItemCode &&
-        (i.batchNo  ?? '') == batch &&
-        (i.rack     ?? '') == sourceRack &&
-        (i.customInvoiceSerialNumber ?? '0') == serial);
-
-    if (existingIdx != -1) {
-      final existing = items[existingIdx];
-      items[existingIdx] = existing.copyWith(qty: existing.qty + qty);
-    } else {
-      final newItem = StockEntryItem(
-        name:     'local_${DateTime.now().millisecondsSinceEpoch}',
-        itemCode: currentItemCode,
-        itemName: currentItemName,
-        qty:      qty,
-        batchNo:  batch.isNotEmpty ? batch : null,
-        rack:     sourceRack.isNotEmpty ? sourceRack : null,
-        toRack:   targetRack.isNotEmpty ? targetRack : null,
-        sWarehouse: sWh,
-        tWarehouse: tWh,
-        customInvoiceSerialNumber: serial,
-      );
-      items.add(newItem);
-    }
-    stockEntry.update((val) => val?.items.assignAll(items));
-    isDirty.value = true;
-    recentlyAddedItemName.value = currentItemName;
-    Future.delayed(const Duration(seconds: 2),
-        () => recentlyAddedItemName.value = '');
-  }
-
-  void updateItemLocally(
-      String itemNameID, double qty, String batch, String sourceRack,
-      String targetRack, String? sWh, String? tWh, String? invoiceSerial) {
-    final serial = invoiceSerial ?? '0';
-    final items  = stockEntry.value?.items.toList() ?? [];
-    final idx    = items.indexWhere((i) => i.name == itemNameID);
-    if (idx == -1) return;
-
-    // ── Hard block: POS qty cap ──────────────────────────────────────────────
-    if (serial != '0' && posUpload.value != null) {
-      final cap       = posQtyCapForSerial(serial);
-      final othersQty = scannedQtyForSerial(serial,
-          excludeItemName: itemNameID);
-      if (othersQty + qty > cap) {
-        final posItem = posUpload.value!.items
-            .firstWhereOrNull((i) => i.idx == int.tryParse(serial));
-        GlobalDialog.showQtyCapExceeded(
-          serialNo:   int.parse(serial),
-          itemName:   posItem?.itemName ?? items[idx].itemName ?? '',
-          scannedQty: othersQty,
-          capQty:     cap,
-        );
-        return;
-      }
-    }
-
-    items[idx] = items[idx].copyWith(
-      qty:        qty,
-      batchNo:    batch.isNotEmpty  ? batch       : null,
-      rack:       sourceRack.isNotEmpty ? sourceRack : null,
-      toRack:     targetRack.isNotEmpty ? targetRack : null,
-      sWarehouse: sWh,
-      tWarehouse: tWh,
-      customInvoiceSerialNumber: invoiceSerial,
+  Future<void> _openItemSheet(StockEntryItemFormController child) async {
+    isItemSheetOpen.value = true;
+    await Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize:     0.4,
+        maxChildSize:     0.95,
+        expand:           false,
+        builder: (context, sc) => UniversalItemFormSheet(
+          key:              ValueKey(child.editingItemName.value ?? 'new'),
+          controller:       child,
+          scrollController: sc,
+          onSubmit:         addItem,
+          onScan:           null,
+          itemSubtext:      currentVariantOf,
+          isSaveEnabled:    isEditable,
+          customFields: [
+            SharedBatchField(
+              c:               child,
+              accentColor:     Colors.purple,
+              balanceOverride: () => child.batchBalance.value,
+            ),
+            SharedSerialField(
+              controller:  child,
+              accentColor: Colors.blueGrey,
+            ),
+            RackSection(controller: child),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
-    stockEntry.update((val) => val?.items.assignAll(items));
-    isDirty.value = true;
+    isItemSheetOpen.value = false;
+    Get.delete<StockEntryItemFormController>();
   }
 
-  Future<void> confirmAndDeleteItem(StockEntryItem item) async {
-    GlobalDialog.showConfirmation(
-      title:   'Delete Item?',
-      message: 'Remove ${item.itemCode} from this entry?',
-      onConfirm: () {
-        final items = stockEntry.value?.items.toList() ?? [];
-        items.remove(item);
-        stockEntry.update((val) => val?.items.assignAll(items));
-        isDirty.value = true;
-      },
-    );
-  }
-
-  // ── Save ──────────────────────────────────────────────────────────────────────
-
-  Future<void> saveStockEntry() async {
-    if (isSaving.value) return;
-    if (checkStaleAndBlock()) return;
-    isSaving.value = true;
-    _saveResultTimer?.cancel();
-    try {
-      final bool isNew = stockEntry.value?.name == 'New Stock Entry' ||
-          (stockEntry.value?.name.isEmpty ?? true);
-
-      final Map<String, dynamic> data = stockEntry.value!.toJson();
-      data['stock_entry_type'] = selectedStockEntryType.value;
-      if (selectedFromWarehouse.value != null)
-        data['from_warehouse'] = selectedFromWarehouse.value;
-      if (selectedToWarehouse.value != null)
-        data['to_warehouse'] = selectedToWarehouse.value;
-      final refNo = customReferenceNoController.text.trim();
-      if (refNo.isNotEmpty) data['custom_reference_no'] = refNo;
-
-      final response = isNew
-          ? await _apiProvider.createDocument('Stock Entry', data)
-          : await _apiProvider.updateDocument(
-              'Stock Entry', stockEntry.value!.name, data);
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final saved = StockEntry.fromJson(response.data['data']);
-        stockEntry.value = saved;
-        name             = saved.name;
-        if (isNew) mode  = 'edit';
-        isDirty.value    = false;
-        saveResult.value = SaveResult.success;
-        _saveResultTimer = Timer(const Duration(seconds: 2),
-            () => saveResult.value = SaveResult.idle);
-      } else {
-        saveResult.value = SaveResult.error;
-        _saveResultTimer = Timer(const Duration(seconds: 2),
-            () => saveResult.value = SaveResult.idle);
-        GlobalSnackbar.error(
-            message:
-                'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
-      }
-    } on DioException catch (e) {
-      if (handleVersionConflict(e)) {
-        // Handled by OptimisticLockingMixin.
-      } else {
-        saveResult.value = SaveResult.error;
-        _saveResultTimer = Timer(const Duration(seconds: 2),
-            () => saveResult.value = SaveResult.idle);
-        GlobalSnackbar.error(message: 'Save failed: ${e.message}');
-      }
-    } catch (e) {
-      saveResult.value = SaveResult.error;
-      _saveResultTimer = Timer(const Duration(seconds: 2),
-          () => saveResult.value = SaveResult.idle);
-      GlobalSnackbar.error(message: 'Save failed: $e');
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  // ── Scan routing ───────────────────────────────────────────────────────────────
+  // ── Scan routing ──────────────────────────────────────────────────────────────────
 
   Future<void> scanBarcode(String barcode) async {
+    if (isClosed) return;
+    if (checkStaleAndBlock()) return;
     if (barcode.isEmpty) return;
-    if (isItemSheetOpen.value) {
-      _handleInsideSheetScan(barcode);
+    if (isScanning.value) return;
+
+    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
+      _handleSheetScan(barcode);
       return;
     }
+
+    if (!_validateHeaderBeforeScan()) return;
+
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
       if (result.isSuccess && result.itemData != null) {
-        if (barcode.contains('-') && !barcode.startsWith('SHIPMENT')) {
-          currentScannedEan = barcode.split('-').first;
-        } else {
-          currentScannedEan = barcode;
+        if (!_validateScanContext(result)) {
+          isScanning.value = false;
+          return;
         }
-        final itemData = result.itemData!;
-        barcodeController.clear();
-        await openItemSheet(
-          code:        itemData.itemCode,
-          variantOf:   itemData.variantOf ?? '',
-          itemName:    itemData.itemName,
-          batchNo:     result.batchNo,
-          scannedEan8: currentScannedEan,
-        );
+        if (result.rawCode.contains('-') &&
+            !result.rawCode.startsWith('SHIPMENT')) {
+          currentScannedEan = result.rawCode.split('-')[0];
+        } else {
+          currentScannedEan = result.rawCode;
+        }
+        final itemData   = result.itemData!;
+        currentItemCode  = itemData.itemCode;
+        currentVariantOf = itemData.variantOf ?? '';
+        currentItemName  = itemData.itemName;
+        currentUom       = itemData.stockUom ?? 'Nos';
+        _openNewItemSheet(scannedBatch: result.batchNo);
       } else {
-        GlobalSnackbar.error(
-            message: result.message ?? 'Item not found');
+        GlobalSnackbar.error(message: result.message ?? 'Scan failed');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Scan error: $e');
+      GlobalSnackbar.error(message: 'Scan processing error: $e');
     } finally {
       isScanning.value = false;
       barcodeController.clear();
     }
   }
 
-  void _handleInsideSheetScan(String barcode) {
-    if (!Get.isRegistered<StockEntryItemFormController>()) return;
+  void _handleSheetScan(String barcode) async {
+    barcodeController.clear();
     final child = Get.find<StockEntryItemFormController>();
-    child.applyRackScan(barcode);
+    final contextItem = child.currentScannedEan.isNotEmpty
+        ? child.currentScannedEan
+        : currentItemCode;
+    final result =
+        await _scanService.processScan(barcode, contextItemCode: contextItem);
+
+    if (result.type == ScanType.rack && result.rackId != null) {
+      child.applyRackScan(result.rackId!);
+    } else if ((result.type == ScanType.batch || result.type == ScanType.item) &&
+        result.batchNo != null) {
+      child.batchController.text = result.batchNo!;
+      child.validateBatch(result.batchNo!);
+    } else {
+      if (child.needsRackScanFallback) {
+        child.applyRackScan(barcode);
+      } else {
+        GlobalSnackbar.error(message: 'Invalid Scan');
+      }
+    }
   }
 
-  // ── POS helpers ───────────────────────────────────────────────────────────────
+  // ── Warehouses ──────────────────────────────────────────────────────────────────
 
-  Map<String, List<StockEntryItem>> get groupedBySerial {
-    if (stockEntry.value == null) return {};
+  Future<void> fetchWarehouses() async {
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _apiProvider
+          .getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        warehouses.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('Error fetching warehouses: $e');
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
+  }
+
+  Future<void> fetchStockEntryTypes() async {
+    isFetchingTypes.value = true;
+    try {
+      final response = await _provider.getStockEntryTypes();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        stockEntryTypes.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
+      }
+    } catch (e) {
+      if (stockEntryTypes.isEmpty) {
+        stockEntryTypes.assignAll([
+          'Material Issue', 'Material Receipt',
+          'Material Transfer', 'Material Transfer for Manufacture',
+        ]);
+      }
+    } finally {
+      isFetchingTypes.value = false;
+    }
+  }
+
+  // ── Feedback / scroll ──────────────────────────────────────────────────────────────
+
+  void triggerHighlight(String uniqueId) {
+    recentlyAddedItemName.value = uniqueId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        final key = itemKeys[uniqueId];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration:  const Duration(milliseconds: 500),
+            curve:     Curves.easeInOut,
+            alignment: 0.5,
+          );
+        }
+      });
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemName.value = '';
+    });
+  }
+
+  void toggleInvoiceExpand(String key) {
+    expandedInvoice.value = expandedInvoice.value == key ? '' : key;
+  }
+
+  Map<String, List<StockEntryItem>> get groupedItems {
+    if (stockEntry.value == null || stockEntry.value!.items.isEmpty) return {};
     return groupBy(
-      stockEntry.value!.items,
-      (StockEntryItem i) => i.customInvoiceSerialNumber ?? '0',
+        stockEntry.value!.items,
+        (StockEntryItem i) => i.customInvoiceSerialNumber ?? '0');
+  }
+
+  // ── Save ───────────────────────────────────────────────────────────────────────────
+
+  Future<void> saveStockEntry() async {
+    if (isSaving.value) return;
+    if (checkStaleAndBlock()) return;
+
+    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
+      final first = stockEntry.value!.items.first;
+      if (selectedFromWarehouse.value == null && first.sWarehouse != null) {
+        selectedFromWarehouse.value = first.sWarehouse;
+      }
+      if (selectedToWarehouse.value == null && first.tWarehouse != null) {
+        selectedToWarehouse.value = first.tWarehouse;
+      }
+    }
+    if (selectedStockEntryType.value == 'Material Transfer') {
+      if (selectedFromWarehouse.value == null ||
+          selectedToWarehouse.value == null) {
+        GlobalSnackbar.error(
+            message: 'Source and Target Warehouses are required');
+        return;
+      }
+    }
+
+    isSaving.value = true;
+    final Map<String, dynamic> data = {
+      'stock_entry_type':   selectedStockEntryType.value,
+      'posting_date':       stockEntry.value?.postingDate,
+      'posting_time':       stockEntry.value?.postingTime,
+      'from_warehouse':     selectedFromWarehouse.value,
+      'to_warehouse':       selectedToWarehouse.value,
+      'custom_reference_no': customReferenceNoController.text,
+      'modified':           stockEntry.value?.modified,
+    };
+
+    final itemsJson = stockEntry.value?.items.map((i) {
+          final json = i.toJson();
+          if (json['name'] != null &&
+              json['name'].toString().startsWith('local_')) {
+            json.remove('name');
+          }
+          if (json['basic_rate'] == 0.0) json.remove('basic_rate');
+          if (json['material_request'] == null &&
+              entrySource == StockEntrySource.materialRequest &&
+              mrReferenceItems.isNotEmpty) {
+            final ref = mrReferenceItems.firstWhereOrNull((r) =>
+                r['item_code'].toString().trim().toLowerCase() ==
+                i.itemCode.trim().toLowerCase());
+            if (ref != null) {
+              json['material_request']      = ref['material_request'];
+              json['material_request_item'] = ref['material_request_item'];
+            }
+          }
+          if (i.materialRequest != null)
+            json['material_request'] = i.materialRequest;
+          if (i.materialRequestItem != null)
+            json['material_request_item'] = i.materialRequestItem;
+          json.removeWhere((key, value) => value == null);
+          return json;
+        }).toList() ??
+        [];
+    data['items'] = itemsJson;
+
+    try {
+      if (mode == 'new') {
+        final response = await _provider.createStockEntry(data);
+        if (response.statusCode == 200) {
+          final createdDoc = response.data['data'];
+          name = createdDoc['name'];
+          mode = 'edit';
+          await fetchStockEntry();
+          _setSaveResult(SaveResult.success);
+          GlobalSnackbar.success(message: 'Stock Entry created: $name');
+        } else {
+          _setSaveResult(SaveResult.error);
+          GlobalSnackbar.error(
+              message: 'Failed to create: '
+                  '${response.data['exception'] ?? 'Unknown error'}');
+        }
+      } else {
+        final response = await _provider.updateStockEntry(name, data);
+        if (response.statusCode == 200) {
+          final updatedDoc = response.data['data'];
+          if (updatedDoc != null) {
+            stockEntry.value = StockEntry.fromJson(updatedDoc);
+          }
+          _setSaveResult(SaveResult.success);
+          isDirty.value = false;
+          await fetchStockEntry();
+        } else {
+          _setSaveResult(SaveResult.error);
+          GlobalSnackbar.error(
+              message: 'Failed to update: '
+                  '${response.data['exception'] ?? 'Unknown error'}');
+        }
+      }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) {
+        // handled by mixin
+      } else {
+        _setSaveResult(SaveResult.error);
+        String msg = 'Save failed';
+        if (e.response?.data is Map) {
+          if (e.response!.data['exception'] != null) {
+            msg = e.response!.data['exception']
+                .toString().split(':').last.trim();
+          } else if (e.response!.data['_server_messages'] != null) {
+            msg = 'Validation Error: Check form details';
+          }
+        }
+        GlobalSnackbar.error(message: msg);
+      }
+    } catch (e) {
+      _setSaveResult(SaveResult.error);
+      GlobalSnackbar.error(message: 'Save failed: $e');
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  // ── Misc ─────────────────────────────────────────────────────────────────────────────
+
+  void _markDirty() {
+    if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+  }
+
+  Future<void> confirmDiscard() async {
+    GlobalDialog.showUnsavedChanges(
+      onDiscard: () {
+        isDirty.value = false;
+        Get.back();
+      },
     );
   }
 
-  List<MrItemRow> get mrItemRows {
-    if (mrReferenceItems.isEmpty) return [];
-    final grouped = groupBy(
-      stockEntry.value?.items ?? [],
-      (StockEntryItem i) => i.itemCode ?? '',
+  Future<void> pickPostingDate(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+    DateTime initial;
+    try {
+      initial = current.postingDate != null && current.postingDate!.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(current.postingDate!)
+          : DateTime.now();
+    } catch (_) {
+      initial = DateTime.now();
+    }
+    final picked = await showDatePicker(
+      context: context, initialDate: initial,
+      firstDate: DateTime(2000), lastDate: DateTime(2100),
     );
-    return mrReferenceItems.map((ref) {
-      final code       = ref['item_code'] as String;
-      final requested  = (ref['qty'] as num).toDouble();
-      final scanned    = (grouped[code] ?? [])
-          .fold(0.0, (s, i) => s + i.qty);
-      return MrItemRow(
-        itemCode:            code,
-        requestedQty:        requested,
-        scannedQty:          scanned,
-        materialRequest:     ref['parent']    as String? ?? '',
-        materialRequestItem: ref['name']      as String? ?? '',
-      );
-    }).toList();
+    if (picked != null) {
+      stockEntry.update(
+          (val) => val?.postingDate = DateFormat('yyyy-MM-dd').format(picked));
+      _markDirty();
+    }
   }
 
-  int get completedMrCount =>
-      mrItemRows.where((r) => r.isCompleted).length;
-  int get pendingMrCount   =>
-      mrItemRows.where((r) => r.isPending).length;
-
-  void setMrFilter(String f) => mrItemFilter.value = f;
-
-  // ── Misc UI ───────────────────────────────────────────────────────────────────
-
-  bool get isReferenceNoChanged =>
-      customReferenceNoController.text.trim() != _initialReferenceNo;
+  Future<void> pickPostingTime(BuildContext context) async {
+    final current = stockEntry.value;
+    if (current == null) return;
+    TimeOfDay initial;
+    try {
+      if (current.postingTime != null && current.postingTime!.isNotEmpty) {
+        final parsed = DateFormat('HH:mm:ss').parse(current.postingTime!);
+        initial = TimeOfDay.fromDateTime(parsed);
+      } else {
+        initial = TimeOfDay.now();
+      }
+    } catch (_) {
+      initial = TimeOfDay.now();
+    }
+    final picked = await showTimePicker(context: context, initialTime: initial);
+    if (picked != null) {
+      final dt = DateTime(0, 1, 1, picked.hour, picked.minute);
+      stockEntry.update(
+          (val) => val?.postingTime = DateFormat('HH:mm:ss').format(dt));
+      _markDirty();
+    }
+  }
 }
