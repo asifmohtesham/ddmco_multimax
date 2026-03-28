@@ -78,8 +78,6 @@ class BomSearchScreen extends GetView<BomSearchController> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Active filter chip strip ──────────────────────────────
-          // Shows one dismissible chip per filled Item Code slot.
-          // Tapping any chip re-opens the filter sheet.
           Obx(() {
             if (controller.activeCount.value == 0) {
               return const SizedBox.shrink();
@@ -141,7 +139,6 @@ class BomSearchScreen extends GetView<BomSearchController> {
                                   onDeleted: () {
                                     controller.subAssemblyControllers[i]
                                         .clear();
-                                    // Re-run if Item Code 1 still set
                                     if (controller.canRun.value) {
                                       controller.runReport();
                                     }
@@ -151,7 +148,6 @@ class BomSearchScreen extends GetView<BomSearchController> {
                             },
                           ),
                         ],
-                        // Clear-all text button when 2+ chips are showing
                         if (controller.activeCount.value > 1)
                           TextButton.icon(
                             style: TextButton.styleFrom(
@@ -348,6 +344,23 @@ class _BomSearchResultCard extends StatelessWidget {
                     child: _Field(
                       label: 'UOM',
                       value: result.uom.isNotEmpty ? result.uom : '—',
+                    ),
+                  ),
+                ],
+              ),
+              // ── Footer action row ───────────────────────────────────
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: onTap,
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Open BOM'),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
                     ),
                   ),
                 ],
