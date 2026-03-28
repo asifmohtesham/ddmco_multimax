@@ -23,6 +23,10 @@ class ReportFilterField {
   final String? hint;
   /// Whether the field is required (shows * in label, validated on Run).
   final bool required;
+  /// Optional [FocusNode] — pass one when the caller needs to track which
+  /// field is focused (e.g. to route DataWedge barcode scans to the right
+  /// [TextEditingController]).  Ignored when null.
+  final FocusNode? focusNode;
 
   const ReportFilterField({
     required this.key,
@@ -31,6 +35,7 @@ class ReportFilterField {
     this.prefixIcon,
     this.hint,
     this.required = false,
+    this.focusNode,
   });
 }
 
@@ -227,7 +232,7 @@ class _ReportFilterSheet extends StatelessWidget {
                           final missing = fields
                               .where((f) =>
                                   f.required &&
-                                  (controllers[f.key]?.text.trim().isEmpty ??  true))
+                                  (controllers[f.key]?.text.trim().isEmpty ?? true))
                               .map((f) => f.label.replaceAll('*', '').trim())
                               .toList();
                           if (missing.isNotEmpty) {
@@ -301,6 +306,7 @@ class _SheetSubheading extends StatelessWidget {
 class _FieldWidget extends StatelessWidget {
   final ReportFilterField            field;
   final TextEditingController        controller;
+
   const _FieldWidget({
     required this.field,
     required this.controller,
@@ -311,6 +317,7 @@ class _FieldWidget extends StatelessWidget {
     if (field.type == ReportFilterType.datePicker) {
       return TextField(
         controller: controller,
+        focusNode:  field.focusNode,
         readOnly:   true,
         onTap: () => _pickDate(context, controller),
         decoration: InputDecoration(
@@ -328,6 +335,7 @@ class _FieldWidget extends StatelessWidget {
     // Default: text
     return TextField(
       controller: controller,
+      focusNode:  field.focusNode,
       decoration: InputDecoration(
         labelText:  field.label,
         hintText:   field.hint,
