@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
-/// A unified sliver header for every DocType list screen.
+/// A unified sliver header for every DocType **list** screen.
 ///
 /// Owns two sequential concerns:
 ///
@@ -13,31 +13,58 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///   2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
 ///      the caller via [filterChipsBuilder].
 ///
-/// ### Search icon
+/// ---
+///
+/// ## Leading button convention
+///
+/// | Screen type | [automaticallyImplyLeading] | Result |
+/// |-------------|----------------------------|--------|
+/// | **List screen** (top-level nav destination) | `false` | ☰ Drawer / hamburger icon |
+/// | **Form screen** (pushed on top of a list) | `true` (default) | ← Back arrow |
+///
+/// > **⚠️** The hamburger only appears when the owning [Scaffold] has a
+/// > [Scaffold.drawer] set. Use `AppShellScaffold` (which injects
+/// > `AppNavDrawer` automatically) for all list screens.
+/// >
+/// > For form screens use [DocTypeFormHeader], which always sets
+/// > `automaticallyImplyLeading: true` and provides the standard
+/// > Reload · Save · Share action row.
+/// >
+/// > See `docs/app_bar_conventions.md` for the complete convention.
+///
+/// ---
+///
+/// ## Search icon
 /// When [searchQuery] is non-null the icon is wrapped in [Obx] so the
 /// active-dot indicator reacts to query changes.  When [searchQuery] is
 /// null no [Obx] is created — GetX requires at least one observable inside
 /// every [Obx] closure and would throw otherwise.
 ///
-/// ### Filter icon states
+/// ## Filter icon states
 /// • **Idle**   : plain [Icons.filter_list] icon button, default colour.
 /// • **Active** : [IconButton.filled] ([Icons.filter_alt]) — solid primary
 ///               background guarantees visibility against any AppBar surface.
 ///               A [Badge] overlays the count in the top-right corner using
 ///               onError-on-error colours.
-///
-/// ### Leading button
-/// By default [automaticallyImplyLeading] is `true` and Flutter will insert
-/// a back-arrow when the screen is on top of another route.  Pass `false`
-/// for top-level screens that should show the Drawer menu button instead.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
   final String title;
   final List<Widget>? extraActions;
 
-  /// When `false` the [SliverAppBar] will not insert a back-arrow even when
-  /// the current route has a predecessor on the navigation stack.
-  /// Defaults to `true` to preserve existing behaviour for all other callers.
+  /// Controls whether [SliverAppBar] automatically inserts a leading widget.
+  ///
+  /// **List screens — pass `false`:**
+  /// Prevents the auto-inserted back arrow on top-level destination screens.
+  /// The [Scaffold.drawer] hamburger icon will appear instead, provided the
+  /// owning [Scaffold] has a drawer (use `AppShellScaffold`).
+  ///
+  /// **Form screens — omit (defaults to `true`):**
+  /// Flutter auto-inserts a back arrow when a predecessor route exists on
+  /// the stack, which is always the case for form screens pushed from a list.
+  /// Use [DocTypeFormHeader] for form screens instead of setting this flag.
+  ///
+  /// Defaults to `true` to preserve existing behaviour for all callers that
+  /// do not yet set this explicitly.
   final bool automaticallyImplyLeading;
 
   // ── Search ────────────────────────────────────────────────────────────
