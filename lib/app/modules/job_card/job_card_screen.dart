@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
@@ -89,9 +89,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surfaceContainerLow,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
       body: RefreshIndicator(
         onRefresh: () => controller.fetchJobCards(clear: true),
         color: cs.primary,
@@ -117,14 +115,14 @@ class _JobCardScreenState extends State<JobCardScreen> {
 
             // ── KPI strip + list — single Obx owns all Rx reads ────────────
             Obx(() {
-              // ─ loading splash ────────────────────────────────────────
+              // ─ loading splash ────────────────────────────────────
               if (controller.isLoading.value &&
                   controller.jobCards.isEmpty) {
                 return const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()));
               }
 
-              // ─ empty state ───────────────────────────────────────────
+              // ─ empty state ───────────────────────────────────────
               if (controller.jobCards.isEmpty) {
                 final hasFilters =
                     controller.activeFilters.isNotEmpty ||
@@ -176,7 +174,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
                 );
               }
 
-              // ─ KPI strip + list ───────────────────────────────────────
+              // ─ KPI strip + list ───────────────────────────────────
               final cards = controller.jobCards;
               return SliverMainAxisGroup(
                 slivers: [
@@ -201,7 +199,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _JobCardTile(
                               jc: jc,
-                              // ── Navigate to detail form ──────────────
                               onTap: () => Get.toNamed(
                                 AppRoutes.JOB_CARD_FORM,
                                 arguments: {'name': jc.name},
@@ -223,7 +220,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
   }
 }
 
-// ── KPI strip ──────────────────────────────────────────────────────────────────
+// ── KPI strip ────────────────────────────────────────────────────────
 
 class _JobCardKpiStrip extends StatelessWidget {
   final JobCardController controller;
@@ -284,7 +281,7 @@ class _Kpi extends StatelessWidget {
   }
 }
 
-// ── Job Card tile ─────────────────────────────────────────────────────────────
+// ── Job Card tile ──────────────────────────────────────────────────────
 
 class _JobCardTile extends StatelessWidget {
   final dynamic jc;
