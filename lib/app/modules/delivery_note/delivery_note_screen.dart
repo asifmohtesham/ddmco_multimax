@@ -453,7 +453,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       floatingActionButton: Obx(() => _isFarFromTop.value
           ? FloatingActionButton(
               onPressed: controller.openCreateDialog,
-              tooltip: 'Create Delivery Note',
+              tooltip: 'New Delivery Note',
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
               elevation: 4,
@@ -461,8 +461,9 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             )
           : FloatingActionButton.extended(
               onPressed: controller.openCreateDialog,
+              tooltip: 'New Delivery Note',
               icon: const Icon(Icons.add),
-              label: const Text('Create'),
+              label: const Text('New Delivery Note'),
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
               elevation: 4,
