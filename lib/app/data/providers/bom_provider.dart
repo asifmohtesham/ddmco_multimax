@@ -57,20 +57,25 @@ class BomProvider {
   /// Runs the ERPNext v15 "BOM Search" query report.
   ///
   /// [itemCode] is required by the report (maps to the `item` filter).
-  /// [bomName] is optional and narrows results to a specific BOM name.
+  ///   This is driven by Item Code 1 in the filter sheet.
+  ///
+  /// [subAssemblyItems] is an optional list of up to 4 additional item codes
+  ///   (Item Code 2–5) passed as the report's `sub_assembly_items` filter.
+  ///   They are joined as a comma-separated string, matching the ERPNext
+  ///   BOM Search report's expected filter format.
   ///
   /// Response shape (Frappe query_report):
   ///   data.message.columns → List of column definitions
   ///   data.message.result  → List<List<dynamic>> rows
   Future<Response> getBomSearch({
     required String itemCode,
-    String? bomName,
+    List<String>? subAssemblyItems,
   }) async {
     final filters = <String, dynamic>{
       'item': itemCode,
     };
-    if (bomName != null && bomName.trim().isNotEmpty) {
-      filters['name'] = bomName.trim();
+    if (subAssemblyItems != null && subAssemblyItems.isNotEmpty) {
+      filters['sub_assembly_items'] = subAssemblyItems.join(',');
     }
     return _apiProvider.getReport('BOM Search', filters: filters);
   }
