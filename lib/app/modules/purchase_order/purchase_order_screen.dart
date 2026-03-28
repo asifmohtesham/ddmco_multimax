@@ -237,8 +237,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         roles: controller.writeRoles.toList(),
         child: FloatingActionButton.extended(
           onPressed: controller.openCreateDialog,
+          tooltip: 'New Purchase Order',
           icon: const Icon(Icons.add),
-          label: const Text('Create'),
+          label: const Text('New Purchase Order'),
         ),
       )),
     );
