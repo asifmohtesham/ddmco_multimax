@@ -36,6 +36,8 @@ class QtyCapBadge extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
               ),
+              const SizedBox(width: 8),
+              QtyCapBadge(controller: controller),
               if (canTap) ...[
                 const SizedBox(width: 4),
                 Icon(
