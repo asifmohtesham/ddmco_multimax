@@ -21,73 +21,18 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///                           operator enters a positive qty in add-mode,
 ///                           constrained to the parent document's Source Warehouse.
 ///
-/// SE is the most complex DocType item sheet:
-///   • dual rack (source + target)
-///   • dual warehouse derivation
-///   • three entry-source modes (manual / MR / POS)
-///   • MR qty constraint
-///   • batch-balance cross-check
-///   • auto-fill source rack (via AutoFillRackMixin, qty-triggered)
-///   • auto-submit worker (via base setupAutoSubmit)
-///
-/// AutoFillRackMixin wiring:
-///   • [isAddMode] set before listener attachment.
-///   • [initAutoFillListener] called in initialise() after initBaseListeners().
-///   • [disposeAutoFillListener] called in onClose() before super.onClose().
-///   • [autoFillRackController] overridden → sourceRackController.
-///     The mixin writes the selected rack name to sourceRackController, not
-///     the base rackController which is unused by SE's submission / validation path.
-///   • [onAutoFillRackSelected] overridden → validateDualRack(rack, true).
-///     Triggers SE's dual-rack validation pipeline for the source side.
-///
-/// Step-2 additions:
-///   • [isAddingItemFlag]   wired to _parent.isAddingItem
-///   • [isScanning]         left at base default (SE scan bar is doc-level)
-///   • [sheetScanController] left null (SE scan bar is doc-level)
-///   • [qtyInfoText]        simplified to 'Max: N' (Commit C) — for now
-///                          keeps the POS-aware cap display
-///   • [deleteCurrentItem]  resolves StockEntryItem + calls parent.confirmAndDeleteItem
-///
-/// P1-C: [isSheetLoading] overridden to also cover SE dual-rack validation
-///       (isValidatingSourceRack / isValidatingTargetRack) so the Save button
-///       is correctly disabled while rack network calls are in-flight.
-///
-/// Standardisation S1:
-///   • [isBatchReadOnly]     — removed local field; use base.
-///   • [currentScannedEan]   — removed local currentScannedEan8; use base field.
-///   • [validateBatchOnInit] — removed local duplicate; use base method.
-///
-/// Browse-Rack fix (parity with DN):
-///   • initialise() now calls fetchAllRackStocks() unconditionally at the end,
-///     matching DeliveryNoteItemFormController. This pre-warms rackStockMap so
-///     RackPickerController.load() receives a non-empty fallbackMap even when
-///     the operator taps Browse Rack before entering a batch.
-///   • validateBatch() override now calls unawaited(fetchAllRackStocks()) after
-///     _updateAvailableStock() + _updateBatchBalance() succeed. The base
-///     validateBatch() ends with fetchAllRackStocks(); SE's override replaced
-///     that entire call chain without re-adding the map refresh, causing
-///     rackStockMap to remain empty after batch validation.
-///
-/// Sheet-close responsibility:
-///   • submit() does NOT call Get.back().
-///   • Sheet dismissal is owned exclusively by the parent coordinator
-///     (_openItemSheet onSubmit lambda), matching the SRP boundary
-///     established in Phase-1 (commit f2aeb9a).
-///
-/// P5 — qtyInfoText serial chip:
-///   • POS branch now returns only the cap string (no '· Avail' suffix).
-///     The available-stock figure is already shown on the Quantity field
-///     via the non-POS base fallback; duplicating it in the serial chip
-///     was redundant and caused truncation.
-///   • SharedSerialField renders qtyInfoText as a _PosCapChip directly
-///     below the dropdown so feedback appears at the point of serial selection.
+/// Commit B additions:
+///   • [effectiveMaxQty] now includes the POS serial remaining cap as the
+///     first (and potentially binding) ceiling in the chain:
+///       serial remaining → total stock → batch balance → rack balance → MR cap
+///     Uses excludeItemName in edit-mode so the open item's saved qty is
+///     not counted against itself.
 ///
 /// Commit A additions:
 ///   • [liveRemaining] — Rx<double> written in validateSheet() on every
 ///     qty/serial change so SharedSerialField's Obx rebuilds reactively.
 ///   • [posSerialCapText] — dedicated getter for the chip label, decoupled
-///     from qtyInfoText so Commit C can simplify qtyInfoText → 'Max: N'
-///     without breaking the chip string.
+///     from qtyInfoText.
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens → initialise() → sheet opens
@@ -96,8 +41,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
   // ── Parent reference ────────────────────────────────────────────────
   late StockEntryFormController _parent;
-
-  /// Public read-only access to the parent document controller.
   StockEntryFormController get parent => _parent;
 
   // ── SE-specific extra TECs ────────────────────────────────────────────────
@@ -110,7 +53,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
-  // ── Warehouse derivation (per-item, from rack suffix) ─────────────────────
+  // ── Warehouse derivation ──────────────────────────────────────────────────
   var derivedSourceWarehouse = RxnString();
   var derivedTargetWarehouse = RxnString();
   var itemSourceWarehouse    = RxnString();
@@ -119,25 +62,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Balance state ─────────────────────────────────────────────────────
   var batchBalance          = 0.0.obs;
   var rackBalance           = 0.0.obs;
-  var validationMaxQty      = 0.0.obs; // MR cap
+  var validationMaxQty      = 0.0.obs;
   var isLoadingBatchBalance = false.obs;
   var isLoadingRackBalance  = false.obs;
-  // isBatchReadOnly → promoted to base (S1)
-  // currentScannedEan8 → promoted to base as currentScannedEan (S1)
 
   // ── Commit A: reactive remaining qty for serial cap chip ──────────────────
-  /// Written in validateSheet() on every qty / serial change.
-  /// SharedSerialField subscribes to this so the cap chip rebuilds
-  /// immediately as the operator types — without waiting for a serial
-  /// selection event.
   var liveRemaining = 0.0.obs;
 
-  // ── SE dirty-check snapshots (source + target rack extend base) ───────────
+  // ── Dirty-check snapshots ────────────────────────────────────────────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
 
   // ── AutoFillRackMixin hooks ───────────────────────────────────────────────
-
   @override
   TextEditingController get autoFillRackController => sourceRackController;
 
@@ -145,7 +81,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
-
   @override
   String? get resolvedWarehouse =>
       itemSourceWarehouse.value ??
@@ -159,20 +94,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get requiresRack => false;
 
   // ── P1-C: isSheetLoading override ────────────────────────────────────────
-
   @override
   bool get isSheetLoading =>
       super.isSheetLoading ||
       isValidatingSourceRack.value ||
       isValidatingTargetRack.value;
 
-  // ── posSerialCapText: chip label for SharedSerialField ────────────────────
-  //
-  // Returns 'Invoice #N — Remaining: X / Y pcs' when in POS context with a
-  // valid serial selected; null otherwise.
-  //
-  // Decoupled from qtyInfoText so Commit C can simplify qtyInfoText to
-  // 'Max: N' without changing the chip string.
+  // ── posSerialCapText: chip label (Commit A) ───────────────────────────────
   String? get posSerialCapText {
     final serial = selectedSerial.value;
     if (serial == null || serial == '0' || serial.isEmpty) return null;
@@ -196,7 +124,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return 'Invoice #$serialNo \u2014 Remaining: $remStr / $capStr pcs';
   }
 
-  // ── qtyInfoText: Qty-field label (POS-aware, unchanged until Commit C) ────
+  // ── qtyInfoText: Qty-field label (unchanged until Commit C) ──────────────
   @override
   String? get qtyInfoText {
     final serial = selectedSerial.value;
@@ -235,8 +163,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return null;
   }
 
-  // ── Step-2: deleteCurrentItem ─────────────────────────────────────────────
-
+  // ── deleteCurrentItem ────────────────────────────────────────────────────
   @override
   Future<void> deleteCurrentItem() async {
     final name = editingItemName.value;
@@ -247,12 +174,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── PosSerialMixin contract ────────────────────────────────────────────────
-
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
   // ── Initialisation ────────────────────────────────────────────────────────
-
   void initialise({
     required StockEntryFormController parent,
     required String code,
@@ -266,8 +191,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }) {
     _parent = parent;
     currentScannedEan = scannedEan8;
-
-    isAddingItemFlag = _parent.isAddingItem;
+    isAddingItemFlag  = _parent.isAddingItem;
 
     itemCode.value      = code;
     this.itemName.value = itemName;
@@ -406,7 +330,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateSheet ─────────────────────────────────────────────────────────
-
   @override
   void validateSheet() {
     bool valid = true;
@@ -455,7 +378,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── submit ────────────────────────────────────────────────────────────────
-
   @override
   Future<void> submit() async {
     final qty        = double.tryParse(qtyController.text) ?? 0;
@@ -480,21 +402,57 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Computed max qty ──────────────────────────────────────────────────────
+  // ── effectiveMaxQty ──────────────────────────────────────────────────────
+  //
+  // Ceiling chain (lowest value wins):
+  //   1. POS serial remaining  — only in POS context with a serial selected
+  //   2. Total stock balance   — maxQty (from _updateAvailableStock)
+  //   3. Batch balance         — batchBalance (from _updateBatchBalance)
+  //   4. Rack balance          — rackBalance (when source rack is valid)
+  //   5. MR cap                — validationMaxQty (from MR reference items)
+  //
+  // Edit-mode: excludeItemName passed to scannedQtyForSerial so the open
+  // item's own saved qty is excluded from 'used', giving the operator
+  // the correct headroom without penalising the item being edited.
 
   double get effectiveMaxQty {
     double limit = 999999.0;
-    if (maxQty.value       > 0 && maxQty.value       < limit) limit = maxQty.value;
-    if (batchBalance.value > 0 && batchBalance.value < limit) limit = batchBalance.value;
+
+    // 1. POS serial remaining cap
+    final serial = selectedSerial.value;
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final cap  = _parent.posQtyCapForSerial(serial);
+      final used = _parent.scannedQtyForSerial(
+        serial,
+        excludeItemName: editingItemName.value,
+      );
+      final rem = (cap - used).clamp(0.0, double.infinity);
+      if (rem < limit) limit = rem;
+    }
+
+    // 2. Total stock balance
+    if (maxQty.value > 0 && maxQty.value < limit) limit = maxQty.value;
+
+    // 3. Batch balance
+    if (batchBalance.value > 0 && batchBalance.value < limit)
+      limit = batchBalance.value;
+
+    // 4. Rack balance (only when a valid source rack is confirmed)
     if (isSourceRackValid.value &&
-        rackBalance.value  > 0 && rackBalance.value  < limit) limit = rackBalance.value;
+        rackBalance.value > 0 &&
+        rackBalance.value < limit) limit = rackBalance.value;
+
+    // 5. MR cap
     if (validationMaxQty.value > 0 && validationMaxQty.value < limit)
       limit = validationMaxQty.value;
+
     return limit;
   }
 
   // ── Rack rule helper ──────────────────────────────────────────────────────
-
   bool isValidRacks() {
     final type = _parent.selectedStockEntryType.value;
     final needsSource = [
@@ -527,7 +485,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── MR / POS constraint helpers ───────────────────────────────────────────
-
   bool _checkMrConstraints() {
     if (_parent.mrReferenceItems.isEmpty) return true;
     final code = itemCode.value.trim().toLowerCase();
@@ -551,7 +508,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateBatch (SE-specific override) ──────────────────────────────────
-
   @override
   Future<void> validateBatch(String batch) async {
     batchError.value = null;
@@ -625,7 +581,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateDualRack ──────────────────────────────────────────────────────
-
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) {
@@ -705,7 +660,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Stock / batch balance fetchers ────────────────────────────────────────
-
   Future<void> _updateAvailableStock() async {
     final type = _parent.selectedStockEntryType.value;
     final isSourceOp = [
@@ -810,7 +764,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Sheet scan helpers ────────────────────────────────────────────────────
-
   void applyRackScan(String code) {
     final type = _parent.selectedStockEntryType.value;
     if (type == 'Material Transfer' ||
@@ -848,7 +801,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
-
   @override
   void onClose() {
     disposeAutoFillListener();
@@ -864,7 +816,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Test-support helpers ──────────────────────────────────────────────────
-
   // ignore: use_setters_to_change_properties
   void testInjectParent(StockEntryFormController parent) {
     _parent = parent;
