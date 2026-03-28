@@ -11,16 +11,17 @@ enum SaveButtonState { idle, loading, success, error }
 
 /// Abstract base controller for every DocType item-sheet.
 ///
-/// Commit C-1:
-///   • [qtyInfoTooltip] — default-null getter; subclasses override to provide
-///     a human-readable breakdown string shown when the user taps the Max chip.
-///     Example: 'Serial: 3  ·  Batch: 8  ·  Rack: 72'
-///     Returning null hides the tap target entirely.
+/// C-1 : [qtyInfoTooltip] — default-null getter.
+/// C-5 : [liveRemaining] — concrete RxDouble (default 0.0).
+///   Subclasses that compute a ceiling (e.g. StockEntryItemFormController)
+///   can write to this field directly.  SharedSerialField subscribes to it
+///   without any duck-type or try/catch, eliminating the zero-subscription
+///   Obx crash.
 abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ─────────────────────────────────────────────
+  // ── Dependencies ──────────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  // ── Form infrastructure ────────────────────────────────────────────
+  // ── Form infrastructure ───────────────────────────────────────────────
   final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
   final ScrollController     sheetScrollController = ScrollController();
 
@@ -29,11 +30,11 @@ abstract class ItemSheetControllerBase extends GetxController {
   final TextEditingController rackController  = TextEditingController();
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ───────────────────────────────────────────
+  // ── Core item identity ────────────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
-  // ── Validation state ────────────────────────────────────────────
+  // ── Validation state ──────────────────────────────────────────────────
   var isBatchValid      = false.obs;
   var isRackValid       = false.obs;
   var isValidatingBatch = false.obs;
@@ -47,28 +48,36 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── S1: Batch read-only toggle ──────────────────────────────────────
+  // ── Ceiling for POS / serial-cap display (C-5) ───────────────────────
+  //
+  // Concrete RxDouble so any Obx in the widget tree can subscribe to it
+  // without duck-typing.  Default 0.0 (no ceiling known).
+  // StockEntryItemFormController writes to this whenever its ceiling
+  // recomputes; all other DocType controllers leave it at 0.0.
+  var liveRemaining = 0.0.obs;
+
+  // ── S1: Batch read-only toggle ────────────────────────────────────────
   var isBatchReadOnly = false.obs;
 
-  // ── S1: EAN scan context ────────────────────────────────────────────
+  // ── S1: EAN scan context ──────────────────────────────────────────────
   String currentScannedEan = '';
 
-  // ── Item metadata ───────────────────────────────────────────────────
+  // ── Item metadata ─────────────────────────────────────────────────────
   var itemOwner      = RxnString();
   var itemCreation   = RxnString();
   var itemModified   = RxnString();
   var itemModifiedBy = RxnString();
 
-  // ── Editing context ─────────────────────────────────────────────
+  // ── Editing context ───────────────────────────────────────────────────
   var editingItemName = RxnString();
 
-  // ── Add / edit mode ─────────────────────────────────────────────
+  // ── Add / edit mode ───────────────────────────────────────────────────
   bool isAddMode = true;
 
-  // ── Option-3: animated save button state ────────────────────────────
+  // ── Option-3: animated save button state ─────────────────────────────
   var saveButtonState = SaveButtonState.idle.obs;
 
-  // ── Step-1: merged loading flag ──────────────────────────────────────
+  // ── Step-1: merged loading flag ───────────────────────────────────────
   RxBool isAddingItemFlag = false.obs;
 
   bool get isSheetLoading =>
@@ -77,39 +86,36 @@ abstract class ItemSheetControllerBase extends GetxController {
       isAddingItemFlag.value  ||
       saveButtonState.value == SaveButtonState.loading;
 
-  // ── Step-1: scan-bar state ───────────────────────────────────────────
+  // ── Step-1: scan-bar state ────────────────────────────────────────────
   RxBool isScanning = false.obs;
   TextEditingController? sheetScanController;
 
-  // ── Qty label (abstract — DocType provides the string) ──────────────
+  // ── Qty label (abstract — DocType provides the string) ────────────────
   //
-  // qtyInfoText   : short label rendered in the badge next to "Quantity".
-  //                 Commit C will change this to 'Max: N' / 'Max: -'.
-  // qtyInfoTooltip: optional breakdown shown when user taps the badge.
-  //                 Default null → no tap target rendered.
-  //                 Example: 'Serial: 3  ·  Batch: 8  ·  Rack: 72'
+  // qtyInfoText   : short badge label, e.g. 'Max: 3'.
+  // qtyInfoTooltip: breakdown shown on badge tap; null → no tap target.
   String? get qtyInfoText;
   String? get qtyInfoTooltip => null;
 
-  // ── Abstract delete dispatch ─────────────────────────────────────────
+  // ── Abstract delete dispatch ──────────────────────────────────────────
   Future<void> deleteCurrentItem();
 
-  // ── Snapshot for dirty-checking ──────────────────────────────────────
+  // ── Snapshot for dirty-checking ───────────────────────────────────────
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ────────────────────────────────────────────
+  // ── Auto-submit worker ────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ─────────────────────────────────────────────
+  // ── Abstract interface ────────────────────────────────────────────────
   String? get resolvedWarehouse;
   bool get requiresBatch;
   bool get requiresRack;
   void validateSheet();
   Future<void> submit();
 
-  // ── Option-3: submitWithFeedback ────────────────────────────────────
+  // ── Option-3: submitWithFeedback ──────────────────────────────────────
   Future<bool> submitWithFeedback() async {
     saveButtonState.value = SaveButtonState.loading;
     try {
@@ -126,7 +132,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Lifecycle ──────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────
   @override
   void onClose() {
     qtyController.removeListener(validateSheet);
@@ -154,7 +160,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     super.onClose();
   }
 
-  // ── Shared initialisation helper ─────────────────────────────────────
+  // ── Shared initialisation helper ──────────────────────────────────────
   void initBaseListeners() {
     qtyController.addListener(validateSheet);
     batchController.addListener(validateSheet);
@@ -183,7 +189,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Auto-submit wiring ────────────────────────────────────────────
+  // ── Auto-submit wiring ────────────────────────────────────────────────
   void setupAutoSubmit({
     required bool            enabled,
     required int             delaySeconds,
@@ -205,7 +211,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     });
   }
 
-  // ── Qty helpers ──────────────────────────────────────────────────────
+  // ── Qty helpers ───────────────────────────────────────────────────────
   void adjustQty(double delta) {
     double current = double.tryParse(qtyController.text) ?? 0;
     double next    = current + delta;
@@ -216,7 +222,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── P2-A: Batch validation ──────────────────────────────────────────
+  // ── P2-A: Batch validation ────────────────────────────────────────────
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
     batchError.value        = null;
@@ -304,7 +310,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
-  // ── Rack validation ──────────────────────────────────────────────────
+  // ── Rack validation ───────────────────────────────────────────────────
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
       isRackValid.value = false;

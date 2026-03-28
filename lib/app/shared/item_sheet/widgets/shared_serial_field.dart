@@ -7,25 +7,12 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 /// Shared Invoice Serial No dropdown for any DocType that mixes in
 /// [PosSerialMixin].
 ///
-/// Replaces the two divergent inline implementations in:
-///   • StockEntryItemFormSheet  (wrapped in manual Obx, plain label)
-///   • DeliveryNoteItemBottomSheet (inner Obx, 'Serial #s' label)
-///
-/// Usage:
-/// ```dart
-/// // In customFields:
-/// SharedSerialField(controller: itemController),
-/// ```
-///
-/// The widget renders nothing when [PosSerialMixin.availableSerialNos] is
-/// empty, so callers do not need an `if` guard.
-///
-/// POS cap chip (Commit A):
-///   The chip below the serial dropdown reads [posSerialCapText] (duck-typed)
-///   which is a dedicated getter on StockEntryItemFormController, decoupled
-///   from [qtyInfoText]. The Obx also subscribes to [liveRemaining] (duck-typed)
-///   so the chip text re-computes on every qty keystroke, not only on serial
-///   selection changes.
+/// C-5 fix: the POS-cap Obx no longer uses dynamic duck-typing + try/catch
+/// to subscribe to liveRemaining.  [liveRemaining] is now a concrete
+/// RxDouble on [ItemSheetControllerBase], so the Obx always has at least one
+/// Rx subscription — eliminating the GetX "improper use" crash that fired
+/// when the try/catch swallowed the exception on non-SE controllers and left
+/// the Obx with zero tracked observables.
 class SharedSerialField extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final Color accentColor;
@@ -49,7 +36,7 @@ class SharedSerialField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Serial dropdown ─────────────────────────────────────────────
+          // ── Serial dropdown ──────────────────────────────────────────
           Obx(() => DropdownButtonFormField<String>(
                 value: serial.selectedSerial.value,
                 decoration: InputDecoration(
@@ -62,31 +49,26 @@ class SharedSerialField extends StatelessWidget {
                 items: serials.map((s) {
                   return DropdownMenuItem(
                     value: s,
-                    child: Text('Serial #$s'),
+                    child: Text('Serial #\$s'),
                   );
                 }).toList(),
                 onChanged: (value) => serial.selectedSerial.value = value,
               )),
 
-          // ── POS cap chip ─────────────────────────────────────────────────
-          // Reads posSerialCapText via duck-typing.
-          // Also subscribes to liveRemaining (duck-typed) so the chip
-          // rebuilds on every qty keystroke, not only on serial changes.
-          // Both duck-type accesses are guarded in try/catch so non-SE
-          // controllers (which lack these getters) silently collapse to
-          // SizedBox.shrink() — no type guard needed at the call site.
+          // ── POS cap chip ─────────────────────────────────────────────
+          //
+          // C-5: subscribe to controller.liveRemaining directly — it is a
+          // concrete RxDouble on the base so the Obx always has a tracked
+          // observable.  posSerialCapText is still duck-typed via PosSerialMixin
+          // (all PosSerialMixin implementors have it), but liveRemaining is no
+          // longer duck-typed — no more try/catch, no more zero-subscription Obx.
           Obx(() {
-            final dynamic c = controller;
-
-            // Subscribe to liveRemaining to trigger rebuilds on qty change.
-            // The value itself is unused here; posSerialCapText re-reads it.
-            try {
-              final _ = (c.liveRemaining as RxDouble).value;
-            } catch (_) {}
+            // Explicit subscription so the chip rebuilds on every qty keystroke.
+            final _ = controller.liveRemaining.value;
 
             String? capText;
             try {
-              capText = c.posSerialCapText as String?;
+              capText = (controller as dynamic).posSerialCapText as String?;
             } catch (_) {}
 
             if (capText == null || capText.isEmpty) {
