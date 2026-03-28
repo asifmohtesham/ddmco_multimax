@@ -5,7 +5,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 
@@ -173,9 +173,25 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     final colorScheme = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(() => _isFarFromTop.value
+          ? FloatingActionButton(
+              onPressed: controller.openCreateDialog,
+              tooltip: 'New Delivery Note',
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              elevation: 4,
+              child: const Icon(Icons.add),
+            )
+          : FloatingActionButton.extended(
+              onPressed: controller.openCreateDialog,
+              tooltip: 'New Delivery Note',
+              icon: const Icon(Icons.add),
+              label: const Text('New Delivery Note'),
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              elevation: 4,
+            )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchDeliveryNotes(clear: true),
         color: colorScheme.primary,
@@ -450,24 +466,6 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           ],
         ),
       ),
-      floatingActionButton: Obx(() => _isFarFromTop.value
-          ? FloatingActionButton(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Delivery Note',
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-              child: const Icon(Icons.add),
-            )
-          : FloatingActionButton.extended(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Delivery Note',
-              icon: const Icon(Icons.add),
-              label: const Text('New Delivery Note'),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-            )),
     );
   }
 
