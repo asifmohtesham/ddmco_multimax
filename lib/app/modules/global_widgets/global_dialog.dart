@@ -287,72 +287,69 @@ class GlobalDialog {
                       color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
-                if (onRetry != null) ...
-                  [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12)),
-                              side: BorderSide(
-                                  color: Colors.grey.shade300),
-                            ),
-                            child: const Text('Close',
-                                style:
-                                    TextStyle(color: Colors.black87)),
+                if (onRetry != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
+                            side: BorderSide(
+                                color: Colors.grey.shade300),
                           ),
+                          child: const Text('Close',
+                              style:
+                                  TextStyle(color: Colors.black87)),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              onRetry();
-                            },
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: const Text('Retry',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]
-                else ...
-                  [
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          side:
-                              BorderSide(color: Colors.grey.shade300),
-                        ),
-                        child: const Text('Close',
-                            style: TextStyle(color: Colors.black87)),
                       ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            onRetry();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side:
+                            BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text('Close',
+                          style: TextStyle(color: Colors.black87)),
                     ),
-                  ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -363,4 +360,194 @@ class GlobalDialog {
       enableDrag: false,
     );
   }
+
+  /// Shows a hard-block bottom-sheet when a scan would exceed the POS
+  /// Upload qty cap for the selected Invoice Serial Number.
+  ///
+  /// Displays three stat columns — Allowed / Scanned / Remaining — so
+  /// the operator immediately understands where they stand without
+  /// needing to navigate away from the scan screen.
+  ///
+  /// ```dart
+  /// GlobalDialog.showQtyCapExceeded(
+  ///   serialNo:   3,
+  ///   itemName:   'Widget A',
+  ///   scannedQty: 5.0,
+  ///   capQty:     5.0,
+  /// );
+  /// ```
+  static void showQtyCapExceeded({
+    required int    serialNo,
+    required String itemName,
+    required double scannedQty,
+    required double capQty,
+  }) {
+    Get.bottomSheet(
+      Builder(
+        builder: (context) {
+          final remaining = (capQty - scannedQty).clamp(0.0, capQty);
+          final isFulfilled = remaining <= 0;
+          final remainingColor =
+              isFulfilled ? Colors.red.shade600 : Colors.green.shade600;
+
+          return Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon ────────────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.block_outlined,
+                      color: Colors.orange,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Title ────────────────────────────────────────────────
+                  const Text(
+                    'Qty Cap Exceeded',
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // ── Serial + item name ───────────────────────────────────
+                  Text(
+                    'Invoice Serial #$serialNo',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    itemName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── 3-column data row ────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _dialogStatColumn(
+                          'Allowed',
+                          '${_fmtQty(capQty)} pcs',
+                          Colors.grey.shade700,
+                        ),
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: Colors.grey.shade300,
+                        ),
+                        _dialogStatColumn(
+                          'Scanned',
+                          '${_fmtQty(scannedQty)} pcs',
+                          Colors.orange.shade700,
+                        ),
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: Colors.grey.shade300,
+                        ),
+                        _dialogStatColumn(
+                          'Remaining',
+                          '${_fmtQty(remaining)} pcs',
+                          remainingColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Contextual hint ──────────────────────────────────────
+                  Text(
+                    isFulfilled
+                        ? 'This serial is fully fulfilled. No more units can be added.'
+                        : 'You can still scan ${_fmtQty(remaining)} more unit(s) for this serial.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Dismiss button ───────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text(
+                        'Got It',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+    );
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  static Widget _dialogStatColumn(
+      String label, String value, Color valueColor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'ShureTechMono',
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
 }
