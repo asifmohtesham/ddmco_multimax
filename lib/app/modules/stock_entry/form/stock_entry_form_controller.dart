@@ -23,11 +23,13 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-// ── Shared sheet layer ────────────────────────────────────────────────────────────
+// ── Shared sheet layer ───────────────────────────────────────────────────────────────
+
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
-// ── SE-module-local widgets ─────────────────────────────────────────────────────
+// ── SE-module-local widgets ───────────────────────────────────────────────────────────
+
 import 'widgets/item_form_sheet/rack_section.dart';
 // (stock_entry_item_form_sheet.dart is now a stub re-export)
 // (batch_field.dart retired — P4-2: replaced by SharedBatchField)
@@ -56,7 +58,7 @@ class MrItemRow {
 
 class StockEntryFormController extends GetxController
     with OptimisticLockingMixin {
-  // ── Dependencies ──────────────────────────────────────────────────────────
+  // ── Dependencies ───────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
   final PosUploadProvider   _posProvider    = Get.find<PosUploadProvider>();
@@ -64,13 +66,13 @@ class StockEntryFormController extends GetxController
   final ScanService         _scanService    = Get.find<ScanService>();
   final DataWedgeService    _dataWedgeService = Get.find<DataWedgeService>();
 
-  // ── Arguments ───────────────────────────────────────────────────────────────
+  // ── Arguments ───────────────────────────────────────────────────────────────────
   String name = Get.arguments?['name'] ?? '';
   String mode = Get.arguments?['mode'] ?? 'view';
   final String? argStockEntryType    = Get.arguments?['stockEntryType'];
   final String? argCustomReferenceNo = Get.arguments?['customReferenceNo'];
 
-  // ── Document state ────────────────────────────────────────────────────────────
+  // ── Document state ──────────────────────────────────────────────────────────────────
   var isLoading        = true.obs;
   var isScanning       = false.obs;
   var isSaving         = false.obs;
@@ -85,17 +87,17 @@ class StockEntryFormController extends GetxController
   var stockEntry  = Rx<StockEntry?>(null);
   var entrySource = StockEntrySource.manual;
 
-  // ── Context data ──────────────────────────────────────────────────────────────
+  // ── Context data ──────────────────────────────────────────────────────────────────
   var mrReferenceItems = <Map<String, dynamic>>[];
 
   var posUpload              = Rx<PosUpload?>(null);
   var posUploadSerialOptions = <String>[].obs;
   var expandedInvoice        = ''.obs;
 
-  // ── MR filter ─────────────────────────────────────────────────────────────────
+  // ── MR filter ───────────────────────────────────────────────────────────────────
   var mrItemFilter = 'All'.obs;
 
-  // ── Form fields ────────────────────────────────────────────────────────────────
+  // ── Form fields ───────────────────────────────────────────────────────────────────
   var selectedFromWarehouse    = RxnString();
   var selectedToWarehouse      = RxnString();
   final customReferenceNoController = TextEditingController();
@@ -108,7 +110,7 @@ class StockEntryFormController extends GetxController
   var warehouses          = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── Sheet & scan context ─────────────────────────────────────────────────────
+  // ── Sheet & scan context ──────────────────────────────────────────────────────────────
   final TextEditingController barcodeController = TextEditingController();
   var isItemSheetOpen = false.obs;
 
@@ -118,7 +120,7 @@ class StockEntryFormController extends GetxController
   var currentUom       = '';
   var currentScannedEan = '';
 
-  // ── Item feedback ──────────────────────────────────────────────────────────────
+  // ── Item feedback ─────────────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
   var itemFormKey = GlobalKey<FormState>();
@@ -129,7 +131,7 @@ class StockEntryFormController extends GetxController
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
-  // ── Domain helpers ───────────────────────────────────────────────────────────────
+  // ── Domain helpers ────────────────────────────────────────────────────────────────────
 
   String getTypeHelperText(String type) {
     switch (type) {
@@ -148,7 +150,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── POS qty-cap helpers ───────────────────────────────────────────────────────
+  // ── POS qty-cap helpers ──────────────────────────────────────────────────────────────
   //
   // Used by addItemLocally / updateItemLocally to hard-block qty that exceeds
   // the POS Upload invoice serial cap.  Silently no-ops (returns infinity / 0)
@@ -175,7 +177,7 @@ class StockEntryFormController extends GetxController
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
-  // ── MR helpers ─────────────────────────────────────────────────────────────────
+  // ── MR helpers ───────────────────────────────────────────────────────────────────────
 
   bool get isMaterialRequestEntry =>
       customReferenceNoController.text.startsWith('MAT-MR-');
@@ -208,7 +210,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── POS helpers ────────────────────────────────────────────────────────────────
+  // ── POS helpers ──────────────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUpload(String posId) async {
     try {
@@ -220,12 +222,27 @@ class StockEntryFormController extends GetxController
         posUploadSerialOptions.value =
             List.generate(count, (i) => (i + 1).toString());
       }
+    } on DioException catch (e) {
+      if (isClosed) return;
+      final reason = e.response?.statusCode == 404
+          ? PosUploadErrorReason.notFound
+          : PosUploadErrorReason.networkError;
+      GlobalDialog.showPosUploadError(
+        posId:   posId,
+        reason:  reason,
+        onRetry: () => fetchPosUpload(posId),
+      );
     } catch (e) {
-      debugPrint('Error fetching POS Upload: $e');
+      if (isClosed) return;
+      GlobalDialog.showPosUploadError(
+        posId:   posId,
+        reason:  PosUploadErrorReason.networkError,
+        onRetry: () => fetchPosUpload(posId),
+      );
     }
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -291,7 +308,7 @@ class StockEntryFormController extends GetxController
     });
   }
 
-  // ── New entry init ────────────────────────────────────────────────────────────────
+  // ── New entry init ────────────────────────────────────────────────────────────────────
 
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
@@ -383,7 +400,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Fetch document ────────────────────────────────────────────────────────────────
+  // ── Fetch document ────────────────────────────────────────────────────────────────────
 
   Future<void> fetchStockEntry() async {
     isLoading.value = true;
@@ -448,7 +465,7 @@ class StockEntryFormController extends GetxController
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
-  // ── Warehouse helpers ───────────────────────────────────────────────────────────────
+  // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────
 
   bool get requiresSourceWarehouse {
     final t = selectedStockEntryType.value;
@@ -560,7 +577,7 @@ class StockEntryFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ──────────────────────────────────────────────────────────────────
+  // ── Item CRUD ────────────────────────────────────────────────────────────────────────
 
   void updateItemLocally(
     String uniqueId, double qty, String? batch,
@@ -571,7 +588,7 @@ class StockEntryFormController extends GetxController
     final idx   = items.indexWhere((i) => i.name == uniqueId);
     if (idx == -1) return;
 
-    // ── Hard block: POS qty cap ───────────────────────────────────────────────
+    // ── Hard block: POS qty cap ───────────────────────────────────────────────────
     final resolvedSerial = serial ?? '0';
     if (resolvedSerial != '0' && posUpload.value != null) {
       final cap       = posQtyCapForSerial(resolvedSerial);
@@ -623,7 +640,7 @@ class StockEntryFormController extends GetxController
   ) {
     final resolvedSerial = serial ?? '0';
 
-    // ── Hard block: POS qty cap ───────────────────────────────────────────────
+    // ── Hard block: POS qty cap ───────────────────────────────────────────────────
     if (resolvedSerial != '0' && posUpload.value != null) {
       final items = stockEntry.value?.items.toList() ?? [];
       final cap   = posQtyCapForSerial(resolvedSerial);
@@ -674,7 +691,7 @@ class StockEntryFormController extends GetxController
     stockEntry.update((val) => val?.items.assignAll(items));
   }
 
-  // ── addItem coordinator ──────────────────────────────────────────────────────────────
+  // ── addItem coordinator ──────────────────────────────────────────────────────────────────────
 
   Future<void> addItem() async {
     _autoSubmitTimer?.cancel();
@@ -694,7 +711,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Delete ───────────────────────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────────────────────
 
   void confirmAndDeleteItem(StockEntryItem item) {
     if (isItemSheetOpen.value) {
@@ -713,7 +730,7 @@ class StockEntryFormController extends GetxController
     );
   }
 
-  // ── Sheet lifecycle ───────────────────────────────────────────────────────────────
+  // ── Sheet lifecycle ──────────────────────────────────────────────────────────────────────
 
   void _openNewItemSheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
@@ -826,7 +843,7 @@ class StockEntryFormController extends GetxController
     Get.delete<StockEntryItemFormController>();
   }
 
-  // ── Scan routing ──────────────────────────────────────────────────────────────────
+  // ── Scan routing ──────────────────────────────────────────────────────────────────────
 
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
@@ -896,7 +913,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Warehouses ──────────────────────────────────────────────────────────────────
+  // ── Warehouses ──────────────────────────────────────────────────────────────────────────
 
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
@@ -936,7 +953,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Feedback / scroll ──────────────────────────────────────────────────────────────
+  // ── Feedback / scroll ──────────────────────────────────────────────────────────────────────
 
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
@@ -972,7 +989,7 @@ class StockEntryFormController extends GetxController
         (StockEntryItem i) => i.customInvoiceSerialNumber ?? '0');
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
@@ -1092,7 +1109,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Misc ─────────────────────────────────────────────────────────────────────────────
+  // ── Misc ─────────────────────────────────────────────────────────────────────────────────────────
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
