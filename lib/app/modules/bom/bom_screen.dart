@@ -5,7 +5,7 @@ import 'package:multimax/app/data/models/bom_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/bom/bom_controller.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 
 class BomScreen extends StatefulWidget {
@@ -91,9 +91,7 @@ class _BomScreenState extends State<BomScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
       // ── FAB: New BOM ───────────────────────────────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed(
