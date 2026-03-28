@@ -8,7 +8,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_filter_bottom_sheet.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
@@ -64,7 +64,6 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
   // ---------------------------------------------------------------------------
   // Active filter chips
   // ---------------------------------------------------------------------------
-  // ── Active filter chips ──────────────────────────────────────────────────
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final f = controller.activeFilters;
@@ -136,9 +135,25 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
     final colorScheme = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(() => _isFarFromTop.value
+          ? FloatingActionButton(
+              onPressed: controller.openCreateDialog,
+              tooltip: 'New Purchase Receipt',
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              elevation: 4,
+              child: const Icon(Icons.add),
+            )
+          : FloatingActionButton.extended(
+              onPressed: controller.openCreateDialog,
+              tooltip: 'New Purchase Receipt',
+              icon: const Icon(Icons.add),
+              label: const Text('New Purchase Receipt'),
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              elevation: 4,
+            )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchPurchaseReceipts(clear: true),
         color: colorScheme.primary,
@@ -314,24 +329,6 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
           ],
         ),
       ),
-      floatingActionButton: Obx(() => _isFarFromTop.value
-          ? FloatingActionButton(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Purchase Receipt',
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-              child: const Icon(Icons.add),
-            )
-          : FloatingActionButton.extended(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Purchase Receipt',
-              icon: const Icon(Icons.add),
-              label: const Text('New Purchase Receipt'),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-            )),
     );
   }
 
