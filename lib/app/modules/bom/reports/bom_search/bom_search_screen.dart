@@ -4,6 +4,10 @@ import 'package:multimax/app/data/models/bom_search_result.dart';
 import 'package:multimax/app/modules/bom/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 
+// Filter sheet import is intentionally a forward reference — the sheet file
+// is created in C4. The import resolves once C4 lands.
+import 'bom_search_filter_sheet.dart';
+
 class BomSearchScreen extends GetView<BomSearchController> {
   const BomSearchScreen({super.key});
 
@@ -12,96 +16,165 @@ class BomSearchScreen extends GetView<BomSearchController> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: const MainAppBar(title: 'BOM Search'),
+      // ── AppBar with filter icon ────────────────────────────────────────
+      appBar: MainAppBar(
+        title: 'BOM Search',
+        actions: [
+          Obx(() {
+            final count    = controller.activeCount.value;
+            final isActive = count > 0;
+            final tooltip  = isActive
+                ? '$count item code${count > 1 ? 's' : ''} active — tap to edit filters'
+                : 'Sub-Assembly Filters';
+            final button = isActive
+                ? IconButton.filled(
+                    icon:      const Icon(Icons.filter_alt),
+                    tooltip:   tooltip,
+                    onPressed: BomSearchFilterSheet.show,
+                  )
+                : IconButton(
+                    icon:      const Icon(Icons.filter_list),
+                    tooltip:   tooltip,
+                    onPressed: BomSearchFilterSheet.show,
+                  );
+            return isActive
+                ? Badge(label: Text('$count'), child: button)
+                : button;
+          }),
+        ],
+      ),
+
+      // ── Run Report FAB ───────────────────────────────────────────
+      floatingActionButton: Obx(() {
+        final enabled =
+            controller.canRun.value && !controller.isLoading.value;
+        return FloatingActionButton.extended(
+          onPressed: enabled ? controller.runReport : null,
+          backgroundColor:
+              enabled ? cs.primary : cs.onSurface.withValues(alpha: 0.12),
+          foregroundColor:
+              enabled ? cs.onPrimary : cs.onSurface.withValues(alpha: 0.38),
+          icon: controller.isLoading.value
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: cs.onPrimary,
+                  ),
+                )
+              : const Icon(Icons.search),
+          label: Text(
+            controller.isLoading.value ? 'Searching…' : 'Run Report',
+          ),
+          tooltip: enabled
+              ? 'Run BOM Search'
+              : 'Set Item Code 1 in filters first',
+        );
+      }),
+
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Filter section ───────────────────────────────────────────────
-          ExpansionTile(
-            title: const Text(
-              'Filters',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            initiallyExpanded: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Item Code — required
-                    TextFormField(
-                      controller: controller.itemCodeController,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Item Code *',
-                        hintText:  'e.g. RM-001',
-                        prefixIcon: Icon(Icons.category_outlined),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // BOM Name — optional
-                    TextFormField(
-                      controller: controller.bomNameController,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) {
-                        if (controller.canRun.value) controller.runReport();
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'BOM Name (Optional)',
-                        hintText:  'e.g. BOM-RM-001-001',
-                        prefixIcon: Icon(Icons.account_tree_outlined),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Action row: Run + Clear
-                    Obx(() {
-                      final enabled =
-                          controller.canRun.value && !controller.isLoading.value;
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: enabled ? controller.runReport : null,
-                              icon: controller.isLoading.value
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
+          // ── Active filter chip strip ──────────────────────────────────
+          // Shows one dismissible chip per filled Item Code slot.
+          // Tapping any chip re-opens the filter sheet.
+          Obx(() {
+            if (controller.activeCount.value == 0) {
+              return const SizedBox.shrink();
+            }
+            return Material(
+              color: cs.surfaceContainerLow,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        for (int i = 0;
+                            i < controller.subAssemblyControllers.length;
+                            i++) ...[
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable:
+                                controller.subAssemblyControllers[i],
+                            builder: (_, val, __) {
+                              final text = val.text.trim();
+                              if (text.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Chip(
+                                  avatar: CircleAvatar(
+                                    backgroundColor: i == 0
+                                        ? cs.primary
+                                        : cs.secondaryContainer,
+                                    child: Text(
+                                      '${i + 1}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: i == 0
+                                            ? cs.onPrimary
+                                            : cs.onSecondaryContainer,
                                       ),
-                                    )
-                                  : const Icon(Icons.search),
-                              label: Text(
-                                controller.isLoading.value
-                                    ? 'Searching…'
-                                    : 'Run Report',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          OutlinedButton.icon(
-                            onPressed: controller.clearAll,
-                            icon: const Icon(Icons.clear_all),
-                            label: const Text('Clear'),
+                                    ),
+                                  ),
+                                  label: Text(
+                                    text,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: cs.onSecondaryContainer,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                  backgroundColor: cs.secondaryContainer,
+                                  deleteIconColor: cs.onSecondaryContainer,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                  side: BorderSide.none,
+                                  onDeleted: () {
+                                    controller.subAssemblyControllers[i]
+                                        .clear();
+                                    // Re-run if Item Code 1 still set
+                                    if (controller.canRun.value) {
+                                      controller.runReport();
+                                    }
+                                  },
+                                ),
+                              );
+                            },
                           ),
                         ],
-                      );
-                    }),
-                  ],
-                ),
+                        // Clear-all text button when 2+ chips are showing
+                        if (controller.activeCount.value > 1)
+                          TextButton.icon(
+                            style: TextButton.styleFrom(
+                              foregroundColor: cs.error,
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8),
+                            ),
+                            onPressed: () {
+                              controller.clearAll();
+                            },
+                            icon: const Icon(Icons.clear_all, size: 16),
+                            label: const Text('Clear all'),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                ],
               ),
-            ],
-          ),
-          const Divider(height: 1),
+            );
+          }),
 
-          // ── Results section ────────────────────────────────────────────
+          // ── Results ──────────────────────────────────────────────────
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
@@ -110,32 +183,41 @@ class BomSearchScreen extends GetView<BomSearchController> {
 
               if (controller.results.isEmpty) {
                 return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.account_tree_outlined,
-                        size: 64,
-                        color: cs.outlineVariant,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Enter an Item Code and run the report',
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.account_tree_outlined,
+                          size: 64,
+                          color: cs.outlineVariant,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Set Item Code 1 in filters and tap Run Report',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 24),
+                        OutlinedButton.icon(
+                          onPressed: BomSearchFilterSheet.show,
+                          icon: const Icon(Icons.filter_list),
+                          label: const Text('Open Filters'),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                 itemCount: controller.results.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) =>
-                    _BomSearchResultCard(
-                      result: controller.results[index],
-                    ),
+                itemBuilder: (context, index) => _BomSearchResultCard(
+                  result: controller.results[index],
+                ),
               );
             }),
           ),
@@ -145,7 +227,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
   }
 }
 
-// ── Result card ────────────────────────────────────────────────────────────────
+// ── Result card ──────────────────────────────────────────────────────────────
 
 class _BomSearchResultCard extends StatelessWidget {
   final BomSearchResult result;
@@ -173,7 +255,7 @@ class _BomSearchResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row: BOM name + badges ──────────────────────
+            // ── Header row: BOM name + badges ────────────────────
             Row(
               children: [
                 Icon(
@@ -195,10 +277,9 @@ class _BomSearchResultCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Active badge
                 _Badge(
-                  label: isActive ? 'Active' : 'Inactive',
-                  color: isActive ? cs.tertiary : cs.outline,
+                  label:      isActive ? 'Active' : 'Inactive',
+                  color:      isActive ? cs.tertiary : cs.outline,
                   background: isActive
                       ? cs.tertiaryContainer
                       : cs.surfaceContainerHighest,
@@ -206,15 +287,15 @@ class _BomSearchResultCard extends StatelessWidget {
                 if (isDefault) ...[
                   const SizedBox(width: 6),
                   _Badge(
-                    label: 'Default',
-                    color: cs.primary,
+                    label:      'Default',
+                    color:      cs.primary,
                     background: cs.primaryContainer,
                   ),
                 ],
               ],
             ),
             const Divider(height: 20),
-            // ── Item row ───────────────────────────────────────
+            // ── Item row ───────────────────────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -234,7 +315,7 @@ class _BomSearchResultCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            // ── Qty + UOM row ─────────────────────────────────
+            // ── Qty + UOM row ─────────────────────────────
             Row(
               children: [
                 Expanded(
@@ -261,11 +342,11 @@ class _BomSearchResultCard extends StatelessWidget {
   }
 }
 
-// ── _Field ───────────────────────────────────────────────────────────────────────
+// ── _Field ───────────────────────────────────────────────────────────────────
 
 class _Field extends StatelessWidget {
-  final String  label;
-  final String  value;
+  final String label;
+  final String value;
   const _Field({required this.label, required this.value});
 
   @override
@@ -297,7 +378,7 @@ class _Field extends StatelessWidget {
   }
 }
 
-// ── _Badge ──────────────────────────────────────────────────────────────────────
+// ── _Badge ──────────────────────────────────────────────────────────────────
 
 class _Badge extends StatelessWidget {
   final String label;
