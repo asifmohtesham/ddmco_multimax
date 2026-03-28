@@ -5,7 +5,7 @@ import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
@@ -192,9 +192,28 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     final colorScheme = theme.colorScheme;
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(() => RoleGuard(
+            roles: controller.writeRoles.toList(),
+            child: _isFarFromTop.value
+                ? FloatingActionButton(
+                    onPressed: controller.openCreateDialog,
+                    tooltip: 'New Stock Entry',
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    elevation: 4,
+                    child: const Icon(Icons.add),
+                  )
+                : FloatingActionButton.extended(
+                    onPressed: controller.openCreateDialog,
+                    tooltip: 'New Stock Entry',
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Stock Entry'),
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    elevation: 4,
+                  ),
+          )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchStockEntries(clear: true),
         color: colorScheme.primary,
@@ -261,7 +280,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                               Icon(Icons.filter_alt,
                                   size: 12,
                                   color: colorScheme.onSecondaryContainer
-                                      .withOpacity(0.7)),
+                                      .withValues(alpha: 0.7)),
                             ],
                           ],
                         ),
@@ -469,27 +488,6 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           ],
         ),
       ),
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
-            child: _isFarFromTop.value
-                ? FloatingActionButton(
-                    onPressed: controller.openCreateDialog,
-                    tooltip: 'New Stock Entry',
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    elevation: 4,
-                    child: const Icon(Icons.add),
-                  )
-                : FloatingActionButton.extended(
-                    onPressed: controller.openCreateDialog,
-                    tooltip: 'New Stock Entry',
-                    icon: const Icon(Icons.add),
-                    label: const Text('New Stock Entry'),
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    elevation: 4,
-                  ),
-          )),
     );
   }
 
