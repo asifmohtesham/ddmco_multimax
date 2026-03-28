@@ -804,8 +804,20 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   void onClose() {
     disposeAutoFillListener(); // AutoFillRackMixin: remove qty TEC listener
-    sourceRackController.dispose();
-    targetRackController.dispose();
+    // Remove SE-specific TEC listeners synchronously so no in-flight
+    // notifications can reach validateSheet after the controller closes.
+    sourceRackController.removeListener(validateSheet);
+    targetRackController.removeListener(validateSheet);
+    // Defer dispose() to post-frame — mirrors the base-class B-2 fix.
+    // The sheet's LayoutBuilder sub-frame may still be mounted when GetX
+    // calls onClose(); disposing synchronously causes _AnimatedState to
+    // call addListener() on the already-disposed TEC and crash.
+    final src = sourceRackController;
+    final tgt = targetRackController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      src.dispose();
+      tgt.dispose();
+    });
     super.onClose();
   }
 
