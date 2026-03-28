@@ -219,26 +219,8 @@ class BomSearchController extends GetxController {
       if (response.statusCode == 200) {
         final message = response.data['message'] as Map<String, dynamic>?;
         if (message != null) {
-          final rawColumns = message['columns'] as List<dynamic>? ?? [];
-          final rawRows    = message['result']  as List<dynamic>? ?? [];
-
-          String fieldname(dynamic col) {
-            if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
-            return col.toString().split(':').first.toLowerCase();
-          }
-
-          final colKeys = rawColumns.map(fieldname).toList();
-          final rows    = <Map<String, dynamic>>[];
-
-          for (final row in rawRows) {
-            if (row is! List) continue;
-            final map = <Map<String, dynamic>>{}  as Map<String, dynamic>;
-            for (var i = 0; i < colKeys.length && i < row.length; i++) {
-              map[colKeys[i]] = row[i];
-            }
-            rows.add(map);
-          }
-          reportData.assignAll(rows);
+          final rawRows = message['result'] as List<dynamic>? ?? [];
+          reportData.assignAll(rawRows.whereType<Map<String, dynamic>>());
         }
       }
     } catch (e) {
