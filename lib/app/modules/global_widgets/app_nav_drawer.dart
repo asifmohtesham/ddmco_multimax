@@ -21,11 +21,8 @@ List<String> _extractRoutes(List<Widget> widgets) {
       routes.addAll(_extractRoutes([?widget.child]));
     } else if (widget is Column) {
       routes.addAll(_extractRoutes(widget.children));
-    } else if (widget is _ReportSubGroup) {
-      // Recurse into report sub-group children so the parent
-      // _ModuleGroup auto-expands when a report route is active.
-      routes.addAll(_extractRoutes(widget.children));
     }
+    // _NavSubheading is purely decorative — no routes to extract.
   }
   return routes;
 }
@@ -36,7 +33,6 @@ List<String> _extractRoutes(List<Widget> widgets) {
 
 class AppNavDrawerController extends GetxController {
   final isUserMenuOpen  = false.obs;
-  // Persists each _ModuleGroup's open/closed state by title.
   final expandedGroups  = <String, bool>{}.obs;
 
   void toggleUserMenu() => isUserMenuOpen.toggle();
@@ -72,7 +68,7 @@ class AppNavDrawer extends StatelessWidget {
         backgroundColor: Colors.white,
         child: Column(
           children: [
-            // ── User header ─────────────────────────────────────────────────
+            // ── User header ──────────────────────────────────────────────────────────────
             Obx(() {
               final user   = authController.currentUser.value;
               final letter = (user?.name.isNotEmpty == true)
@@ -103,7 +99,8 @@ class AppNavDrawer extends StatelessWidget {
                   children: [
                     Text(
                       user?.email ?? 'Not logged in',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12),
                     ),
                     if (parts.isNotEmpty)
                       Text(
@@ -134,7 +131,7 @@ class AppNavDrawer extends StatelessWidget {
               );
             }),
 
-            // ── Scrollable menu ──────────────────────────────────────────
+            // ── Scrollable menu ────────────────────────────────────────────────────────
             Expanded(
               child: Obx(() {
                 if (drawerController.isUserMenuOpen.value) {
@@ -286,19 +283,13 @@ class AppNavDrawer extends StatelessWidget {
                             currentRoute: currentRoute,
                           ),
                         ),
-                        // ---- Stock > Reports ----
-                        _ReportSubGroup(
+                        // ── Stock > Reports ──────────────────────────────────────
+                        const _NavSubheading('Reports'),
+                        _DrawerItem(
+                          title: 'Batch-Wise Balance',
+                          icon: Icons.history_toggle_off_rounded,
+                          route: AppRoutes.BATCH_WISE_BALANCE,
                           currentRoute: currentRoute,
-                          drawerController: drawerController,
-                          groupKey: 'Stock',
-                          children: [
-                            _DrawerItem(
-                              title: 'Batch-Wise Balance',
-                              icon: Icons.history_toggle_off_rounded,
-                              route: AppRoutes.BATCH_WISE_BALANCE,
-                              currentRoute: currentRoute,
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -370,19 +361,13 @@ class AppNavDrawer extends StatelessWidget {
                             currentRoute: currentRoute,
                           ),
                         ),
-                        // ---- Manufacturing > Reports ----
-                        _ReportSubGroup(
+                        // ── Manufacturing > Reports ─────────────────────────────
+                        const _NavSubheading('Reports'),
+                        _DrawerItem(
+                          title: 'BOM Search',
+                          icon: Icons.manage_search_rounded,
+                          route: AppRoutes.BOM_SEARCH,
                           currentRoute: currentRoute,
-                          drawerController: drawerController,
-                          groupKey: 'Manufacturing',
-                          children: [
-                            _DrawerItem(
-                              title: 'BOM Search',
-                              icon: Icons.manage_search_rounded,
-                              route: AppRoutes.BOM_SEARCH,
-                              currentRoute: currentRoute,
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -550,72 +535,46 @@ class _ModuleGroup extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// _ReportSubGroup — nested ExpansionTile for the Reports subsection
+// _NavSubheading — flat category label used inside _ModuleGroup children
 // ---------------------------------------------------------------------------
 
-/// A second-level collapsible group that lists report screen links.
-/// Sits inside a [_ModuleGroup] as a visually indented sub-section.
+/// A non-interactive label + hairline divider used to visually group
+/// items inside a [_ModuleGroup] without adding another expand/collapse
+/// interaction level.
 ///
-/// [groupKey] must be unique per parent module (e.g. 'Manufacturing')
-/// so that [AppNavDrawerController.expandedGroups] can persist its
-/// open/closed state independently from its parent.
-class _ReportSubGroup extends StatelessWidget {
-  final List<Widget>           children;
-  final String                 currentRoute;
-  final AppNavDrawerController drawerController;
-  /// Unique key scoped to the parent module, e.g. 'Manufacturing'.
-  final String                 groupKey;
-
-  const _ReportSubGroup({
-    required this.children,
-    required this.currentRoute,
-    required this.drawerController,
-    required this.groupKey,
-  });
-
-  String get _stateKey => '$groupKey\_reports';
-
-  bool get _hasActiveChild {
-    final routes = _extractRoutes(children);
-    return routes.any(
-      (r) => r.isNotEmpty && currentRoute == r,
-    );
-  }
+/// Example:
+/// ```dart
+/// const _NavSubheading('Reports'),
+/// _DrawerItem(title: 'Batch-Wise Balance', ...),
+/// ```
+class _NavSubheading extends StatelessWidget {
+  final String label;
+  const _NavSubheading(this.label);
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor   = Theme.of(context).primaryColor;
-    final initialExpanded =
-        drawerController.isGroupExpanded(_stateKey, defaultValue: _hasActiveChild);
-
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: Padding(
-        // Indent the sub-group relative to its siblings.
-        padding: const EdgeInsets.only(left: 16),
-        child: ExpansionTile(
-          initiallyExpanded: initialExpanded,
-          onExpansionChanged: (v) =>
-              drawerController.setGroupExpanded(_stateKey, v),
-          leading: Icon(
-            Icons.summarize_rounded,
-            size: 18,
-            color: Colors.grey.shade600,
-          ),
-          title: Text(
-            'Reports',
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 16, 2),
+      child: Row(
+        children: [
+          Text(
+            label.toUpperCase(),
             style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: Colors.grey.shade700,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey.shade500,
+              letterSpacing: 1.1,
             ),
           ),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-          childrenPadding: EdgeInsets.zero,
-          iconColor:  primaryColor,
-          textColor:  primaryColor,
-          children: children,
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: Colors.grey.shade200,
+            ),
+          ),
+        ],
       ),
     );
   }
