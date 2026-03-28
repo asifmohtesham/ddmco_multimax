@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
 import 'package:multimax/app/modules/batch/widgets/batch_list_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:intl/intl.dart';
 
@@ -13,16 +13,22 @@ import 'package:intl/intl.dart';
 class BatchScreen extends GetView<BatchController> {
   const BatchScreen({super.key});
 
-  // ── build ──────────────────────────────────────────────────────────────
+  // ── build ──────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => controller.openBatchForm(null),
+        tooltip: 'New Batch',
+        icon: const Icon(Icons.add),
+        label: const Text('New Batch'),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
+      ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchBatches(clear: true),
         color: colorScheme.primary,
@@ -30,10 +36,10 @@ class BatchScreen extends GetView<BatchController> {
           controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Collapsing header: AppBar + search + filter chips ──────────────
+            // ── Collapsing header: AppBar + search + filter chips ──────────────────
             const BatchListAppBar(),
 
-            // ── List content ───────────────────────────────────────────────
+            // ── List content ──────────────────────────────────────────
             Obx(() {
               // Loading spinner — only while the first page is in-flight
               if (controller.isLoading.value &&
@@ -77,18 +83,10 @@ class BatchScreen extends GetView<BatchController> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => controller.openBatchForm(null),
-        tooltip: 'New Batch',
-        icon: const Icon(Icons.add),
-        label: const Text('New Batch'),
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-      ),
     );
   }
 
-  // ── Empty state ─────────────────────────────────────────────────────────
+  // ── Empty state ──────────────────────────────────────────────────
 
   Widget _buildEmptyState(
     BuildContext context,
@@ -152,7 +150,7 @@ class BatchScreen extends GetView<BatchController> {
     );
   }
 
-  // ── Batch card ──────────────────────────────────────────────────────────
+  // ── Batch card ─────────────────────────────────────────────────────
 
   Widget _buildBatchCard(BuildContext context, dynamic batch) {
     final String status;
@@ -202,7 +200,7 @@ class BatchScreen extends GetView<BatchController> {
     });
   }
 
-  // ── Expanded content ─────────────────────────────────────────────────────
+  // ── Expanded content ───────────────────────────────────────────────────
 
   Widget _buildExpandedContent(BuildContext context, dynamic batch) {
     final theme = Theme.of(context);
@@ -269,7 +267,7 @@ class BatchScreen extends GetView<BatchController> {
     );
   }
 
-  // ── Info row helper ──────────────────────────────────────────────────────
+  // ── Info row helper ───────────────────────────────────────────────────
 
   Widget _buildInfoRow(
     BuildContext context,

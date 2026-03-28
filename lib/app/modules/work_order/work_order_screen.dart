@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/work_order/work_order_controller.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
@@ -96,9 +96,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed(
           AppRoutes.WORK_ORDER_FORM,
@@ -118,7 +116,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ──────────────────────────────────────────────
+            // ── Unified header ──────────────────────────────────────────
             DocTypeListHeader(
               title: 'Work Orders',
               searchDoctype:      'Work Order',
@@ -133,7 +131,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               onClearAllFilters:  controller.clearFilters,
             ),
 
-            // ── List content ──────────────────────────────────────────────
+            // ── List content ──────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
