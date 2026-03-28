@@ -21,53 +21,32 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [AutoFillRackMixin] — auto-selects the best-fit rack once the operator
 ///                           enters a positive qty in add-mode
 ///
-/// Step-2 additions:
-///   • [isAddingItemFlag]    wired to _parent.isAddingItem
-///   • [isScanning]         wired to _parent.isScanning
-///   • [sheetScanController] wired to _parent.barcodeController
-///   • [qtyInfoText]        POS-aware cap display, or 'Max Available: N'
-///   • [deleteCurrentItem]  resolves item + calls parent.confirmAndDeleteItem
-///
-/// P1-A: _loadNewItem no longer hard-codes qty '6'; clears the field instead.
-/// P1-A: _loadNewItem now pre-validates batch when batchNo is supplied, matching SE.
-/// P1-B: submit() removed its own save call; the parent onSubmit lambda owns saving.
-/// P2-D: isSheetLoading overridden to also cover isValidatingRack (mirrors P1-C for SE).
-///
-/// Standardisation S1:
-///   • [currentScannedEan8] — removed; use base field [currentScannedEan].
-///   • [validateBatchOnInit] — removed local duplicate; use base method.
-///   • [isBatchReadOnly]    — wired in _loadExistingItem (lock on existing batch).
-///
-/// Standardisation S7:
-///   • [applyRackScan]  — added; delegates to rackController + validateRack,
-///                        matching PR pattern for scan-bar rack routing.
-///   • [resetRack]      — overridden; calls super, explicit extension point
-///                        for future DN-specific rack state.
-///
-/// Rack autofill (AutoFillRackMixin):
-///   • [initAutoFillListener] called in initialise() after initBaseListeners().
-///     Fires [autoFillRackForQty] once the operator enters qty > 0 and the
-///     rack field is still empty.  Constrained to [resolvedWarehouse].
-///   • [disposeAutoFillListener] called in onClose() — removes qty TEC listener.
-///   • fetchAllRackStocks() is NOT overridden here; the base populates
-///     rackStockMap independently of autofill.
+/// DN-A  (delivery_note_form_controller.dart)
+///   • remainingQtyForSerial() helper added to parent.
 ///
 /// DN-B:
 ///   • [rackBalance] — RxDouble mirroring SE; written by _updateRackBalance()
 ///     on every validateSheet() call. Reads rackStockMap[rackController.text]
-///     — no extra network call. Used by effectiveMaxQty (DN-C) and
-///     qtyInfoTooltip (DN-D).
+///     — no extra network call.
 ///
 /// DN-C:
-///   • [effectiveMaxQty] — ceiling chain: POS serial remaining → batch balance
-///     (maxQty) → rack balance (rackBalance). Returns 999999.0 when no ceiling
-///     is active. Used by validateSheet() qty guard and qtyInfoText (DN-D).
+///   • [effectiveMaxQty] — ceiling chain:
+///       1. POS serial remaining
+///       2. Batch balance (maxQty)
+///       3. Rack balance (rackBalance)
+///     Returns 999999.0 sentinel when no ceiling active.
+///
+/// DN-D (this commit):
+///   • [liveRemaining]    — RxDouble on base; written in validateSheet();
+///                          drives SharedSerialField chip rebuild.
+///   • [posSerialCapText] — chip label 'Invoice #N — Remaining: X / Y pcs'.
+///   • [qtyInfoText]      — 'Max: N' / 'Max: -' via effectiveMaxQty.
+///   • [qtyInfoTooltip]   — 'Serial: X  ·  Batch: Y  ·  Rack: Z' breakdown.
 ///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
 ///   • Sheet dismissal is owned exclusively by the parent coordinator
-///     (_openItemSheet onSubmit lambda), matching the SRP boundary
-///     established in Phase-1 (commit f2aeb9a).
+///     (_openItemSheet onSubmit lambda).
 ///
 /// Lifecycle:
 ///   Get.put() just before bottomSheet opens  →  initialise()  →  sheet opens
@@ -77,14 +56,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── Parent reference ──────────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // currentScannedEan8  → base field currentScannedEan (S1)
-  // validateBatchOnInit → base method (S1)
-
   // ── DN-B: rack balance (mirrors SE rackBalance) ───────────────────────────
-  //
-  // Written by _updateRackBalance() which is called inside validateSheet().
-  // No extra network call — value is read from rackStockMap which is already
-  // populated by the base fetchAllRackStocks() on batch/rack validation.
   var rackBalance = 0.0.obs;
 
   // ── ItemSheetControllerBase contract ─────────────────────────────────────
@@ -99,28 +71,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false;
 
-  // ── P2-D: isSheetLoading override ──────────────────────────────────────────
-  //
-  // Base already covers isValidatingBatch + isValidatingRack + isAddingItemFlag.
-  // Override kept as an explicit extension point for future DN-specific flags.
-
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
   // ── DN-C: effectiveMaxQty ceiling chain ───────────────────────────────────
-  //
-  // Lowest ceiling wins. Returns 999999.0 when no ceiling is active
-  // (same sentinel as SE) so callers can use `eff >= 999999.0` as the
-  // "no ceiling" guard.
-  //
-  // Chain:
-  //   1. POS serial remaining  — posQtyCapForSerial − scannedQtyForSerial
-  //                              (excludes the row currently being edited)
-  //   2. Batch balance         — maxQty.value (set by validateBatch in base)
-  //   3. Rack balance          — rackBalance.value (DN-B)
-  //
-  // No MR cap — DN has no Material Request reference.
-  // No dual-rack — DN has a single rack field.
 
   double get effectiveMaxQty {
     double limit = 999999.0;
@@ -148,49 +102,81 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return limit;
   }
 
-  // ── qtyInfoText: POS-aware cap display (← to be replaced in DN-D) ─────────
+  // ── DN-D: posSerialCapText — chip label (mirrors SE Commit A) ─────────────
   //
-  // When a serial is selected and a POS Upload is loaded, shows:
-  //   'Invoice #N — Remaining: X / Y pcs · Batch stock: Z'
+  // Consumed by SharedSerialField via duck-typed
+  // (controller as dynamic).posSerialCapText — same mechanism as SE.
+  // Returns null when no serial is active → chip hidden.
+
+  String? get posSerialCapText {
+    final serial = selectedSerial.value;
+    if (serial == null || serial == '0' || serial.isEmpty) return null;
+    if (_parent.posUpload.value == null) return null;
+
+    final serialNo  = int.tryParse(serial) ?? 0;
+    final cap       = _parent.posQtyCapForSerial(serial);
+    final used      = _parent.scannedQtyForSerial(
+        serial, excludeItemName: editingItemName.value);
+    final remaining = (cap - used).clamp(0.0, cap);
+
+    String fmt(double v) =>
+        v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+
+    return 'Invoice #$serialNo \u2014 Remaining: ${fmt(remaining)} / ${fmt(cap)} pcs';
+  }
+
+  // ── DN-D: qtyInfoText — 'Max: N' / 'Max: -' (mirrors SE Commit C-2) ──────
   //
-  // Falls back to the original 'Max Available: N' string otherwise,
-  // so non-POS delivery notes are completely unaffected.
-  // NOTE: this getter will be fully replaced in commit DN-D.
+  // Always returns a non-null string so the Qty badge is always present.
+  // 'Max: -' signals no ceiling yet computed.
 
   @override
   String? get qtyInfoText {
-    final serial = selectedSerial.value;
+    final eff = effectiveMaxQty;
+    if (eff >= 999999.0) return 'Max: -';
+    final n = eff % 1 == 0 ? eff.toInt().toString() : eff.toStringAsFixed(2);
+    return 'Max: $n';
+  }
 
+  // ── DN-D: qtyInfoTooltip — breakdown on badge tap (mirrors SE Commit C-2) ──
+  //
+  // Builds a ·-separated list of every active ceiling with its value.
+  // Returns null when no ceiling is active → widget hides tap target.
+
+  @override
+  String? get qtyInfoTooltip {
+    final parts = <String>[];
+
+    // Serial remaining (POS)
+    final serial = selectedSerial.value;
     if (serial != null &&
         serial != '0' &&
         serial.isNotEmpty &&
         _parent.posUpload.value != null) {
-      final serialNo  = int.tryParse(serial) ?? 0;
-      final cap       = _parent.posQtyCapForSerial(serial);
-      final used      = _parent.scannedQtyForSerial(
-        serial,
-        excludeItemName: editingItemName.value,
-      );
-      final remaining = (cap - used).clamp(0.0, cap);
-
-      final capStr  = cap % 1 == 0 ? cap.toInt().toString()
-                                   : cap.toStringAsFixed(2);
-      final remStr  = remaining % 1 == 0
-          ? remaining.toInt().toString()
-          : remaining.toStringAsFixed(2);
-
-      final batchPart = maxQty.value > 0
-          ? ' · Batch stock: '
-            '${maxQty.value % 1 == 0 ? maxQty.value.toInt() : maxQty.value}'
-          : '';
-
-      return 'Invoice #$serialNo — Remaining: $remStr / $capStr pcs$batchPart';
+      final cap  = _parent.posQtyCapForSerial(serial);
+      final used = _parent.scannedQtyForSerial(
+          serial, excludeItemName: editingItemName.value);
+      final rem  = (cap - used).clamp(0.0, cap);
+      final remStr = rem % 1 == 0
+          ? rem.toInt().toString()
+          : rem.toStringAsFixed(2);
+      parts.add('Serial: $remStr');
     }
 
-    // Non-POS fallback — original behaviour.
-    final max = maxQty.value;
-    if (max <= 0) return null;
-    return 'Max Available: ${max % 1 == 0 ? max.toInt() : max}';
+    // Batch balance
+    if (maxQty.value > 0) {
+      final b = maxQty.value;
+      parts.add('Batch: ${b % 1 == 0 ? b.toInt() : b.toStringAsFixed(2)}');
+    }
+
+    // Rack balance
+    if (isRackValid.value && rackBalance.value > 0) {
+      final r = rackBalance.value;
+      parts.add('Rack: ${r % 1 == 0 ? r.toInt() : r.toStringAsFixed(2)}');
+    }
+
+    if (parts.isEmpty) return null;
+    return parts.join('  \u00b7  ');
   }
 
   // ── Step-2: deleteCurrentItem ───────────────────────────────────────────────
@@ -225,16 +211,17 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String scannedEan8 = '',
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan8; // S1: base field
+    currentScannedEan = scannedEan8;
 
     isAddingItemFlag    = _parent.isAddingItem;
     isScanning          = _parent.isScanning;
     sheetScanController = _parent.barcodeController;
 
-    itemCode.value = code;
-    itemName.value = name;
-    maxQty.value   = initialMaxQty;
-    rackBalance.value = 0.0; // DN-B: reset on every sheet open
+    itemCode.value    = code;
+    itemName.value    = name;
+    maxQty.value      = initialMaxQty;
+    rackBalance.value = 0.0;   // DN-B
+    liveRemaining.value = 0.0; // DN-D
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
@@ -247,19 +234,17 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _loadNewItem(batchNo);
     }
 
-    // isAddMode must be set before initAutoFillListener() so the mixin
-    // guard reads the correct value when the qty listener first fires.
     isAddMode = editingItem == null;
 
     initBaseListeners();
-    initAutoFillListener(); // AutoFillRackMixin: attach qty → autofill trigger
+    initAutoFillListener();
     ever(selectedSerial, (_) => validateSheet());
 
     captureSnapshot();
     captureSerialSnapshot();
 
     validateSheet();
-    fetchAllRackStocks(); // populates rackStockMap for tooltip/dropdown
+    fetchAllRackStocks();
   }
 
   void _loadExistingItem(DeliveryNoteItem item) {
@@ -271,18 +256,18 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     itemModifiedBy.value = item.modifiedBy;
 
     batchController.text = item.batchNo ?? '';
-    rackController.text  = item.rack   ?? '';
+    rackController.text  = item.rack    ?? '';
     qtyController.text   = item.qty % 1 == 0
         ? item.qty.toInt().toString()
         : item.qty.toString();
     selectedSerial.value = item.customInvoiceSerialNumber;
 
     isBatchValid.value    = item.batchNo != null && item.batchNo!.isNotEmpty;
-    isBatchReadOnly.value = isBatchValid.value; // S1
+    isBatchReadOnly.value = isBatchValid.value;
     isRackValid.value     = item.rack != null && item.rack!.isNotEmpty;
 
     if (item.batchNo != null && item.batchNo!.contains('-')) {
-      currentScannedEan = item.batchNo!.split('-').first; // S1
+      currentScannedEan = item.batchNo!.split('-').first;
     }
 
     log('[DN:ItemSheet] loaded existing item=${item.name} batch=${item.batchNo} rack=${item.rack}',
@@ -303,11 +288,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     selectedSerial.value = null;
 
     isBatchValid.value    = batchNo != null && batchNo.isNotEmpty;
-    isBatchReadOnly.value = false; // S1: new item — batch field unlocked
+    isBatchReadOnly.value = false;
     isRackValid.value     = false;
 
     if (batchNo != null && batchNo.isNotEmpty) {
-      validateBatchOnInit(batchNo); // S1: base method
+      validateBatchOnInit(batchNo);
     }
 
     log('[DN:ItemSheet] new item code=${itemCode.value} batch=$batchNo batchValid=${isBatchValid.value}',
@@ -329,10 +314,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── DN-B: _updateRackBalance ───────────────────────────────────────────────────
-  //
-  // Reads the already-populated rackStockMap for the currently entered rack.
-  // Called from validateSheet() so rackBalance stays current on every
-  // qty/rack TEC change without any extra network call.
 
   void _updateRackBalance() {
     final rack = rackController.text.trim();
@@ -347,11 +328,32 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   void validateSheet() {
-    _updateRackBalance(); // DN-B: keep rackBalance in sync on every call
+    _updateRackBalance(); // DN-B
 
-    bool valid = baseValidate();
+    bool valid = true;
+
+    final qty    = double.tryParse(qtyController.text) ?? 0;
+    final effMax = effectiveMaxQty; // DN-C
+    if (qty <= 0) valid = false;
+    if (effMax < 999999.0 && qty > effMax) valid = false;
+
+    if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
 
     if (!validateSerial()) valid = false;
+
+    // DN-D: sync liveRemaining → chip Obx rebuilds on qty change
+    final serial = selectedSerial.value;
+    if (serial != null &&
+        serial != '0' &&
+        serial.isNotEmpty &&
+        _parent.posUpload.value != null) {
+      final cap  = _parent.posQtyCapForSerial(serial);
+      final used = _parent.scannedQtyForSerial(
+          serial, excludeItemName: editingItemName.value);
+      liveRemaining.value = (cap - used).clamp(0.0, cap);
+    } else {
+      liveRemaining.value = 0.0;
+    }
 
     isFormDirty.value = isFieldsDirty || isSerialDirty;
 
@@ -360,7 +362,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── P1-B: submit — delegates to parent only (sheet close owned by parent coordinator)
+  // ── submit ───────────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -380,7 +382,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   void onClose() {
-    disposeAutoFillListener(); // AutoFillRackMixin: remove qty TEC listener
+    disposeAutoFillListener();
     super.onClose();
   }
 }
