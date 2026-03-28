@@ -932,19 +932,22 @@ class StockEntryFormController extends GetxController
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {
+        if (isClosed) return;
         final key = itemKeys[uniqueId];
-        if (key?.currentContext != null) {
-          Scrollable.ensureVisible(
-            key!.currentContext!,
-            duration:  const Duration(milliseconds: 500),
-            curve:     Curves.easeInOut,
-            alignment: 0.5,
-          );
-        }
+        final ctx = key?.currentContext;
+        if (ctx == null) return;
+        final ro = ctx.findRenderObject();
+        if (ro == null || !ro.attached) return;
+        Scrollable.ensureVisible(
+          ctx,
+          duration:  const Duration(milliseconds: 500),
+          curve:     Curves.easeInOut,
+          alignment: 0.5,
+        );
       });
     });
     Future.delayed(const Duration(seconds: 2), () {
-      recentlyAddedItemName.value = '';
+      if (!isClosed) recentlyAddedItemName.value = '';
     });
   }
 
