@@ -474,7 +474,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateDialog,
-                    tooltip: 'Create Stock Entry',
+                    tooltip: 'New Stock Entry',
                     backgroundColor: colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,
                     elevation: 4,
@@ -482,8 +482,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                   )
                 : FloatingActionButton.extended(
                     onPressed: controller.openCreateDialog,
+                    tooltip: 'New Stock Entry',
                     icon: const Icon(Icons.add),
-                    label: const Text('Create'),
+                    label: const Text('New Stock Entry'),
                     backgroundColor: colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,
                     elevation: 4,
