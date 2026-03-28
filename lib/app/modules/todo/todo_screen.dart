@@ -5,7 +5,7 @@ import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:multimax/app/modules/todo/widgets/todo_list_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 
 class ToDoScreen extends StatefulWidget {
@@ -52,9 +52,18 @@ class _ToDoScreenState extends State<ToDoScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Get.toNamed(
+          AppRoutes.TODO_FORM,
+          arguments: {'name': '', 'mode': 'new'},
+        ),
+        tooltip: 'New To Do',
+        icon: const Icon(Icons.add),
+        label: const Text('New To Do'),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await controller.fetchTodos(clear: true);
@@ -63,10 +72,10 @@ class _ToDoScreenState extends State<ToDoScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Header: AppBar + SearchBar + filter chips ───────────────────
+            // ── Header: AppBar + SearchBar + filter chips ─────────────────────
             const ToDoListAppBar(),
 
-            // ── List content ────────────────────────────────────────
+            // ── List content ───────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.todos.isEmpty) {
@@ -146,17 +155,6 @@ class _ToDoScreenState extends State<ToDoScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed(
-          AppRoutes.TODO_FORM,
-          arguments: {'name': '', 'mode': 'new'},
-        ),
-        tooltip: 'New To Do',
-        icon: const Icon(Icons.add),
-        label: const Text('New To Do'),
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-      ),
     );
   }
 }
@@ -219,7 +217,7 @@ class ToDoCard extends StatelessWidget {
 
         return Column(
           children: [
-            // ── Summary row ───────────────────────────────────────────
+            // ── Summary row ─────────────────────────────────────────────
             InkWell(
               onTap: () => controller.toggleExpand(todo.name),
               child: Padding(
@@ -320,7 +318,7 @@ class ToDoCard extends StatelessWidget {
               ),
             ),
 
-            // ── Expanded detail ─────────────────────────────────────────
+            // ── Expanded detail ───────────────────────────────────────────────
             AnimatedSize(
               duration: const Duration(milliseconds: 280),
               curve: Curves.easeInOut,
