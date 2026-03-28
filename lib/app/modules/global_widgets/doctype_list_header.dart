@@ -248,6 +248,7 @@ class DocTypeListHeader extends StatelessWidget {
       actions: actions.isEmpty ? null : actions,
       automaticallyImplyLeading: automaticallyImplyLeading,
       scrolledUnderElevation: 0,
+      pinned: true,
     );
   }
 
