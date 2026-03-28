@@ -8,7 +8,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 
@@ -56,9 +56,6 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     );
   }
 
-  /// Builds the dismissible filter chips for currently active filters.
-  /// Called inside [DocTypeListHeader.filterChipsBuilder] which is already
-  /// wrapped in [Obx], so reading any Rx here is safe.
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final filters = controller.activeFilters;
@@ -126,9 +123,16 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(() => RoleGuard(
+        roles: controller.writeRoles.toList(),
+        child: FloatingActionButton.extended(
+          onPressed: controller.openCreateDialog,
+          tooltip: 'New Purchase Order',
+          icon: const Icon(Icons.add),
+          label: const Text('New Purchase Order'),
+        ),
+      )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchPurchaseOrders(clear: true),
         child: CustomScrollView(
@@ -233,15 +237,6 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           ],
         ),
       ),
-      floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(),
-        child: FloatingActionButton.extended(
-          onPressed: controller.openCreateDialog,
-          tooltip: 'New Purchase Order',
-          icon: const Icon(Icons.add),
-          label: const Text('New Purchase Order'),
-        ),
-      )),
     );
   }
 
