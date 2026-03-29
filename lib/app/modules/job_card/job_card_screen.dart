@@ -68,7 +68,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.search,
-        label: 'Search: ${controller.searchQuery.value}',
+        label: 'Search: \${controller.searchQuery.value}',
         onDeleted: () {
           controller.searchQuery.value = '';
           controller.fetchJobCards(clear: true);
@@ -78,7 +78,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
     if (controller.activeFilters.containsKey('status')) {
       chips.add(chip(
         icon: Icons.flag_outlined,
-        label: 'Status: ${controller.activeFilters['status']}',
+        label: 'Status: \${controller.activeFilters['status']}',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -89,128 +89,221 @@ class _JobCardScreenState extends State<JobCardScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return AppShellScaffold(
-      body: RefreshIndicator(
-        onRefresh: () => controller.fetchJobCards(clear: true),
-        color: cs.primary,
-        backgroundColor: cs.surfaceContainerHighest,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            // ── Unified header ──────────────────────────────────────────────
-            DocTypeListHeader(
-              title: 'Job Cards',
-              searchDoctype:      'Job Card',
-              searchQuery:        controller.searchQuery,
-              onSearchChanged:    controller.onSearchChanged,
-              onSearchClear: () {
-                controller.searchQuery.value = '';
-                controller.fetchJobCards(clear: true);
-              },
-              activeFilters:      controller.activeFilters,
-              filterChipsBuilder: _buildFilterChips,
-              onClearAllFilters:  controller.clearFilters,
-            ),
+    return Scaffold(
+      // Prevents a phantom back-arrow when Job Cards is a top-level
+      // bottom-nav destination rather than a pushed route.
+      appBar: PreferredSize(
+        preferredSize: Size.zero,
+        child: AppBar(
+          automaticallyImplyLeading: false,
+          toolbarHeight: 0,
+          elevation: 0,
+        ),
+      ),
+      body: AppShellScaffold(
+        body: RefreshIndicator(
+          onRefresh: () => controller.fetchJobCards(clear: true),
+          color: cs.primary,
+          backgroundColor: cs.surfaceContainerHighest,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // ── Unified header ──────────────────────────────────────────────
+              DocTypeListHeader(
+                title: 'Job Cards',
+                searchDoctype:      'Job Card',
+                searchQuery:        controller.searchQuery,
+                onSearchChanged:    controller.onSearchChanged,
+                onSearchClear: () {
+                  controller.searchQuery.value = '';
+                  controller.fetchJobCards(clear: true);
+                },
+                activeFilters:      controller.activeFilters,
+                filterChipsBuilder: _buildFilterChips,
+                onClearAllFilters:  controller.clearFilters,
+                onFilterTap: () => _showFilterSheet(context),
+              ),
 
-            // ── KPI strip + list — single Obx owns all Rx reads ────────────
-            Obx(() {
-              // ─ loading splash ────────────────────────────────────
-              if (controller.isLoading.value &&
-                  controller.jobCards.isEmpty) {
-                return const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()));
-              }
+              // ── KPI strip + list — single Obx owns all Rx reads ────────────
+              Obx(() {
+                // ─ loading splash ────────────────────────────────────
+                if (controller.isLoading.value &&
+                    controller.jobCards.isEmpty) {
+                  return const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()));
+                }
 
-              // ─ empty state ───────────────────────────────────────
-              if (controller.jobCards.isEmpty) {
-                final hasFilters =
-                    controller.activeFilters.isNotEmpty ||
-                        controller.searchQuery.value.isNotEmpty;
-                return SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.assignment_ind_outlined,
-                            size: 64,
-                            color: cs.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Job Cards'
-                                : 'No Job Cards',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                    color: cs.onSurface,
-                                    fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: hasFilters
-                                ? controller.clearFilters
-                                : () => controller.fetchJobCards(
-                                    clear: true),
-                            icon: Icon(hasFilters
-                                ? Icons.clear_all
-                                : Icons.refresh),
-                            label: Text(hasFilters
-                                ? 'Clear Filters'
-                                : 'Reload'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              // ─ KPI strip + list ───────────────────────────────────
-              final cards = controller.jobCards;
-              return SliverMainAxisGroup(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _JobCardKpiStrip(controller: controller),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          if (index >= cards.length) {
-                            return controller.hasMore.value
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: CircularProgressIndicator()))
-                                : const SizedBox(height: 80);
-                          }
-                          final jc = cards[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _JobCardTile(
-                              jc: jc,
-                              onTap: () => Get.toNamed(
-                                AppRoutes.JOB_CARD_FORM,
-                                arguments: {'name': jc.name},
-                              ),
+                // ─ empty state ───────────────────────────────────────
+                if (controller.jobCards.isEmpty) {
+                  final hasFilters =
+                      controller.activeFilters.isNotEmpty ||
+                          controller.searchQuery.value.isNotEmpty;
+                  return SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              hasFilters
+                                  ? Icons.filter_alt_off_outlined
+                                  : Icons.assignment_ind_outlined,
+                              size: 64,
+                              color: cs.outlineVariant,
                             ),
-                          );
-                        },
-                        childCount: cards.length + 1,
+                            const SizedBox(height: 16),
+                            Text(
+                              hasFilters
+                                  ? 'No Matching Job Cards'
+                                  : 'No Job Cards',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                      color: cs.onSurface,
+                                      fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 24),
+                            FilledButton.tonalIcon(
+                              onPressed: hasFilters
+                                  ? controller.clearFilters
+                                  : () => controller.fetchJobCards(
+                                      clear: true),
+                              icon: Icon(hasFilters
+                                  ? Icons.clear_all
+                                  : Icons.refresh),
+                              label: Text(hasFilters
+                                  ? 'Clear Filters'
+                                  : 'Reload'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  );
+                }
+
+                // ─ KPI strip + list ───────────────────────────────────
+                final cards = controller.jobCards;
+                return SliverMainAxisGroup(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _JobCardKpiStrip(controller: controller),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            if (index >= cards.length) {
+                              return controller.hasMore.value
+                                  ? const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: CircularProgressIndicator()))
+                                  : const SizedBox(height: 80);
+                            }
+                            final jc = cards[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _JobCardTile(
+                                jc: jc,
+                                onTap: () => Get.toNamed(
+                                  AppRoutes.JOB_CARD_FORM,
+                                  arguments: {'name': jc.name},
+                                ),
+                              ),
+                            );
+                          },
+                          childCount: cards.length + 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _JobCardFilterSheet(controller: controller),
+    );
+  }
+}
+
+// ── Filter bottom sheet ───────────────────────────────────────────────────────
+
+class _JobCardFilterSheet extends StatelessWidget {
+  final JobCardController controller;
+  const _JobCardFilterSheet({required this.controller});
+
+  static const List<String> _statuses = [
+    'Open',
+    'Work In Progress',
+    'Completed',
+    'Cancelled',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Filter by Status',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                TextButton(
+                  onPressed: () {
+                    controller.removeFilter('status');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Obx(() {
+              final active =
+                  controller.activeFilters['status'] as String?;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _statuses.map((s) {
+                  final selected = active == s;
+                  return ChoiceChip(
+                    label: Text(s),
+                    selected: selected,
+                    onSelected: (_) {
+                      controller.setFilter(
+                          'status', selected ? null : s);
+                      Navigator.pop(context);
+                    },
+                  );
+                }).toList(),
               );
             }),
           ],
@@ -233,11 +326,11 @@ class _JobCardKpiStrip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
-          _Kpi('Pending',   '${controller.openCards}',      cs.secondary),
+          _Kpi('Pending',   '\${controller.openCards}',      cs.secondary),
           const SizedBox(width: 8),
-          _Kpi('Completed', '${controller.completedCards}', cs.tertiary),
+          _Kpi('Completed', '\${controller.completedCards}', cs.tertiary),
           const SizedBox(width: 8),
-          _Kpi('Total',     '${controller.totalCards}',     cs.primary),
+          _Kpi('Total',     '\${controller.totalCards}',     cs.primary),
         ],
       ),
     );
@@ -329,8 +422,8 @@ class _JobCardTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${jc.workstation ?? 'Unassigned'} • '
-                      '${jc.totalCompletedQty.toInt()}/${jc.forQuantity.toInt()} units',
+                      '\${jc.workstation ?? 'Unassigned'} • '
+                      '\${jc.totalCompletedQty.toInt()}/\${jc.forQuantity.toInt()} units',
                       style: TextStyle(
                           color: cs.onSurfaceVariant, fontSize: 13),
                     ),
