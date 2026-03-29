@@ -104,7 +104,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final cap       = _parent.posQtyCapForSerial(serial);
     final used      = _parent.scannedQtyForSerial(
       serial, excludeItemName: editingItemName.value);
-    final remaining = (cap - used).clamp(0.0, cap);
+    final currentQty = double.tryParse(qtyController.text) ?? 0.0;     final remaining = (cap - used - currentQty).clamp(0.0, cap);
 
     String _fmt(double v) =>
         v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
@@ -141,7 +141,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final cap  = _parent.posQtyCapForSerial(serial);
       final used = _parent.scannedQtyForSerial(
           serial, excludeItemName: editingItemName.value);
-      final rem  = (cap - used).clamp(0.0, cap);
+      final currentQty = double.tryParse(qtyController.text) ?? 0.0;         final rem  = (cap - used - currentQty).clamp(0.0, cap);
       final remStr = rem % 1 == 0
           ? rem.toInt().toString()
           : rem.toStringAsFixed(2);
