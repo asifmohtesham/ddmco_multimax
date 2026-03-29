@@ -367,7 +367,37 @@ class _AddTimeLogSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        // Submit button
+        // No-employee warning banner
+        if (!controller.hasLinkedEmployee)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade300),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 16, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'No Employee record is linked to your account. '
+                    'Time logs will be recorded without an employee. '
+                    'Contact your HR administrator.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+                // Submit button
         Obx(() => SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
