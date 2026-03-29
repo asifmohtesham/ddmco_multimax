@@ -398,16 +398,22 @@ class _WorkOrderForm extends StatelessWidget {
             }),
 
             // Create Job Cards button — shown when submitted + pending ops exist
+            // Reads observables directly so GetX can track visibility changes
+            // without relying on the plain canCreateJobCards getter.
             Obx(() {
-              if (!controller.canCreateJobCards) {
-                return const SizedBox.shrink();
-              }
+              final wo              = controller.workOrder.value;
+              final creatingCards   = controller.isCreatingJobCards.value;
+              final woQty           = wo?.qty ?? 0;
+              final hasPendingOps   = controller.operations.any(
+                  (op) => op.pendingQty(woQty) > 0);
+              final canCreateCards  = wo?.docstatus == 1 && hasPendingOps;
+              if (!canCreateCards) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: controller.isCreatingJobCards.value
+                    onPressed: creatingCards
                         ? null
                         : () => Get.bottomSheet(
                               JobCardCreationSheet(
@@ -419,16 +425,15 @@ class _WorkOrderForm extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       side: BorderSide(color: cs.primary, width: 1.5),
                     ),
-                    icon: controller.isCreatingJobCards.value
+                    icon: creatingCards
                         ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: cs.primary))
+                                strokeWidth: 2, color: cs.primary))
                         : const Icon(Icons.playlist_add_check_outlined),
                     label: Text(
-                      controller.isCreatingJobCards.value
+                      creatingCards
                           ? 'Creating Job Cards…'
                           : 'Create Job Cards',
                       style: const TextStyle(fontSize: 16),
