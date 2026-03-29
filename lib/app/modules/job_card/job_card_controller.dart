@@ -48,6 +48,16 @@ class JobCardController extends GetxController {
 
   // ── Filter helpers ───────────────────────────────────────────────────────────
 
+  /// Sets [key] to [value], or removes it when [value] is null, then re-fetches.
+  void setFilter(String key, String? value) {
+    if (value == null) {
+      activeFilters.remove(key);
+    } else {
+      activeFilters[key] = value;
+    }
+    fetchJobCards(clear: true);
+  }
+
   void removeFilter(String key) {
     activeFilters.remove(key);
     fetchJobCards(clear: true);
