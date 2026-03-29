@@ -79,7 +79,7 @@ class JobCardController extends GetxController {
       if (isFetchingMore.value || !hasMore.value) return;
       isFetchingMore.value = true;
     } else {
-      isLoading.value = !clear ? true : jobCards.isEmpty;
+      isLoading.value = true;
       if (clear) {
         _start = 0;
         jobCards.clear();
@@ -114,7 +114,7 @@ class JobCardController extends GetxController {
     if (searchQuery.value.isNotEmpty) {
       f['name'] = ['like', '%${searchQuery.value}%'];
     }
-    f.addAll(activeFilters);
+    for (final entry in activeFilters.entries) {        f[entry.key] = ['=', entry.value];      }
     return f;
   }
 
