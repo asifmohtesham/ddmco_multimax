@@ -415,7 +415,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final cap  = _parent.posQtyCapForSerial(serial);
       final used = _parent.scannedQtyForSerial(
           serial, excludeItemName: editingItemName.value);
-      final rem  = (cap - used).clamp(0.0, double.infinity);
+              final currentQty = double.tryParse(qtyController.text) ?? 0.0;
+      final rem  = (cap - used - currentQty).clamp(0.0, double.infinity);
       if (rem < limit) limit = rem;
     }
 
