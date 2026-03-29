@@ -328,8 +328,8 @@ class _WorkOrderForm extends StatelessWidget {
             // and reactively enable/disable the button without canSave getter.
             if (canEdit)
               Obx(() {
-                final saving   = controller.isSaving.value;
-                final canSave  = controller.isDirty.value &&
+                final saving  = controller.isSaving.value;
+                final canSave = controller.isDirty.value &&
                     controller.isItemValid.value &&
                     controller.isBomValid.value &&
                     controller.isQtyValid.value;
@@ -359,33 +359,37 @@ class _WorkOrderForm extends StatelessWidget {
               }),
 
             // Submit button — shown for saved drafts (docstatus 0, mode view)
+            // Reads observables directly so GetX can track visibility changes
+            // without relying on the plain canSubmit getter.
             Obx(() {
-              if (!controller.canSubmit) return const SizedBox.shrink();
+              final wo          = controller.workOrder.value;
+              final submitting  = controller.isSubmitting.value;
+              final canSubmit   = controller.mode != 'new' &&
+                  wo?.docstatus == 0 &&
+                  !controller.isSaving.value &&
+                  !submitting;
+              if (!canSubmit) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: controller.isSubmitting.value
-                        ? null
-                        : controller.submitWorkOrder,
+                    onPressed:
+                        submitting ? null : controller.submitWorkOrder,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       backgroundColor: cs.tertiary,
                       foregroundColor: cs.onTertiary,
                     ),
-                    icon: controller.isSubmitting.value
+                    icon: submitting
                         ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white))
+                                strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.check_circle_outline),
                     label: Text(
-                      controller.isSubmitting.value
-                          ? 'Submitting…'
-                          : 'Submit Work Order',
+                      submitting ? 'Submitting…' : 'Submit Work Order',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
