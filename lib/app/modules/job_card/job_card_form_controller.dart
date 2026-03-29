@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
@@ -13,29 +14,39 @@ class JobCardFormController extends GetxController {
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
 
-  // ── Document state ─────────────────────────────────────────────────────────────────
+  // ── Session employee ──────────────────────────────────────────────────────────────
+  /// ERPNext Employee document name linked to the logged-in Frappe user.
+  /// Populated once in [onInit] from [StorageService]. Null when the
+  /// user account has no linked Employee record.
+  String? _sessionEmployeeId;
+
+  // ── Document state ────────────────────────────────────────────────────────────────
   final isLoading        = true.obs;
   final isAddingTimeLog  = false.obs;
   final isUpdatingStatus = false.obs;
 
   final jobCard = Rx<JobCard?>(null);
 
-  // ── Time log form controllers ────────────────────────────────────────────────────
+  // ── Time log form controllers ──────────────────────────────────────────────────
   final startTimeController    = TextEditingController();
   final completeTimeController = TextEditingController();
   final completedQtyController = TextEditingController();
 
-  // ── Validation state ─────────────────────────────────────────────────────────────
+  // ── Validation state ────────────────────────────────────────────────────────────
   final isStartTimeValid    = false.obs;
   final isCompleteTimeValid = false.obs;
   final isQtyValid          = false.obs;
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
     name = Get.arguments?['name'] ?? '';
+
+    // Resolve the session employee once at start-up so every time log
+    // submission automatically carries the logged-in user's employee record.
+    _sessionEmployeeId = Get.find<StorageService>().getUser()?.employeeId;
 
     startTimeController.addListener(_validateTimeLogForm);
     completeTimeController.addListener(_validateTimeLogForm);
@@ -53,7 +64,7 @@ class JobCardFormController extends GetxController {
     super.onClose();
   }
 
-  // ── Computed guards ────────────────────────────────────────────────────────────────
+  // ── Computed guards ──────────────────────────────────────────────────────────────
 
   /// True when all three time log fields are valid and no submission
   /// is currently in-flight.
@@ -70,7 +81,7 @@ class JobCardFormController extends GetxController {
     return !isUpdatingStatus.value;
   }
 
-  // ── Fetch document ────────────────────────────────────────────────────────────────
+  // ── Fetch document ───────────────────────────────────────────────────────────────
 
   Future<void> fetchDocument() => _fetchDocument();
 
@@ -105,7 +116,7 @@ class JobCardFormController extends GetxController {
     isQtyValid.value = qty > 0;
   }
 
-  // ── Date + time picker ────────────────────────────────────────────────────────────
+  // ── Date + time picker ───────────────────────────────────────────────────────────
 
   /// Date + time picker, same pattern as [WorkOrderFormController.pickDate].
   /// [ctrl] is one of [startTimeController] or [completeTimeController].
@@ -140,18 +151,36 @@ class JobCardFormController extends GetxController {
     ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
   }
 
-  // ── Add time log (manual entry) ──────────────────────────────────────────────────
+  // ── Add time log (manual entry) ─────────────────────────────────────────────────
 
   /// Submit a manual time log entry using the form field values.
   ///
-  /// Calls [JobCardProvider.addTimeLog] with `status: "Complete"`
-  /// (both start and complete times are provided).
+  /// The session user’s linked Employee record is automatically injected
+  /// into the [employees] list so every time log carries an employee.
+  /// If the logged-in account has no linked Employee, submission proceeds
+  /// with an empty list and a warning snackbar is shown to alert the user.
+  ///
   /// On success refreshes the document and resets the qty field.
-  /// Start time is re-filled with "now" ready for the next entry.
+  /// Start time is re-filled with “now” ready for the next entry.
   Future<void> addTimeLog() async {
     if (!canAddTimeLog) return;
 
     final qty = double.tryParse(completedQtyController.text) ?? 0;
+
+    // Build the employees payload from the session user.
+    final List<Map<String, String>> employees = _sessionEmployeeId != null
+        ? [{'employee': _sessionEmployeeId!}]
+        : [];
+
+    // Warn if no employee is linked — the time log will still be submitted
+    // so the user is not blocked, but the record will lack an employee entry.
+    if (employees.isEmpty) {
+      GlobalSnackbar.warning(
+        message:
+            'No Employee record linked to your account. '
+            'Time log recorded without an employee.',
+      );
+    }
 
     isAddingTimeLog.value = true;
     try {
@@ -160,7 +189,7 @@ class JobCardFormController extends GetxController {
         startTime:    startTimeController.text,
         completeTime: completeTimeController.text,
         completedQty: qty,
-        employees:    [], // phase 1: no employee assignment
+        employees:    employees,
         status:       'Complete',
       );
 
@@ -192,7 +221,7 @@ class JobCardFormController extends GetxController {
   /// Shows a confirmation dialog for destructive transitions
   /// (currently: moving to `Completed`).
   ///
-  /// Transitions supported in phase 1:
+  /// Transitions supported:
   ///   `Open` → `Work In Progress`
   ///   `Work In Progress` → `Open`  (pause)
   ///   `Work In Progress` → `Completed`
@@ -203,7 +232,7 @@ class JobCardFormController extends GetxController {
     if (newStatus == JobCard.statusCompleted) {
       final confirmed = await GlobalDialog.confirm(
         title: 'Complete Job Card',
-        message: 'Mark this Job Card as Completed? '  
+        message: 'Mark this Job Card as Completed? '
             'This cannot be undone without ERPNext admin access.',
         confirmText: 'Complete',
       );
@@ -229,7 +258,7 @@ class JobCardFormController extends GetxController {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────────────
 
   String _extractErrorMessage(DioException e, String fallback) {
     try {
