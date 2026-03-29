@@ -4,7 +4,8 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
-import 'package:multimax/app/data/models/job_card_model.dart'; import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class JobCardScreen extends StatefulWidget {
   const JobCardScreen({super.key});
@@ -385,12 +386,12 @@ class _JobCardTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final bool isOpen =
-        jc.status == 'Open' || jc.status == 'Work In Progress';
+final bool isOpen = jc.status == 'Open';
+    final bool isActive = jc.isOpen || jc.isWorkInProgress;
 
     return Material(
       color: cs.surface,
-      elevation: isOpen ? 2 : 0,
+      elevation: isActive ? 2 : 0,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
