@@ -58,7 +58,11 @@ class _WorkOrderForm extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Obx(() {
-      final canEdit = controller.canEdit;
+      // Read the observable directly so GetX can track this Obx dependency.
+      // Previously `controller.canEdit` (a plain getter) was used here, which
+      // gave GetX nothing to track and caused an "improper use of Obx" crash.
+      final wo      = controller.workOrder.value;
+      final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
 
       return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
