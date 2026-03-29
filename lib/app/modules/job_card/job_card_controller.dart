@@ -36,18 +36,6 @@ class JobCardController extends GetxController {
     super.onClose();
   }
 
-  /// Sets or removes a filter key, then resets and re-fetches.
-  void setFilter(String key, String? value) {
-    if (value == null) {
-      activeFilters.remove(key);
-    } else {
-      activeFilters[key] = value;
-    }
-    fetchJobCards(clear: true);
-  }
-
-  void clearFilter(String key) => setFilter(key, null);
-
   // ── Search ───────────────────────────────────────────────────────────────────
 
   void onSearchChanged(String value) {

@@ -78,7 +78,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
     if (controller.activeFilters.containsKey('status')) {
       chips.add(chip(
         icon: Icons.flag_outlined,
-        label: 'Status: \${controller.activeFilters['status']}',
+        label: 'Status: ${controller.activeFilters['status']}',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -422,8 +422,8 @@ class _JobCardTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '\${jc.workstation ?? 'Unassigned'} • '
-                      '\${jc.totalCompletedQty.toInt()}/\${jc.forQuantity.toInt()} units',
+                      '${jc.workstation ?? 'Unassigned'} • '
+                      '${jc.totalCompletedQty.toInt()}/${jc.forQuantity.toInt()} units',
                       style: TextStyle(
                           color: cs.onSurfaceVariant, fontSize: 13),
                     ),
