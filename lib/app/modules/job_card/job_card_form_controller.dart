@@ -19,6 +19,10 @@ class JobCardFormController extends GetxController {
   /// Populated once in [onInit] from [StorageService]. Null when the
   /// user account has no linked Employee record.
   String? _sessionEmployeeId;
+    /// True when the logged-in user has a linked ERPNext Employee record.
+    /// Exposed to the view so the form screen can show a warning banner.
+    bool get hasLinkedEmployee =>
+            _sessionEmployeeId != null && _sessionEmployeeId!.isNotEmpty;
 
   // ── Document state ────────────────────────────────────────────────────────────────
   final isLoading        = true.obs;
