@@ -324,32 +324,39 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 8),
 
             // Save button — shown when draft
+            // Reads all relevant observables directly so GetX can track them
+            // and reactively enable/disable the button without canSave getter.
             if (canEdit)
-              Obx(() => SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed:
-                          controller.canSave ? controller.save : null,
-                      icon: controller.isSaving.value
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white))
-                          : const Icon(Icons.save_outlined),
-                      label: Text(
-                        controller.isSaving.value
-                            ? 'Saving…'
-                            : controller.mode == 'new'
-                                ? 'Create Work Order'
-                                : 'Save Changes',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.all(16)),
+              Obx(() {
+                final saving   = controller.isSaving.value;
+                final canSave  = controller.isDirty.value &&
+                    controller.isItemValid.value &&
+                    controller.isBomValid.value &&
+                    controller.isQtyValid.value;
+                return SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: canSave ? controller.save : null,
+                    icon: saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.save_outlined),
+                    label: Text(
+                      saving
+                          ? 'Saving…'
+                          : controller.mode == 'new'
+                              ? 'Create Work Order'
+                              : 'Save Changes',
+                      style: const TextStyle(fontSize: 16),
                     ),
-                  )),
+                    style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.all(16)),
+                  ),
+                );
+              }),
 
             // Submit button — shown for saved drafts (docstatus 0, mode view)
             Obx(() {
