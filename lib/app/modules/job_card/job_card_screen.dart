@@ -4,7 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/models/job_card_model.dart'; import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class JobCardScreen extends StatefulWidget {
   const JobCardScreen({super.key});
@@ -377,7 +377,7 @@ class _Kpi extends StatelessWidget {
 // ── Job Card tile ──────────────────────────────────────────────────────
 
 class _JobCardTile extends StatelessWidget {
-  final dynamic jc;
+  final JobCard jc;
   final VoidCallback onTap;
   const _JobCardTile({required this.jc, required this.onTap});
 
