@@ -21,10 +21,16 @@ import 'package:multimax/app/data/services/scan_service.dart';
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
   StreamSubscription<String>? _barcodeScanSubscription;
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
+    final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
+
+  final linkedJobCards = <JobCard>[].obs;
+  final isFetchingLinkedCards = false.obs;
   late String mode; // 'new' | 'view'
 
   // ── Rx state ───────────────────────────────────────────────────────────────────────
@@ -213,6 +219,7 @@ class WorkOrderFormController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to load Work Order');
     } finally {
+            fetchLinkedJobCards();
       isLoading.value = false;
     }
   }
