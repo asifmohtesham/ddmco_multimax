@@ -60,23 +60,53 @@ class _DocTypePickerBottomSheetState
     _load();
   }
 
-  Future<void> _load() async {
-    if (widget.config.loader == null) {
+  Future<void> _load({bool forceRefresh = false}) async {
+    // If config has a temporary loader, use it (dev/testing path)
+    if (widget.config.loader != null) {
       setState(() {
-        _isLoading = false;
-        _rows = [];
+        _isLoading = true;
+        _error = '';
       });
+      try {
+        final rows = await widget.config.loader!(_searchController.text);
+        if (mounted) {
+          setState(() {
+            _rows = rows;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _error = e.toString();
+          });
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
       return;
     }
+
+    // Production path: use DocTypePickerProvider
     setState(() {
       _isLoading = true;
       _error = '';
     });
+
     try {
-      final rows = await widget.config.loader!(_searchController.text);
+      final result = await _provider.queryDocType(
+        doctype: widget.config.doctype,
+        fields: widget.config.resolvedFields,
+        filters: widget.config.filters,
+        searchText: _searchController.text.trim(),
+        cacheKey: widget.config.cacheKey,
+        forceRefresh: forceRefresh,
+      );
+
       if (mounted) {
         setState(() {
-          _rows = rows;
+          _rows = List<Map<String, dynamic>>.from(result['data'] ?? []);
         });
       }
     } catch (e) {
@@ -141,6 +171,17 @@ class _DocTypePickerBottomSheetState
                     ),
                   ),
                 ),
+                if (widget.config.allowRefresh)
+                  IconButton(
+                    onPressed: () => _load(forceRefresh: true),
+                    icon: const Icon(Icons.refresh),
+                    style: IconButton.styleFrom(
+                      backgroundColor: cs.surfaceContainerHigh,
+                      foregroundColor: cs.onSurfaceVariant,
+                    ),
+                    tooltip: 'Refresh',
+                  ),
+                const SizedBox(width: 8),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.close),
