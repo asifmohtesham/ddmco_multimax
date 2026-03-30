@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -20,6 +19,7 @@ import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
 
 class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
@@ -27,8 +27,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
-    final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
-
+  final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
   final linkedJobCards = <JobCard>[].obs;
   final isFetchingLinkedCards = false.obs;
   late String mode; // 'new' | 'view'
@@ -42,10 +41,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isFetchingItems = false.obs;
 
   // ── Operations state ───────────────────────────────────────────────────────────────
-  final isSubmitting       = false.obs;
+  final isSubmitting = false.obs;
   final isCreatingJobCards = false.obs;
-  final operations         = <WorkOrderOperation>[].obs;
-
+  final operations = <WorkOrderOperation>[].obs;
   final workOrder = Rx<WorkOrder?>(null);
 
   // ── Dropdown / picker data ─────────────────────────────────────────────────────────
@@ -53,42 +51,33 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final itemOptions = <String>[].obs;
 
   // ── Form controllers ───────────────────────────────────────────────────────────────
-  final itemController         = TextEditingController();
-  final bomController          = TextEditingController();
-  final qtyController          = TextEditingController();
+  final itemController = TextEditingController();
+  final bomController = TextEditingController();
+  final qtyController = TextEditingController();
   final plannedStartController = TextEditingController();
-  final expectedEndController  = TextEditingController();
+  final expectedEndController = TextEditingController();
   final wipWarehouseController = TextEditingController();
-  final fgWarehouseController  = TextEditingController();
-  final descriptionController  = TextEditingController();
-  bool isScanningItemBarcode = false;
+  final fgWarehouseController = TextEditingController();
+  final descriptionController = TextEditingController();
 
   // ── Observables for reactive UI ──────────────────────────────────────────────────
-  final selectedItem     = RxnString();
-  final selectedBom      = RxnString();
+  final selectedItem = RxnString();
+  final selectedBom = RxnString();
   final selectedItemName = RxnString();
-  final isItemValid      = false.obs;
-  final isBomValid       = false.obs;
-  final isQtyValid       = false.obs;
-
-  // ── Barcode scanning service ───────────────────────────────────────────────────
-  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
-
-  // ── Persistent scan worker ───────────────────────────────────────────────────
-  Worker? _scanWorker;
+  final isItemValid = false.obs;
+  final isBomValid = false.obs;
+  final isQtyValid = false.obs;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────────
-
   @override
   void onInit() {
     super.onInit();
+    initScanWiring();
     name = Get.arguments?['name'] ?? '';
     mode = Get.arguments?['mode'] ?? 'view';
 
     qtyController.addListener(_validateForm);
     itemController.addListener(_validateForm);
-
-    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
 
     if (mode == 'new') {
       _initNew();
@@ -99,6 +88,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
   @override
   void onClose() {
+    disposeScanWiring();
     itemController.dispose();
     bomController.dispose();
     qtyController.dispose();
@@ -111,11 +101,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   bool get canEdit => workOrder.value?.docstatus == 0 || mode == 'new';
+
   bool get canSave =>
-      isDirty.value && isItemValid.value && isBomValid.value && isQtyValid.value;
+      isDirty.value &&
+      isItemValid.value &&
+      isBomValid.value &&
+      isQtyValid.value;
 
   // ── Computed: submit & job card guards ────────────────────────────────────────────
-
   /// True when the Work Order is a saved draft (docstatus 0, not new)
   /// and no other async operation is in progress.
   bool get canSubmit =>
@@ -130,39 +123,33 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     final wo = workOrder.value;
     if (wo == null || wo.docstatus != 1) return false;
     if (isCreatingJobCards.value) return false;
+
     return operations.any(
       (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
     );
   }
 
+  // ── BarcodeScanMixin implementation ───────────────────────────────────────────────
   @override
-  void onBarcodeScanned(String barcode) {
-    final normalizedBarcode = barcode.trim();
-    if (normalizedBarcode.isEmpty) {
+  Future<void> onScanResult(ScanResult result) async {
+    if (!result.isSuccess || result.itemData == null) {
       Get.snackbar(
-        'Invalid barcode',
-        'Scanned barcode is empty.',
+        'Scan failed',
+        result.message ?? 'Unknown error',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
     }
 
-    _handleScannedItemBarcode(normalizedBarcode);
-  }
+    final barcode = result.rawCode.trim();
+    if (barcode.isEmpty) return;
 
-  @override
-  void onBarcodeScanError(String error) {
-    Get.snackbar(
-      'Scan failed',
-      error,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    await _handleScannedItemBarcode(barcode);
   }
 
   Future<void> _handleScannedItemBarcode(String barcode) async {
     try {
       final matches = await _findMatchingItemsByBarcode(barcode);
-
       if (matches.isEmpty) {
         Get.snackbar(
           'Item not found',
@@ -192,92 +179,73 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   Future<List<Item>> _findMatchingItemsByBarcode(String barcode) async {
-    final results = await itemProvider.getItems(
-      search: barcode,
+    final res = await _apiProvider.getDocumentList(
+      'Item',
       filters: {
         'disabled': 0,
         'is_stock_item': 1,
       },
+      search: barcode,
     );
 
-    return results.where((item) {
-      final itemCode = (item.itemCode ?? '').trim();
-      final itemBarcode = (item.barcode ?? '').trim();
-      return itemCode == barcode || itemBarcode == barcode;
-    }).toList();
+    if (res.statusCode == 200 && res.data['data'] != null) {
+      final List list = res.data['data'];
+      final results = list.map((e) => Item.fromJson(e)).toList();
+
+      return results.where((item) {
+        final itemCode = (item.itemCode ?? '').trim();
+        final itemBarcode = (item.barcode ?? '').trim();
+        return itemCode == barcode || itemBarcode == barcode;
+      }).toList();
+    }
+    return [];
   }
 
   Future<void> _applyScannedItemSelection(Item item) async {
-    selectedItem.value = item;
+    selectedItem.value = item.itemCode;
     itemController.text = item.itemCode ?? '';
-
-    if ((item.stockUom ?? '').isNotEmpty) {
-      uomController.text = item.stockUom!;
-    }
 
     // Always clear BOM and re-fetch, as approved
     selectedBom.value = null;
     bomController.text = '';
 
-    await _fetchBomsForItem(item.itemCode ?? '');
-    await _refreshOperations();
-    await _refreshStockSummary();
-
+    await _autoLoadBom(item.itemCode ?? '');
     update();
   }
 
-  // ── Raw scan entry point ─────────────────────────────────────────────────
-  void _onRawScan(String code) async {
-    if (code.isEmpty) {
-      return;
-    }
-    if (Get.currentRoute != AppRoutes.WORK_ORDER_FORM) {
-      return;
-    }
-    final clean = code.trim();
-    itemController.text = clean;
-    await scanBarcode(clean);
-  }
-
   // ── Init new ───────────────────────────────────────────────────────────────────────
-
   void _initNew() {
     final today = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     plannedStartController.text = today;
     qtyController.text = '1';
 
     // ── Apply prefill from BOM form / list ───────────────────────────────────
-    final prefill =
-        Get.arguments?['prefill'] as Map<String, dynamic>? ?? {};
-
+    final prefill = Get.arguments?['prefill'] as Map? ?? {};
     if (prefill.isNotEmpty) {
-      final item     = prefill['production_item'] as String? ?? '';
-      final itemName = prefill['item_name']        as String? ?? '';
-      final bomNo    = prefill['bom_no']           as String? ?? '';
-      final qty      = prefill['qty'];
-      final wip      = prefill['wip_warehouse']    as String? ?? '';
-      final fg       = prefill['fg_warehouse']     as String? ?? '';
+      final item = prefill['production_item'] as String? ?? '';
+      final itemName = prefill['item_name'] as String? ?? '';
+      final bomNo = prefill['bom_no'] as String? ?? '';
+      final qty = prefill['qty'];
+      final wip = prefill['wip_warehouse'] as String? ?? '';
+      final fg = prefill['fg_warehouse'] as String? ?? '';
 
       if (item.isNotEmpty) {
-        itemController.text        = item;
-        selectedItem.value         = item;
-        selectedItemName.value     = itemName.isNotEmpty ? itemName : item;
-        isItemValid.value          = true;
+        itemController.text = item;
+        selectedItem.value = item;
+        selectedItemName.value = itemName.isNotEmpty ? itemName : item;
+        isItemValid.value = true;
       }
-
       if (bomNo.isNotEmpty) {
         bomController.text = bomNo;
-        selectedBom.value  = bomNo;
-        isBomValid.value   = true;
+        selectedBom.value = bomNo;
+        isBomValid.value = true;
       }
-
       if (qty != null) {
         final q = qty is double ? qty : (qty as num).toDouble();
         qtyController.text = q % 1 == 0 ? q.toInt().toString() : q.toString();
       }
-
       if (wip.isNotEmpty) wipWarehouseController.text = wip;
-      if (fg.isNotEmpty)  fgWarehouseController.text  = fg;
+      if (fg.isNotEmpty) fgWarehouseController.text = fg;
 
       // If a BOM is prefilled skip the typeahead — load warehouses from it.
       if (bomNo.isNotEmpty && (wip.isEmpty || fg.isEmpty)) {
@@ -288,24 +256,23 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     // ───────────────────────────────────────────────────────────────────
 
     isLoading.value = false;
-    isDirty.value   = prefill.isNotEmpty; // pre-dirtied if prefilled
+    isDirty.value = prefill.isNotEmpty; // pre-dirtied if prefilled
     _validateForm();
 
     workOrder.value = WorkOrder(
-      name:             'New Work Order',
-      productionItem:   selectedItem.value ?? '',
-      itemName:         selectedItemName.value ?? '',
-      bomNo:            selectedBom.value ?? '',
-      qty:              double.tryParse(qtyController.text) ?? 1,
-      producedQty:      0,
-      status:           'Draft',
+      name: 'New Work Order',
+      productionItem: selectedItem.value ?? '',
+      itemName: selectedItemName.value ?? '',
+      bomNo: selectedBom.value ?? '',
+      qty: double.tryParse(qtyController.text) ?? 1,
+      producedQty: 0,
+      status: 'Draft',
       plannedStartDate: plannedStartController.text,
-      docstatus:        0,
+      docstatus: 0,
     );
   }
 
   // ── Fetch document ─────────────────────────────────────────────────────────────────
-
   Future<void> _fetchDocument() async {
     isLoading.value = true;
     try {
@@ -320,7 +287,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to load Work Order');
     } finally {
-            fetchLinkedJobCards();
+      fetchLinkedJobCards();
       isLoading.value = false;
     }
   }
@@ -330,7 +297,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     isFetchingLinkedCards.value = true;
     try {
       final res = await _jobCardProvider.getJobCards(
-        filters: {'work_order': ['=', name]},
+        filters: {
+          'work_order': ['=', name]
+        },
         limit: 100,
       );
       if (res.statusCode == 200 && res.data['data'] != null) {
@@ -344,18 +313,18 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   void _populateControllers(WorkOrder wo) {
-    itemController.text        = wo.productionItem;
-    selectedItem.value         = wo.productionItem;
-    selectedItemName.value     = wo.itemName;
-    bomController.text         = wo.bomNo;
-    selectedBom.value          = wo.bomNo;
-    qtyController.text         =
+    itemController.text = wo.productionItem;
+    selectedItem.value = wo.productionItem;
+    selectedItemName.value = wo.itemName;
+    bomController.text = wo.bomNo;
+    selectedBom.value = wo.bomNo;
+    qtyController.text =
         wo.qty % 1 == 0 ? wo.qty.toInt().toString() : wo.qty.toString();
     plannedStartController.text = wo.plannedStartDate;
-    expectedEndController.text  = wo.expectedEndDate ?? '';
-    wipWarehouseController.text = wo.wip_warehouse   ?? '';
-    fgWarehouseController.text  = wo.fg_warehouse    ?? '';
-    descriptionController.text  = wo.description     ?? '';
+    expectedEndController.text = wo.expectedEndDate ?? '';
+    wipWarehouseController.text = wo.wip_warehouse ?? '';
+    fgWarehouseController.text = wo.fg_warehouse ?? '';
+    descriptionController.text = wo.description ?? '';
     _validateForm();
   }
 
@@ -364,40 +333,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     if (!isLoading.value) isDirty.value = true;
   }
 
-  // ==========================================================================
-  // BOM Workflow Documentation (Commit 7)
-  // ==========================================================================
-  // The Work Order form implements robust BOM (Bill of Materials) handling:
-  //
-  // 1. Auto-fetch: When an Item is selected, _autoLoadBom() automatically:
-  //    - Searches for BOMs associated with the selected Item
-  //    - Auto-selects if only one BOM exists
-  //    - Populates bomOptions for manual selection if multiple BOMs exist
-  //
-  // 2. Auto-fill warehouses: _applyBom() fetches BOM details and:
-  //    - Auto-fills WIP (Work In Progress) warehouse from BOM
-  //    - Auto-fills FG (Finished Goods) warehouse from BOM
-  //    - Only fills empty fields (preserves user input)
-  //
-  // 3. BOM validation: _validateForm() ensures:
-  //    - selectedBom is not null/empty before form submission
-  //    - isBomValid flag controls save button state
-  //
-  // 4. Manual BOM selection: onBomSelected() allows users to:
-  //    - Pick from multiple BOMs via DocTypePickerBottomSheet
-  //    - Change BOM after initial auto-selection
-  // ==========================================================================
-
-
   void _validateForm() {
     isItemValid.value = (selectedItem.value ?? '').isNotEmpty;
-    isBomValid.value  = (selectedBom.value  ?? '').isNotEmpty;
+    isBomValid.value = (selectedBom.value ?? '').isNotEmpty;
     final qty = double.tryParse(qtyController.text) ?? 0;
-    isQtyValid.value  = qty > 0;
+    isQtyValid.value = qty > 0;
   }
 
   // ── Item search ───────────────────────────────────────────────────────────────────
-
   Future<void> searchItems(String query) async {
     if (query.length < 2) {
       itemOptions.clear();
@@ -425,8 +368,8 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   void onItemSelected(String itemCode) async {
-    selectedItem.value     = itemCode;
-    itemController.text    = itemCode;
+    selectedItem.value = itemCode;
+    itemController.text = itemCode;
     itemOptions.clear();
 
     try {
@@ -438,16 +381,16 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
     bomController.clear();
     selectedBom.value = null;
-    isBomValid.value  = false;
+    isBomValid.value = false;
     bomOptions.clear();
     markDirty();
     _validateForm();
+
     await _autoLoadBom(itemCode);
   }
 
   /// Auto-fetch BOMs when Item is selected.
   /// Searches for BOMs, auto-selects if only one exists, or populates options for user selection.
-
   Future<void> _autoLoadBom(String itemCode) async {
     isFetchingBom.value = true;
     try {
@@ -459,6 +402,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
           return;
         }
       }
+
       final res2 = await _provider.getBomsForItem(itemCode);
       if (res2.statusCode == 200 && res2.data['data'] != null) {
         final list2 = res2.data['data'] as List;
@@ -478,18 +422,19 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     try {
       final res = await _provider.getBom(bomName);
       if (res.statusCode == 200 && res.data['data'] != null) {
-          /// Apply BOM to Work Order: Fetch BOM details and auto-fill warehouses.
-  /// Only populates empty warehouse fields to preserve user input.
-
+        /// Apply BOM to Work Order: Fetch BOM details and auto-fill warehouses.
+        /// Only populates empty warehouse fields to preserve user input.
         final bom = res.data['data'];
         bomController.text = bomName;
-        selectedBom.value  = bomName;
+        selectedBom.value = bomName;
+
         if (wipWarehouseController.text.isEmpty) {
           wipWarehouseController.text = bom['wip_warehouse'] ?? '';
         }
         if (fgWarehouseController.text.isEmpty) {
           fgWarehouseController.text = bom['fg_warehouse'] ?? '';
         }
+
         markDirty();
         _validateForm();
       }
@@ -500,16 +445,12 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     bomOptions.clear();
     await _applyBom(bomName);
   }
-  /// Handle manual BOM selection from DocTypePicker.
-  /// Called when user picks a BOM from the bottom sheet picker.
 
-  
   // ── Date + time picker ────────────────────────────────────────────────────────────────
-
   Future<void> pickDate(TextEditingController ctrl) async {
     if (!canEdit) return;
-    final now = DateTime.now();
 
+    final now = DateTime.now();
     DateTime initial = now;
     try {
       if (ctrl.text.isNotEmpty) {
@@ -525,12 +466,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
+
     if (pickedDate == null) return;
 
     final initialTime = TimeOfDay(
-      hour:   initial.hour,
+      hour: initial.hour,
       minute: initial.minute,
     );
+
     final pickedTime = await showTimePicker(
       context: Get.context!,
       initialTime: initialTime,
@@ -540,15 +483,15 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       pickedDate.year,
       pickedDate.month,
       pickedDate.day,
-      pickedTime?.hour   ?? 0,
+      pickedTime?.hour ?? 0,
       pickedTime?.minute ?? 0,
     );
+
     ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
     markDirty();
   }
 
   // ── Warehouse picker (bottom sheet) ───────────────────────────────────────────────
-
   Future<void> showWarehousePicker(TextEditingController ctrl) async {
     if (!canEdit) return;
 
@@ -577,7 +520,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-    // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
+  // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
   Future<void> showBomPicker() async {
     if (!canEdit) return;
 
@@ -619,27 +562,27 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Adjust qty ────────────────────────────────────────────────────────────────────
-
   void adjustQty(int delta) {
     if (!canEdit) return;
+
     final current = double.tryParse(qtyController.text) ?? 0;
-    final newVal  = (current + delta).clamp(1, double.infinity);
+    final newVal = (current + delta).clamp(1, double.infinity);
+
     qtyController.text =
         newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
     markDirty();
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────────
-
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
     isSaving.value = true;
 
     final qty = double.tryParse(qtyController.text) ?? 0;
-    final data = <String, dynamic>{
+    final data = {
       'production_item': selectedItem.value,
-      'bom_no':          selectedBom.value,
-      'qty':             qty,
+      'bom_no': selectedBom.value,
+      'qty': qty,
       'planned_start_date': plannedStartController.text,
       if (expectedEndController.text.isNotEmpty)
         'expected_end_date': expectedEndController.text,
@@ -684,21 +627,16 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────────────
-
   /// Submit the Work Order (docstatus 0 → 1).
-  ///
-  /// Guarded by [canSubmit]. Shows a confirmation dialog before proceeding.
-  /// On success refreshes the document so [operations], [canSubmit], and
-  /// [canCreateJobCards] all update reactively in the UI.
   Future<void> submitWorkOrder() async {
     if (!canSubmit) return;
 
     final confirmed = await GlobalDialog.confirm(
       title: 'Submit Work Order',
-      message:
-          'Submitting will lock this Work Order for editing. Continue?',
+      message: 'Submitting will lock this Work Order for editing. Continue?',
       confirmText: 'Submit',
     );
+
     if (confirmed != true) return;
 
     isSubmitting.value = true;
@@ -720,14 +658,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Create Job Cards ──────────────────────────────────────────────────────────────
-
   /// Create Job Cards for [selected] operations.
-  ///
-  /// [qtys] maps `WorkOrderOperation.name` → qty to manufacture per Job Card.
-  /// Called by [JobCardCreationSheet] after the user confirms selection.
-  ///
-  /// On success refreshes the document so the operations list reflects the
-  /// updated statuses returned by ERPNext after card creation.
   Future<void> createJobCards(
     List<WorkOrderOperation> selected,
     Map<String, double> qtys,
@@ -742,7 +673,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       }).toList();
 
       final res = await _provider.makeJobCard(name, payload);
-
       if (res.statusCode == 200) {
         await _fetchDocument();
         fetchLinkedJobCards();
@@ -764,7 +694,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Discard guard ────────────────────────────────────────────────────────────────
-
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -775,9 +704,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────────
-
-  /// Extract a human-readable message from a [DioException].
-  /// Falls back to [fallback] when no message can be parsed.
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       if (e.response?.data is Map) {
