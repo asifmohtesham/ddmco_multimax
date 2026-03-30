@@ -28,7 +28,7 @@ import 'package:flutter/material.dart';
 ///   align: TextAlign.right,
 ///   visibleOnMobile: false,
 /// )
-/// ```class DocTypePickerColumn {
+class DocTypePickerColumn {
   /// Frappe/ERPNext fieldname returned by the API, e.g. `'item_code'`.
   final String fieldname;
 
