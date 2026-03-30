@@ -444,12 +444,12 @@ class WorkOrderFormController extends GetxController {
 
   // ── Warehouse picker (bottom sheet) ───────────────────────────────────────────────
 
-  void showWarehousePicker(TextEditingController ctrl) {
+  Future<void> showWarehousePicker(TextEditingController ctrl) async {
     if (!canEdit) return;
-    
-    showDocTypePickerBottomSheet(
+
+    final selected = await showDocTypePickerBottomSheet(
       Get.context!,
-      config: DocTypePickerConfig(
+      config: const DocTypePickerConfig(
         doctype: 'Warehouse',
         title: 'Select Warehouse',
         columns: [
@@ -459,32 +459,35 @@ class WorkOrderFormController extends GetxController {
             isPrimary: true,
           ),
         ],
-        filters: {'is_group': 0},
+        filters: [
+          ['Warehouse', 'is_group', '=', 0],
+        ],
         allowRefresh: true,
       ),
-      onSelect: (selected) {
-        ctrl.text = selected['name'] as String;
-        markDirty();
-      },
     );
+
+    if (selected != null) {
+      ctrl.text = selected['name'] as String;
+      markDirty();
+    }
   }
 
     // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
-  void showBomPicker() {
+  Future<void> showBomPicker() async {
     if (!canEdit) return;
-    
+
     final selectedItemCode = selectedItem.value;
     if (selectedItemCode == null || selectedItemCode.isEmpty) {
       GlobalSnackbar.info(message: 'Select an item first to load BOMs');
       return;
     }
 
-    showDocTypePickerBottomSheet(
+    final selected = await showDocTypePickerBottomSheet(
       Get.context!,
       config: DocTypePickerConfig(
         doctype: 'BOM',
         title: 'Select BOM',
-        columns: [
+        columns: const [
           DocTypePickerColumn(
             fieldname: 'name',
             label: 'BOM',
@@ -496,18 +499,18 @@ class WorkOrderFormController extends GetxController {
             isSecondary: true,
           ),
         ],
-        filters: {
-          'item': selectedItemCode,
-          'is_active': 1,
-          'is_default': ['in', [0, 1]],
-        },
+        filters: [
+          ['BOM', 'item', '=', selectedItemCode],
+          ['BOM', 'is_active', '=', 1],
+        ],
         allowRefresh: true,
       ),
-      onSelect: (selected) {
-        final bomName = selected['name'] as String;
-        onBomSelected(bomName);
-      },
     );
+
+    if (selected != null) {
+      final bomName = selected['name'] as String;
+      onBomSelected(bomName);
+    }
   }
 
   // ── Adjust qty ────────────────────────────────────────────────────────────────────
