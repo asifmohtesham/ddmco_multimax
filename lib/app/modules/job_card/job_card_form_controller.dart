@@ -223,7 +223,7 @@ class JobCardFormController extends GetxController {
       GlobalSnackbar.error(
           message: _extractErrorMessage(e, 'Add time log failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: \$e');
+      GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isAddingTimeLog.value = false;
     }
@@ -288,7 +288,7 @@ class JobCardFormController extends GetxController {
           JobCard.statusCompleted      => 'Completed',
           _                            => newStatus,
         };
-        GlobalSnackbar.success(message: 'Job Card \$label');
+        GlobalSnackbar.success(message: 'Job Card $label');
 
         // After a Complete transition, submit the document so ERPNext
         // can set status='Completed' (requires docstatus==1).
@@ -302,7 +302,7 @@ class JobCardFormController extends GetxController {
       GlobalSnackbar.error(
           message: _extractErrorMessage(e, 'Status update failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: \$e');
+      GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isUpdatingStatus.value = false;
     }
@@ -347,7 +347,7 @@ class JobCardFormController extends GetxController {
       GlobalSnackbar.error(
           message: _extractErrorMessage(e, 'Job Card submission failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Submission error: \$e');
+      GlobalSnackbar.error(message: 'Submission error: $e');
     }
   }
 

@@ -198,7 +198,7 @@ class _HeaderCard extends StatelessWidget {
                   style: textTheme.labelMedium
                       ?.copyWith(color: cs.onSurfaceVariant)),
               Text(
-                '\${_fmtQty(jc.totalCompletedQty)} / \${_fmtQty(jc.forQuantity)}',
+                '${_fmtQty(jc.totalCompletedQty)} / ${_fmtQty(jc.forQuantity)}',
                 style: textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface,
@@ -365,11 +365,11 @@ class _AddTimeLogSection extends StatelessWidget {
           String? errorText;
 
           if (overLimit) {
-            errorText = 'Exceeds Work Order qty (max \${_fmtQty(forQty)}). '
-                'Remaining: \${_fmtQty(remaining)}';
+            errorText = 'Exceeds Work Order qty (max ${_fmtQty(forQty)}). '
+                'Remaining: ${_fmtQty(remaining)}';
           } else if (forQty > 0) {
-            helperText = 'Remaining: \${_fmtQty(remaining)} '
-                '(WO Qty: \${_fmtQty(forQty)})';
+            helperText = 'Remaining: ${_fmtQty(remaining)} '
+                '(WO Qty: ${_fmtQty(forQty)})';
           }
 
           return TextField(
@@ -469,7 +469,7 @@ class _TimeLogsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-            label: 'Time Logs (\${logs.length})',
+            label: 'Time Logs (${logs.length})',
             icon: Icons.history_outlined),
         const SizedBox(height: 12),
 
@@ -554,7 +554,7 @@ class _TimeLogRow extends StatelessWidget {
                         size: 14, color: cs.primary),
                     const SizedBox(width: 4),
                     Text(
-                      'Qty: \${_fmtQty(log.completedQty)}',
+                      'Qty: ${_fmtQty(log.completedQty)}',
                       style: textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w600),
                     ),
@@ -604,8 +604,8 @@ class _TimeLogRow extends StatelessWidget {
   String _formatRange(String? from, String? to) {
     if (from == null) return '—';
     final f = _truncate(from);
-    if (to == null) return '\$f → running';
-    return '\$f → \${_truncate(to)}';
+    if (to == null) return '$f → running';
+    return '$f → ${_truncate(to)}';
   }
 
   /// Drop seconds for display: `2026-03-27 08:30:00` → `2026-03-27 08:30`
@@ -670,7 +670,7 @@ class _DetailRow extends StatelessWidget {
         Icon(icon, size: 16, color: cs.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
-          '\$label: ',
+          '$label: ',
           style: textTheme.bodySmall
               ?.copyWith(color: cs.onSurfaceVariant),
         ),
