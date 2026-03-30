@@ -69,7 +69,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.search,
-        label: 'Search: \${controller.searchQuery.value}',
+        label: 'Search: ${controller.searchQuery.value}',
         onDeleted: () {
           controller.searchQuery.value = '';
           controller.fetchJobCards(clear: true);
@@ -327,11 +327,11 @@ class _JobCardKpiStrip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
-          _Kpi('Pending',   '\${controller.openCards}',      cs.secondary),
+          _Kpi('Pending',   '${controller.openCards}',      cs.secondary),
           const SizedBox(width: 8),
-          _Kpi('Completed', '\${controller.completedCards}', cs.tertiary),
+          _Kpi('Completed', '${controller.completedCards}', cs.tertiary),
           const SizedBox(width: 8),
-          _Kpi('Total',     '\${controller.totalCards}',     cs.primary),
+          _Kpi('Total',     '${controller.totalCards}',     cs.primary),
         ],
       ),
     );
