@@ -246,13 +246,19 @@ class _DocTypePickerBottomSheetState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+                      const SizedBox(height: 24),
             Icon(Icons.inbox_outlined,
                 size: 48, color: cs.onSurfaceVariant.withOpacity(0.4)),
             const SizedBox(height: 12),
             Text(
-              'No records found',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+              'No ${widget.config.doctype} found',              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
             ),
+                      const SizedBox(height: 8),
+          Text(
+            'Try adjusting your search or tap refresh',
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
           ],
         ),
       );
