@@ -215,3 +215,44 @@
 ## Commit 8 — Polish Generic DocType Picker for App-Wide Reuse
 
 **Commit message:**
+
+### Checklist
+- [ ] Improve row spacing and padding consistency
+- [ ] Subtitle truncation is clean — single line, ellipsis, no layout overflow
+- [ ] Header labels for multi-column layout are subtle and correctly aligned
+- [ ] Empty state has a warm message and retry/refresh affordance
+- [ ] Refresh UX is non-blocking with visible feedback
+- [ ] Add inline dartdoc comments on `DocTypePickerConfig` and `DocTypePickerColumn` for future DocType integrations
+- [ ] Verify all three picker types (Item, BOM, Warehouse) render consistently
+
+### Acceptance
+- [ ] All pickers look and behave consistently
+- [ ] No field-specific hacks inside generic widget
+- [ ] Picker is documented and ready for reuse on other DocTypes
+
+---
+
+## PR Slicing
+
+| PR | Commits | Description |
+|---|---|---|
+| PR 1 | 1, 2, 3 | Generic DocType picker infrastructure |
+| PR 2 | 4, 5 | Item picker + selection side effects |
+| PR 3 | 6 | BOM picker |
+| PR 4 | 7, 8 | Warehouse migration + polish |
+
+---
+
+## Done Checklist
+
+The feature is complete when all of the following are true:
+
+- [ ] Item, BOM No, WIP Warehouse, and FG Warehouse all use the generic picker
+- [ ] Item picker supports barcode-prefill with manual override
+- [ ] Item list filters for enabled stock items only, consistent with Frappe Link field behaviour
+- [ ] BOM picker filters by currently selected Item only
+- [ ] BOM selection is required for Work Order form validation
+- [ ] Warehouse picker blocks group nodes — only leaf warehouses are selectable
+- [ ] All pickers are cache-first with explicit live refresh
+- [ ] Generic picker has no Work Order-specific logic inside it
+- [ ] All side effects (UOM, BOM auto-fetch, operations, stock summary refresh) are in the Work Order controller
