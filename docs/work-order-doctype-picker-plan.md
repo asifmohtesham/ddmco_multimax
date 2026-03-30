@@ -138,3 +138,27 @@
 ## Commit 5 — Item Selection Side Effects
 
 **Commit message:**
+
+### Checklist
+- [ ] On item selected in controller:
+  - [ ] Set selected item value and text controller
+  - [ ] Auto-set UOM from `stock_uom`
+  - [ ] Clear stale BOM value if item changed
+  - [ ] Auto-fetch BOMs for newly selected item
+  - [ ] Refresh operations
+  - [ ] Refresh stock summary
+- [ ] All side effect logic lives in `WorkOrderFormController`, not in generic picker
+- [ ] Existing Work Order validation flow is preserved
+
+### Acceptance
+- [ ] Selecting a new Item refreshes all dependent fields
+- [ ] BOM is cleared when item changes
+- [ ] UOM is auto-set correctly
+- [ ] Operations and stock summary refresh
+- [ ] No regressions in existing form validation
+
+---
+
+## Commit 6 — BOM No Field Migration to Generic Picker
+
+**Commit message:**
