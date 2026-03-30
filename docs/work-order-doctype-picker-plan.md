@@ -162,3 +162,31 @@
 ## Commit 6 — BOM No Field Migration to Generic Picker
 
 **Commit message:**
+
+### Checklist
+- [ ] Replace existing BOM bottom sheet / tap handler with generic picker
+- [ ] Prevent opening BOM picker if no Item is selected — show friendly snackbar/toast
+- [ ] BOM picker config:
+  - [ ] `doctype: 'BOM'`
+  - [ ] `filters: { item: selectedItem, is_active: 1 }`
+  - [ ] `primaryField: 'name'` (BOM name/ID)
+  - [ ] `secondaryField: 'item'`
+  - [ ] `enableBarcodeScan: false`
+  - [ ] `allowRefresh: true`
+- [ ] On BOM selected:
+  - [ ] Set BOM value and text controller
+  - [ ] Mark BOM as valid for form validation
+  - [ ] Refresh dependent data if needed
+- [ ] BOM remains required for Work Order form submission
+
+### Acceptance
+- [ ] BOM picker only shows BOMs for selected Item
+- [ ] Tapping BOM field before Item shows validation message
+- [ ] BOM selection satisfies required field validation
+- [ ] BOM list refreshes when Item changes
+
+---
+
+## Commit 7 — Warehouse Fields Migration to Generic Picker
+
+**Commit message:**
