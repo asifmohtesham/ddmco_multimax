@@ -178,9 +178,43 @@ class ApiProvider {
     return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
   }
 
+  /// Call a Frappe whitelisted method via GET with query parameters.
+  ///
+  /// Suitable for simple methods that accept flat scalar parameters.
+  /// For methods that require a complex `args` object (e.g. `make_time_log`)
+  /// use [callMethodPost] instead — Frappe deserialises nested params only
+  /// when they are sent as a JSON-encoded string in a form-urlencoded POST body.
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
+  }
+
+  /// Call a Frappe whitelisted method via POST with a form-urlencoded body.
+  ///
+  /// Use this whenever the server method expects its arguments via `frappe.form_dict`
+  /// and one of those arguments is a JSON-serialised object (e.g. `args`).
+  ///
+  /// Example — ERPNext `make_time_log`:
+  /// ```dart
+  /// callMethodPost(
+  ///   'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
+  ///   params: {'args': json.encode({...})},
+  /// );
+  /// ```
+  /// Sending a nested Map via [callMethod] (GET) results in Dio serialising it
+  /// as `args[key]=value` pairs, which Frappe does **not** unpack into the
+  /// positional `args` parameter — causing:
+  ///   `TypeError: make_time_log() missing 1 required positional argument: 'args'`
+  Future<Response> callMethodPost(
+    String method, {
+    Map<String, dynamic>? params,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.post(
+      '/api/method/$method',
+      data: params,
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -255,7 +289,6 @@ class ApiProvider {
           'report_name': 'Stock Balance',
           'filters': json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
           '_': DateTime.now().millisecondsSinceEpoch
         }
     );
@@ -298,7 +331,7 @@ class ApiProvider {
   /// Runs the ERPNext **BOM Search** script report.
   ///
   /// Matches the web filter pane:
-  ///   - [item]  : finished-good Item Code (BOM ‘Item’ filter)
+  ///   - [item]  : finished-good Item Code (BOM 'Item' filter)
   ///   - [bom]   : BOM No filter
   ///   - [item1]–[item5] : sub-assembly Item Code search fields
   ///
