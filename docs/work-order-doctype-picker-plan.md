@@ -190,3 +190,28 @@
 ## Commit 7 — Warehouse Fields Migration to Generic Picker
 
 **Commit message:**
+
+### Checklist
+- [ ] Replace WIP Warehouse selector with generic picker
+- [ ] Replace FG Warehouse / Target Warehouse selector with generic picker
+- [ ] Shared Warehouse picker config:
+  - [ ] `doctype: 'Warehouse'`
+  - [ ] `filters: { warehouse_type: 'Warehouse' }` (exclude group nodes)
+  - [ ] `selectabilityResolver`: block rows where `is_group: 1`
+  - [ ] `enableBarcodeScan: false`
+  - [ ] `allowRefresh: true`
+- [ ] Separate titles per field:
+  - [ ] "Select WIP Warehouse"
+  - [ ] "Select Target Warehouse"
+- [ ] On selection: update respective controller value
+
+### Acceptance
+- [ ] Group warehouse nodes cannot be selected (either hidden or shown disabled)
+- [ ] Both WIP and FG Warehouse fields use same generic infrastructure
+- [ ] Existing form validation for warehouses is preserved
+
+---
+
+## Commit 8 — Polish Generic DocType Picker for App-Wide Reuse
+
+**Commit message:**
