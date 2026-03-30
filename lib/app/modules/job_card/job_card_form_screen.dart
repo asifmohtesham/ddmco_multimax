@@ -154,7 +154,39 @@ class _HeaderCard extends StatelessWidget {
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 4),
-                    StatusPill(status: jc.status),
+                    Row(
+                      children: [
+                        StatusPill(status: jc.status),
+                        // C5: show a "Submitted" chip when docstatus == 1
+                        if (jc.docstatus == 1) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cs.tertiaryContainer,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.lock_outline,
+                                    size: 11,
+                                    color: cs.onTertiaryContainer),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Submitted',
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: cs.onTertiaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -249,11 +281,15 @@ class _StatusActionsRow extends StatelessWidget {
     final submitLoading   = controller.isSubmitting.value;
     final anyLoading      = statusLoading || submitLoading;
 
+    // C5: track whether the status row renders any button so the gap is
+    // only inserted when there is actually content above the submit button.
+    final bool hasStatusRow = !jc.isCompleted;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Start / Pause / Complete row ─────────────────────────────────
-        if (!jc.isCompleted)
+        if (hasStatusRow)
           Row(
             children: [
               if (jc.isOpen)
@@ -315,11 +351,10 @@ class _StatusActionsRow extends StatelessWidget {
             ],
           ),
 
+        // C5: only insert gap when the status row above actually rendered.
+        if (hasStatusRow) const SizedBox(height: 12),
+
         // ── Submit button — always visible while docstatus == 0 ──────────
-        //
-        // Shown below the status row so the user can explicitly lock the
-        // document even if the auto-submit condition was not triggered.
-        const SizedBox(height: 12),
         Obx(() {
           final submitting = controller.isSubmitting.value;
           final canSubmit  = controller.canSubmit;
@@ -466,36 +501,42 @@ class _AddTimeLogSection extends StatelessWidget {
         }),
         const SizedBox(height: 16),
 
+        // C5: theme-aware warning banner — replaced hard-coded Colors.orange.*
+        // with ColorScheme tokens so it adapts to light / dark / high-contrast.
         if (!controller.hasLinkedEmployee)
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade300),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.warning_amber_rounded,
-                    size: 16, color: Colors.orange.shade700),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'No Employee record is linked to your account. '
-                    'Time logs will be recorded without an employee. '
-                    'Contact your HR administrator.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange.shade800,
+          Builder(builder: (context) {
+            final cs = Theme.of(context).colorScheme;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: cs.errorContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: cs.error.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 16, color: cs.onErrorContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'No Employee record is linked to your account. '
+                      'Time logs will be recorded without an employee. '
+                      'Contact your HR administrator.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onErrorContainer,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
 
         Obx(() => SizedBox(
               width: double.infinity,
@@ -511,11 +552,13 @@ class _AddTimeLogSection extends StatelessWidget {
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.add_circle_outline),
                 label: Text(
-                  controller.isAddingTimeLog.value ? 'Saving…' : 'Add Time Log',
+                  controller.isAddingTimeLog.value
+                      ? 'Adding…'
+                      : 'Add Time Log',
                   style: const TextStyle(fontSize: 15),
                 ),
-                style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.all(14)),
+                style:
+                    FilledButton.styleFrom(padding: const EdgeInsets.all(14)),
               ),
             )),
         const SizedBox(height: 24),
@@ -532,10 +575,10 @@ class _AddTimeLogSection extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 class _TimeLogsSection extends StatelessWidget {
-  final List<JobCardTimeLog>          logs;
-  final bool                          isDraft;
-  final void Function(JobCardTimeLog) onEdit;
-  final void Function(JobCardTimeLog) onDelete;
+  final List<JobCardTimeLog>            logs;
+  final bool                            isDraft;
+  final void Function(JobCardTimeLog)   onEdit;
+  final void Function(JobCardTimeLog)   onDelete;
 
   const _TimeLogsSection({
     required this.logs,
@@ -546,8 +589,7 @@ class _TimeLogsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    if (logs.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -555,38 +597,23 @@ class _TimeLogsSection extends StatelessWidget {
         _SectionHeader(
             label: 'Time Logs (${logs.length})',
             icon: Icons.history_outlined),
-        const SizedBox(height: 12),
-
-        if (logs.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: Text(
-                'No time logs recorded yet',
-                style: textTheme.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant),
-              ),
-            ),
-          )
-        else
-          ...logs.map(
-            (log) => _TimeLogRow(
-              log:      log,
-              isDraft:  isDraft,
-              onEdit:   onEdit,
-              onDelete: onDelete,
-            ),
-          ),
+        const SizedBox(height: 8),
+        ...logs.map((log) => _TimeLogRow(
+              log: log,
+              isDraft: isDraft,
+              onEdit: () => onEdit(log),
+              onDelete: () => onDelete(log),
+            )),
       ],
     );
   }
 }
 
 class _TimeLogRow extends StatelessWidget {
-  final JobCardTimeLog             log;
-  final bool                       isDraft;
-  final void Function(JobCardTimeLog) onEdit;
-  final void Function(JobCardTimeLog) onDelete;
+  final JobCardTimeLog log;
+  final bool          isDraft;
+  final VoidCallback  onEdit;
+  final VoidCallback  onDelete;
 
   const _TimeLogRow({
     required this.log,
@@ -601,114 +628,78 @@ class _TimeLogRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Duration badge ──
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.timer_outlined,
-                    size: 16, color: cs.onPrimaryContainer),
-                const SizedBox(height: 2),
-                Text(
-                  log.formattedDuration,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
+          // Time icon
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(Icons.timer_outlined,
+                size: 18, color: cs.onSurfaceVariant),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
-          // ── Details ──
+          // Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // from → to
                 Text(
-                  _formatRange(log.fromTime, log.toTime),
-                  style: textTheme.bodySmall
-                      ?.copyWith(color: cs.onSurfaceVariant),
+                  '${_fmt(log.fromTime)} → ${_fmt(log.toTime)}',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 4),
+                // duration + qty
                 Row(
                   children: [
-                    Icon(Icons.check_box_outlined,
-                        size: 14, color: cs.primary),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Qty: ${_fmtQty(log.completedQty)}',
-                      style: textTheme.bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                    _Chip(
+                      icon: Icons.schedule_outlined,
+                      label: log.formattedDuration,
                     ),
-                    if ((log.employeeName ?? log.employee ?? '').isNotEmpty)
-                      ...[
-                        const SizedBox(width: 12),
-                        Icon(Icons.person_outline,
-                            size: 14, color: cs.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            log.employeeName ?? log.employee!,
-                            style: textTheme.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 6),
+                    _Chip(
+                      icon: Icons.check_circle_outline,
+                      label: 'Qty: ${_fmtQty(log.completedQty)}',
+                    ),
                   ],
                 ),
-                if (log.isRunning)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle,
-                            size: 8, color: Colors.green.shade600),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Running',
-                          style: textTheme.labelSmall?.copyWith(
-                              color: Colors.green.shade700),
-                        ),
-                      ],
-                    ),
+                if ((log.employeeName ?? log.employee ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    log.employeeName ?? log.employee!,
+                    style: textTheme.labelSmall
+                        ?.copyWith(color: cs.onSurfaceVariant),
                   ),
+                ],
               ],
             ),
           ),
 
-          // ── Edit + Delete icons (draft only) ──
+          // Edit / delete (draft only)
           if (isDraft) ...[
             IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: 'Edit time log',
               icon: Icon(Icons.edit_outlined,
                   size: 18, color: cs.primary),
-              onPressed: () => onEdit(log),
+              onPressed: onEdit,
+              tooltip: 'Edit',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: 'Delete time log',
               icon: Icon(Icons.delete_outline,
                   size: 18, color: cs.error),
-              onPressed: () => onDelete(log),
+              onPressed: onDelete,
+              tooltip: 'Delete',
+              visualDensity: VisualDensity.compact,
             ),
           ],
         ],
@@ -716,82 +707,66 @@ class _TimeLogRow extends StatelessWidget {
     );
   }
 
-  String _formatRange(String? from, String? to) {
-    if (from == null) return '—';
-    final f = _truncate(from);
-    if (to == null) return '$f → running';
-    return '$f → ${_truncate(to)}';
+  String _fmt(String? dt) {
+    if (dt == null || dt.isEmpty) return '—';
+    return dt.length >= 16 ? dt.substring(0, 16) : dt;
   }
-
-  String _truncate(String dt) =>
-      dt.length >= 16 ? dt.substring(0, 16) : dt;
 
   String _fmtQty(double q) =>
       q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Small shared widgets
-// ────────────────────────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String label;
+class _Chip extends StatelessWidget {
   final IconData icon;
-  const _SectionHeader({required this.label, required this.icon});
+  final String   label;
+  const _Chip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: cs.primary),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: cs.primary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Divider(
-              color: cs.primary.withValues(alpha: 0.2), thickness: 1),
-        ),
-      ],
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: cs.onSurfaceVariant),
+          const SizedBox(width: 3),
+          Text(label,
+              style: textTheme.labelSmall
+                  ?.copyWith(color: cs.onSurfaceVariant)),
+        ],
+      ),
     );
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
+// ────────────────────────────────────────────────────────────────────────────
+// Shared small widgets
+// ────────────────────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
   final String   label;
-  final String   value;
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  final IconData icon;
+  const _SectionHeader({required this.label, required this.icon});
 
   @override
   Widget build(BuildContext context) {
     final cs        = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: cs.onSurfaceVariant),
-        const SizedBox(width: 8),
-        Text('$label: ',
-            style:
-                textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-        Expanded(
-          child: Text(
-            value,
-            style: textTheme.bodySmall
-                ?.copyWith(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
+        Icon(icon, size: 18, color: cs.primary),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: cs.onSurface,
           ),
         ),
       ],
@@ -827,28 +802,77 @@ class _DateTimeField extends StatelessWidget {
   }
 }
 
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String   label;
+  final String   value;
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: cs.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: textTheme.bodySmall
+              ?.copyWith(color: cs.onSurfaceVariant),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: textTheme.bodySmall?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
   const _ErrorState({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 64, color: cs.error),
-          const SizedBox(height: 16),
-          Text('Failed to load Job Card',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: cs.error),
+            const SizedBox(height: 16),
+            Text('Failed to load Job Card',
+                style: textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Check your connection and try again.',
+              style: textTheme.bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
