@@ -783,4 +783,61 @@ class _WarehouseField extends StatelessWidget {
       ),
     );
   }
+
+  /// Private widget to render a single Job Card row in the linked section.
+/// Displays the Job Card name as a tappable chip that navigates to detail view.
+class _JobCardRow extends StatelessWidget {
+  final Map<String, dynamic> jc;
+
+  const _JobCardRow({required this.jc});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = jc['name'] as String? ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () {
+          // TODO: Navigate to Job Card detail screen
+          // Get.toNamed(Routes.JOB_CARD_DETAIL, arguments: {'name': name});
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(color: cs.outline.withOpacity(0.3)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.assignment_outlined,
+                size: 20,
+                color: cs.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: cs.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 }
