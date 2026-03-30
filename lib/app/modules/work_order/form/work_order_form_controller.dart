@@ -449,7 +449,7 @@ class WorkOrderFormController extends GetxController {
 
     final selected = await showDocTypePickerBottomSheet(
       Get.context!,
-      config: const DocTypePickerConfig(
+      config: DocTypePickerConfig(
         doctype: 'Warehouse',
         title: 'Select Warehouse',
         columns: [
@@ -459,7 +459,7 @@ class WorkOrderFormController extends GetxController {
             isPrimary: true,
           ),
         ],
-        filters: [
+        filters: const [
           ['Warehouse', 'is_group', '=', 0],
         ],
         allowRefresh: true,
@@ -487,7 +487,7 @@ class WorkOrderFormController extends GetxController {
       config: DocTypePickerConfig(
         doctype: 'BOM',
         title: 'Select BOM',
-        columns: const [
+        columns: [
           DocTypePickerColumn(
             fieldname: 'name',
             label: 'BOM',
