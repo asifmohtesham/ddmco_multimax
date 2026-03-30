@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -11,13 +13,15 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
-import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
-import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
+  StreamSubscription<String>? _barcodeScanSubscription;
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
@@ -76,10 +80,21 @@ import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
     } else {
       _fetchDocument();
     }
+
+    // Subscribe to barcode scan events
+    _barcodeScanSubscription = barcodeScannerService.scanStream.listen((barcode) {
+      if (canEdit && barcode.isNotEmpty) {
+        // Auto-fill Item field with scanned barcode
+        itemController.text = barcode;
+        // Trigger search to find matching item
+        searchItems(barcode);
+      }
+    });
   }
 
   @override
   void onClose() {
+    _barcodeScanSubscription?.cancel();
     itemController.dispose();
     bomController.dispose();
     qtyController.dispose();
