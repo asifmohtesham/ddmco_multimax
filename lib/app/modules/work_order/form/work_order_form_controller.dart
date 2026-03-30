@@ -64,6 +64,9 @@ class WorkOrderFormController extends GetxController {
   final isBomValid       = false.obs;
   final isQtyValid       = false.obs;
 
+  // ── Barcode scanning ────────────────────────────────────────────────────────────────
+  StreamSubscription<String>? _barcodeScanSubscription;
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────────
 
   @override
@@ -75,21 +78,19 @@ class WorkOrderFormController extends GetxController {
     qtyController.addListener(_validateForm);
     itemController.addListener(_validateForm);
 
+    // Subscribe to barcode scan events
+    _barcodeScanSubscription = ScanService.instance.scanStream.listen((barcode) {
+      if (canEdit && barcode.isNotEmpty) {
+        itemController.text = barcode;
+        searchItems(barcode);
+      }
+    });
+
     if (mode == 'new') {
       _initNew();
     } else {
       _fetchDocument();
     }
-
-    // Subscribe to barcode scan events
-    _barcodeScanSubscription = barcodeScannerService.scanStream.listen((barcode) {
-      if (canEdit && barcode.isNotEmpty) {
-        // Auto-fill Item field with scanned barcode
-        itemController.text = barcode;
-        // Trigger search to find matching item
-        searchItems(barcode);
-      }
-    });
   }
 
   @override
