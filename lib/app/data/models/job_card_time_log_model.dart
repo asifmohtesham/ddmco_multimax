@@ -11,10 +11,12 @@ class JobCardTimeLog {
   final String name;
 
   // ── Time window ───────────────────────────────────────────────────────────
-  /// Session start datetime string (ISO 8601). Null if timer not yet stopped.
+  /// Session start datetime string (`yyyy-MM-dd HH:mm:ss`). Null if timer
+  /// not yet stopped.
   final String? fromTime;
 
-  /// Session end datetime string (ISO 8601). Null if timer still running.
+  /// Session end datetime string (`yyyy-MM-dd HH:mm:ss`). Null if timer
+  /// still running.
   final String? toTime;
 
   /// Duration in minutes (computed server-side from from/to time).
@@ -28,8 +30,7 @@ class JobCardTimeLog {
   /// Link → Employee. Null when no employee is assigned to the session.
   final String? employee;
 
-  /// Employee full name (denormalised for display, not a DocType field).
-  /// Populated when fetching with `fields: ['employee', 'employee_name']`.
+  /// Employee full name (denormalised for display).
   final String? employeeName;
 
   // ── Sub-operation ─────────────────────────────────────────────────────────
@@ -50,7 +51,6 @@ class JobCardTimeLog {
   // ── Computed ──────────────────────────────────────────────────────────────
 
   /// Duration formatted as `HH:MM` for display.
-  /// Falls back to `timeInMins` when from/to are not available.
   String get formattedDuration {
     final mins = timeInMins.round();
     final h = mins ~/ 60;
@@ -58,9 +58,31 @@ class JobCardTimeLog {
     return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
   }
 
-  /// Whether this log row represents a currently running timer
-  /// (start recorded, end not yet saved).
+  /// Whether this log row represents a currently running timer.
   bool get isRunning => fromTime != null && toTime == null;
+
+  // ── Immutable copy ────────────────────────────────────────────────────────
+
+  JobCardTimeLog copyWith({
+    String? name,
+    String? fromTime,
+    String? toTime,
+    double? timeInMins,
+    double? completedQty,
+    String? employee,
+    String? employeeName,
+    String? operation,
+  }) =>
+      JobCardTimeLog(
+        name:         name         ?? this.name,
+        fromTime:     fromTime     ?? this.fromTime,
+        toTime:       toTime       ?? this.toTime,
+        timeInMins:   timeInMins   ?? this.timeInMins,
+        completedQty: completedQty ?? this.completedQty,
+        employee:     employee     ?? this.employee,
+        employeeName: employeeName ?? this.employeeName,
+        operation:    operation    ?? this.operation,
+      );
 
   // ── Deserialization ───────────────────────────────────────────────────────
 

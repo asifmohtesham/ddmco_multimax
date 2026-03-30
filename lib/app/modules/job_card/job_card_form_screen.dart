@@ -18,7 +18,6 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
         appBar: MainAppBar(
           title: jc?.name ?? 'Job Card',
           status: jc?.status,
-          // Read-only form — no save action in app bar
           onSave:     null,
           isSaving:   false,
           isDirty:    false,
@@ -53,19 +52,15 @@ class _JobCardFormBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // ── Header card ───────────────────────────────────────────────────────
             _HeaderCard(jc: jc),
             const SizedBox(height: 24),
 
-            // ── Status action buttons ──────────────────────────────────────────────
             Obx(() => _StatusActionsRow(
                   jc:         controller.jobCard.value ?? jc,
                   controller: controller,
                 )),
             const SizedBox(height: 24),
 
-            // ── Add time log section ─────────────────────────────────────────────
             Obx(() {
               final current = controller.jobCard.value ?? jc;
               if (!current.isEditable ||
@@ -76,11 +71,15 @@ class _JobCardFormBody extends StatelessWidget {
               return _AddTimeLogSection(controller: controller);
             }),
 
-            // ── Time logs list ───────────────────────────────────────────────────────
+            // Time logs list — passes isDraft so rows know whether to show
+            // the edit icon.
             Obx(() {
-              final logs =
-                  (controller.jobCard.value ?? jc).timeLogs;
-              return _TimeLogsSection(logs: logs);
+              final current = controller.jobCard.value ?? jc;
+              return _TimeLogsSection(
+                logs:    current.timeLogs,
+                isDraft: current.isEditable,
+                onEdit:  controller.editTimeLog,
+              );
             }),
           ],
         ),
@@ -131,7 +130,6 @@ class _HeaderCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Operation name + status pill
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -141,8 +139,7 @@ class _HeaderCard extends StatelessWidget {
                   color: clr.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child:
-                    Icon(Icons.build_outlined, color: clr, size: 22),
+                child: Icon(Icons.build_outlined, color: clr, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -161,12 +158,9 @@ class _HeaderCard extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
           Divider(height: 1, color: cs.outlineVariant),
           const SizedBox(height: 14),
-
-          // Details grid
           _DetailRow(
             icon: Icons.work_outline,
             label: 'Work Order',
@@ -189,8 +183,6 @@ class _HeaderCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-
-          // Qty progress
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -242,14 +234,12 @@ class _StatusActionsRow extends StatelessWidget {
     final cs      = Theme.of(context).colorScheme;
     final loading = controller.isUpdatingStatus.value;
 
-    // Nothing to show for terminal states
     if (jc.isCompleted || jc.isCancelled || jc.isSubmitted) {
       return const SizedBox.shrink();
     }
 
     return Row(
       children: [
-        // Open → Start
         if (jc.isOpen)
           Expanded(
             child: FilledButton.icon(
@@ -267,15 +257,12 @@ class _StatusActionsRow extends StatelessWidget {
               label: const Text('Start', style: TextStyle(fontSize: 15)),
             ),
           ),
-
-        // WIP → Pause / Complete
         if (jc.isWorkInProgress) ...[
           Expanded(
             child: OutlinedButton.icon(
               onPressed: loading
                   ? null
-                  : () =>
-                      controller.updateStatus(JobCard.statusOpen),
+                  : () => controller.updateStatus(JobCard.statusOpen),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.all(14),
                 side: BorderSide(color: cs.primary),
@@ -291,8 +278,7 @@ class _StatusActionsRow extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: loading
                   ? null
-                  : () => controller.updateStatus(
-                      JobCard.statusCompleted),
+                  : () => controller.updateStatus(JobCard.statusCompleted),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.all(14),
                 backgroundColor: cs.tertiary,
@@ -327,16 +313,12 @@ class _AddTimeLogSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionHeader(
-            label: 'Add Time Log',
-            icon: Icons.timer_outlined),
+        _SectionHeader(label: 'Add Time Log', icon: Icons.timer_outlined),
         const SizedBox(height: 12),
 
-        // Start time
         _DateTimeField(
           label: 'Start Time *',
           controller: controller.startTimeController,
@@ -345,7 +327,6 @@ class _AddTimeLogSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
-        // Complete time
         _DateTimeField(
           label: 'Complete Time *',
           controller: controller.completeTimeController,
@@ -354,45 +335,38 @@ class _AddTimeLogSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
-        // Completed qty — with remaining-qty helper and over-limit error
         Obx(() {
-          final remaining   = controller.remainingQty;
-          final overLimit   = controller.isQtyOverLimit.value;
-          final jc          = controller.jobCard.value;
-          final forQty      = jc?.forQuantity ?? 0;
-
-          String? helperText;
-          String? errorText;
-
-          if (overLimit) {
-            errorText = 'Exceeds Work Order qty (max ${_fmtQty(forQty)}). '
-                'Remaining: ${_fmtQty(remaining)}';
-          } else if (forQty > 0) {
-            helperText = 'Remaining: ${_fmtQty(remaining)} '
-                '(WO Qty: ${_fmtQty(forQty)})';
-          }
+          final remaining = controller.remainingQty;
+          final overLimit = controller.isQtyOverLimit.value;
+          final forQty    = controller.jobCard.value?.forQuantity ?? 0;
 
           return TextField(
             controller: controller.completedQtyController,
             keyboardType:
                 const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText:   'Completed Qty *',
-              border:      const OutlineInputBorder(),
-              prefixIcon:  const Icon(Icons.numbers_outlined),
-              helperText:  errorText == null ? helperText : null,
-              errorText:   errorText,
+              labelText:  'Completed Qty *',
+              border:     const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.numbers_outlined),
+              helperText: !overLimit && forQty > 0
+                  ? 'Remaining: ${_fmtQty(remaining)} '
+                    '(WO Qty: ${_fmtQty(forQty)})'
+                  : null,
+              errorText: overLimit
+                  ? 'Exceeds Work Order qty (max ${_fmtQty(forQty)}). '
+                    'Remaining: ${_fmtQty(remaining)}'
+                  : null,
               errorMaxLines: 2,
             ),
           );
         }),
         const SizedBox(height: 16),
 
-        // No-employee warning banner
         if (!controller.hasLinkedEmployee)
           Container(
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.orange.shade50,
               borderRadius: BorderRadius.circular(8),
@@ -419,7 +393,6 @@ class _AddTimeLogSection extends StatelessWidget {
             ),
           ),
 
-        // Submit button
         Obx(() => SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -434,9 +407,7 @@ class _AddTimeLogSection extends StatelessWidget {
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.add_circle_outline),
                 label: Text(
-                  controller.isAddingTimeLog.value
-                      ? 'Saving…'
-                      : 'Add Time Log',
+                  controller.isAddingTimeLog.value ? 'Saving…' : 'Add Time Log',
                   style: const TextStyle(fontSize: 15),
                 ),
                 style: FilledButton.styleFrom(
@@ -457,8 +428,15 @@ class _AddTimeLogSection extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 class _TimeLogsSection extends StatelessWidget {
-  final List<JobCardTimeLog> logs;
-  const _TimeLogsSection({required this.logs});
+  final List<JobCardTimeLog>       logs;
+  final bool                       isDraft;
+  final void Function(JobCardTimeLog) onEdit;
+
+  const _TimeLogsSection({
+    required this.logs,
+    required this.isDraft,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -485,15 +463,28 @@ class _TimeLogsSection extends StatelessWidget {
             ),
           )
         else
-          ...logs.map((log) => _TimeLogRow(log: log)),
+          ...logs.map(
+            (log) => _TimeLogRow(
+              log:     log,
+              isDraft: isDraft,
+              onEdit:  onEdit,
+            ),
+          ),
       ],
     );
   }
 }
 
 class _TimeLogRow extends StatelessWidget {
-  final JobCardTimeLog log;
-  const _TimeLogRow({required this.log});
+  final JobCardTimeLog             log;
+  final bool                       isDraft;
+  final void Function(JobCardTimeLog) onEdit;
+
+  const _TimeLogRow({
+    required this.log,
+    required this.isDraft,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -509,11 +500,12 @@ class _TimeLogRow extends StatelessWidget {
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Duration badge
+          // ── Duration badge ──
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: cs.primaryContainer,
               borderRadius: BorderRadius.circular(8),
@@ -535,19 +527,17 @@ class _TimeLogRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
 
+          // ── Details ──
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // From → To
                 Text(
                   _formatRange(log.fromTime, log.toTime),
                   style: textTheme.bodySmall
                       ?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 4),
-
-                // Qty + employee
                 Row(
                   children: [
                     Icon(Icons.check_box_outlined,
@@ -555,8 +545,8 @@ class _TimeLogRow extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       'Qty: ${_fmtQty(log.completedQty)}',
-                      style: textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600),
+                      style: textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     if ((log.employeeName ?? log.employee ?? '').isNotEmpty)
                       ...[
@@ -575,8 +565,6 @@ class _TimeLogRow extends StatelessWidget {
                       ],
                   ],
                 ),
-
-                // Running indicator
                 if (log.isRunning)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -596,6 +584,16 @@ class _TimeLogRow extends StatelessWidget {
               ],
             ),
           ),
+
+          // ── Edit icon (draft only) ──
+          if (isDraft)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Edit time log',
+              icon: Icon(Icons.edit_outlined,
+                  size: 18, color: cs.primary),
+              onPressed: () => onEdit(log),
+            ),
         ],
       ),
     );
@@ -608,7 +606,6 @@ class _TimeLogRow extends StatelessWidget {
     return '$f → ${_truncate(to)}';
   }
 
-  /// Drop seconds for display: `2026-03-27 08:30:00` → `2026-03-27 08:30`
   String _truncate(String dt) =>
       dt.length >= 16 ? dt.substring(0, 16) : dt;
 
@@ -617,7 +614,7 @@ class _TimeLogRow extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Small widgets
+// Small shared widgets
 // ────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
@@ -669,11 +666,9 @@ class _DetailRow extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: cs.onSurfaceVariant),
         const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: textTheme.bodySmall
-              ?.copyWith(color: cs.onSurfaceVariant),
-        ),
+        Text('$label: ',
+            style:
+                textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         Expanded(
           child: Text(
             value,

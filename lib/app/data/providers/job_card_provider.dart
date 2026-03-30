@@ -6,10 +6,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class JobCardProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  /// Fetch the Job Card list for list-view screens.
-  ///
-  /// Returns lightweight fields only — no child tables.
-  /// Use [getJobCard] when the full document (including time logs) is needed.
+  // ── List ───────────────────────────────────────────────────────────────────
+
   Future<Response> getJobCards({
     int limit = 20,
     int limitStart = 0,
@@ -39,22 +37,17 @@ class JobCardProvider {
 
   // ── Single document ────────────────────────────────────────────────────────
 
-  /// Fetch the full Job Card document including the `time_logs` child table.
   Future<Response> getJobCard(String name) async =>
       _apiProvider.getDocument('Job Card', name);
 
-  // ── Time log entry ────────────────────────────────────────────────────────
+  // ── Time log: add ─────────────────────────────────────────────────────────
 
-  /// Add a manual time log entry to a Job Card.
+  /// Add a manual time log entry to a Job Card via `make_time_log`.
   ///
-  /// Calls `make_time_log` via form-urlencoded POST with `args` as a
-  /// JSON-encoded string. Sending `args` as a nested Map over GET causes:
-  ///   TypeError: make_time_log() missing 1 required positional argument: 'args'
-  ///
-  /// [status] values accepted by ERPNext:
-  ///   `'Work In Progress'` — start / resume a live timer session
-  ///   `'Resume Job'`       — pause a running timer
-  ///   `'Complete'`         — close the session (requires [completeTime])
+  /// [status] values:
+  ///   `'Work In Progress'` — start / resume
+  ///   `'Resume Job'`       — pause
+  ///   `'Complete'`         — close session (requires [completeTime])
   Future<Response> addTimeLog({
     required String jobCardId,
     required String startTime,
@@ -77,25 +70,46 @@ class JobCardProvider {
     );
   }
 
+  // ── Time log: update (PATCH child-table row) ───────────────────────────────
+
+  /// Update an existing **Job Card Time Log** child row.
+  ///
+  /// ERPNext child-table rows are addressable as independent resources at
+  ///   `PUT /api/resource/Job Card Time Log/{name}`
+  /// The parent Job Card's `total_completed_qty` and `status` are
+  /// recalculated server-side by the `validate` hook when the parent is
+  /// next saved.  We trigger that by calling `updateJobCardMeta` immediately
+  /// after a successful row PATCH.
+  ///
+  /// Only the three user-editable fields are sent:
+  ///   - `to_time`       — session end datetime
+  ///   - `completed_qty` — finished-good qty
+  ///   - `employee`      — link to Employee doctype
+  Future<Response> updateTimeLog({
+    required String timeLogName,
+    required String toTime,
+    required double completedQty,
+    String? employee,
+  }) async {
+    final Map<String, dynamic> payload = {
+      'to_time':       toTime,
+      'completed_qty': completedQty,
+      if (employee != null && employee.isNotEmpty) 'employee': employee,
+    };
+    return _apiProvider.updateDocument(
+      'Job Card Time Log',
+      timeLogName,
+      payload,
+    );
+  }
+
+  /// Touch the parent Job Card (empty PUT) so the server recalculates
+  /// `total_completed_qty` after a child-row edit.
+  Future<Response> touchJobCard(String jobCardName) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, {});
+
   // ── Status transitions ────────────────────────────────────────────────────
 
-  /// Transition the Job Card status via `make_time_log`.
-  ///
-  /// ERPNext ignores a plain REST PATCH/PUT to the `status` field because
-  /// that field is controlled exclusively by server-side hooks. The only
-  /// supported way to change status programmatically is through
-  /// `make_time_log` with the appropriate status string:
-  ///
-  ///   `'Work In Progress'` — Start (Open → WIP)
-  ///   `'Resume Job'`       — Pause (WIP → Open)
-  ///   `'Complete'`         — Complete (WIP → Completed)
-  ///
-  /// For Start and Pause, [startTime] is the current time and
-  /// [completeTime] is omitted. For Complete, both times are supplied
-  /// so ERPNext can compute `time_in_mins` correctly.
-  ///
-  /// [employees] is automatically forwarded from the session employee so
-  /// the time-log row created by the server carries the correct employee.
   Future<Response> updateJobCardStatus({
     required String jobCardId,
     required String erpNextStatus,
@@ -117,9 +131,8 @@ class JobCardProvider {
     );
   }
 
-  // ── Document submission ───────────────────────────────────────────────────
+  // ── Submission ────────────────────────────────────────────────────────────
 
-  /// Submit a Job Card document (docstatus 0 → 1).
   Future<Response> submitJobCard(String name) async =>
       _apiProvider.submitDocument('Job Card', name);
 }

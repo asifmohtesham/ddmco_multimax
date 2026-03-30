@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -15,15 +16,9 @@ class JobCardFormController extends GetxController {
   late String name;
 
   // ── Session employee ──────────────────────────────────────────────────────
-  /// ERPNext Employee document name linked to the logged-in Frappe user.
-  /// Null when the user account has no linked Employee record.
   String? _sessionEmployeeId;
-
-  /// True when the logged-in user has a linked ERPNext Employee record.
   bool get hasLinkedEmployee =>
       _sessionEmployeeId != null && _sessionEmployeeId!.isNotEmpty;
-
-  /// Employee list payload ready for make_time_log.
   List<Map<String, String>> get _employees => hasLinkedEmployee
       ? [{'employee': _sessionEmployeeId!}]
       : [];
@@ -32,10 +27,11 @@ class JobCardFormController extends GetxController {
   final isLoading        = true.obs;
   final isAddingTimeLog  = false.obs;
   final isUpdatingStatus = false.obs;
+  final isEditingTimeLog = false.obs;
 
   final jobCard = Rx<JobCard?>(null);
 
-  // ── Time log form controllers ─────────────────────────────────────────────
+  // ── Add time log form controllers ─────────────────────────────────────────
   final startTimeController    = TextEditingController();
   final completeTimeController = TextEditingController();
   final completedQtyController = TextEditingController();
@@ -44,9 +40,7 @@ class JobCardFormController extends GetxController {
   final isStartTimeValid    = false.obs;
   final isCompleteTimeValid = false.obs;
   final isQtyValid          = false.obs;
-
-  /// True when the qty entered would push totalCompletedQty above forQuantity.
-  final isQtyOverLimit = false.obs;
+  final isQtyOverLimit      = false.obs;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -88,7 +82,6 @@ class JobCardFormController extends GetxController {
   }
 
   /// Qty that can still be logged without exceeding forQuantity.
-  /// Returns 0 when the job is already complete or has no target.
   double get remainingQty {
     final jc = jobCard.value;
     if (jc == null || jc.forQuantity <= 0) return 0;
@@ -106,7 +99,6 @@ class JobCardFormController extends GetxController {
       final res = await _provider.getJobCard(name);
       if (res.statusCode == 200 && res.data['data'] != null) {
         jobCard.value = JobCard.fromJson(res.data['data']);
-        // Re-run validation so remaining-qty helper text refreshes.
         _validateTimeLogForm();
       }
     } catch (e) {
@@ -132,11 +124,8 @@ class JobCardFormController extends GetxController {
 
     final qty = double.tryParse(completedQtyController.text) ?? 0;
     final jc  = jobCard.value;
-
-    // Basic: qty must be positive.
     isQtyValid.value = qty > 0;
 
-    // Over-limit: (already completed + new entry) must not exceed forQuantity.
     if (jc != null && jc.forQuantity > 0 && qty > 0) {
       isQtyOverLimit.value =
           (jc.totalCompletedQty + qty) > jc.forQuantity;
@@ -178,7 +167,7 @@ class JobCardFormController extends GetxController {
     ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
   }
 
-  // ── Add time log (manual entry) ───────────────────────────────────────────
+  // ── Add time log ──────────────────────────────────────────────────────────
 
   Future<void> addTimeLog() async {
     if (!canAddTimeLog) return;
@@ -187,8 +176,7 @@ class JobCardFormController extends GetxController {
 
     if (_employees.isEmpty) {
       GlobalSnackbar.warning(
-        message: 'No Employee record linked to your account. '
-            'Time log recorded without an employee.',
+        message: 'No Employee record linked. Time log recorded without employee.',
       );
     }
 
@@ -204,17 +192,12 @@ class JobCardFormController extends GetxController {
       );
 
       if (res.statusCode == 200) {
-        // Reload the document first so totalCompletedQty is up to date
-        // before we decide whether to submit.
         await _fetchDocument();
         completedQtyController.clear();
         completeTimeController.clear();
         _prefillStartTime();
         _validateTimeLogForm();
         GlobalSnackbar.success(message: 'Time log added');
-
-        // Submit the Job Card if all qty has now been completed.
-        // ERPNext only sets status='Completed' on docstatus==1.
         await _submitIfComplete();
       } else {
         GlobalSnackbar.error(message: 'Failed to add time log');
@@ -229,17 +212,88 @@ class JobCardFormController extends GetxController {
     }
   }
 
-  // ── Update status (Start / Pause / Complete) ──────────────────────────────
+  // ── Edit time log ─────────────────────────────────────────────────────────
 
-  /// Transition the Job Card status.
+  /// Opens the edit bottom sheet for an existing time log row.
   ///
-  /// [newStatus] is the Flutter-side label matching [JobCard] constants:
-  ///   `JobCard.statusWorkInProgress` → Start   (maps to ERPNext 'Work In Progress')
-  ///   `JobCard.statusOpen`           → Pause   (maps to ERPNext 'Resume Job')
-  ///   `JobCard.statusCompleted`      → Complete(maps to ERPNext 'Complete')
+  /// Only callable when the parent Job Card is still in draft (docstatus==0).
+  /// The sheet pre-fills [toTime], [completedQty], and [employee] from the
+  /// existing row. On save, [updateTimeLog] is called.
+  void editTimeLog(JobCardTimeLog log) {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable) return;
+    Get.bottomSheet(
+      _EditTimeLogSheet(log: log, controller: this, jobCard: jc),
+      isScrollControlled: true,
+      backgroundColor: Get.context != null
+          ? Theme.of(Get.context!).colorScheme.surface
+          : null,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    );
+  }
+
+  /// Persists edits to a time log row via PATCH then refreshes the document.
   ///
-  /// All three transitions go through `make_time_log` because ERPNext
-  /// silently ignores a plain REST PUT/PATCH to the `status` field.
+  /// [oldQty] is the row's original completedQty before the edit. It is
+  /// subtracted from totalCompletedQty before the over-limit check so that
+  /// editing a row cannot be falsely rejected because the old qty was already
+  /// counted in the parent total.
+  Future<void> updateTimeLog({
+    required JobCardTimeLog log,
+    required String toTime,
+    required double completedQty,
+    String? employee,
+  }) async {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable) return;
+
+    // Over-limit guard: (totalCompletedQty − old row qty + new qty) ≤ forQty
+    if (jc.forQuantity > 0) {
+      final projected =
+          (jc.totalCompletedQty - log.completedQty) + completedQty;
+      if (projected > jc.forQuantity) {
+        GlobalSnackbar.error(
+          message: 'Qty would exceed Work Order target '
+              '(${_fmtQty(jc.forQuantity)}). '
+              'Max allowed for this row: '
+              '${_fmtQty(jc.forQuantity - (jc.totalCompletedQty - log.completedQty))}',
+        );
+        return;
+      }
+    }
+
+    isEditingTimeLog.value = true;
+    try {
+      final res = await _provider.updateTimeLog(
+        timeLogName:  log.name,
+        toTime:       toTime,
+        completedQty: completedQty,
+        employee:     employee,
+      );
+
+      if (res.statusCode == 200) {
+        // Touch parent so server recalculates total_completed_qty.
+        await _provider.touchJobCard(name);
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Time log updated');
+        Get.back(); // close the sheet
+      } else {
+        GlobalSnackbar.error(message: 'Failed to update time log');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Update time log failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isEditingTimeLog.value = false;
+    }
+  }
+
+  // ── Update status ─────────────────────────────────────────────────────────
+
   Future<void> updateStatus(String newStatus) async {
     if (!canUpdateStatus) return;
 
@@ -253,9 +307,6 @@ class JobCardFormController extends GetxController {
       if (confirmed != true) return;
     }
 
-    // Map Flutter status → ERPNext make_time_log status string.
-    // 'Resume Job' is ERPNext's (counter-intuitive) token for Pause:
-    // it tells the server to end the current running timer.
     final String erpNextStatus = switch (newStatus) {
       JobCard.statusWorkInProgress => 'Work In Progress',
       JobCard.statusOpen           => 'Resume Job',
@@ -264,9 +315,6 @@ class JobCardFormController extends GetxController {
     };
 
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
-    // For Complete we send both start and complete times so ERPNext can
-    // compute time_in_mins for the auto-created time log row.
     final String? completeTime =
         (newStatus == JobCard.statusCompleted) ? now : null;
 
@@ -289,9 +337,6 @@ class JobCardFormController extends GetxController {
           _                            => newStatus,
         };
         GlobalSnackbar.success(message: 'Job Card $label');
-
-        // After a Complete transition, submit the document so ERPNext
-        // can set status='Completed' (requires docstatus==1).
         if (newStatus == JobCard.statusCompleted) {
           await _submitIfComplete();
         }
@@ -310,27 +355,10 @@ class JobCardFormController extends GetxController {
 
   // ── Submit helper ─────────────────────────────────────────────────────────
 
-  /// Submit the Job Card (docstatus 0 → 1) when all qty has been completed.
-  ///
-  /// ERPNext's [set_status()] only assigns `status = 'Completed'` when
-  /// `docstatus == 1`. Calling `make_time_log` alone saves the document as
-  /// a draft (docstatus 0), so the status always stays 'Work In Progress'
-  /// without this explicit submission step.
-  ///
-  /// The method is a no-op when:
-  ///   - The document is already submitted (docstatus == 1).
-  ///   - totalCompletedQty + processLossQty < forQuantity (not yet done).
-  ///
-  /// After a successful submit the document is reloaded to show the final
-  /// 'Completed' status from the server.
   Future<void> _submitIfComplete() async {
     final jc = jobCard.value;
     if (jc == null) return;
-
-    // Already submitted — nothing to do.
     if (jc.docstatus == 1) return;
-
-    // Not yet fully complete — skip silently.
     final completed = jc.totalCompletedQty + jc.processLossQty;
     if (jc.forQuantity > 0 && completed < jc.forQuantity) return;
 
@@ -353,6 +381,9 @@ class JobCardFormController extends GetxController {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       if (e.response?.data is Map) {
@@ -364,5 +395,271 @@ class JobCardFormController extends GetxController {
       }
     } catch (_) {}
     return fallback;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit Time Log Bottom Sheet
+//
+// Defined here (same file as the controller) so it has direct access to
+// JobCardFormController without needing a separate barrel export.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EditTimeLogSheet extends StatefulWidget {
+  final JobCardTimeLog        log;
+  final JobCardFormController controller;
+  final JobCard               jobCard;
+
+  const _EditTimeLogSheet({
+    required this.log,
+    required this.controller,
+    required this.jobCard,
+  });
+
+  @override
+  State<_EditTimeLogSheet> createState() => _EditTimeLogSheetState();
+}
+
+class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
+  late final TextEditingController _toTimeCtrl;
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _employeeCtrl;
+
+  String? _qtyError;
+
+  @override
+  void initState() {
+    super.initState();
+    _toTimeCtrl   = TextEditingController(text: widget.log.toTime ?? '');
+    _qtyCtrl      = TextEditingController(
+        text: widget.log.completedQty > 0
+            ? widget.log.completedQty.toString()
+            : '');
+    _employeeCtrl = TextEditingController(
+        text: widget.log.employee ?? '');
+  }
+
+  @override
+  void dispose() {
+    _toTimeCtrl.dispose();
+    _qtyCtrl.dispose();
+    _employeeCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Remaining qty for this row (excluding the old row's contribution) ──
+  double get _maxQty {
+    final jc = widget.jobCard;
+    if (jc.forQuantity <= 0) return double.infinity;
+    return jc.forQuantity -
+        (jc.totalCompletedQty - widget.log.completedQty);
+  }
+
+  void _validateQty(String value) {
+    final qty = double.tryParse(value) ?? 0;
+    setState(() {
+      if (qty <= 0) {
+        _qtyError = 'Enter a positive quantity';
+      } else if (qty > _maxQty && _maxQty != double.infinity) {
+        _qtyError = 'Exceeds WO target. Max for this row: '
+            '${widget.controller._fmtQty(_maxQty)}';
+      } else {
+        _qtyError = null;
+      }
+    });
+  }
+
+  bool get _canSave {
+    final qty = double.tryParse(_qtyCtrl.text) ?? 0;
+    return _toTimeCtrl.text.isNotEmpty &&
+        qty > 0 &&
+        _qtyError == null &&
+        !widget.controller.isEditingTimeLog.value;
+  }
+
+  Future<void> _pickToTime() async {
+    final now = DateTime.now();
+    DateTime initial = now;
+    try {
+      if (_toTimeCtrl.text.isNotEmpty) {
+        initial = DateFormat('yyyy-MM-dd HH:mm:ss').parse(_toTimeCtrl.text);
+      }
+    } catch (_) {}
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (date == null) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+    );
+
+    final combined = DateTime(
+      date.year, date.month, date.day,
+      time?.hour ?? 0, time?.minute ?? 0,
+    );
+    setState(() {
+      _toTimeCtrl.text =
+          DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final padding   = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + padding),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Handle ──
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // ── Title ──
+          Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Edit Time Log',
+                style: textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'From: ${_truncate(widget.log.fromTime ?? '—')}',
+            style: textTheme.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 20),
+
+          // ── To time ──
+          _SheetDateTimeField(
+            label: 'Complete Time *',
+            controller: _toTimeCtrl,
+            onTap: _pickToTime,
+          ),
+          const SizedBox(height: 14),
+
+          // ── Completed qty ──
+          TextField(
+            controller: _qtyCtrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            onChanged: _validateQty,
+            decoration: InputDecoration(
+              labelText:   'Completed Qty *',
+              border:      const OutlineInputBorder(),
+              prefixIcon:  const Icon(Icons.numbers_outlined),
+              errorText:   _qtyError,
+              errorMaxLines: 2,
+              helperText: _qtyError == null && _maxQty != double.infinity
+                  ? 'Max for this row: ${widget.controller._fmtQty(_maxQty)}'
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // ── Employee ──
+          TextField(
+            controller: _employeeCtrl,
+            decoration: const InputDecoration(
+              labelText:  'Employee',
+              hintText:   'Employee ID (e.g. EMP-0001)',
+              border:     OutlineInputBorder(),
+              prefixIcon: Icon(Icons.person_outline),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ── Save button ──
+          Obx(() {
+            final saving = widget.controller.isEditingTimeLog.value;
+            return SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _canSave
+                    ? () => widget.controller.updateTimeLog(
+                          log:          widget.log,
+                          toTime:       _toTimeCtrl.text,
+                          completedQty:
+                              double.parse(_qtyCtrl.text),
+                          employee: _employeeCtrl.text.isNotEmpty
+                              ? _employeeCtrl.text.trim()
+                              : null,
+                        )
+                    : null,
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save_outlined),
+                label: Text(
+                  saving ? 'Saving…' : 'Save Changes',
+                  style: const TextStyle(fontSize: 15),
+                ),
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.all(14)),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  String _truncate(String dt) =>
+      dt.length >= 16 ? dt.substring(0, 16) : dt;
+}
+
+/// Reusable read-only date-time field for the edit sheet.
+class _SheetDateTimeField extends StatelessWidget {
+  final String                label;
+  final TextEditingController controller;
+  final VoidCallback          onTap;
+  const _SheetDateTimeField({
+    required this.label,
+    required this.controller,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextField(
+      controller: controller,
+      readOnly:   true,
+      onTap:      onTap,
+      decoration: InputDecoration(
+        labelText:  label,
+        border:     const OutlineInputBorder(),
+        prefixIcon: const Icon(Icons.schedule_outlined),
+        suffixIcon: Icon(Icons.edit_calendar_outlined,
+            size: 18, color: cs.primary),
+      ),
+    );
   }
 }
