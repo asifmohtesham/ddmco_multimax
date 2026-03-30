@@ -480,17 +480,20 @@ class WorkOrderFormController extends GetxController {
     }
 
     showDocTypePickerBottomSheet(
+      Get.context!,
       config: DocTypePickerConfig(
         doctype: 'BOM',
         title: 'Select BOM',
         columns: [
-          DocTypePickerColumn.primary(
+          DocTypePickerColumn(
             fieldname: 'name',
             label: 'BOM',
+            isPrimary: true,
           ),
-          DocTypePickerColumn.subtitle(
+          DocTypePickerColumn(
             fieldname: 'item',
             label: 'Item',
+            isSecondary: true,
           ),
         ],
         filters: {
