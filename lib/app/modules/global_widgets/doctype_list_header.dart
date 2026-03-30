@@ -297,7 +297,7 @@ class DocTypeListHeader extends StatelessWidget {
           overflow: TextOverflow.clip,
           maxLines: null,
         ),
-        collapseMode: CollapseMode.fade,
+        collapseMode: CollapseMode.none,
       ),
     );
   }
