@@ -109,3 +109,32 @@
 ## Commit 4 — Item Field Migration to Generic Picker
 
 **Commit message:**
+
+### Checklist
+- [ ] Replace existing Item bottom sheet / tap handler with generic picker
+- [ ] Item picker config:
+  - [ ] `doctype: 'Item'`
+  - [ ] `filters: { disabled: 0, is_stock_item: 1 }`
+  - [ ] `primaryField: 'item_code'`
+  - [ ] `secondaryField: 'item_name'`
+  - [ ] `subtitleFields: ['item_group', 'variant_of', 'country_of_origin']`
+  - [ ] `subtitleFormatter`: join non-empty parts with ` · `, prefix `variant_of` with `"Variant of "`
+  - [ ] Extra column (wide): `stock_uom`
+  - [ ] `enableBarcodeScan: true`
+  - [ ] `allowRefresh: true`
+- [ ] Search matches `item_code` and `item_name` at minimum
+- [ ] Subtitle truncates cleanly to one line on mobile
+
+### Acceptance
+- [ ] Item picker shows only enabled stock items
+- [ ] Item Code is visually primary
+- [ ] Item Name is secondary/muted
+- [ ] Subtitle shows item_group, variant_of (with prefix), country_of_origin — hides empty parts
+- [ ] Barcode scan prefills search
+- [ ] Manual selection works correctly
+
+---
+
+## Commit 5 — Item Selection Side Effects
+
+**Commit message:**
