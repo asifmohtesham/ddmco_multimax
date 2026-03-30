@@ -27,6 +27,7 @@ class JobCardProvider {
         'status',
         'for_quantity',
         'total_completed_qty',
+        'process_loss_qty',   // needed for _autoSubmitIfComplete check
         'docstatus',
         'modified',
         'posting_date',
@@ -35,12 +36,12 @@ class JobCardProvider {
     );
   }
 
-  // ── Single document ────────────────────────────────────────────────────────
+  // ── Single document ──────────────────────────────────────────────────────
 
   Future<Response> getJobCard(String name) async =>
       _apiProvider.getDocument('Job Card', name);
 
-  // ── Time log: add ─────────────────────────────────────────────────────────
+  // ── Time log: add ────────────────────────────────────────────────────────
 
   /// Add a manual time log entry to a Job Card via `make_time_log`.
   ///
@@ -70,21 +71,9 @@ class JobCardProvider {
     );
   }
 
-  // ── Time log: update (PATCH child-table row) ───────────────────────────────
+  // ── Time log: update (PATCH child-table row) ─────────────────────────────
 
   /// Update an existing **Job Card Time Log** child row.
-  ///
-  /// ERPNext child-table rows are addressable as independent resources at
-  ///   `PUT /api/resource/Job Card Time Log/{name}`
-  /// The parent Job Card's `total_completed_qty` and `status` are
-  /// recalculated server-side by the `validate` hook when the parent is
-  /// next saved.  We trigger that by calling `touchJobCard` immediately
-  /// after a successful row PATCH.
-  ///
-  /// Only the three user-editable fields are sent:
-  ///   - `to_time`       — session end datetime
-  ///   - `completed_qty` — finished-good qty
-  ///   - `employee`      — link to Employee doctype
   Future<Response> updateTimeLog({
     required String timeLogName,
     required String toTime,
@@ -103,14 +92,9 @@ class JobCardProvider {
     );
   }
 
-  // ── Time log: delete ───────────────────────────────────────────────────────
+  // ── Time log: delete ─────────────────────────────────────────────────────
 
   /// Delete a **Job Card Time Log** child row.
-  ///
-  /// ERPNext exposes child-table rows as independent REST resources, so a
-  /// simple DELETE to `/api/resource/Job Card Time Log/{name}` removes the
-  /// row.  Call [touchJobCard] afterwards so the server recalculates
-  /// `total_completed_qty` on the parent document.
   Future<Response> deleteTimeLog(String timeLogName) async =>
       _apiProvider.deleteDocument('Job Card Time Log', timeLogName);
 
@@ -119,7 +103,7 @@ class JobCardProvider {
   Future<Response> touchJobCard(String jobCardName) async =>
       _apiProvider.updateDocument('Job Card', jobCardName, {});
 
-  // ── Status transitions ────────────────────────────────────────────────────
+  // ── Status transitions ────────────────────────────────────────────────
 
   Future<Response> updateJobCardStatus({
     required String jobCardId,
@@ -142,7 +126,7 @@ class JobCardProvider {
     );
   }
 
-  // ── Submission ────────────────────────────────────────────────────────────
+  // ── Submission ─────────────────────────────────────────────────────────
 
   Future<Response> submitJobCard(String name) async =>
       _apiProvider.submitDocument('Job Card', name);

@@ -91,8 +91,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      // Prevents a phantom back-arrow when Job Cards is a top-level
-      // bottom-nav destination rather than a pushed route.
       appBar: PreferredSize(
         preferredSize: Size.zero,
         child: AppBar(
@@ -110,7 +108,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ──────────────────────────────────────────────
+              // ── Unified header ─────────────────────────────────────────────
               DocTypeListHeader(
                 title: 'Job Cards',
                 searchDoctype:      'Job Card',
@@ -126,16 +124,16 @@ class _JobCardScreenState extends State<JobCardScreen> {
                 onFilterTap: () => _showFilterSheet(context),
               ),
 
-              // ── KPI strip + list — single Obx owns all Rx reads ────────────
+              // ── KPI strip + list ──────────────────────────────────────────
               Obx(() {
-                // ─ loading splash ────────────────────────────────────
+                // ─ loading splash ────────────────────────────────
                 if (controller.isLoading.value &&
                     controller.jobCards.isEmpty) {
                   return const SliverFillRemaining(
                       child: Center(child: CircularProgressIndicator()));
                 }
 
-                // ─ empty state ───────────────────────────────────────
+                // ─ empty state ──────────────────────────────────
                 if (controller.jobCards.isEmpty) {
                   final hasFilters =
                       controller.activeFilters.isNotEmpty ||
@@ -187,7 +185,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
                   );
                 }
 
-                // ─ KPI strip + list ───────────────────────────────────
+                // ─ KPI strip + list ─────────────────────────────────
                 final cards = controller.jobCards;
                 return SliverMainAxisGroup(
                   slivers: [
@@ -246,16 +244,20 @@ class _JobCardScreenState extends State<JobCardScreen> {
   }
 }
 
-// ── Filter bottom sheet ───────────────────────────────────────────────────────
+// ── Filter bottom sheet ───────────────────────────────────────────────────
 
 class _JobCardFilterSheet extends StatelessWidget {
   final JobCardController controller;
   const _JobCardFilterSheet({required this.controller});
 
+  // Added 'Submitted' to the filter list so users can filter by docstatus==1
+  // cards whose ERPNext status may still show 'Completed' or 'Open'.
   static const List<String> _statuses = [
     'Open',
     'Work In Progress',
+    'Material Transferred',
     'Completed',
+    'On Hold',
     'Cancelled',
   ];
 
@@ -331,7 +333,9 @@ class _JobCardKpiStrip extends StatelessWidget {
           const SizedBox(width: 8),
           _Kpi('Completed', '${controller.completedCards}', cs.tertiary),
           const SizedBox(width: 8),
-          _Kpi('Total',     '${controller.totalCards}',     cs.primary),
+          _Kpi('Submitted', '${controller.submittedCards}', cs.primary),
+          const SizedBox(width: 8),
+          _Kpi('Total',     '${controller.totalCards}',     cs.onSurfaceVariant),
         ],
       ),
     );
@@ -349,7 +353,7 @@ class _Kpi extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
@@ -359,15 +363,17 @@ class _Kpi extends StatelessWidget {
           children: [
             Text(value,
                 style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: color)),
             const SizedBox(height: 2),
             Text(label,
                 style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600)),
+                    fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -382,73 +388,113 @@ class _JobCardTile extends StatelessWidget {
   final VoidCallback onTap;
   const _JobCardTile({required this.jc, required this.onTap});
 
+  // ── Single status→color helper used by both the icon bg and progress bar.
+  Color _statusColor(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return switch (jc.status) {
+      JobCard.statusWorkInProgress      => cs.primary,
+      JobCard.statusCompleted           => cs.tertiary,
+      JobCard.statusMaterialTransferred => cs.secondary,
+      JobCard.statusCancelled           => cs.error,
+      JobCard.statusOnHold              => cs.outline,
+      _                                 => cs.onSurfaceVariant,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-final bool isOpen = jc.status == 'Open';
-    final bool isActive = jc.isOpen || jc.isWorkInProgress;
+    final cs      = Theme.of(context).colorScheme;
+    final theme   = Theme.of(context);
+    final clr     = _statusColor(context);
+    final hasProgress = jc.forQuantity > 0;
 
     return Material(
       color: cs.surface,
-      elevation: isActive ? 2 : 0,
+      elevation: (jc.isOpen || jc.isWorkInProgress) ? 2 : 0,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                height: 50,
-                width: 50,
-                decoration: BoxDecoration(
-                  color: _statusColor(context, jc.status)
-                      .withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.build,
-                    color: _statusColor(context, jc.status)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Status icon badge ──
+                  Container(
+                    height: 44,
+                    width: 44,
+                    decoration: BoxDecoration(
+                      color: clr.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.build_outlined, color: clr, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // ── Operation + workstation + status pill ──
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          jc.operation,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${jc.workstation ?? 'Unassigned'} • '
+                          '${_fmtQty(jc.totalCompletedQty)}/'
+                          '${_fmtQty(jc.forQuantity)} units',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 5),
+                        StatusPill(status: jc.status),
+                      ],
+                    ),
+                  ),
+
+                  // ── Action / state badge (right-side) ──
+                  const SizedBox(width: 8),
+                  _ActionBadge(jc: jc),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+
+              // ── Progress bar — only when forQuantity > 0 ─────────────
+              if (hasProgress) ...[
+                const SizedBox(height: 10),
+                Row(
                   children: [
-                    Text(
-                      jc.operation,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: jc.progress,
+                          minHeight: 5,
+                          backgroundColor:
+                              cs.outlineVariant.withValues(alpha: 0.5),
+                          color: clr,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(width: 8),
                     Text(
-                      '${jc.workstation ?? 'Unassigned'} • '
-                      '${jc.totalCompletedQty.toInt()}/${jc.forQuantity.toInt()} units',
-                      style: TextStyle(
-                          color: cs.onSurfaceVariant, fontSize: 13),
+                      '${(jc.progress * 100).toInt()}%',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    StatusPill(status: jc.status),
                   ],
                 ),
-              ),
-              if (isOpen)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'START',
-                    style: TextStyle(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12),
-                  ),
-                ),
+              ],
             ],
           ),
         ),
@@ -456,13 +502,80 @@ final bool isOpen = jc.status == 'Open';
     );
   }
 
-  Color _statusColor(BuildContext context, String status) {
-    final scheme = Theme.of(context).colorScheme;
-    switch (status) {
-      case 'Open':             return scheme.secondary;
-      case 'Work In Progress': return scheme.primary;
-      case 'Completed':        return scheme.tertiary;
-      default:                 return scheme.onSurfaceVariant;
+  String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(1);
+}
+
+/// Right-side badge on each tile showing the actionable state.
+///
+/// Priority (high → low):
+///   1. docstatus == 1  → 'SUBMITTED' (tertiaryContainer tint)
+///   2. Work In Progress → 'IN PROGRESS' pill (primaryContainer tint)
+///   3. Open            → 'START' CTA  (primary filled)
+///   4. anything else   → empty SizedBox
+class _ActionBadge extends StatelessWidget {
+  final JobCard jc;
+  const _ActionBadge({required this.jc});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs    = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    if (jc.docstatus == 1) {
+      return _badge(
+        context,
+        label: 'SUBMITTED',
+        bg:    cs.tertiaryContainer,
+        fg:    cs.onTertiaryContainer,
+        theme: theme,
+      );
     }
+
+    if (jc.isWorkInProgress) {
+      return _badge(
+        context,
+        label: 'IN PROGRESS',
+        bg:    cs.primaryContainer,
+        fg:    cs.onPrimaryContainer,
+        theme: theme,
+      );
+    }
+
+    if (jc.isOpen) {
+      return _badge(
+        context,
+        label: 'START',
+        bg:    cs.primary,
+        fg:    cs.onPrimary,
+        theme: theme,
+      );
+    }
+
+    return const SizedBox.shrink();
   }
+
+  Widget _badge(
+    BuildContext context, {
+    required String label,
+    required Color bg,
+    required Color fg,
+    required ThemeData theme,
+  }) =>
+      Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: fg,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
+        ),
+      );
 }
