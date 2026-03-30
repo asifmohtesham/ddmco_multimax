@@ -185,7 +185,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'disabled': 0,
         'is_stock_item': 1,
       },
-      search: barcode,
+      // search: barcode,
     );
 
     if (res.statusCode == 200 && res.data['data'] != null) {
@@ -194,8 +194,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
       return results.where((item) {
         final itemCode = (item.itemCode ?? '').trim();
-        final itemBarcode = (item.barcode ?? '').trim();
-        return itemCode == barcode || itemBarcode == barcode;
+        return itemCode == barcode.substring(0,7);
       }).toList();
     }
     return [];
