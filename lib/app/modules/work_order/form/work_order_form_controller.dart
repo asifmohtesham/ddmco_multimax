@@ -452,9 +452,10 @@ class WorkOrderFormController extends GetxController {
         doctype: 'Warehouse',
         title: 'Select Warehouse',
         columns: [
-          DocTypePickerColumn.primary(
+          DocTypePickerColumn(
             fieldname: 'name',
             label: 'Warehouse',
+            isPrimary: true,
           ),
         ],
         filters: {'is_group': 0},
