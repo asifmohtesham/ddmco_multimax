@@ -82,12 +82,14 @@ class JobCardProvider {
       _apiProvider.callMethod(
         'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
         params: {
+                'args': {
           'job_card_id':   jobCardId,
           'start_time':    startTime,
           if (completeTime != null) 'complete_time': completeTime,
           'completed_qty': completedQty,
           'employees':     employees,
           'status':        status,
+                        },
         },
       );
 
