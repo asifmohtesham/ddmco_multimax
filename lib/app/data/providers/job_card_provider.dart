@@ -24,7 +24,7 @@ class JobCardProvider {
         'name',
         'work_order',
         'operation',
-                'operation_id',
+        'operation_id',
         'workstation',
         'status',
         'for_quantity',
@@ -32,53 +32,29 @@ class JobCardProvider {
         'docstatus',
         'modified',
         'posting_date',
-        'operation_id',
       ],
       orderBy: 'modified desc',
     );
   }
 
-  // ── Single document ────────────────────────────────────────────────────────────
+  // ── Single document ────────────────────────────────────────────────────────
 
   /// Fetch the full Job Card document including the `time_logs` child table.
-  ///
-  /// The response is deserialised by [JobCard.fromJson] in the controller.
-  /// Child table rows (`time_logs`) are included automatically by
-  /// ERPNext's `GET /api/resource/Job Card/{name}` endpoint.
   Future<Response> getJobCard(String name) async =>
       _apiProvider.getDocument('Job Card', name);
 
-  // ── Time log entry ───────────────────────────────────────────────────────────
+  // ── Time log entry ────────────────────────────────────────────────────────
 
-  /// Add a time log entry to a Job Card.
+  /// Add a manual time log entry to a Job Card.
   ///
-  /// Calls the whitelisted server method:
-  ///   `erpnext.manufacturing.doctype.job_card.job_card.make_time_log`
-  ///
-  /// ERPNext's `make_time_log` expects a POST request with `args` sent as a
-  /// JSON-encoded string in a form-urlencoded body, e.g.:
-  ///   args={"job_card_id": "JC-0001", "start_time": "...", ...}
-  ///
-  /// Sending `args` as a nested Map via GET query params causes:
+  /// Calls `make_time_log` via form-urlencoded POST with `args` as a
+  /// JSON-encoded string. Sending `args` as a nested Map over GET causes:
   ///   TypeError: make_time_log() missing 1 required positional argument: 'args'
   ///
-  /// **Manual entry (primary mode)**
-  ///   Pass both [startTime] and [completeTime] as ISO 8601 datetime strings.
-  ///   The server computes `time_in_mins` from the difference.
-  ///
-  /// **Live timer (secondary mode)**
-  ///   `startTime` is recorded when the timer starts (via [addTimeLog] with
-  ///   `status: "Work In Progress"`). When the timer stops the controller
-  ///   calls [addTimeLog] again with both times and `status: "Complete"`.
-  ///
-  /// [jobCardId]    — Job Card document name.
-  /// [startTime]    — Session start datetime (ISO 8601).
-  /// [completeTime] — Session end datetime (ISO 8601). Null when only
-  ///                   starting a live-timer session.
-  /// [completedQty] — Finished-good qty completed in this session.
-  /// [employees]    — List of employee maps: `[{"employee": "HR-EMP-00001"}]`.
-  ///                   Pass an empty list when no employee is assigned.
-  /// [status]       — `"Work In Progress"` | `"Complete"` | `"Resume Job"`.
+  /// [status] values accepted by ERPNext:
+  ///   `'Work In Progress'` — start / resume a live timer session
+  ///   `'Resume Job'`       — pause a running timer
+  ///   `'Complete'`         — close the session (requires [completeTime])
   Future<Response> addTimeLog({
     required String jobCardId,
     required String startTime,
@@ -95,42 +71,55 @@ class JobCardProvider {
       'employees':     employees,
       'status':        status,
     };
-
-    // ERPNext requires `args` to be a JSON-encoded string in a
-    // form-urlencoded POST body. Sending it as a nested Map in a GET
-    // request causes the server to never resolve the `args` parameter,
-    // raising: TypeError: make_time_log() missing 1 required positional
-    // argument: 'args'.
     return _apiProvider.callMethodPost(
       'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
       params: {'args': json.encode(argsMap)},
     );
   }
 
-  // ── Status update ─────────────────────────────────────────────────────────────
+  // ── Status transitions ────────────────────────────────────────────────────
 
-  /// Update the status field of a Job Card via PATCH.
+  /// Transition the Job Card status via `make_time_log`.
   ///
-  /// Used by the controller to transition the card between:
-  ///   `Open` → `Work In Progress` → `Completed`
+  /// ERPNext ignores a plain REST PATCH/PUT to the `status` field because
+  /// that field is controlled exclusively by server-side hooks. The only
+  /// supported way to change status programmatically is through
+  /// `make_time_log` with the appropriate status string:
   ///
-  /// Note: final submission (docstatus 0 → 1) is a separate operation
-  /// performed via [submitJobCard] if needed in a future step.
-  Future<Response> updateJobCardStatus(
-    String name,
-    String status,
-  ) async =>
-      _apiProvider.updateDocument('Job Card', name, {'status': status});
+  ///   `'Work In Progress'` — Start (Open → WIP)
+  ///   `'Resume Job'`       — Pause (WIP → Open)
+  ///   `'Complete'`         — Complete (WIP → Completed)
+  ///
+  /// For Start and Pause, [startTime] is the current time and
+  /// [completeTime] is omitted. For Complete, both times are supplied
+  /// so ERPNext can compute `time_in_mins` correctly.
+  ///
+  /// [employees] is automatically forwarded from the session employee so
+  /// the time-log row created by the server carries the correct employee.
+  Future<Response> updateJobCardStatus({
+    required String jobCardId,
+    required String erpNextStatus,
+    required String startTime,
+    String? completeTime,
+    required List<Map<String, String>> employees,
+  }) async {
+    final Map<String, dynamic> argsMap = {
+      'job_card_id': jobCardId,
+      'start_time':  startTime,
+      if (completeTime != null) 'complete_time': completeTime,
+      'completed_qty': 0,
+      'employees':   employees,
+      'status':      erpNextStatus,
+    };
+    return _apiProvider.callMethodPost(
+      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
+      params: {'args': json.encode(argsMap)},
+    );
+  }
 
-    // ── Document submission ─────────────────────────────────────────────────────
+  // ── Document submission ───────────────────────────────────────────────────
 
-  /// Submit a Job Card document (change docstatus from 0 to 1).
-  ///
-  /// ERPNext requires submission to finalize a document and prevent further edits.
-  /// This is typically done after all time logs are recorded and the Job Card
-  /// status is set to "Completed".
-  ///
-  /// [name] — Job Card document name.
+  /// Submit a Job Card document (docstatus 0 → 1).
   Future<Response> submitJobCard(String name) async =>
       _apiProvider.submitDocument('Job Card', name);
 }
