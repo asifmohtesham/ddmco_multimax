@@ -60,9 +60,6 @@ class _WorkOrderForm extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Obx(() {
-      // Read the observable directly so GetX can track this Obx dependency.
-      // Previously `controller.canEdit` (a plain getter) was used here, which
-      // gave GetX nothing to track and caused an "improper use of Obx" crash.
       final wo      = controller.workOrder.value;
       final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
 
@@ -72,7 +69,7 @@ class _WorkOrderForm extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── Section: Production ────────────────────────────────────────────
+            // ── Section: Production ───────────────────────────────────────────────
             _SectionHeader(
                 label: 'Production Details',
                 icon: Icons.precision_manufacturing_outlined),
@@ -232,7 +229,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Dates ─────────────────────────────────────────────────
+            // ── Section: Dates ───────────────────────────────────────────────────
             _SectionHeader(
                 label: 'Dates', icon: Icons.date_range_outlined),
             const SizedBox(height: 12),
@@ -266,7 +263,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Warehouses ───────────────────────────────────────────
+            // ── Section: Warehouses ─────────────────────────────────────────────
             _SectionHeader(
                 label: 'Warehouses', icon: Icons.warehouse_outlined),
             const SizedBox(height: 12),
@@ -291,7 +288,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Notes ─────────────────────────────────────────────────
+            // ── Section: Notes ───────────────────────────────────────────────────
             _SectionHeader(
                 label: 'Notes', icon: Icons.notes_outlined),
             const SizedBox(height: 12),
@@ -312,7 +309,7 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // ── Section: Operations ───────────────────────────────────────────
+            // ── Section: Operations ───────────────────────────────────────────────
             Obx(() {
               if (controller.operations.isEmpty) return const SizedBox.shrink();
               return _OperationsSection(
@@ -322,7 +319,7 @@ class _WorkOrderForm extends StatelessWidget {
               );
             }),
 
-            // ── Section: Linked Job Cards ────────────────────────────────
+            // ── Section: Linked Job Cards ──────────────────────────────────────
             Obx(() {
               final cards = controller.linkedJobCards;
               if (cards.isEmpty && !controller.isFetchingLinkedCards.value) {
@@ -345,12 +342,10 @@ class _WorkOrderForm extends StatelessWidget {
               );
             }),
 
-            // ── Action buttons (Save / Submit / Create Job Cards) ─────────────
+            // ── Action buttons ───────────────────────────────────────────────────────
             const SizedBox(height: 8),
 
-            // Save button — shown when draft
-            // Reads all relevant observables directly so GetX can track them
-            // and reactively enable/disable the button without canSave getter.
+            // [1] Save — shown when draft & dirty
             if (canEdit)
               Obx(() {
                 final saving  = controller.isSaving.value;
@@ -383,12 +378,11 @@ class _WorkOrderForm extends StatelessWidget {
                 );
               }),
 
-            // Submit button — shown for saved drafts (docstatus 0, mode view)
-            // Reads observables directly so GetX can track visibility changes
-            // without relying on the plain canSubmit getter.
+            // [2] Submit — shown for saved drafts (docstatus 0, mode view)
             Obx(() {
               final wo          = controller.workOrder.value;
               final submitting  = controller.isSubmitting.value;
+              final creatingJC  = controller.isCreatingJobCards.value;
               final canSubmit   = controller.mode != 'new' &&
                   wo?.docstatus == 0 &&
                   !controller.isSaving.value &&
@@ -399,14 +393,15 @@ class _WorkOrderForm extends StatelessWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed:
-                        submitting ? null : controller.submitWorkOrder,
+                    onPressed: (submitting || creatingJC)
+                        ? null
+                        : controller.submitWorkOrder,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       backgroundColor: cs.tertiary,
                       foregroundColor: cs.onTertiary,
                     ),
-                    icon: submitting
+                    icon: (submitting || creatingJC)
                         ? const SizedBox(
                             width: 18,
                             height: 18,
@@ -414,7 +409,11 @@ class _WorkOrderForm extends StatelessWidget {
                                 strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.check_circle_outline),
                     label: Text(
-                      submitting ? 'Submitting…' : 'Submit Work Order',
+                      submitting
+                          ? 'Submitting…'
+                          : creatingJC
+                              ? 'Creating Job Cards…'
+                              : 'Submit Work Order',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
@@ -422,9 +421,48 @@ class _WorkOrderForm extends StatelessWidget {
               );
             }),
 
-            // Create Job Cards button — shown when submitted + pending ops exist
-            // Reads observables directly so GetX can track visibility changes
-            // without relying on the plain canCreateJobCards getter.
+            // [3] Execute — shown when submitted + status is "Not Started"
+            // Transitions the Work Order to "In Progress" on ERPNext.
+            Obx(() {
+              final wo         = controller.workOrder.value;
+              final executing  = controller.isExecuting.value;
+              final canExecute = wo?.docstatus == 1 &&
+                  wo?.status == 'Not Started' &&
+                  !executing &&
+                  !controller.isSubmitting.value &&
+                  !controller.isCreatingJobCards.value;
+              if (!canExecute) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed:
+                        executing ? null : controller.executeWorkOrder,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: executing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.play_circle_outline),
+                    label: Text(
+                      executing
+                          ? 'Executing…'
+                          : 'Execute Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // [4] Create Job Cards — shown when submitted + pending ops exist
             Obx(() {
               final wo              = controller.workOrder.value;
               final creatingCards   = controller.isCreatingJobCards.value;
@@ -633,15 +671,13 @@ class _OperationsSection extends StatelessWidget {
 }
 
 /// Thin status constant shim used by [_OperationsSection._statusColor].
-/// Mirrors the constants defined in [WorkOrderOperation] without adding
-/// a dependency on the full model import here.
 abstract class WorkOrderOperationStatus {
   static const String wip       = 'Work In Progress';
   static const String completed = 'Completed';
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Small widgets (unchanged from original)
+// Small widgets
 // ────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
@@ -769,9 +805,7 @@ class _WarehouseField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme
-        .of(context)
-        .colorScheme;
+    final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       readOnly: true,
@@ -790,8 +824,7 @@ class _WarehouseField extends StatelessWidget {
   }
 }
 
-  /// Private widget to render a single Job Card row in the linked section.
-/// Displays the Job Card name as a tappable chip that navigates to detail view.
+/// Private widget to render a single Job Card row in the linked section.
 class _JobCardRow extends StatelessWidget {
   final JobCard jc;
 
@@ -806,7 +839,6 @@ class _JobCardRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () {
-          // TODO: Navigate to Job Card detail screen
           Get.toNamed(AppRoutes.JOB_CARD_FORM, arguments: {'name': name});
         },
         borderRadius: BorderRadius.circular(8),
