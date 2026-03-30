@@ -49,7 +49,12 @@ class _DocTypePickerBottomSheet extends StatefulWidget {
 class _DocTypePickerBottomSheetState
     extends State<_DocTypePickerBottomSheet> {
   final TextEditingController _searchController = TextEditingController();
-    final DocTypePickerProvider _provider = Get.find<DocTypePickerProvider>();
+
+  // Resolved lazily in initState to avoid Get.find running at field-init
+  // time (before the provider is registered), which caused:
+  //   "DocTypePickerProvider" not found. You need to call Get.put(...).
+  late DocTypePickerProvider _provider;
+
   bool _isLoading = false;
   String _error = '';
   List<Map<String, dynamic>> _rows = const [];
@@ -57,6 +62,12 @@ class _DocTypePickerBottomSheetState
   @override
   void initState() {
     super.initState();
+    // Register the provider on-demand if it hasn't been put yet
+    // (e.g. when the bottom sheet is opened before any binding registers it).
+    if (!Get.isRegistered<DocTypePickerProvider>()) {
+      Get.put(DocTypePickerProvider());
+    }
+    _provider = Get.find<DocTypePickerProvider>();
     _load();
   }
 
