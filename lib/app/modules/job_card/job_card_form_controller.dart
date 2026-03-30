@@ -29,6 +29,9 @@ class JobCardFormController extends GetxController {
   final isUpdatingStatus = false.obs;
   final isEditingTimeLog = false.obs;
 
+  /// True while submitJobCard() network call is in-flight.
+  final isSubmitting = false.obs;
+
   final jobCard = Rx<JobCard?>(null);
 
   // ── Add time log form controllers ─────────────────────────────────────────
@@ -79,6 +82,21 @@ class JobCardFormController extends GetxController {
     final jc = jobCard.value;
     if (jc == null || jc.isCancelled) return false;
     return !isUpdatingStatus.value;
+  }
+
+  /// True when the draft can be submitted by the user:
+  ///   - document exists and is still draft (docstatus == 0)
+  ///   - not cancelled
+  ///   - no other operation in-flight
+  bool get canSubmit {
+    final jc = jobCard.value;
+    if (jc == null) return false;
+    if (!jc.isEditable) return false;  // docstatus != 0
+    if (jc.isCancelled) return false;
+    return !isSubmitting.value &&
+           !isUpdatingStatus.value &&
+           !isAddingTimeLog.value &&
+           !isEditingTimeLog.value;
   }
 
   /// Qty that can still be logged without exceeding forQuantity.
@@ -198,7 +216,7 @@ class JobCardFormController extends GetxController {
         _prefillStartTime();
         _validateTimeLogForm();
         GlobalSnackbar.success(message: 'Time log added');
-        await _submitIfComplete();
+        await _autoSubmitIfComplete();
       } else {
         GlobalSnackbar.error(message: 'Failed to add time log');
       }
@@ -378,7 +396,7 @@ class JobCardFormController extends GetxController {
         };
         GlobalSnackbar.success(message: 'Job Card $label');
         if (newStatus == JobCard.statusCompleted) {
-          await _submitIfComplete();
+          await _autoSubmitIfComplete();
         }
       } else {
         GlobalSnackbar.error(message: 'Failed to update status');
@@ -393,9 +411,49 @@ class JobCardFormController extends GetxController {
     }
   }
 
-  // ── Submit helper ─────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
 
-  Future<void> _submitIfComplete() async {
+  /// Manually submit the Job Card after user confirmation.
+  ///
+  /// Submitting locks the document (docstatus → 1), updates the parent Work
+  /// Order Operation, and prevents further edits. A confirmation dialog is
+  /// always shown so the user cannot accidentally trigger this action.
+  Future<void> submitJobCard() async {
+    if (!canSubmit) return;
+
+    final confirmed = await GlobalDialog.confirm(
+      title:       'Submit Job Card',
+      message:     'Submit this Job Card? The record will be locked and '
+                   'the Work Order will be updated. This cannot be undone.',
+      confirmText: 'Submit',
+    );
+    if (confirmed != true) return;
+
+    isSubmitting.value = true;
+    try {
+      final res = await _provider.submitJobCard(name);
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Job Card submitted successfully');
+      } else {
+        GlobalSnackbar.error(message: 'Job Card submission failed');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Submission failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Submission error: $e');
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
+  // ── Auto-submit helper (internal) ─────────────────────────────────────────
+
+  /// Silently submits the Job Card when qty is fully met — no confirmation
+  /// dialog because the trigger (add/complete) already served as implicit
+  /// intent. Used internally by [addTimeLog] and [updateStatus].
+  Future<void> _autoSubmitIfComplete() async {
     final jc = jobCard.value;
     if (jc == null) return;
     if (jc.docstatus == 1) return;

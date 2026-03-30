@@ -55,6 +55,7 @@ class _JobCardFormBody extends StatelessWidget {
             _HeaderCard(jc: jc),
             const SizedBox(height: 24),
 
+            // Status action buttons (Start / Pause / Complete) + Submit
             Obx(() => _StatusActionsRow(
                   jc:         controller.jobCard.value ?? jc,
                   controller: controller,
@@ -219,7 +220,7 @@ class _HeaderCard extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Status action buttons
+// Status action buttons  +  Submit button
 // ────────────────────────────────────────────────────────────────────────────
 
 class _StatusActionsRow extends StatelessWidget {
@@ -232,67 +233,115 @@ class _StatusActionsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs      = Theme.of(context).colorScheme;
-    final loading = controller.isUpdatingStatus.value;
+    final cs = Theme.of(context).colorScheme;
 
-    if (jc.isCompleted || jc.isCancelled || jc.isSubmitted) {
+    // ── Already submitted ────────────────────────────────────────────────
+    if (jc.docstatus == 1) {
+      return _SubmittedBanner();
+    }
+
+    // ── Cancelled — nothing to do ────────────────────────────────────────
+    if (jc.isCancelled) {
       return const SizedBox.shrink();
     }
 
-    return Row(
+    final statusLoading   = controller.isUpdatingStatus.value;
+    final submitLoading   = controller.isSubmitting.value;
+    final anyLoading      = statusLoading || submitLoading;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (jc.isOpen)
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: loading
-                  ? null
-                  : () => controller.updateStatus(
-                      JobCard.statusWorkInProgress),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.all(14),
-                backgroundColor: cs.primary,
-              ),
-              icon: loading
-                  ? _spinner(Colors.white)
-                  : const Icon(Icons.play_arrow_rounded),
-              label: const Text('Start', style: TextStyle(fontSize: 15)),
-            ),
+        // ── Start / Pause / Complete row ─────────────────────────────────
+        if (!jc.isCompleted)
+          Row(
+            children: [
+              if (jc.isOpen)
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: anyLoading
+                        ? null
+                        : () => controller.updateStatus(
+                            JobCard.statusWorkInProgress),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(14),
+                      backgroundColor: cs.primary,
+                    ),
+                    icon: statusLoading
+                        ? _spinner(Colors.white)
+                        : const Icon(Icons.play_arrow_rounded),
+                    label:
+                        const Text('Start', style: TextStyle(fontSize: 15)),
+                  ),
+                ),
+              if (jc.isWorkInProgress) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: anyLoading
+                        ? null
+                        : () =>
+                            controller.updateStatus(JobCard.statusOpen),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.all(14),
+                      side: BorderSide(color: cs.primary),
+                    ),
+                    icon: statusLoading
+                        ? _spinner(cs.primary)
+                        : const Icon(Icons.pause_rounded),
+                    label:
+                        const Text('Pause', style: TextStyle(fontSize: 15)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: anyLoading
+                        ? null
+                        : () => controller.updateStatus(
+                            JobCard.statusCompleted),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(14),
+                      backgroundColor: cs.tertiary,
+                      foregroundColor: cs.onTertiary,
+                    ),
+                    icon: statusLoading
+                        ? _spinner(cs.onTertiary)
+                        : const Icon(Icons.check_circle_outline),
+                    label: const Text('Complete',
+                        style: TextStyle(fontSize: 15)),
+                  ),
+                ),
+              ],
+            ],
           ),
-        if (jc.isWorkInProgress) ...[
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: loading
-                  ? null
-                  : () => controller.updateStatus(JobCard.statusOpen),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.all(14),
-                side: BorderSide(color: cs.primary),
-              ),
-              icon: loading
-                  ? _spinner(cs.primary)
-                  : const Icon(Icons.pause_rounded),
-              label: const Text('Pause', style: TextStyle(fontSize: 15)),
+
+        // ── Submit button — always visible while docstatus == 0 ──────────
+        //
+        // Shown below the status row so the user can explicitly lock the
+        // document even if the auto-submit condition was not triggered.
+        const SizedBox(height: 12),
+        Obx(() {
+          final submitting = controller.isSubmitting.value;
+          final canSubmit  = controller.canSubmit;
+          return FilledButton.tonalIcon(
+            onPressed: canSubmit ? controller.submitJobCard : null,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.all(14),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: loading
-                  ? null
-                  : () => controller.updateStatus(JobCard.statusCompleted),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.all(14),
-                backgroundColor: cs.tertiary,
-                foregroundColor: cs.onTertiary,
-              ),
-              icon: loading
-                  ? _spinner(cs.onTertiary)
-                  : const Icon(Icons.check_circle_outline),
-              label:
-                  const Text('Complete', style: TextStyle(fontSize: 15)),
+            icon: submitting
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: cs.onSecondaryContainer),
+                  )
+                : const Icon(Icons.upload_outlined),
+            label: Text(
+              submitting ? 'Submitting…' : 'Submit Job Card',
+              style: const TextStyle(fontSize: 15),
             ),
-          ),
-        ],
+          );
+        }),
       ],
     );
   }
@@ -302,6 +351,60 @@ class _StatusActionsRow extends StatelessWidget {
         height: 18,
         child: CircularProgressIndicator(strokeWidth: 2, color: color),
       );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Submitted banner — shown when docstatus == 1
+// ────────────────────────────────────────────────────────────────────────────
+
+class _SubmittedBanner extends StatelessWidget {
+  const _SubmittedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: cs.tertiary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_outlined,
+              size: 22, color: cs.onTertiaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Submitted',
+                  style: textTheme.titleSmall?.copyWith(
+                    color: cs.onTertiaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'This Job Card is locked. No further edits are allowed.',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: cs.onTertiaryContainer
+                        .withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
