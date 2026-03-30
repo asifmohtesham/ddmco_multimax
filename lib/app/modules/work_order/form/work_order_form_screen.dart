@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -792,14 +793,14 @@ class _WarehouseField extends StatelessWidget {
   /// Private widget to render a single Job Card row in the linked section.
 /// Displays the Job Card name as a tappable chip that navigates to detail view.
 class _JobCardRow extends StatelessWidget {
-  final Map<String, dynamic> jc;
+  final JobCard jc;
 
   const _JobCardRow({required this.jc});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final name = jc['name'] as String? ?? '';
+    final name = jc.name ?? '';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
