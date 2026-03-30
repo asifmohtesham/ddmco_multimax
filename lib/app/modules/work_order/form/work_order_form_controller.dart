@@ -238,6 +238,31 @@ class WorkOrderFormController extends GetxController {
     if (!isLoading.value) isDirty.value = true;
   }
 
+  // ==========================================================================
+  // BOM Workflow Documentation (Commit 7)
+  // ==========================================================================
+  // The Work Order form implements robust BOM (Bill of Materials) handling:
+  //
+  // 1. Auto-fetch: When an Item is selected, _autoLoadBom() automatically:
+  //    - Searches for BOMs associated with the selected Item
+  //    - Auto-selects if only one BOM exists
+  //    - Populates bomOptions for manual selection if multiple BOMs exist
+  //
+  // 2. Auto-fill warehouses: _applyBom() fetches BOM details and:
+  //    - Auto-fills WIP (Work In Progress) warehouse from BOM
+  //    - Auto-fills FG (Finished Goods) warehouse from BOM
+  //    - Only fills empty fields (preserves user input)
+  //
+  // 3. BOM validation: _validateForm() ensures:
+  //    - selectedBom is not null/empty before form submission
+  //    - isBomValid flag controls save button state
+  //
+  // 4. Manual BOM selection: onBomSelected() allows users to:
+  //    - Pick from multiple BOMs via DocTypePickerBottomSheet
+  //    - Change BOM after initial auto-selection
+  // ==========================================================================
+
+
   void _validateForm() {
     isItemValid.value = (selectedItem.value ?? '').isNotEmpty;
     isBomValid.value  = (selectedBom.value  ?? '').isNotEmpty;
@@ -294,6 +319,9 @@ class WorkOrderFormController extends GetxController {
     await _autoLoadBom(itemCode);
   }
 
+  /// Auto-fetch BOMs when Item is selected.
+  /// Searches for BOMs, auto-selects if only one exists, or populates options for user selection.
+
   Future<void> _autoLoadBom(String itemCode) async {
     isFetchingBom.value = true;
     try {
@@ -324,6 +352,9 @@ class WorkOrderFormController extends GetxController {
     try {
       final res = await _provider.getBom(bomName);
       if (res.statusCode == 200 && res.data['data'] != null) {
+          /// Apply BOM to Work Order: Fetch BOM details and auto-fill warehouses.
+  /// Only populates empty warehouse fields to preserve user input.
+
         final bom = res.data['data'];
         bomController.text = bomName;
         selectedBom.value  = bomName;
@@ -343,7 +374,10 @@ class WorkOrderFormController extends GetxController {
     bomOptions.clear();
     await _applyBom(bomName);
   }
+  /// Handle manual BOM selection from DocTypePicker.
+  /// Called when user picks a BOM from the bottom sheet picker.
 
+  
   // ── Date + time picker ────────────────────────────────────────────────────────────────
 
   Future<void> pickDate(TextEditingController ctrl) async {
