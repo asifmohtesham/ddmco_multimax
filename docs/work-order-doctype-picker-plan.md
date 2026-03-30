@@ -66,3 +66,23 @@
 ## Commit 2 — Cache-First Datasource with Live Refresh
 
 **Commit message:**
+
+### Checklist
+- [ ] Add picker repository/service method accepting: `doctype`, `fields`, `filters`, `searchText`, optional `limit`
+- [ ] Implement cache-first read on open
+- [ ] Implement explicit `refresh()` method that bypasses cache and hits live ERPNext API
+- [ ] Return generic `List<Map<String, dynamic>>` rows containing all requested fields
+- [ ] Wire datasource into `DocTypePickerBottomSheet` — replace mocked rows
+- [ ] Ensure `item_code`, `item_name`, `item_group`, `variant_of`, `country_of_origin`, `stock_uom` are all fetchable via field list param
+
+### Acceptance
+- [ ] Picker loads data from cache on open
+- [ ] Manual refresh triggers live API fetch
+- [ ] Refresh does not block UI before results arrive
+- [ ] Generic — no Item/BOM/Warehouse hardcoding in datasource layer
+
+---
+
+## Commit 3 — Reusable Barcode Prefill via scanWorker/eventSink
+
+**Commit message:**
