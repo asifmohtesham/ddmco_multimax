@@ -17,12 +17,12 @@ import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.d
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
 
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  import 'package:multimax/app/data/providers/job_card_provider.dart';
-import 'package:multimax/app/data/models/job_card_model.dart';
   StreamSubscription<String>? _barcodeScanSubscription;
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
