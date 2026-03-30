@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+82import 'package:dio/dio.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 
