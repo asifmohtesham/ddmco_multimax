@@ -506,8 +506,6 @@ class WorkOrderFormController extends GetxController {
         onBomSelected(bomName);
       },
     );
-  }    ),
-    );
   }
 
   // ── Adjust qty ────────────────────────────────────────────────────────────────────
