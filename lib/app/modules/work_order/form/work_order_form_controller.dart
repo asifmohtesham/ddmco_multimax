@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
@@ -19,7 +21,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 
-class WorkOrderFormController extends GetxController {
+class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
@@ -59,6 +61,7 @@ class WorkOrderFormController extends GetxController {
   final wipWarehouseController = TextEditingController();
   final fgWarehouseController  = TextEditingController();
   final descriptionController  = TextEditingController();
+  bool isScanningItemBarcode = false;
 
   // ── Observables for reactive UI ──────────────────────────────────────────────────
   final selectedItem     = RxnString();
@@ -96,7 +99,6 @@ class WorkOrderFormController extends GetxController {
 
   @override
   void onClose() {
-    // _barcodeScanSubscription?.cancel();
     itemController.dispose();
     bomController.dispose();
     qtyController.dispose();
@@ -133,8 +135,99 @@ class WorkOrderFormController extends GetxController {
     );
   }
 
+  @override
+  void onBarcodeScanned(String barcode) {
+    final normalizedBarcode = barcode.trim();
+    if (normalizedBarcode.isEmpty) {
+      Get.snackbar(
+        'Invalid barcode',
+        'Scanned barcode is empty.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    _handleScannedItemBarcode(normalizedBarcode);
+  }
+
+  @override
+  void onBarcodeScanError(String error) {
+    Get.snackbar(
+      'Scan failed',
+      error,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  Future<void> _handleScannedItemBarcode(String barcode) async {
+    try {
+      final matches = await _findMatchingItemsByBarcode(barcode);
+
+      if (matches.isEmpty) {
+        Get.snackbar(
+          'Item not found',
+          'No enabled stock item matched the scanned barcode. Tap the Item field to search manually.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+
+      if (matches.length > 1) {
+        Get.snackbar(
+          'Multiple matches found',
+          'More than one item matched the scanned barcode. Tap the Item field to choose manually.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+
+      await _applyScannedItemSelection(matches.first);
+    } catch (e) {
+      Get.snackbar(
+        'Scan failed',
+        'Unable to process scanned barcode. Tap the Item field to search manually.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<List<Item>> _findMatchingItemsByBarcode(String barcode) async {
+    final results = await itemProvider.getItems(
+      search: barcode,
+      filters: {
+        'disabled': 0,
+        'is_stock_item': 1,
+      },
+    );
+
+    return results.where((item) {
+      final itemCode = (item.itemCode ?? '').trim();
+      final itemBarcode = (item.barcode ?? '').trim();
+      return itemCode == barcode || itemBarcode == barcode;
+    }).toList();
+  }
+
+  Future<void> _applyScannedItemSelection(Item item) async {
+    selectedItem.value = item;
+    itemController.text = item.itemCode ?? '';
+
+    if ((item.stockUom ?? '').isNotEmpty) {
+      uomController.text = item.stockUom!;
+    }
+
+    // Always clear BOM and re-fetch, as approved
+    selectedBom.value = null;
+    bomController.text = '';
+
+    await _fetchBomsForItem(item.itemCode ?? '');
+    await _refreshOperations();
+    await _refreshStockSummary();
+
+    update();
+  }
+
   // ── Raw scan entry point ─────────────────────────────────────────────────
-  void _onRawScan(String code) {
+  void _onRawScan(String code) async {
     if (code.isEmpty) {
       return;
     }
@@ -143,7 +236,7 @@ class WorkOrderFormController extends GetxController {
     }
     final clean = code.trim();
     itemController.text = clean;
-    scanBarcode(clean);
+    await scanBarcode(clean);
   }
 
   // ── Init new ───────────────────────────────────────────────────────────────────────
