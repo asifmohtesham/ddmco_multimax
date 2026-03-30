@@ -161,9 +161,21 @@ class ApiProvider {
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
 
-  Future<Response> deleteDocument(String doctype, String name) async {
+  Future<Response> 164
+    (String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.delete('/api/resource/$doctype/$name');
+  }
+
+    /// Submit a document (change docstatus from 0 to 1) in ERPNext.
+  ///
+  /// In ERPNext, submission finalizes a document and prevents further edits.
+  /// This is typically the last step after all data entry and validations are complete.
+  ///
+  /// Calls: `POST /api/resource/{doctype}/{name}` with `{"docstatus": 1}`
+  Future<Response> submitDocument(String doctype, String name) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
   }
 
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
