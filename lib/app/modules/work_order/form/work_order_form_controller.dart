@@ -217,6 +217,24 @@ class WorkOrderFormController extends GetxController {
     }
   }
 
+  Future<void> fetchLinkedJobCards() async {
+    if (mode == 'new') return;
+    isFetchingLinkedCards.value = true;
+    try {
+      final res = await _jobCardProvider.getJobCards(
+        filters: {'work_order': ['=', name]},
+        limit: 100,
+      );
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        linkedJobCards.value = (res.data['data'] as List)
+            .map((j) => JobCard.fromJson(j))
+            .toList();
+      }
+    } catch (_) {} finally {
+      isFetchingLinkedCards.value = false;
+    }
+  }
+
   void _populateControllers(WorkOrder wo) {
     itemController.text        = wo.productionItem;
     selectedItem.value         = wo.productionItem;
@@ -613,6 +631,7 @@ class WorkOrderFormController extends GetxController {
 
       if (res.statusCode == 200) {
         await _fetchDocument();
+        fetchLinkedJobCards();
         final count = selected.length;
         GlobalSnackbar.success(
           message: '$count Job Card${count == 1 ? '' : 's'} created',

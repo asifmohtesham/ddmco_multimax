@@ -320,6 +320,29 @@ class _WorkOrderForm extends StatelessWidget {
               );
             }),
 
+            // ── Section: Linked Job Cards ────────────────────────────────
+            Obx(() {
+              final cards = controller.linkedJobCards;
+              if (cards.isEmpty && !controller.isFetchingLinkedCards.value) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SectionHeader(
+                    label: 'Job Cards (${cards.length})',
+                    icon: Icons.assignment_ind_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  if (controller.isFetchingLinkedCards.value)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    ...cards.map((jc) => _JobCardRow(jc: jc)),
+                  const SizedBox(height: 24),
+                ],
+              );
+            }),
+
             // ── Action buttons (Save / Submit / Create Job Cards) ─────────────
             const SizedBox(height: 8),
 

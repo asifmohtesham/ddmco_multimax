@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
-import 'work_order_form_controller.dart';
+import 'package:multimax/app/modules/work_order/form/work_order_form_controller.dart';
 
 /// Bottom sheet for selecting Work Order Operations to create Job Cards for.
 ///
