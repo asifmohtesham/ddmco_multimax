@@ -25,14 +25,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Route args ─────────────────────────────────────────────────────────────────────
+  // ── Route args ──────────────────────────────────────────────────────────────────────
   late String name;
   final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
   final linkedJobCards = <JobCard>[].obs;
   final isFetchingLinkedCards = false.obs;
   late String mode; // 'new' | 'view'
 
-  // ── Rx state ───────────────────────────────────────────────────────────────────────
+  // ── Rx state ────────────────────────────────────────────────────────────────────────
   final isLoading = true.obs;
   final isSaving = false.obs;
   final isDirty = false.obs;
@@ -40,17 +40,18 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isFetchingWarehouses = false.obs;
   final isFetchingItems = false.obs;
 
-  // ── Operations state ───────────────────────────────────────────────────────────────
+  // ── Operations state ──────────────────────────────────────────────────────────────────
   final isSubmitting = false.obs;
+  final isExecuting = false.obs;
   final isCreatingJobCards = false.obs;
   final operations = <WorkOrderOperation>[].obs;
   final workOrder = Rx<WorkOrder?>(null);
 
-  // ── Dropdown / picker data ─────────────────────────────────────────────────────────
+  // ── Dropdown / picker data ────────────────────────────────────────────────────────────
   final bomOptions = <String>[].obs;
   final itemOptions = <String>[].obs;
 
-  // ── Form controllers ───────────────────────────────────────────────────────────────
+  // ── Form controllers ─────────────────────────────────────────────────────────────────
   final itemController = TextEditingController();
   final bomController = TextEditingController();
   final qtyController = TextEditingController();
@@ -68,7 +69,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isBomValid = false.obs;
   final isQtyValid = false.obs;
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
@@ -108,7 +109,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       isBomValid.value &&
       isQtyValid.value;
 
-  // ── Computed: submit & job card guards ────────────────────────────────────────────
+  // ── Computed: submit, execute & job card guards ─────────────────────────────────
   /// True when the Work Order is a saved draft (docstatus 0, not new)
   /// and no other async operation is in progress.
   bool get canSubmit =>
@@ -116,6 +117,19 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       workOrder.value?.docstatus == 0 &&
       !isSaving.value &&
       !isSubmitting.value;
+
+  /// True when the Work Order is submitted (docstatus 1) with status
+  /// "Not Started" and no other async operation is in progress.
+  /// Executing transitions the WO into "In Progress" on ERPNext.
+  bool get canExecute {
+    final wo = workOrder.value;
+    if (wo == null) return false;
+    return wo.docstatus == 1 &&
+        wo.status == 'Not Started' &&
+        !isExecuting.value &&
+        !isSubmitting.value &&
+        !isCreatingJobCards.value;
+  }
 
   /// True when the Work Order is submitted (docstatus 1) and at least one
   /// operation still has pending qty remaining.
@@ -129,7 +143,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     );
   }
 
-  // ── BarcodeScanMixin implementation ───────────────────────────────────────────────
+  // ── BarcodeScanMixin implementation ───────────────────────────────────────────
   @override
   Future<void> onScanResult(ScanResult result) async {
     if (!result.isSuccess || result.itemData == null) {
@@ -185,7 +199,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'disabled': 0,
         'is_stock_item': 1,
       },
-      // search: barcode,
     );
 
     if (res.statusCode == 200 && res.data['data'] != null) {
@@ -194,7 +207,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
       return results.where((item) {
         final itemCode = (item.itemCode ?? '').trim();
-        return itemCode == barcode.substring(0,7);
+        return itemCode == barcode.substring(0, 7);
       }).toList();
     }
     return [];
@@ -204,7 +217,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     selectedItem.value = item.itemCode;
     itemController.text = item.itemCode ?? '';
 
-    // Always clear BOM and re-fetch, as approved
     selectedBom.value = null;
     bomController.text = '';
 
@@ -218,7 +230,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     plannedStartController.text = today;
     qtyController.text = '1';
 
-    // ── Apply prefill from BOM form / list ───────────────────────────────────
     final prefill = Get.arguments?['prefill'] as Map? ?? {};
     if (prefill.isNotEmpty) {
       final item = prefill['production_item'] as String? ?? '';
@@ -246,16 +257,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       if (wip.isNotEmpty) wipWarehouseController.text = wip;
       if (fg.isNotEmpty) fgWarehouseController.text = fg;
 
-      // If a BOM is prefilled skip the typeahead — load warehouses from it.
       if (bomNo.isNotEmpty && (wip.isEmpty || fg.isEmpty)) {
         isFetchingBom.value = true;
         _applyBom(bomNo).then((_) => isFetchingBom.value = false);
       }
     }
-    // ───────────────────────────────────────────────────────────────────
 
     isLoading.value = false;
-    isDirty.value = prefill.isNotEmpty; // pre-dirtied if prefilled
+    isDirty.value = prefill.isNotEmpty;
     _validateForm();
 
     workOrder.value = WorkOrder(
@@ -327,7 +336,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     _validateForm();
   }
 
-  /// Public so the form screen's onChanged callbacks can call it directly.
   void markDirty() {
     if (!isLoading.value) isDirty.value = true;
   }
@@ -339,7 +347,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     isQtyValid.value = qty > 0;
   }
 
-  // ── Item search ───────────────────────────────────────────────────────────────────
+  // ── Item search ──────────────────────────────────────────────────────────────────
   Future<void> searchItems(String query) async {
     if (query.length < 2) {
       itemOptions.clear();
@@ -388,8 +396,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     await _autoLoadBom(itemCode);
   }
 
-  /// Auto-fetch BOMs when Item is selected.
-  /// Searches for BOMs, auto-selects if only one exists, or populates options for user selection.
   Future<void> _autoLoadBom(String itemCode) async {
     isFetchingBom.value = true;
     try {
@@ -421,8 +427,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     try {
       final res = await _provider.getBom(bomName);
       if (res.statusCode == 200 && res.data['data'] != null) {
-        /// Apply BOM to Work Order: Fetch BOM details and auto-fill warehouses.
-        /// Only populates empty warehouse fields to preserve user input.
         final bom = res.data['data'];
         bomController.text = bomName;
         selectedBom.value = bomName;
@@ -445,7 +449,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     await _applyBom(bomName);
   }
 
-  // ── Date + time picker ────────────────────────────────────────────────────────────────
+  // ── Date + time picker ───────────────────────────────────────────────────────────────
   Future<void> pickDate(TextEditingController ctrl) async {
     if (!canEdit) return;
 
@@ -490,7 +494,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     markDirty();
   }
 
-  // ── Warehouse picker (bottom sheet) ───────────────────────────────────────────────
+  // ── Warehouse picker (bottom sheet) ──────────────────────────────────────────────
   Future<void> showWarehousePicker(TextEditingController ctrl) async {
     if (!canEdit) return;
 
@@ -560,7 +564,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Adjust qty ────────────────────────────────────────────────────────────────────
+  // ── Adjust qty ──────────────────────────────────────────────────────────────────
   void adjustQty(int delta) {
     if (!canEdit) return;
 
@@ -625,14 +629,21 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────────────
-  /// Submit the Work Order (docstatus 0 → 1).
+  // ── Submit ──────────────────────────────────────────────────────────────────────
+  /// Submit the Work Order (docstatus 0 → 1), then automatically create
+  /// Job Cards for all eligible operations (those with pending qty > 0).
+  ///
+  /// Job Card auto-creation runs silently after submission. If it fails,
+  /// a warning snackbar is shown but the submission is still considered
+  /// successful so the WO is not re-locked in the draft state.
   Future<void> submitWorkOrder() async {
     if (!canSubmit) return;
 
     final confirmed = await GlobalDialog.confirm(
       title: 'Submit Work Order',
-      message: 'Submitting will lock this Work Order for editing. Continue?',
+      message:
+          'Submitting will lock this Work Order for editing and automatically '
+          'create Job Cards for all pending operations. Continue?',
       confirmText: 'Submit',
     );
 
@@ -644,6 +655,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       if (res.statusCode == 200) {
         await _fetchDocument();
         GlobalSnackbar.success(message: 'Work Order $name submitted');
+
+        // ── Auto-create Job Cards for all eligible operations ──────────────
+        await _autoCreateJobCards();
       } else {
         GlobalSnackbar.error(message: 'Failed to submit Work Order');
       }
@@ -656,8 +670,105 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Create Job Cards ──────────────────────────────────────────────────────────────
-  /// Create Job Cards for [selected] operations.
+  // ── Execute ─────────────────────────────────────────────────────────────────────
+  /// Execute the Work Order: transitions status "Not Started" → "In Progress".
+  ///
+  /// This marks manufacturing as actively started on ERPNext and
+  /// refreshes the form so all status-dependent UI updates reactively.
+  Future<void> executeWorkOrder() async {
+    if (!canExecute) return;
+
+    final confirmed = await GlobalDialog.confirm(
+      title: 'Execute Work Order',
+      message:
+          'Mark this Work Order as \'In Progress\'? '
+          'This indicates manufacturing has actively started.',
+      confirmText: 'Execute',
+    );
+
+    if (confirmed != true) return;
+
+    isExecuting.value = true;
+    try {
+      final res = await _provider.executeWorkOrder(name);
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        GlobalSnackbar.success(
+          message: 'Work Order $name is now In Progress',
+        );
+      } else {
+        GlobalSnackbar.error(message: 'Failed to execute Work Order');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Execute failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isExecuting.value = false;
+    }
+  }
+
+  // ── Auto-create Job Cards (internal) ──────────────────────────────────────────
+  /// Silently creates Job Cards for all eligible operations after submission.
+  /// Called internally by [submitWorkOrder] — not exposed to the UI.
+  ///
+  /// Eligible = not completed AND pendingQty > 0.
+  /// On failure only a warning is shown; does not revert the submission.
+  Future<void> _autoCreateJobCards() async {
+    final wo = workOrder.value;
+    if (wo == null) return;
+
+    final eligibleOps = operations.where(
+      (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
+    ).toList();
+
+    if (eligibleOps.isEmpty) return;
+
+    isCreatingJobCards.value = true;
+    try {
+      final payload = eligibleOps.map((op) {
+        final pending = op.pendingQty(wo.qty);
+        return op.toJobCardPayload(qty: pending);
+      }).toList();
+
+      final res = await _provider.makeJobCard(name, payload);
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        fetchLinkedJobCards();
+        final count = eligibleOps.length;
+        GlobalSnackbar.success(
+          message:
+              '$count Job Card${count == 1 ? '' : 's'} created automatically',
+        );
+      } else {
+        GlobalSnackbar.warning(
+          message:
+              'Work Order submitted, but Job Card creation failed. '
+              'Use \'Create Job Cards\' to create them manually.',
+        );
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.warning(
+        message:
+            'Job Cards could not be created: '
+            '${_extractErrorMessage(e, 'Unknown error')}. '
+            'Use \'Create Job Cards\' to retry.',
+      );
+    } catch (_) {
+      GlobalSnackbar.warning(
+        message:
+            'Work Order submitted. Job Card auto-creation failed — '
+            'use \'Create Job Cards\' to create them manually.',
+      );
+    } finally {
+      isCreatingJobCards.value = false;
+    }
+  }
+
+  // ── Create Job Cards (manual, from bottom sheet) ───────────────────────────
+  /// Create Job Cards for [selected] operations (called from
+  /// [JobCardCreationSheet] for manual selection and qty override).
   Future<void> createJobCards(
     List<WorkOrderOperation> selected,
     Map<String, double> qtys,
@@ -692,7 +803,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Discard guard ────────────────────────────────────────────────────────────────
+  // ── Discard guard ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -702,7 +813,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────────────
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       if (e.response?.data is Map) {
