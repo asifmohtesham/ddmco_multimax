@@ -4,7 +4,13 @@ import 'package:flutter/material.dart';
 // DocTypePickerColumn
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Defines a single column displayed in the [DocTypePickerBottomSheet] row.
+/// Defines a column in the DocType picker multi-column layout.
+///
+/// Columns can be configured with:
+/// - Flexible widths using [flex] and [minWidth]
+/// - Alignment options (left, right, center)
+/// - Visibility controls for mobile vs desktop layouts
+/// - Custom value builders for formatting
 ///
 /// Columns are rendered side-by-side on wide screens (tablet / landscape)
 /// and stacked as metadata cards on narrow phone-width screens.
@@ -12,7 +18,17 @@ import 'package:flutter/material.dart';
 /// Only columns with [visibleOnMobile] set to `true` are shown in the
 /// stacked mobile layout. At least one column should be [isPrimary] and
 /// one [isSecondary] so the compact mobile tile renders correctly.
-class DocTypePickerColumn {
+///
+/// ### Example
+/// ```dart
+/// DocTypePickerColumn(
+///   fieldName: 'stock_uom',
+///   label: 'UOM',
+///   flex: 1,
+///   align: TextAlign.right,
+///   visibleOnMobile: false,
+/// )
+/// ```class DocTypePickerColumn {
   /// Frappe/ERPNext fieldname returned by the API, e.g. `'item_code'`.
   final String fieldname;
 
