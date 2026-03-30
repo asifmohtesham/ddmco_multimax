@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'doctype_picker_config.dart';
 import 'doctype_picker_column.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/data/providers/doctype_picker_provider.dart';
 
 // ────────────────────────────────────────────────────────────────────────────
 // showDocTypePickerBottomSheet
@@ -47,6 +49,7 @@ class _DocTypePickerBottomSheet extends StatefulWidget {
 class _DocTypePickerBottomSheetState
     extends State<_DocTypePickerBottomSheet> {
   final TextEditingController _searchController = TextEditingController();
+    final DocTypePickerProvider _provider = Get.find<DocTypePickerProvider>();
   bool _isLoading = false;
   String _error = '';
   List<Map<String, dynamic>> _rows = const [];
