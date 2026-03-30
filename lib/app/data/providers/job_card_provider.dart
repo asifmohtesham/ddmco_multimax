@@ -23,6 +23,7 @@ class JobCardProvider {
         'name',
         'work_order',
         'operation',
+                'operation_id',
         'workstation',
         'status',
         'for_quantity',
