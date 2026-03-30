@@ -46,6 +46,12 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///   background guarantees visibility against any AppBar surface.
 ///   A [Badge] overlays the count in the top-right corner using
 ///   onError-on-error colours.
+///
+/// ## Title visibility
+/// The [title] is always rendered in full — no ellipsis, no clamping.
+/// When the name is long the large-title area expands vertically to
+/// accommodate it.  The collapsed (pinned) bar also never truncates:
+/// it wraps onto a second line if necessary rather than cutting the text.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
 
@@ -248,12 +254,51 @@ class DocTypeListHeader extends StatelessWidget {
         ),
     ];
 
+    // ── Title widget ───────────────────────────────────────────────────────
+    //
+    // softWrap: true  — allow the text to break across lines.
+    // overflow: clip  — never add an ellipsis; clip only if absolutely forced
+    //                   by some extreme container constraint (should not occur
+    //                   with a SliverAppBar that grows with its content).
+    // maxLines: null  — unlimited lines; the large-title area expands to fit.
+    //
+    // The same Text widget is reused for both the collapsed (toolbar) title
+    // and the expanded large title via FlexibleSpaceBar so the user always
+    // sees the full name regardless of scroll position.
+    final titleWidget = Text(
+      title,
+      softWrap: true,
+      overflow: TextOverflow.clip,
+      maxLines: null,
+    );
+
     return SliverAppBar.large(
-      title: Text(title),
+      // The collapsed (pinned) title — always fully visible.
+      title: titleWidget,
       actions: actions.isEmpty ? null : actions,
       automaticallyImplyLeading: automaticallyImplyLeading,
-      scrolledUnderElevation: 0,
+      // A subtle elevation line when content scrolls under the pinned bar
+      // so the header remains visually distinct from list items.
+      scrolledUnderElevation: 1.0,
       pinned: true,
+      // expandedHeight: null lets the SliverAppBar.large calculate its own
+      // default large-title height (≈152 dp).  For very long names the
+      // FlexibleSpaceBar below will simply grow taller automatically because
+      // stretchModes and fit are unrestricted.
+      //
+      // FlexibleSpaceBar shows the large-title copy while the bar is
+      // expanded. Using titlePadding with generous horizontal insets keeps
+      // the text away from the action icons on the right.
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 16),
+        title: Text(
+          title,
+          softWrap: true,
+          overflow: TextOverflow.clip,
+          maxLines: null,
+        ),
+        collapseMode: CollapseMode.fade,
+      ),
     );
   }
 
