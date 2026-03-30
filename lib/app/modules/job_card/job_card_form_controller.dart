@@ -45,6 +45,9 @@ class JobCardFormController extends GetxController {
   final isCompleteTimeValid = false.obs;
   final isQtyValid          = false.obs;
 
+  /// True when the qty entered would push totalCompletedQty above forQuantity.
+  final isQtyOverLimit = false.obs;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -75,12 +78,22 @@ class JobCardFormController extends GetxController {
       isStartTimeValid.value &&
       isCompleteTimeValid.value &&
       isQtyValid.value &&
+      !isQtyOverLimit.value &&
       !isAddingTimeLog.value;
 
   bool get canUpdateStatus {
     final jc = jobCard.value;
     if (jc == null || jc.isCancelled) return false;
     return !isUpdatingStatus.value;
+  }
+
+  /// Qty that can still be logged without exceeding forQuantity.
+  /// Returns 0 when the job is already complete or has no target.
+  double get remainingQty {
+    final jc = jobCard.value;
+    if (jc == null || jc.forQuantity <= 0) return 0;
+    final rem = jc.forQuantity - jc.totalCompletedQty;
+    return rem < 0 ? 0 : rem;
   }
 
   // ── Fetch document ────────────────────────────────────────────────────────
@@ -93,6 +106,8 @@ class JobCardFormController extends GetxController {
       final res = await _provider.getJobCard(name);
       if (res.statusCode == 200 && res.data['data'] != null) {
         jobCard.value = JobCard.fromJson(res.data['data']);
+        // Re-run validation so remaining-qty helper text refreshes.
+        _validateTimeLogForm();
       }
     } catch (e) {
       GlobalSnackbar.error(message: 'Failed to load Job Card');
@@ -114,8 +129,20 @@ class JobCardFormController extends GetxController {
   void _validateTimeLogForm() {
     isStartTimeValid.value    = startTimeController.text.isNotEmpty;
     isCompleteTimeValid.value = completeTimeController.text.isNotEmpty;
+
     final qty = double.tryParse(completedQtyController.text) ?? 0;
+    final jc  = jobCard.value;
+
+    // Basic: qty must be positive.
     isQtyValid.value = qty > 0;
+
+    // Over-limit: (already completed + new entry) must not exceed forQuantity.
+    if (jc != null && jc.forQuantity > 0 && qty > 0) {
+      isQtyOverLimit.value =
+          (jc.totalCompletedQty + qty) > jc.forQuantity;
+    } else {
+      isQtyOverLimit.value = false;
+    }
   }
 
   // ── Date + time picker ────────────────────────────────────────────────────
@@ -177,12 +204,18 @@ class JobCardFormController extends GetxController {
       );
 
       if (res.statusCode == 200) {
+        // Reload the document first so totalCompletedQty is up to date
+        // before we decide whether to submit.
         await _fetchDocument();
         completedQtyController.clear();
         completeTimeController.clear();
         _prefillStartTime();
         _validateTimeLogForm();
         GlobalSnackbar.success(message: 'Time log added');
+
+        // Submit the Job Card if all qty has now been completed.
+        // ERPNext only sets status='Completed' on docstatus==1.
+        await _submitIfComplete();
       } else {
         GlobalSnackbar.error(message: 'Failed to add time log');
       }
@@ -190,7 +223,7 @@ class JobCardFormController extends GetxController {
       GlobalSnackbar.error(
           message: _extractErrorMessage(e, 'Add time log failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
+      GlobalSnackbar.error(message: 'Error: \$e');
     } finally {
       isAddingTimeLog.value = false;
     }
@@ -255,7 +288,13 @@ class JobCardFormController extends GetxController {
           JobCard.statusCompleted      => 'Completed',
           _                            => newStatus,
         };
-        GlobalSnackbar.success(message: 'Job Card $label');
+        GlobalSnackbar.success(message: 'Job Card \$label');
+
+        // After a Complete transition, submit the document so ERPNext
+        // can set status='Completed' (requires docstatus==1).
+        if (newStatus == JobCard.statusCompleted) {
+          await _submitIfComplete();
+        }
       } else {
         GlobalSnackbar.error(message: 'Failed to update status');
       }
@@ -263,9 +302,52 @@ class JobCardFormController extends GetxController {
       GlobalSnackbar.error(
           message: _extractErrorMessage(e, 'Status update failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
+      GlobalSnackbar.error(message: 'Error: \$e');
     } finally {
       isUpdatingStatus.value = false;
+    }
+  }
+
+  // ── Submit helper ─────────────────────────────────────────────────────────
+
+  /// Submit the Job Card (docstatus 0 → 1) when all qty has been completed.
+  ///
+  /// ERPNext's [set_status()] only assigns `status = 'Completed'` when
+  /// `docstatus == 1`. Calling `make_time_log` alone saves the document as
+  /// a draft (docstatus 0), so the status always stays 'Work In Progress'
+  /// without this explicit submission step.
+  ///
+  /// The method is a no-op when:
+  ///   - The document is already submitted (docstatus == 1).
+  ///   - totalCompletedQty + processLossQty < forQuantity (not yet done).
+  ///
+  /// After a successful submit the document is reloaded to show the final
+  /// 'Completed' status from the server.
+  Future<void> _submitIfComplete() async {
+    final jc = jobCard.value;
+    if (jc == null) return;
+
+    // Already submitted — nothing to do.
+    if (jc.docstatus == 1) return;
+
+    // Not yet fully complete — skip silently.
+    final completed = jc.totalCompletedQty + jc.processLossQty;
+    if (jc.forQuantity > 0 && completed < jc.forQuantity) return;
+
+    try {
+      final res = await _provider.submitJobCard(name);
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Job Card submitted & Completed');
+      } else {
+        GlobalSnackbar.error(
+            message: 'Time log saved but Job Card submission failed');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Job Card submission failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Submission error: \$e');
     }
   }
 

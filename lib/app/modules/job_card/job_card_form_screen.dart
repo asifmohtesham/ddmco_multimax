@@ -198,7 +198,7 @@ class _HeaderCard extends StatelessWidget {
                   style: textTheme.labelMedium
                       ?.copyWith(color: cs.onSurfaceVariant)),
               Text(
-                '${_fmtQty(jc.totalCompletedQty)} / ${_fmtQty(jc.forQuantity)}',
+                '\${_fmtQty(jc.totalCompletedQty)} / \${_fmtQty(jc.forQuantity)}',
                 style: textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface,
@@ -354,17 +354,38 @@ class _AddTimeLogSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
-        // Completed qty
-        TextField(
-          controller: controller.completedQtyController,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Completed Qty *',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.numbers_outlined),
-          ),
-        ),
+        // Completed qty — with remaining-qty helper and over-limit error
+        Obx(() {
+          final remaining   = controller.remainingQty;
+          final overLimit   = controller.isQtyOverLimit.value;
+          final jc          = controller.jobCard.value;
+          final forQty      = jc?.forQuantity ?? 0;
+
+          String? helperText;
+          String? errorText;
+
+          if (overLimit) {
+            errorText = 'Exceeds Work Order qty (max \${_fmtQty(forQty)}). '
+                'Remaining: \${_fmtQty(remaining)}';
+          } else if (forQty > 0) {
+            helperText = 'Remaining: \${_fmtQty(remaining)} '
+                '(WO Qty: \${_fmtQty(forQty)})';
+          }
+
+          return TextField(
+            controller: controller.completedQtyController,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText:   'Completed Qty *',
+              border:      const OutlineInputBorder(),
+              prefixIcon:  const Icon(Icons.numbers_outlined),
+              helperText:  errorText == null ? helperText : null,
+              errorText:   errorText,
+              errorMaxLines: 2,
+            ),
+          );
+        }),
         const SizedBox(height: 16),
 
         // No-employee warning banner
@@ -397,7 +418,8 @@ class _AddTimeLogSection extends StatelessWidget {
               ],
             ),
           ),
-                // Submit button
+
+        // Submit button
         Obx(() => SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -425,6 +447,9 @@ class _AddTimeLogSection extends StatelessWidget {
       ],
     );
   }
+
+  String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -444,7 +469,7 @@ class _TimeLogsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-            label: 'Time Logs (${logs.length})',
+            label: 'Time Logs (\${logs.length})',
             icon: Icons.history_outlined),
         const SizedBox(height: 12),
 
@@ -529,7 +554,7 @@ class _TimeLogRow extends StatelessWidget {
                         size: 14, color: cs.primary),
                     const SizedBox(width: 4),
                     Text(
-                      'Qty: ${_fmtQty(log.completedQty)}',
+                      'Qty: \${_fmtQty(log.completedQty)}',
                       style: textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w600),
                     ),
@@ -579,8 +604,8 @@ class _TimeLogRow extends StatelessWidget {
   String _formatRange(String? from, String? to) {
     if (from == null) return '—';
     final f = _truncate(from);
-    if (to == null) return '$f → running';
-    return '$f → ${_truncate(to)}';
+    if (to == null) return '\$f → running';
+    return '\$f → \${_truncate(to)}';
   }
 
   /// Drop seconds for display: `2026-03-27 08:30:00` → `2026-03-27 08:30`
@@ -645,7 +670,7 @@ class _DetailRow extends StatelessWidget {
         Icon(icon, size: 16, color: cs.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
-          '$label: ',
+          '\$label: ',
           style: textTheme.bodySmall
               ?.copyWith(color: cs.onSurfaceVariant),
         ),
