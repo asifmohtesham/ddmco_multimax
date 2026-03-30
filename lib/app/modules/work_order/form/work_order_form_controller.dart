@@ -15,6 +15,9 @@ import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
@@ -393,54 +396,43 @@ class WorkOrderFormController extends GetxController {
     );
   }
 
-  // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
-
+    // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
   void showBomPicker() {
     if (!canEdit) return;
-    if (bomOptions.isEmpty) {
+    
+    final selectedItemCode = selectedItem.value;
+    if (selectedItemCode == null || selectedItemCode.isEmpty) {
       GlobalSnackbar.info(message: 'Select an item first to load BOMs');
       return;
     }
-    Get.bottomSheet(
-      Container(
-        constraints: BoxConstraints(maxHeight: Get.height * 0.55),
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            const Text('Select BOM',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: bomOptions.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) => ListTile(
-                  leading: const Icon(Icons.account_tree_outlined),
-                  title: Text(bomOptions[i]),
-                  onTap: () {
-                    Get.key.currentState!.pop();
-                    onBomSelected(bomOptions[i]);
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
+
+    showDocTypePickerBottomSheet(
+      config: DocTypePickerConfig(
+        doctype: 'BOM',
+        title: 'Select BOM',
+        columns: [
+          DocTypePickerColumn.primary(
+            fieldname: 'name',
+            label: 'BOM',
+          ),
+          DocTypePickerColumn.subtitle(
+            fieldname: 'item',
+            label: 'Item',
+          ),
+        ],
+        filters: {
+          'item': selectedItemCode,
+          'is_active': 1,
+          'is_default': ['in', [0, 1]],
+        },
+        allowRefresh: true,
       ),
+      onSelect: (selected) {
+        final bomName = selected['name'] as String;
+        onBomSelected(bomName);
+      },
+    );
+  }    ),
     );
   }
 
