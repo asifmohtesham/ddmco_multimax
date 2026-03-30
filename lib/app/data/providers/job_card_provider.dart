@@ -105,4 +105,16 @@ class JobCardProvider {
     String status,
   ) async =>
       _apiProvider.updateDocument('Job Card', name, {'status': status});
+
+    // ── Document submission ─────────────────────────────────────────────────────
+
+  /// Submit a Job Card document (change docstatus from 0 to 1).
+  ///
+  /// ERPNext requires submission to finalize a document and prevent further edits.
+  /// This is typically done after all time logs are recorded and the Job Card
+  /// status is set to "Completed".
+  ///
+  /// [name] — Job Card document name.
+  Future<Response> submitJobCard(String name) async =>
+      _apiProvider.submitDocument('Job Card', name);
 }
