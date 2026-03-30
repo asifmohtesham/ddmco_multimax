@@ -8,6 +8,8 @@ import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
@@ -66,8 +68,11 @@ class WorkOrderFormController extends GetxController {
   final isBomValid       = false.obs;
   final isQtyValid       = false.obs;
 
-  // ── Barcode scanning ────────────────────────────────────────────────────────────────
-  final ScanService _scanService = Get.find<ScanService>();
+  // ── Barcode scanning service ───────────────────────────────────────────────────
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+
+  // ── Persistent scan worker ───────────────────────────────────────────────────
+  Worker? _scanWorker;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────────
 
@@ -80,13 +85,7 @@ class WorkOrderFormController extends GetxController {
     qtyController.addListener(_validateForm);
     itemController.addListener(_validateForm);
 
-    // // Subscribe to barcode scan events
-    // _barcodeScanSubscription = Get.find<ScanService>().scanStream.listen((barcode) {
-    //   if (canEdit && barcode.isNotEmpty) {
-    //     itemController.text = barcode;
-    //     searchItems(barcode);
-    //   }
-    // });
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
 
     if (mode == 'new') {
       _initNew();
@@ -97,7 +96,7 @@ class WorkOrderFormController extends GetxController {
 
   @override
   void onClose() {
-    _barcodeScanSubscription?.cancel();
+    // _barcodeScanSubscription?.cancel();
     itemController.dispose();
     bomController.dispose();
     qtyController.dispose();
@@ -132,6 +131,19 @@ class WorkOrderFormController extends GetxController {
     return operations.any(
       (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
     );
+  }
+
+  // ── Raw scan entry point ─────────────────────────────────────────────────
+  void _onRawScan(String code) {
+    if (code.isEmpty) {
+      return;
+    }
+    if (Get.currentRoute != AppRoutes.WORK_ORDER_FORM) {
+      return;
+    }
+    final clean = code.trim();
+    itemController.text = clean;
+    scanBarcode(clean);
   }
 
   // ── Init new ───────────────────────────────────────────────────────────────────────
