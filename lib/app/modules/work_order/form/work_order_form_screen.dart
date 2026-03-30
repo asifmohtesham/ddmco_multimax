@@ -756,6 +756,7 @@ class _WarehouseField extends StatelessWidget {
   final bool readOnly;
   final VoidCallback onTap;
   final Color? fillColor;
+
   const _WarehouseField({
     required this.label,
     required this.controller,
@@ -766,7 +767,9 @@ class _WarehouseField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final cs = Theme
+        .of(context)
+        .colorScheme;
     return TextField(
       controller: controller,
       readOnly: true,
@@ -783,6 +786,7 @@ class _WarehouseField extends StatelessWidget {
       ),
     );
   }
+}
 
   /// Private widget to render a single Job Card row in the linked section.
 /// Displays the Job Card name as a tappable chip that navigates to detail view.
@@ -839,5 +843,4 @@ class _JobCardRow extends StatelessWidget {
       ),
     );
   }
-}
 }
