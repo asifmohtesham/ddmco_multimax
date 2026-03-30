@@ -86,3 +86,26 @@
 ## Commit 3 — Reusable Barcode Prefill via scanWorker/eventSink
 
 **Commit message:**
+
+### Checklist
+- [ ] Reuse existing `scanWorker` + `eventSink` pattern from Stock Entry / Delivery Note barcode flow
+- [ ] Add opt-in flag: `DocTypePickerConfig.enableBarcodeScan`
+- [ ] On scan:
+  - [ ] Prefill search text input with scanned value
+  - [ ] Trigger list filter/refresh
+  - [ ] Do NOT auto-select — user must tap a row
+- [ ] Subscribe to scan events when bottom sheet opens
+- [ ] Dispose subscription when bottom sheet closes
+- [ ] Pickers with `enableBarcodeScan: false` are completely unaffected
+
+### Acceptance
+- [ ] Barcode scan prefills search and narrows list
+- [ ] Manual override still works after scan
+- [ ] Subscription is cleaned up on dismiss
+- [ ] Non-barcode pickers unaffected
+
+---
+
+## Commit 4 — Item Field Migration to Generic Picker
+
+**Commit message:**
