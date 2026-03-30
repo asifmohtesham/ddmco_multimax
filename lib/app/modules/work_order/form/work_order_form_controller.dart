@@ -8,6 +8,9 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
 
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
@@ -33,7 +36,6 @@ class WorkOrderFormController extends GetxController {
   final workOrder = Rx<WorkOrder?>(null);
 
   // ── Dropdown / picker data ─────────────────────────────────────────────────────────
-  final warehouses = <String>[].obs;
   final bomOptions = <String>[].obs;
   final itemOptions = <String>[].obs;
 
@@ -65,8 +67,6 @@ class WorkOrderFormController extends GetxController {
 
     qtyController.addListener(_validateForm);
     itemController.addListener(_validateForm);
-
-    fetchWarehouses();
 
     if (mode == 'new') {
       _initNew();
@@ -226,26 +226,6 @@ class WorkOrderFormController extends GetxController {
     isQtyValid.value  = qty > 0;
   }
 
-  // ── Fetch warehouses ────────────────────────────────────────────────────────────────
-
-  Future<void> fetchWarehouses() async {
-    isFetchingWarehouses.value = true;
-    try {
-      final res = await _apiProvider.getDocumentList(
-        'Warehouse',
-        filters: {'is_group': 0},
-        limit: 200,
-      );
-      if (res.statusCode == 200 && res.data['data'] != null) {
-        warehouses.value = (res.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
-      }
-    } catch (_) {} finally {
-      isFetchingWarehouses.value = false;
-    }
-  }
-
   // ── Item search ───────────────────────────────────────────────────────────────────
 
   Future<void> searchItems(String query) async {
@@ -392,71 +372,24 @@ class WorkOrderFormController extends GetxController {
 
   void showWarehousePicker(TextEditingController ctrl) {
     if (!canEdit) return;
-    final search   = TextEditingController();
-    final filtered = warehouses.toList().obs;
-    Get.bottomSheet(
-      Container(
-        height: Get.height * 0.65,
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            const Text('Select Warehouse',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: search,
-              decoration: const InputDecoration(
-                hintText: 'Search warehouse…',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              onChanged: (v) {
-                filtered.value = warehouses
-                    .where((w) => w.toLowerCase().contains(v.toLowerCase()))
-                    .toList();
-              },
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Obx(() {
-                if (isFetchingWarehouses.value) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (filtered.isEmpty) {
-                  return const Center(child: Text('No warehouses found'));
-                }
-                return ListView.separated(
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text(filtered[i]),
-                    onTap: () {
-                      ctrl.text = filtered[i];
-                      markDirty();
-                      Get.key.currentState!.pop();
-                    },
-                  ),
-                );
-              }),
-            ),
-          ],
-        ),
+    
+    showDocTypePickerBottomSheet(
+      config: DocTypePickerConfig(
+        doctype: 'Warehouse',
+        title: 'Select Warehouse',
+        columns: [
+          DocTypePickerColumn.primary(
+            fieldname: 'name',
+            label: 'Warehouse',
+          ),
+        ],
+        filters: {'is_group': 0},
+        allowRefresh: true,
       ),
+      onSelect: (selected) {
+        ctrl.text = selected['name'] as String;
+        markDirty();
+      },
     );
   }
 
