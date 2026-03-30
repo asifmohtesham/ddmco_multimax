@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -54,6 +55,13 @@ class JobCardProvider {
   /// Calls the whitelisted server method:
   ///   `erpnext.manufacturing.doctype.job_card.job_card.make_time_log`
   ///
+  /// ERPNext's `make_time_log` expects a POST request with `args` sent as a
+  /// JSON-encoded string in a form-urlencoded body, e.g.:
+  ///   args={"job_card_id": "JC-0001", "start_time": "...", ...}
+  ///
+  /// Sending `args` as a nested Map via GET query params causes:
+  ///   TypeError: make_time_log() missing 1 required positional argument: 'args'
+  ///
   /// **Manual entry (primary mode)**
   ///   Pass both [startTime] and [completeTime] as ISO 8601 datetime strings.
   ///   The server computes `time_in_mins` from the difference.
@@ -78,20 +86,26 @@ class JobCardProvider {
     required double completedQty,
     required List<Map<String, String>> employees,
     required String status,
-  }) async =>
-      _apiProvider.callMethod(
-        'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
-        params: {
-                'args': {
-          'job_card_id':   jobCardId,
-          'start_time':    startTime,
-          if (completeTime != null) 'complete_time': completeTime,
-          'completed_qty': completedQty,
-          'employees':     employees,
-          'status':        status,
-                        },
-        },
-      );
+  }) async {
+    final Map<String, dynamic> argsMap = {
+      'job_card_id':   jobCardId,
+      'start_time':    startTime,
+      if (completeTime != null) 'complete_time': completeTime,
+      'completed_qty': completedQty,
+      'employees':     employees,
+      'status':        status,
+    };
+
+    // ERPNext requires `args` to be a JSON-encoded string in a
+    // form-urlencoded POST body. Sending it as a nested Map in a GET
+    // request causes the server to never resolve the `args` parameter,
+    // raising: TypeError: make_time_log() missing 1 required positional
+    // argument: 'args'.
+    return _apiProvider.callMethodPost(
+      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
+      params: {'args': json.encode(argsMap)},
+    );
+  }
 
   // ── Status update ─────────────────────────────────────────────────────────────
 
