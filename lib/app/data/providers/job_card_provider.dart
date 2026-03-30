@@ -78,7 +78,7 @@ class JobCardProvider {
   ///   `PUT /api/resource/Job Card Time Log/{name}`
   /// The parent Job Card's `total_completed_qty` and `status` are
   /// recalculated server-side by the `validate` hook when the parent is
-  /// next saved.  We trigger that by calling `updateJobCardMeta` immediately
+  /// next saved.  We trigger that by calling `touchJobCard` immediately
   /// after a successful row PATCH.
   ///
   /// Only the three user-editable fields are sent:
@@ -103,8 +103,19 @@ class JobCardProvider {
     );
   }
 
+  // ── Time log: delete ───────────────────────────────────────────────────────
+
+  /// Delete a **Job Card Time Log** child row.
+  ///
+  /// ERPNext exposes child-table rows as independent REST resources, so a
+  /// simple DELETE to `/api/resource/Job Card Time Log/{name}` removes the
+  /// row.  Call [touchJobCard] afterwards so the server recalculates
+  /// `total_completed_qty` on the parent document.
+  Future<Response> deleteTimeLog(String timeLogName) async =>
+      _apiProvider.deleteDocument('Job Card Time Log', timeLogName);
+
   /// Touch the parent Job Card (empty PUT) so the server recalculates
-  /// `total_completed_qty` after a child-row edit.
+  /// `total_completed_qty` after a child-row edit or deletion.
   Future<Response> touchJobCard(String jobCardName) async =>
       _apiProvider.updateDocument('Job Card', jobCardName, {});
 

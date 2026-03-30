@@ -292,6 +292,46 @@ class JobCardFormController extends GetxController {
     }
   }
 
+  // ── Delete time log ───────────────────────────────────────────────────────
+
+  /// Deletes a time log row after user confirmation, then touches the parent
+  /// Job Card so the server recalculates `total_completed_qty`.
+  ///
+  /// Uses [isEditingTimeLog] as the in-flight guard so that both the edit
+  /// and delete icon buttons are disabled while any time-log operation is
+  /// running, preventing concurrent mutations.
+  Future<void> deleteTimeLog(JobCardTimeLog log) async {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable) return;
+
+    final confirmed = await GlobalDialog.confirm(
+      title:       'Delete Time Log',
+      message:     'Remove this time log entry? This cannot be undone.',
+      confirmText: 'Delete',
+    );
+    if (confirmed != true) return;
+
+    isEditingTimeLog.value = true;
+    try {
+      final res = await _provider.deleteTimeLog(log.name);
+      // ERPNext DELETE returns 202 on success.
+      if (res.statusCode == 200 || res.statusCode == 202) {
+        await _provider.touchJobCard(name);
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Time log deleted');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to delete time log');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Delete time log failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isEditingTimeLog.value = false;
+    }
+  }
+
   // ── Update status ─────────────────────────────────────────────────────────
 
   Future<void> updateStatus(String newStatus) async {

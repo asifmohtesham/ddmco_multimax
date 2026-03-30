@@ -72,13 +72,14 @@ class _JobCardFormBody extends StatelessWidget {
             }),
 
             // Time logs list — passes isDraft so rows know whether to show
-            // the edit icon.
+            // the edit and delete icons.
             Obx(() {
               final current = controller.jobCard.value ?? jc;
               return _TimeLogsSection(
-                logs:    current.timeLogs,
-                isDraft: current.isEditable,
-                onEdit:  controller.editTimeLog,
+                logs:     current.timeLogs,
+                isDraft:  current.isEditable,
+                onEdit:   controller.editTimeLog,
+                onDelete: controller.deleteTimeLog,
               );
             }),
           ],
@@ -428,14 +429,16 @@ class _AddTimeLogSection extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 class _TimeLogsSection extends StatelessWidget {
-  final List<JobCardTimeLog>       logs;
-  final bool                       isDraft;
+  final List<JobCardTimeLog>          logs;
+  final bool                          isDraft;
   final void Function(JobCardTimeLog) onEdit;
+  final void Function(JobCardTimeLog) onDelete;
 
   const _TimeLogsSection({
     required this.logs,
     required this.isDraft,
     required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -465,9 +468,10 @@ class _TimeLogsSection extends StatelessWidget {
         else
           ...logs.map(
             (log) => _TimeLogRow(
-              log:     log,
-              isDraft: isDraft,
-              onEdit:  onEdit,
+              log:      log,
+              isDraft:  isDraft,
+              onEdit:   onEdit,
+              onDelete: onDelete,
             ),
           ),
       ],
@@ -479,11 +483,13 @@ class _TimeLogRow extends StatelessWidget {
   final JobCardTimeLog             log;
   final bool                       isDraft;
   final void Function(JobCardTimeLog) onEdit;
+  final void Function(JobCardTimeLog) onDelete;
 
   const _TimeLogRow({
     required this.log,
     required this.isDraft,
     required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -585,8 +591,8 @@ class _TimeLogRow extends StatelessWidget {
             ),
           ),
 
-          // ── Edit icon (draft only) ──
-          if (isDraft)
+          // ── Edit + Delete icons (draft only) ──
+          if (isDraft) ...[
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: 'Edit time log',
@@ -594,6 +600,14 @@ class _TimeLogRow extends StatelessWidget {
                   size: 18, color: cs.primary),
               onPressed: () => onEdit(log),
             ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Delete time log',
+              icon: Icon(Icons.delete_outline,
+                  size: 18, color: cs.error),
+              onPressed: () => onDelete(log),
+            ),
+          ],
         ],
       ),
     );
