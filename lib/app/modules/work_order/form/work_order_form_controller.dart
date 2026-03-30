@@ -23,7 +23,6 @@ import 'package:multimax/app/data/models/job_card_model.dart';
 class WorkOrderFormController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  StreamSubscription<String>? _barcodeScanSubscription;
 
   // ── Route args ─────────────────────────────────────────────────────────────────────
   late String name;
