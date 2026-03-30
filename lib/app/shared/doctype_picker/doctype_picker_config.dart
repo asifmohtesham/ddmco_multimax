@@ -4,15 +4,35 @@ import 'doctype_picker_column.dart';
 // DocTypePickerConfig
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Configuration object passed to [DocTypePickerBottomSheet].
+/// Configuration for a generic DocType picker bottom sheet.
+///
+/// This class defines how a DocType should be displayed and queried
+/// in the picker interface. It supports:
+/// - Custom filters and search fields
+/// - Multi-column layouts with flexible column definitions
+/// - Subtitle metadata formatting
+/// - Optional barcode scanning
+/// - Cache-first loading with manual refresh
 ///
 /// A single [DocTypePickerConfig] describes everything the picker needs to
-/// display, search, and filter records for one ERPNext DocType.  Business
+/// display, search, and filter records for one ERPNext DocType. Business
 /// logic (side-effects after selection) belongs in the calling controller,
 /// not here.
 ///
 /// ### Minimal example
 /// ```dart
+/// const itemPickerConfig = DocTypePickerConfig(
+///   doctype: 'Item',
+///   title: 'Select Item',
+///   columns: [
+///     DocTypePickerColumn(
+///       fieldName: 'item_code',
+///       label: 'Item Code',
+///       isPrimary: true,
+///     ),
+///   ],
+/// );
+/// ```/// ```dart
 /// const itemPickerConfig = DocTypePickerConfig(
 ///   doctype: 'Item',
 ///   title: 'Select Item',
