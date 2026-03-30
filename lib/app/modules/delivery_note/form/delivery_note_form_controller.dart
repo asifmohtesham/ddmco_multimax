@@ -130,20 +130,13 @@ class DeliveryNoteFormController extends GetxController
 
   // ── Raw scan entry point ─────────────────────────────────────────────────
   void _onRawScan(String code) {
-    log('[DN:_onRawScan] CHECKPOINT-1 code="$code" currentRoute=${Get.currentRoute}',
-        name: 'DN');
     if (code.isEmpty) {
-      log('[DN:_onRawScan] CHECKPOINT-1A empty code — ignored', name: 'DN');
       return;
     }
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) {
-      log('[DN:_onRawScan] CHECKPOINT-1B wrong route (${Get.currentRoute}) — ignored',
-          name: 'DN');
       return;
     }
     final clean = code.trim();
-    log('[DN:_onRawScan] CHECKPOINT-2 forwarding clean="$clean" to scanBarcode',
-        name: 'DN');
     barcodeController.text = clean;
     scanBarcode(clean);
   }
@@ -728,29 +721,19 @@ class DeliveryNoteFormController extends GetxController
 
   Future<void> scanBarcode(String barcode) async {
     if (barcode.isEmpty) return;
-    log('[DN:scanBarcode] CHECKPOINT-4 barcode="$barcode" isItemSheetOpen=${isItemSheetOpen.value}',
-        name: 'DN');
 
     if (!_validateHeaderBeforeScan()) {
-      log('[DN:scanBarcode] CHECKPOINT-4A header validation failed — aborted',
-          name: 'DN');
       return;
     }
 
     // ── INSIDE-SHEET PATH ──────────────────────────────────────────────────────────────────────────────────────
     if (isItemSheetOpen.value) {
-      log('[DN:scanBarcode] CHECKPOINT-5 inside-sheet path entered for barcode="$barcode"',
-          name: 'DN');
       barcodeController.clear();
 
       final bool childRegistered =
           Get.isRegistered<DeliveryNoteItemFormController>();
-      log('[DN:scanBarcode] CHECKPOINT-5A childRegistered=$childRegistered',
-          name: 'DN');
 
       if (!childRegistered) {
-        log('[DN:scanBarcode] CHECKPOINT-5B child NOT registered — scan dropped',
-            name: 'DN');
         return;
       }
 
@@ -758,51 +741,33 @@ class DeliveryNoteFormController extends GetxController
       final String? contextEan =
           child.currentScannedEan.isNotEmpty ? child.currentScannedEan : null;
 
-      log('[DN:scanBarcode] CHECKPOINT-5C contextEan=$contextEan', name: 'DN');
       final result =
           await _scanService.processScan(barcode, contextItemCode: contextEan);
 
-      log('[DN:scanBarcode] CHECKPOINT-5D result: type=${result.type} batchNo=${result.batchNo}',
-          name: 'DN');
 
       if (result.type == ScanType.rack && result.rackId != null) {
-        log('[DN:scanBarcode] CHECKPOINT-5E routing to rack: ${result.rackId}',
-            name: 'DN');
         child.rackController.text = result.rackId!;
         child.validateRack(result.rackId!);
       } else if (result.type == ScanType.batch || result.type == ScanType.item) {
         final candidateBatch = result.batchNo;
-        log('[DN:scanBarcode] CHECKPOINT-5F batch path: candidateBatch=$candidateBatch',
-            name: 'DN');
         if (candidateBatch != null && candidateBatch.isNotEmpty) {
           child.batchController.text = candidateBatch;
-          log('[DN:scanBarcode] CHECKPOINT-5G batchController.text → "${child.batchController.text}"',
-              name: 'DN');
           child.validateBatch(candidateBatch);
         } else {
-          log('[DN:scanBarcode] CHECKPOINT-5H candidateBatch null/empty', name: 'DN');
           GlobalSnackbar.error(
               message: 'Scan the item EAN first, then scan the batch suffix.');
         }
       } else if (result.type == ScanType.error) {
-        log('[DN:scanBarcode] CHECKPOINT-5I ScanType.error: ${result.message}',
-            name: 'DN');
         GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
       } else {
-        log('[DN:scanBarcode] CHECKPOINT-5J unhandled type=${result.type}',
-            name: 'DN');
       }
       return;
     }
 
     // ── OUTSIDE-SHEET PATH ────────────────────────────────────────────────────────────────────────────────────────
-    log('[DN:scanBarcode] CHECKPOINT-6 outside-sheet path for barcode="$barcode"',
-        name: 'DN');
     isScanning.value = true;
     try {
       final result = await _scanService.processScan(barcode);
-      log('[DN:scanBarcode] CHECKPOINT-6A outside result: type=${result.type} item=${result.itemData?.itemCode}',
-          name: 'DN');
 
       if (result.isSuccess && result.itemData != null) {
         if (result.rawCode.contains('-') &&
@@ -811,8 +776,6 @@ class DeliveryNoteFormController extends GetxController
         } else {
           currentScannedEan = result.rawCode;
         }
-        log('[DN:scanBarcode] CHECKPOINT-6B currentScannedEan → "$currentScannedEan"',
-            name: 'DN');
 
         final itemData = result.itemData!;
         double  maxQty          = 0.0;
@@ -842,8 +805,6 @@ class DeliveryNoteFormController extends GetxController
         isScanning.value = false;
         barcodeController.clear();
 
-        log('[DN:scanBarcode] CHECKPOINT-6C opening item sheet for ${itemData.itemCode}',
-            name: 'DN');
         await _openItemSheet(
           itemCode:      itemData.itemCode,
           itemName:      itemData.itemName,
@@ -851,16 +812,12 @@ class DeliveryNoteFormController extends GetxController
           initialMaxQty: maxQty,
         );
       } else if (result.type == ScanType.multiple) {
-        log('[DN:scanBarcode] CHECKPOINT-6D ScanType.multiple', name: 'DN');
         GlobalSnackbar.warning(
             message: 'Multiple items found. Please search manually.');
       } else {
-        log('[DN:scanBarcode] CHECKPOINT-6E no item found: ${result.message}',
-            name: 'DN');
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
       }
     } catch (e) {
-      log('[DN:scanBarcode] CHECKPOINT-6F exception: $e', name: 'DN');
       GlobalSnackbar.error(message: 'Scan processing failed: $e');
     } finally {
       isScanning.value = false;
