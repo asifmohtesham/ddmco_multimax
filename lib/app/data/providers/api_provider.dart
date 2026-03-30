@@ -161,7 +161,7 @@ class ApiProvider {
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
 
-  Future<Response> 164
+  Future<Response> deleteDocument
     (String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.delete('/api/resource/$doctype/$name');
