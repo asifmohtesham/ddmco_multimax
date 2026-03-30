@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
 
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -55,7 +56,7 @@ class MrItemRow {
 }
 
 class StockEntryFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, BarcodeScanMixin {
   // ── Dependencies ─────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
@@ -267,6 +268,7 @@ class StockEntryFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    initScanWiring();
     _initDependencies();
     if (mode == 'new') {
       _initNewStockEntry();
@@ -302,7 +304,7 @@ class StockEntryFormController extends GetxController
 
   @override
   void onClose() {
-    _scanWorker?.dispose();
+    disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
     final bcc = barcodeController;
@@ -312,6 +314,43 @@ class StockEntryFormController extends GetxController
       crc.dispose();
     });
     super.onClose();
+  }
+
+  // ── Only Stock Entry-specific scan behaviour here ────────────────────────────
+
+  @override
+  bool shouldBlockScan() =>
+      checkStaleAndBlock() || !_validateHeaderBeforeScan();
+
+  @override
+  Future<void> onScanResult(ScanResult result) async {
+    // Delegate to sheet if open
+    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
+      _handleSheetScan(result.rawCode);
+      return;
+    }
+
+    if (!result.isSuccess || result.itemData == null) {
+      GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+      return;
+    }
+
+    if (!_validateScanContext(result)) return;
+
+    // SE-specific: derive EAN8 context
+    if (result.rawCode.contains('-') &&
+        !result.rawCode.startsWith('SHIPMENT')) {
+      currentScannedEan = result.rawCode.split('-')[0];
+    } else {
+      currentScannedEan = result.rawCode;
+    }
+
+    final itemData   = result.itemData!;
+    currentItemCode  = itemData.itemCode;
+    currentVariantOf = itemData.variantOf ?? '';
+    currentItemName  = itemData.itemName;
+    currentUom       = itemData.stockUom ?? 'Nos';
+    _openNewItemSheet(scannedBatch: result.batchNo);
   }
 
   void _setSaveResult(SaveResult result) {
