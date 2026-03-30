@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'job_card_creation_sheet.dart';
@@ -805,7 +806,7 @@ class _JobCardRow extends StatelessWidget {
       child: InkWell(
         onTap: () {
           // TODO: Navigate to Job Card detail screen
-          // Get.toNamed(Routes.JOB_CARD_DETAIL, arguments: {'name': name});
+          Get.toNamed(AppRoutes.JOB_CARD_FORM, arguments: {'name': name});
         },
         borderRadius: BorderRadius.circular(8),
         child: Container(
