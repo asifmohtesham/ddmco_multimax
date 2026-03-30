@@ -66,7 +66,7 @@ class WorkOrderProvider {
         limit: 50,
       );
 
-  // ── Submit & Job Card ─────────────────────────────────────────────────────────────
+  // ── Submit, Execute & Job Card ────────────────────────────────────────────────
 
   /// Submit a Work Order by setting docstatus to 1.
   ///
@@ -75,6 +75,21 @@ class WorkOrderProvider {
   /// `exc_type` in the response body — the controller handles this.
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
+
+  /// Execute a submitted Work Order: transitions status from
+  /// "Not Started" → "In Progress" via the ERPNext whitelisted method.
+  ///
+  /// Internally calls `set_work_order_ops` server method which validates
+  /// that the Work Order is submitted (docstatus == 1) and updates the
+  /// `status` field to "In Progress" along with resetting planned times.
+  Future<Response> executeWorkOrder(String name) async =>
+      _apiProvider.callMethod(
+        'erpnext.manufacturing.doctype.work_order.work_order.update_work_order_status',
+        params: {
+          'work_order': name,
+          'status': 'In Progress',
+        },
+      );
 
   /// Create Job Cards for the selected operations on a submitted Work Order.
   ///
