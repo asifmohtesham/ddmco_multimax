@@ -34,3 +34,35 @@
 ## Commit 1 — Generic DocType Picker UI Shell
 
 **Commit message:**
+
+### Checklist
+- [ ] Create `DocTypePickerConfig` with fields: `doctype`, `title`, `displayField`, `searchFields`, `filters`, `columns`, `subtitleFields`, `subtitleFormatter`, `allowRefresh`, `cacheKey`, `enableBarcodeScan`
+- [ ] Create `DocTypePickerColumn` with fields: `key`, `label`, `flex`, `minWidth`, `isPrimary`, `align`, `visibleOnMobile`, `valueBuilder`
+- [ ] Create `DocTypePickerBottomSheet` widget with:
+  - Title bar + dismiss
+  - Search input field
+  - Optional refresh icon/action
+  - List area with `ListView` or `ScrollView`
+  - Row rendering: multi-column/table-like on wider layouts; stacked compact on mobile
+  - Primary field bold and dominant
+  - Secondary field muted
+  - Subtitle row: joined metadata, hide empty parts, truncate to one line
+  - Loading state (shimmer or spinner)
+  - Empty state with friendly message
+  - Error state with retry option
+  - `onSelected(Map<String, dynamic> row)` callback
+- [ ] No ERPNext data fetch in this commit — use mocked rows
+
+### Acceptance
+- [ ] Bottom sheet opens with mocked data
+- [ ] Multi-column row renders correctly on normal phone width
+- [ ] Stacked layout works on narrow widths
+- [ ] Primary field is visually dominant
+- [ ] Subtitle hides when all subtitle fields are empty
+- [ ] Dismiss works
+
+---
+
+## Commit 2 — Cache-First Datasource with Live Refresh
+
+**Commit message:**
