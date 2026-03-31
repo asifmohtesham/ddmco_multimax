@@ -66,30 +66,66 @@ class WorkOrderProvider {
         limit: 50,
       );
 
-  // ── Submit, Execute & Job Card ──────────────────────────────────────────
+  // ── Submit & Job Card ───────────────────────────────────────────────────
 
   /// Submit a Work Order by setting docstatus to 1.
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
-  /// Execute a submitted Work Order: transitions status from
-  /// "Not Started" → "In Process".
+  // ── Execute: Material Transfer for Manufacture ──────────────────────────
+
+  /// Ask ERPNext to build a pre-filled Material Transfer for Manufacture
+  /// Stock Entry for [workOrderName].
   ///
-  /// NOTE: ERPNext Work Order status enum value is "In Process" (NOT
-  /// "In Progress"). Sending "In Progress" causes HTTP 417 ValidationError
-  /// from frappe.client.set_value.
+  /// Calls the whitelisted server method:
+  ///   erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry
   ///
-  /// Valid status values: Draft, Submitted, Not Started, In Process,
-  /// Completed, Stopped, Closed, Cancelled.
-  Future<Response> executeWorkOrder(String name) async =>
-      _apiProvider.callMethodPost(
-        'frappe.client.set_value',
+  /// ERPNext returns a ready-to-save Stock Entry document dict with:
+  ///   - purpose = 'Material Transfer for Manufacture'
+  ///   - work_order linked
+  ///   - items[] populated from the BOM required materials
+  ///   - from_warehouse / to_warehouse (wip_warehouse) pre-filled
+  ///
+  /// The caller should save (POST /api/resource/Stock Entry) and then
+  /// submit the saved SE. ERPNext's Stock Entry on_submit hook
+  /// automatically updates the Work Order status to 'In Process'.
+  ///
+  /// [qty] is the quantity to transfer. Pass the full Work Order qty for
+  /// a complete transfer, or a partial qty for staged execution.
+  Future<Response> getMaterialTransferForManufacture(
+    String workOrderName, {
+    required double qty,
+  }) async =>
+      _apiProvider.callMethod(
+        'erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry',
         params: {
-          'doctype': 'Work Order',
-          'name': name,
-          'fieldname': 'status',
-          'value': 'In Process',
+          'work_order_id': workOrderName,
+          'purpose': 'Material Transfer for Manufacture',
+          'qty': qty,
         },
+      );
+
+  /// Save a pre-filled Stock Entry document returned by
+  /// [getMaterialTransferForManufacture] (or any other SE builder).
+  ///
+  /// Returns the saved SE with its auto-generated [name] (e.g. STE-0001).
+  Future<Response> saveStockEntry(Map<String, dynamic> data) async =>
+      _apiProvider.createDocument('Stock Entry', data);
+
+  /// Submit a saved Stock Entry (docstatus 0 → 1).
+  ///
+  /// Submitting a Material Transfer for Manufacture SE triggers ERPNext's
+  /// Stock Entry on_submit hook which:
+  ///   1. Posts the stock ledger entries (deducts raw-material stock).
+  ///   2. Updates the linked Work Order status to 'In Process'.
+  ///
+  /// This is the ONLY correct way to transition the Work Order to
+  /// 'In Process' — never call set_value on the WO status directly.
+  Future<Response> submitStockEntry(String stockEntryName) async =>
+      _apiProvider.updateDocument(
+        'Stock Entry',
+        stockEntryName,
+        {'docstatus': 1},
       );
 
   /// Create Job Cards for the selected operations on a submitted Work Order.
