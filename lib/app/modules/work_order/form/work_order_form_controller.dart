@@ -775,6 +775,54 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     return completer.future;
   }
 
+  // ── Create Job Cards (public — called by JobCardCreationSheet) ────────────────
+  /// Creates Job Cards for a caller-supplied list of operations using
+  /// the quantities chosen by the user in [JobCardCreationSheet].
+  ///
+  /// Unlike [_autoCreateJobCards] (which runs silently after submission with
+  /// full pending-qty for every eligible op), this method honours the
+  /// explicit [ops] + [qtys] the operator selected in the bottom sheet.
+  ///
+  /// On success the linked Job Cards list is refreshed and a success
+  /// snackbar is shown.  On failure a warning snackbar is shown so the
+  /// operator knows to retry — the Work Order itself is unaffected.
+  Future<void> createJobCards(
+    List<WorkOrderOperation> ops,
+    Map<String, double> qtys,
+  ) async {
+    if (ops.isEmpty || isCreatingJobCards.value) return;
+
+    isCreatingJobCards.value = true;
+    try {
+      final payload = ops.map((op) {
+        final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
+        return op.toJobCardPayload(qty: qty);
+      }).toList();
+
+      final res = await _provider.makeJobCard(name, payload);
+      if (res.statusCode == 200) {
+        await fetchLinkedJobCards();
+        GlobalSnackbar.success(
+          message: '${ops.length} Job Card${ops.length == 1 ? '' : 's'} created successfully',
+        );
+      } else {
+        GlobalSnackbar.warning(
+          message: 'Job Card creation failed. Please try again.',
+        );
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.warning(
+        message: _extractErrorMessage(e, 'Job Card creation failed'),
+      );
+    } catch (_) {
+      GlobalSnackbar.warning(
+        message: 'Job Card creation failed — please try again.',
+      );
+    } finally {
+      isCreatingJobCards.value = false;
+    }
+  }
+
   // ── Auto-create Job Cards (internal) ──────────────────────────────────────────
   /// Silently creates Job Cards for all eligible operations after submission.
   /// Called internally by [submitWorkOrder] — not exposed to the UI.
