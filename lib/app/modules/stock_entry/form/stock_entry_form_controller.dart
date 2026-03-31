@@ -24,13 +24,13 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
-// ── Shared sheet layer ────────────────────────────────────────────────────────────────────────────
+// ── Shared sheet layer ───────────────────────────────────────────────────────────────────────────────────────
 
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 
-// ── SE-module-local widgets ───────────────────────────────────────────────────────────────────────
+// ── SE-module-local widgets ───────────────────────────────────────────────────────────────────────────────────
 
 import 'widgets/item_form_sheet/rack_section.dart';
 
@@ -58,7 +58,7 @@ class MrItemRow {
 
 class StockEntryFormController extends GetxController
     with OptimisticLockingMixin, BarcodeScanMixin {
-  // ── Dependencies ────────────────────────────────────────────────────────────────────────────
+  // ── Dependencies ────────────────────────────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
   final PosUploadProvider   _posProvider    = Get.find<PosUploadProvider>();
@@ -66,7 +66,7 @@ class StockEntryFormController extends GetxController
   final ScanService         _scanService    = Get.find<ScanService>();
   final DataWedgeService    _dataWedgeService = Get.find<DataWedgeService>();
 
-  // ── Arguments ─────────────────────────────────────────────────────────────────────────────
+  // ── Arguments ───────────────────────────────────────────────────────────────────────────────────
   // NOTE: these MUST be assigned inside onInit(), not as field initializers.
   // Field initializers run at class instantiation time when Get.arguments still
   // points to the previous route (WorkOrderForm). By onInit() the route
@@ -79,7 +79,8 @@ class StockEntryFormController extends GetxController
   /// the 'Material Transfer for Manufacture' flow.
   String? argWorkOrderName;
 
-  // ── Document state ──────────────────────────────────────────────────────────────────────────
+  // ── Document state ──────────────────────────────────────────────────────────────────────────────────
+
   var isLoading        = true.obs;
   var isScanning       = false.obs;
   var isSaving         = false.obs;
@@ -94,17 +95,17 @@ class StockEntryFormController extends GetxController
   var stockEntry  = Rx<StockEntry?>(null);
   var entrySource = StockEntrySource.manual;
 
-  // ── Context data ──────────────────────────────────────────────────────────────────────────
+  // ── Context data ──────────────────────────────────────────────────────────────────────────────────
   var mrReferenceItems = <Map<String, dynamic>>[];
 
   var posUpload              = Rx<PosUpload?>(null);
   var posUploadSerialOptions = <String>[].obs;
   var expandedInvoice        = ''.obs;
 
-  // ── MR filter ─────────────────────────────────────────────────────────────────────────────
+  // ── MR filter ──────────────────────────────────────────────────────────────────────────────────
   var mrItemFilter = 'All'.obs;
 
-  // ── Form fields ───────────────────────────────────────────────────────────────────────────
+  // ── Form fields ───────────────────────────────────────────────────────────────────────────────────
   var selectedFromWarehouse    = RxnString();
   var selectedToWarehouse      = RxnString();
   final customReferenceNoController = TextEditingController();
@@ -117,7 +118,7 @@ class StockEntryFormController extends GetxController
   var warehouses          = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── Sheet & scan context ──────────────────────────────────────────────────────────────────
+  // ── Sheet & scan context ────────────────────────────────────────────────────────────────────────────────
   final TextEditingController barcodeController = TextEditingController();
   var isItemSheetOpen = false.obs;
 
@@ -127,7 +128,7 @@ class StockEntryFormController extends GetxController
   var currentUom       = '';
   var currentScannedEan = '';
 
-  // ── Item feedback ─────────────────────────────────────────────────────────────────────────
+  // ── Item feedback ─────────────────────────────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
   final Map<String, GlobalKey> itemKeys = {};
   var itemFormKey = GlobalKey<FormState>();
@@ -138,7 +139,7 @@ class StockEntryFormController extends GetxController
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
-  // ── Domain helpers ───────────────────────────────────────────────────────────────────────────
+  // ── Domain helpers ───────────────────────────────────────────────────────────────────────────────────
 
   String getTypeHelperText(String type) {
     switch (type) {
@@ -157,7 +158,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── POS qty-cap helpers ─────────────────────────────────────────────────────────────────────────
+  // ── POS qty-cap helpers ──────────────────────────────────────────────────────────────────────────────────────
   //
   // Canonical formula (all three helpers form a consistent chain):
   //
@@ -193,7 +194,7 @@ class StockEntryFormController extends GetxController
     return (cap - scannedQtyForSerial(serial)).clamp(0.0, cap);
   }
 
-  // ── MR helpers ────────────────────────────────────────────────────────────────────────────
+  // ── MR helpers ────────────────────────────────────────────────────────────────────────────────────
 
   bool get isMaterialRequestEntry =>
       customReferenceNoController.text.startsWith('MAT-MR-');
@@ -226,7 +227,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── POS helpers ───────────────────────────────────────────────────────────────────────────
+  // ── POS helpers ───────────────────────────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUpload(String posId) async {
     try {
@@ -258,7 +259,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -319,7 +320,7 @@ class StockEntryFormController extends GetxController
     super.onClose();
   }
 
-  // ── Only Stock Entry-specific scan behaviour here ─────────────────────────────────────────
+  // ── Only Stock Entry-specific scan behaviour here ──────────────────────────────────────────────────
 
   @override
   bool shouldBlockScan() =>
@@ -364,7 +365,7 @@ class StockEntryFormController extends GetxController
     });
   }
 
-  // ── New entry init ───────────────────────────────────────────────────────────────────────────
+  // ── New entry init ─────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
@@ -381,7 +382,7 @@ class StockEntryFormController extends GetxController
     List<StockEntryItem> prefillItems = [];
 
     if (entrySource == StockEntrySource.workOrder) {
-      // ── Work Order execute path ───────────────────────────────────────────────────────────
+      // ── Work Order execute path ───────────────────────────────────────────────────────────────────────────
       // args['items']         = List<Map> from ERPNext make_stock_entry BOM explosion.
       // args['fromWarehouse'] = header-level from_warehouse on the SE doc (Commit 1).
       // args['toWarehouse']   = header-level to_warehouse on the SE doc (Commit 1).
@@ -395,7 +396,7 @@ class StockEntryFormController extends GetxController
       final argFromWarehouse = Get.arguments?['fromWarehouse'] as String?;
       final argToWarehouse   = Get.arguments?['toWarehouse']   as String?;
 
-      // ── Prefill header warehouse pickers immediately from args ────────────────────────────
+      // ── Prefill header warehouse pickers immediately from args ───────────────────────────────
       // This makes the Details tab show the correct warehouses before the user
       // even taps that tab, matching the WO's configured WIP/source warehouse.
       if (argFromWarehouse != null && argFromWarehouse.isNotEmpty) {
@@ -440,7 +441,7 @@ class StockEntryFormController extends GetxController
         );
       }).toList();
 
-      // ── Sync header pickers from first item if args were absent ───────────────────────────
+      // ── Sync header pickers from first item if args were absent ───────────────────────────────
       // Covers the edge case where argFromWarehouse/argToWarehouse are null but
       // ERPNext populated them at the row level (older ERPNext responses).
       if (selectedFromWarehouse.value == null && prefillItems.isNotEmpty) {
@@ -546,7 +547,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Fetch document ────────────────────────────────────────────────────────────────────────
+  // ── Fetch document ───────────────────────────────────────────────────────────────────────────────────
 
   Future<void> fetchStockEntry() async {
     isLoading.value = true;
@@ -611,7 +612,7 @@ class StockEntryFormController extends GetxController
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
-  // ── Warehouse helpers ─────────────────────────────────────────────────────────────────────────
+  // ── Warehouse helpers ─────────────────────────────────────────────────────────────────────────────────
 
   bool get requiresSourceWarehouse {
     final t = selectedStockEntryType.value;
@@ -657,6 +658,54 @@ class StockEntryFormController extends GetxController
       return false;
     }
     return true;
+  }
+
+  /// Propagates a header warehouse change to every pre-filled item row.
+  ///
+  /// Called from [WarehousePicker] after the operator changes the Source or
+  /// Target Warehouse on a Work Order Material Transfer for Manufacture entry.
+  /// Rebuilds the items list replacing [sWarehouse] (when [source] is true) or
+  /// [tWarehouse] (when [source] is false) with the currently selected header
+  /// warehouse value, then triggers a reactive rebuild via [stockEntry.update].
+  ///
+  /// No-ops when:
+  ///   • The entry has no items.
+  ///   • The relevant header warehouse value is null or empty.
+  void propagateHeaderWarehouseToItems({required bool source}) {
+    final entry = stockEntry.value;
+    if (entry == null || entry.items.isEmpty) return;
+
+    final newWarehouse = source
+        ? selectedFromWarehouse.value
+        : selectedToWarehouse.value;
+    if (newWarehouse == null || newWarehouse.isEmpty) return;
+
+    final updated = entry.items.map((item) {
+      return StockEntryItem(
+        name:       item.name,
+        itemCode:   item.itemCode,
+        qty:        item.qty,
+        basicRate:  item.basicRate,
+        itemGroup:  item.itemGroup,
+        customVariantOf: item.customVariantOf,
+        batchNo:    item.batchNo,
+        itemName:   item.itemName,
+        rack:       item.rack,
+        toRack:     item.toRack,
+        sWarehouse: source ? newWarehouse : item.sWarehouse,
+        tWarehouse: source ? item.tWarehouse : newWarehouse,
+        customInvoiceSerialNumber: item.customInvoiceSerialNumber,
+        materialRequest:     item.materialRequest,
+        materialRequestItem: item.materialRequestItem,
+        owner:      item.owner,
+        creation:   item.creation,
+        modified:   item.modified,
+        modifiedBy: item.modifiedBy,
+      );
+    }).toList();
+
+    stockEntry.update((val) => val?.items.assignAll(updated));
+    _markDirty();
   }
 
   bool _validateScanContext(ScanResult result) {
@@ -719,7 +768,7 @@ class StockEntryFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ────────────────────────────────────────────────────────────────────────────
+  // ── Item CRUD ────────────────────────────────────────────────────────────────────────────────────
 
   void updateItemLocally(
     String uniqueId, double qty, String? batch,
@@ -730,7 +779,7 @@ class StockEntryFormController extends GetxController
     final idx   = items.indexWhere((i) => i.name == uniqueId);
     if (idx == -1) return;
 
-    // ── Hard block: POS qty cap ───────────────────────────────────────────────────────────────────────
+    // ── Hard block: POS qty cap ─────────────────────────────────────────────────────────────────────────────────────
     final resolvedSerial = serial ?? '0';
     if (resolvedSerial != '0' && posUpload.value != null) {
       final cap           = posQtyCapForSerial(resolvedSerial);
@@ -784,7 +833,7 @@ class StockEntryFormController extends GetxController
   ) {
     final resolvedSerial = serial ?? '0';
 
-    // ── Hard block: POS qty cap ───────────────────────────────────────────────────────────────────────
+    // ── Hard block: POS qty cap ─────────────────────────────────────────────────────────────────────────────────────
     if (resolvedSerial != '0' && posUpload.value != null) {
       final items       = stockEntry.value?.items.toList() ?? [];
       final cap         = posQtyCapForSerial(resolvedSerial);
@@ -835,7 +884,7 @@ class StockEntryFormController extends GetxController
     stockEntry.update((val) => val?.items.assignAll(items));
   }
 
-  // ── addItem coordinator ───────────────────────────────────────────────────────────────────────────
+  // ── addItem coordinator ────────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> addItem() async {
     _autoSubmitTimer?.cancel();
@@ -855,7 +904,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────────────────
+  // ── Delete ──────────────────────────────────────────────────────────────────────────────────────
 
   void confirmAndDeleteItem(StockEntryItem item) {
     if (isItemSheetOpen.value) {
@@ -874,7 +923,7 @@ class StockEntryFormController extends GetxController
     );
   }
 
-  // ── Sheet lifecycle ───────────────────────────────────────────────────────────────────────────
+  // ── Sheet lifecycle ──────────────────────────────────────────────────────────────────────────────────────
 
   void _openNewItemSheet({String? scannedBatch}) {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
@@ -1004,7 +1053,7 @@ class StockEntryFormController extends GetxController
     Get.delete<StockEntryItemFormController>();
   }
 
-  // ── Scan routing ───────────────────────────────────────────────────────────────────────────
+  // ── Scan routing ─────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
@@ -1074,7 +1123,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Warehouses ────────────────────────────────────────────────────────────────────────────
+  // ── Warehouses ────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
@@ -1114,7 +1163,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Feedback / scroll ───────────────────────────────────────────────────────────────────────
+  // ── Feedback / scroll ──────────────────────────────────────────────────────────────────────────────────────
 
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
@@ -1150,7 +1199,7 @@ class StockEntryFormController extends GetxController
         (StockEntryItem i) => i.customInvoiceSerialNumber ?? '0');
   }
 
-  // ── Save ─────────────────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────────────────────────
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
@@ -1277,7 +1326,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  // ── Misc ──────────────────────────────────────────────────────────────────────────────
+  // ── Misc ────────────────────────────────────────────────────────────────────────────────────────
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
