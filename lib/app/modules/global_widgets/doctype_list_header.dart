@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
@@ -56,6 +57,27 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// `_kStatusBar == 0` (tablet / desktop / Scaffold that already pads the
 /// body) the SizedBox collapses to zero height and the layout is
 /// identical to before.
+///
+/// ---
+///
+/// ## Status-bar icon contrast (notification panel readability)
+///
+/// The [Material] root uses `colorScheme.surface` as its background.  When
+/// that colour is light (e.g. white, as set in this app's theme) the Android
+/// system status-bar icons render in **dark** mode so they remain visible
+/// against the light surface.  The style is determined at build time from the
+/// resolved surface colour's relative luminance:
+///
+/// - `luminance > 0.5` → `statusBarIconBrightness: Brightness.dark`
+///   (dark/black icons — readable on white / light surfaces)
+/// - `luminance ≤ 0.5` → `statusBarIconBrightness: Brightness.light`
+///   (light/white icons — readable on dark surfaces)
+///
+/// The style is applied via an [AnnotatedRegion]<[SystemUiOverlayStyle]>,
+/// which is the Flutter-idiomatic way to set system-UI colours from widget
+/// code without calling `SystemChrome.setSystemUIOverlayStyle()` globally.
+/// [AnnotatedRegion] applies the style only while this widget is in the tree
+/// and automatically restores the previous style when it leaves.
 ///
 /// ---
 ///
@@ -312,6 +334,37 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     final chipsNowActive = _chipsActive;
 
+    // ── Status-bar icon brightness ─────────────────────────────────────────
+    //
+    // Determine whether the system status-bar icons (clock, battery, signal)
+    // should be rendered dark or light based on the resolved surface colour.
+    //
+    // colorScheme.surface in this app is Colors.white (luminance ≈ 1.0), so
+    // the icons must be DARK (black) to stay visible.  The luminance check
+    // makes this theme-safe: if the surface ever changes to a dark colour the
+    // icons automatically switch to light.
+    //
+    // AnnotatedRegion<SystemUiOverlayStyle> is the Flutter-idiomatic approach:
+    // it applies the style only while this widget subtree is active and
+    // restores the previous style when it leaves — unlike
+    // SystemChrome.setSystemUIOverlayStyle() which mutates global state.
+    final surfaceLuminance = colorScheme.surface.computeLuminance();
+    final iconBrightness = surfaceLuminance > 0.5
+        ? Brightness.dark   // dark icons readable on light (white) surface
+        : Brightness.light; // light icons readable on dark surface
+
+    final overlayStyle = SystemUiOverlayStyle(
+      // Transparent so the shield SizedBox background (from Material) shows
+      // through — we never hard-code a status-bar background colour here.
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: iconBrightness,        // Android
+      statusBarBrightness: iconBrightness == Brightness.dark  // iOS
+          ? Brightness.light
+          : Brightness.dark,
+      // Keep bottom-nav bar icons consistent while this header is on screen.
+      systemNavigationBarIconBrightness: iconBrightness,
+    );
+
     // ─ Status-bar shield ───────────────────────────────────────────────────
     // An opaque block that fills the inset with the surface colour.
     // Collapses to zero on devices/configs where statusBarHeight == 0.
@@ -387,48 +440,54 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     //
     // Column is anchored to the bottom so that as the header shrinks the
     // toolbar and chip row stay pinned at the bottom of the allocated space.
-    return Material(
-      color: colorScheme.surface,
-      elevation: overlapsContent ? 1.0 : 0.0,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Status-bar shield: always at the very top, always full height.
-          // Because the Column is end-aligned we pin it to the top with a
-          // Spacer trick: prepend the shield before the expanding region so
-          // it stays fixed regardless of collapse state.
-          //
-          // To achieve top-pinning inside an end-aligned Column we flip the
-          // anchor: place the shield first (it will be pushed up), then
-          // the content below it fills the remaining space.
-          //
-          // Actually we need the shield at the top regardless of shrink —
-          // use a Stack instead of relying on Column ordering:
-          //   The outer SizedBox constrains to maxExtent height.
-          //   The shield is Positioned at top:0.
-          //   The content Column is below it.
-          //
-          // Simpler: add the shield as the first child of the Column and
-          // use mainAxisAlignment.end only on the *content* children.
-          // We achieve this by wrapping content in an Expanded + Column.
-          statusBarShield,
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  height: math.max(0.0, _kExpandedExtra * expandProgress),
-                  child: largeTitle,
-                ),
-                toolbar,
-                if (chipsNowActive && chipRow != null)
-                  SizedBox(height: _kChipRow, child: chipRow),
-              ],
+    //
+    // AnnotatedRegion wraps the entire widget tree so the SystemUiOverlayStyle
+    // is active for the full lifetime of this header frame.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Material(
+        color: colorScheme.surface,
+        elevation: overlapsContent ? 1.0 : 0.0,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Status-bar shield: always at the very top, always full height.
+            // Because the Column is end-aligned we pin it to the top with a
+            // Spacer trick: prepend the shield before the expanding region so
+            // it stays fixed regardless of collapse state.
+            //
+            // To achieve top-pinning inside an end-aligned Column we flip the
+            // anchor: place the shield first (it will be pushed up), then
+            // the content below it fills the remaining space.
+            //
+            // Actually we need the shield at the top regardless of shrink —
+            // use a Stack instead of relying on Column ordering:
+            //   The outer SizedBox constrains to maxExtent height.
+            //   The shield is Positioned at top:0.
+            //   The content Column is below it.
+            //
+            // Simpler: add the shield as the first child of the Column and
+            // use mainAxisAlignment.end only on the *content* children.
+            // We achieve this by wrapping content in an Expanded + Column.
+            statusBarShield,
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: math.max(0.0, _kExpandedExtra * expandProgress),
+                    child: largeTitle,
+                  ),
+                  toolbar,
+                  if (chipsNowActive && chipRow != null)
+                    SizedBox(height: _kChipRow, child: chipRow),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
