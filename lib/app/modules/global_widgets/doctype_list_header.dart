@@ -1,31 +1,55 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Heights — keep all magic numbers in one place.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Height of the permanently-pinned collapsed toolbar row.
+const double _kToolbar = kToolbarHeight; // 56 dp
+
+/// Extra vertical space the large title occupies above the toolbar when
+/// fully expanded.  Matches Material 3 SliverAppBar.large default.
+const double _kExpandedExtra = 96.0; // total expanded = 152 dp
+
+/// Height reserved for the active-filter chip row.
+const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Public widget
+// ──────────────────────────────────────────────────────────────────────────────
+
 /// A unified sliver header for every DocType **list** screen.
 ///
-/// Owns two sequential concerns:
-///
-/// 1. [SliverAppBar.large] — collapsing title + optional extra actions +
-///    two action icons: a **filter** [IconButton] (badged) and a **search**
-///    [IconButton], both always reachable with a single tap.
-///
-/// 2. Active-filter chip row — a [Wrap] of dismissible chips supplied by
-///    the caller via [filterChipsBuilder].
+/// Emits **exactly one sliver** — a [SliverPersistentHeader] whose delegate
+/// owns the full layout (collapsed toolbar + expanding large title +
+/// optional filter chip row) inside a single coordinated layout pass.
+/// This guarantees the entire header moves as one indivisible unit and
+/// never allows the chip row to scroll away independently of the toolbar.
 ///
 /// ---
 ///
 /// ## Sticky behaviour
 ///
-/// Both the AppBar and the chip row honour the same [pinnedAppBar] flag so
-/// they always move together as a single visual unit.
+/// Both the toolbar and the chip row honour the same [pinnedAppBar] flag.
 ///
 /// | [pinnedAppBar] | [floatingAppBar] | Behaviour |
 /// |----------------|------------------|-----------|
-/// | `true` (default) | `false` (default) | Collapsed toolbar + chip row **permanently pinned**. Large-title area scrolls away. |
-/// | `true` | `true` | Same pinning + bar **snaps back** on any upward swipe. |
-/// | `false` | `false` | Entire header (bar + chips) scrolls off-screen. |
-/// | `false` | `true` | Header floats: scrolls away but snaps back on upward swipe. |
+/// | `true` (default) | `false` (default) | Toolbar + chips **permanently pinned**. Large title fades out on scroll. |
+/// | `true` | `true` | Same pinning + header snaps back on any upward swipe. |
+/// | `false` | `false` | Entire header scrolls off-screen. |
+/// | `false` | `true` | Floats: scrolls away, snaps back on upward fling. |
+///
+/// ## Height budget
+///
+/// ```
+/// maxExtent = _kToolbar            (56 dp — always)
+///           + _kExpandedExtra      (96 dp — large-title extra)
+///           + _kChipRow            (56 dp — only when chips are active)
+/// minExtent = _kToolbar            (56 dp — collapsed, always pinned)
+/// ```
 ///
 /// ---
 ///
@@ -33,89 +57,40 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///
 /// | Screen type | [automaticallyImplyLeading] | Result |
 /// |-------------|----------------------------|--------|
-/// | **List screen** (top-level nav destination) | `false` | ☰ Drawer / hamburger icon |
-/// | **Form screen** (pushed on top of a list)  | `true` (default) | ← Back arrow |
-///
-/// > **⚠️** The hamburger only appears when the owning [Scaffold] has a
-/// > [Scaffold.drawer] set.  Use `AppShellScaffold` (which injects
-/// > `AppNavDrawer` automatically) for all list screens.
-/// >
-/// > For form screens use [DocTypeFormHeader], which always sets
-/// > `automaticallyImplyLeading: true` and provides the standard
-/// > Reload · Save · Share action row.
-/// >
-/// > See `docs/app_bar_conventions.md` for the complete convention.
-///
-/// ---
+/// | **List screen** (top-level destination) | `false` | ☰ Drawer hamburger |
+/// | **Form screen** (pushed onto stack) | `true` (default) | ← Back arrow |
 ///
 /// ## Search icon
-/// When [searchQuery] is non-null the icon is wrapped in [Obx] so the
-/// active-dot indicator reacts to query changes.  When [searchQuery] is
-/// null no [Obx] is created — GetX requires at least one observable inside
-/// every [Obx] closure and would throw otherwise.
+/// When [searchQuery] is non-null an [Obx] wraps the icon so the active-dot
+/// indicator reacts to query changes.  When null no [Obx] is created.
 ///
 /// ## Filter icon states
-/// • **Idle** : plain [Icons.filter_list] icon button, default colour.
-/// • **Active** : [IconButton.filled] ([Icons.filter_alt]) — solid primary
-///   background guarantees visibility against any AppBar surface.
-///   A [Badge] overlays the count in the top-right corner.
+/// • Idle — plain [Icons.filter_list].
+/// • Active — [IconButton.filled] ([Icons.filter_alt]) + [Badge] count.
 ///
 /// ## Title visibility
-/// The [title] is always rendered in full — no ellipsis, no clamping.
-/// When the name is long the large-title area expands vertically to
-/// accommodate it.  The collapsed (pinned) bar also never truncates.
+/// Always rendered in full — no ellipsis, no clamping.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
   final String title;
   final List<Widget>? extraActions;
 
-  /// Controls whether [SliverAppBar] automatically inserts a leading widget.
-  ///
-  /// **List screens — pass `false`:**
-  /// Prevents the auto-inserted back arrow on top-level destination screens.
-  /// The [Scaffold.drawer] hamburger icon will appear instead, provided the
-  /// owning [Scaffold] has a drawer (use `AppShellScaffold`).
-  ///
-  /// **Form screens — omit (defaults to `true`):**
-  /// Flutter auto-inserts a back arrow when a predecessor route exists on
-  /// the stack, which is always the case for form screens pushed from a list.
-  /// Use [DocTypeFormHeader] for form screens instead of setting this flag.
-  ///
-  /// Defaults to `true` to preserve existing behaviour for all callers that
-  /// do not yet set this explicitly.
+  /// Whether [SliverAppBar] auto-inserts a leading widget.
+  /// Pass `false` for top-level list screens (shows hamburger).
+  /// Omit (defaults `true`) for form screens (shows back arrow).
   final bool automaticallyImplyLeading;
 
-  /// Whether the collapsed toolbar and chip row remain pinned at the top
-  /// of the viewport as the list scrolls.
-  ///
-  /// `true` (default) — The header acts as a sticky header: the collapsed
-  /// toolbar (title + icons) and the chip row never leave the screen.
-  /// The large-title area above the toolbar still collapses on scroll.
-  ///
-  /// `false` — The entire header (bar + chips) scrolls off-screen.  Use
-  /// this only on screens where the content itself provides sufficient
-  /// navigation context (e.g. a single-item detail embedded in a sheet).
+  /// Keeps the collapsed toolbar + chip row pinned at the top.
+  /// Defaults to `true`.  Pass `false` to let the whole header scroll away.
   final bool pinnedAppBar;
 
-  /// Whether the app bar floats back into view on any upward swipe, even
-  /// when the list has not been scrolled all the way back to the top.
-  ///
-  /// `false` (default) — The bar only reappears when the user scrolls back
-  /// to the very top of the list.
-  ///
-  /// `true` — The bar snaps back immediately on any upward fling.
-  /// Most useful combined with [pinnedAppBar] `true` (the default) so
-  /// the collapsed bar snaps back after being hidden during a fast
-  /// downward scroll.  Setting this `true` with [pinnedAppBar] `false`
-  /// creates a pure floating bar that never stays on screen.
+  /// Snaps the header back into view on any upward swipe.
+  /// Defaults to `false`.  Only meaningful when [pinnedAppBar] is `true`.
   final bool floatingAppBar;
 
   // ── Search ────────────────────────────────────────────────────────────
   final String? searchDoctype;
   final String? searchRoute;
-
-  /// When non-null the search icon shows an active-dot indicator and the
-  /// [Obx] wrapper is applied.  When null no [Obx] is created.
   final RxString? searchQuery;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClear;
@@ -133,9 +108,6 @@ class DocTypeListHeader extends StatelessWidget {
     required this.title,
     this.extraActions,
     this.automaticallyImplyLeading = true,
-    // Stickiness — both default to the standard pinned-only behaviour.
-    // Every existing caller omits these params and gets the same result
-    // as before this commit.
     this.pinnedAppBar = true,
     this.floatingAppBar = false,
     this.searchDoctype,
@@ -151,65 +123,266 @@ class DocTypeListHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiSliver(
-      children: [
-        _buildAppBar(context),
-        if (filterChipsBuilder != null) _buildFilterChips(context),
-      ],
+    // Single sliver — the delegate owns all layout.
+    return SliverPersistentHeader(
+      pinned: pinnedAppBar,
+      floating: floatingAppBar,
+      delegate: _DocTypeListHeaderDelegate(
+        title: title,
+        extraActions: extraActions,
+        automaticallyImplyLeading: automaticallyImplyLeading,
+        searchDoctype: searchDoctype,
+        searchRoute: searchRoute,
+        searchQuery: searchQuery,
+        onSearchChanged: onSearchChanged,
+        onSearchClear: onSearchClear,
+        activeFilters: activeFilters,
+        onFilterTap: onFilterTap,
+        filterChipsBuilder: filterChipsBuilder,
+        onClearAllFilters: onClearAllFilters,
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Master delegate — owns the full header layout
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String title;
+  final List<Widget>? extraActions;
+  final bool automaticallyImplyLeading;
+  final String? searchDoctype;
+  final String? searchRoute;
+  final RxString? searchQuery;
+  final ValueChanged<String>? onSearchChanged;
+  final VoidCallback? onSearchClear;
+  final RxMap? activeFilters;
+  final VoidCallback? onFilterTap;
+  final List<Widget> Function(BuildContext context)? filterChipsBuilder;
+  final VoidCallback? onClearAllFilters;
+
+  const _DocTypeListHeaderDelegate({
+    required this.title,
+    required this.extraActions,
+    required this.automaticallyImplyLeading,
+    required this.searchDoctype,
+    required this.searchRoute,
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.onSearchClear,
+    required this.activeFilters,
+    required this.onFilterTap,
+    required this.filterChipsBuilder,
+    required this.onClearAllFilters,
+  });
+
+  // ── Chip presence (synchronous, no Obx) ────────────────────────────────
+  bool get _chipsActive =>
+      filterChipsBuilder != null &&
+      ((searchQuery?.value ?? '').isNotEmpty ||
+          (activeFilters?.isNotEmpty ?? false));
+
+  // ── Extents ────────────────────────────────────────────────────────────
+  //
+  // minExtent: collapsed toolbar only — always pinned, never shrinks further.
+  // maxExtent: toolbar + large-title extra + chip row (when active).
+  @override
+  double get minExtent => _kToolbar;
+
+  @override
+  double get maxExtent =>
+      _kToolbar + _kExpandedExtra + (_chipsActive ? _kChipRow : 0.0);
+
+  // ── Build ──────────────────────────────────────────────────────────────
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // How far through the collapse animation are we? (0.0 → 1.0)
+    // Clamp to [0,1] so rounding errors never produce negative opacity.
+    final collapseProgress =
+        math.min(1.0, shrinkOffset / _kExpandedExtra);
+    final expandProgress = 1.0 - collapseProgress;
+
+    // ─ Toolbar row ─────────────────────────────────────────────────────────
+    final toolbar = _buildToolbar(context, colorScheme, theme);
+
+    // ─ Large title (fades out as user scrolls) ───────────────────────────
+    final largeTitle = Opacity(
+      opacity: expandProgress,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 72, 8),
+        child: Align(
+          alignment: AlignmentDirectional.bottomStart,
+          child: Text(
+            title,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            softWrap: true,
+            overflow: TextOverflow.clip,
+            maxLines: null,
+          ),
+        ),
+      ),
+    );
+
+    // ─ Chip row (Obx for reactivity) ───────────────────────────────────
+    Widget? chipRow;
+    if (filterChipsBuilder != null) {
+      chipRow = Obx(() {
+        final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
+        final hasFilters = (activeFilters?.isNotEmpty ?? false);
+        if (!hasSearch && !hasFilters) return const SizedBox.shrink();
+
+        final chips = filterChipsBuilder!(context);
+        if (chips.isEmpty) return const SizedBox.shrink();
+
+        return Material(
+          color: colorScheme.surface,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...chips,
+                if (chips.length > 1 && onClearAllFilters != null)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: onClearAllFilters,
+                    icon: const Icon(Icons.clear_all, size: 16),
+                    label: const Text('Clear all'),
+                  ),
+              ],
+            ),
+          ),
+        );
+      });
+    }
+
+    // ─ Full layout ───────────────────────────────────────────────────────────
+    //
+    // The SliverPersistentHeader gives us a fixed-height box that shrinks
+    // from maxExtent down to minExtent.  We lay the content out in a Column
+    // anchored to the BOTTOM of that box so the toolbar row is always at the
+    // bottom (i.e. always visible) and the large title scrolls off the top.
+    return Material(
+      color: colorScheme.surface,
+      elevation: overlapsContent ? 1.0 : 0.0,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Large title occupies the space above the toolbar.
+          // SizedBox clamps to zero when fully collapsed.
+          SizedBox(
+            height: math.max(0.0, _kExpandedExtra * expandProgress),
+            child: largeTitle,
+          ),
+          // Pinned toolbar — always visible, always 56 dp.
+          toolbar,
+          // Chip row — always below the toolbar; shown/hidden via Obx.
+          if (chipRow != null)
+            SizedBox(height: _kChipRow, child: chipRow),
+        ],
+      ),
     );
   }
 
-  // ── AppBar ────────────────────────────────────────────────────────────
-  Widget _buildAppBar(BuildContext context) {
-    final List<Widget> actions = [
+  // ── Toolbar row ──────────────────────────────────────────────────────────
+  Widget _buildToolbar(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ThemeData theme,
+  ) {
+    return SizedBox(
+      height: _kToolbar,
+      child: NavigationToolbar(
+        leading: _buildLeading(context),
+        middle: Text(
+          title,
+          style: theme.textTheme.titleLarge,
+          softWrap: true,
+          overflow: TextOverflow.clip,
+          maxLines: null,
+        ),
+        trailing: _buildActions(context, colorScheme),
+        centerMiddle: false,
+        middleSpacing: 8,
+      ),
+    );
+  }
+
+  // ── Leading widget ────────────────────────────────────────────────────────
+  Widget? _buildLeading(BuildContext context) {
+    if (!automaticallyImplyLeading) {
+      // Top-level screen: show the drawer hamburger.
+      return Builder(
+        builder: (ctx) => IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: MaterialLocalizations.of(ctx).openAppDrawerTooltip,
+          onPressed: () => Scaffold.of(ctx).openDrawer(),
+        ),
+      );
+    }
+    // Form screen: let Navigator provide the back button.
+    final ModalRoute<Object?>? parentRoute = ModalRoute.of(context);
+    final bool canPop = parentRoute?.canPop ?? false;
+    if (canPop) {
+      return IconButton(
+        icon: const Icon(Icons.arrow_back),
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => Navigator.of(context).maybePop(),
+      );
+    }
+    return null;
+  }
+
+  // ── Actions row ──────────────────────────────────────────────────────────
+  Widget? _buildActions(BuildContext context, ColorScheme colorScheme) {
+    final items = <Widget>[
       ...(extraActions ?? []),
 
-      // ── Filter icon ─────────────────────────────────────────────────
+      // ─ Filter icon ─────────────────────────────────────────────────────
       if (onFilterTap != null)
-        Builder(
-          builder: (ctx) {
-            return Obx(() {
-              final count = activeFilters?.length ?? 0;
-              final isActive = count > 0;
-              final tooltip = isActive
-                  ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
-                  : 'Filter';
+        Obx(() {
+          final count = activeFilters?.length ?? 0;
+          final isActive = count > 0;
+          final tooltip = isActive
+              ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
+              : 'Filter';
+          final button = isActive
+              ? IconButton.filled(
+                  icon: const Icon(Icons.filter_alt),
+                  onPressed: onFilterTap,
+                  tooltip: tooltip,
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: onFilterTap,
+                  tooltip: tooltip,
+                );
+          return isActive ? Badge(label: Text('$count'), child: button) : button;
+        }),
 
-              final button = isActive
-                  ? IconButton.filled(
-                      icon: const Icon(Icons.filter_alt),
-                      onPressed: onFilterTap,
-                      tooltip: tooltip,
-                      constraints: const BoxConstraints(
-                          minWidth: 40, minHeight: 40),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.filter_list),
-                      onPressed: onFilterTap,
-                      tooltip: tooltip,
-                    );
-
-              return isActive
-                  ? Badge(label: Text('$count'), child: button)
-                  : button;
-            });
-          },
-        ),
-
-      // ── Search icon ─────────────────────────────────────────────────
-      //
-      // Two distinct code paths to satisfy GetX's requirement that every
-      // Obx closure subscribes to at least one observable:
-      //
-      //   searchQuery != null → Obx reads searchQuery!.value for the
-      //                         active-dot indicator.  Observable guaranteed.
-      //   searchQuery == null → No dot needed, no Obx created at all.
+      // ─ Search icon ────────────────────────────────────────────────────
       if (searchQuery != null || (searchDoctype != null && searchRoute != null))
         Builder(
           builder: (ctx) {
-            // ─ path A: searchQuery non-null — wrap in Obx ────────────
             if (searchQuery != null) {
-              final colorScheme = Theme.of(ctx).colorScheme;
               return Obx(() {
                 final hasActive = searchQuery!.value.isNotEmpty;
                 return SizedBox(
@@ -257,8 +430,6 @@ class DocTypeListHeader extends StatelessWidget {
                 );
               });
             }
-
-            // ─ path B: searchQuery null — no Obx ─────────────────────
             return SizedBox(
               width: 48,
               height: 48,
@@ -287,178 +458,24 @@ class DocTypeListHeader extends StatelessWidget {
         ),
     ];
 
-    // ── Title widget ────────────────────────────────────────────────────
-    //
-    // softWrap: true  — allow the text to break across lines.
-    // overflow: clip  — never add an ellipsis.
-    // maxLines: null  — unlimited lines; large-title area expands to fit.
-    final titleWidget = Text(
-      title,
-      softWrap: true,
-      overflow: TextOverflow.clip,
-      maxLines: null,
-    );
-
-    return SliverAppBar.large(
-      title: titleWidget,
-      actions: actions.isEmpty ? null : actions,
-      automaticallyImplyLeading: automaticallyImplyLeading,
-      scrolledUnderElevation: 1.0,
-      // ─ Stickiness ──────────────────────────────────────────────────
-      pinned: pinnedAppBar,
-      floating: floatingAppBar,
-      // snap is only meaningful — and only safe — when floating is true.
-      // When pinnedAppBar is also true the snap animation completes before
-      // the bar would otherwise scroll away, giving a crisp snap-back feel.
-      snap: floatingAppBar,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 16),
-        title: Text(
-          title,
-          softWrap: true,
-          overflow: TextOverflow.clip,
-          maxLines: null,
-        ),
-        collapseMode: CollapseMode.none,
-      ),
-    );
+    if (items.isEmpty) return null;
+    return Row(mainAxisSize: MainAxisSize.min, children: items);
   }
 
-  // ── Active filter chip row ────────────────────────────────────────────
-  Widget _buildFilterChips(BuildContext context) {
-    return SliverPersistentHeader(
-      // The chip row mirrors the app bar's pinning behaviour so both parts
-      // always move together as a single visual unit.  When pinnedAppBar
-      // is false the chip row is also allowed to scroll away.
-      pinned: pinnedAppBar,
-      delegate: _FilterChipHeaderDelegate(
-        searchQuery: searchQuery,
-        activeFilters: activeFilters,
-        filterChipsBuilder: filterChipsBuilder!,
-        onClearAllFilters: onClearAllFilters,
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Minimal MultiSliver shim
-// ---------------------------------------------------------------------------
-
-class MultiSliver extends StatelessWidget {
-  final List<Widget> children;
-  const MultiSliver({super.key, required this.children});
-
+  // ── shouldRebuild ────────────────────────────────────────────────────────
   @override
-  Widget build(BuildContext context) {
-    return SliverMainAxisGroup(slivers: children);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Filter chip persistent header delegate
-// ---------------------------------------------------------------------------
-
-class _FilterChipHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final RxString? searchQuery;
-  final RxMap? activeFilters;
-  final List<Widget> Function(BuildContext context) filterChipsBuilder;
-  final VoidCallback? onClearAllFilters;
-
-  _FilterChipHeaderDelegate({
-    required this.searchQuery,
-    required this.activeFilters,
-    required this.filterChipsBuilder,
-    required this.onClearAllFilters,
-  });
-
-  // ── Content presence ───────────────────────────────────────────────────
-  //
-  // Called synchronously by the sliver layout protocol OUTSIDE the widget
-  // tree — [Obx] is unavailable here.  Read Rx values directly (.value) so
-  // Flutter gets a stable, immediate answer without scheduling a rebuild.
-  //
-  // Note: this intentionally does NOT register these reads with GetX's
-  // reactive graph because [SliverPersistentHeaderDelegate] is not a widget.
-  // Reactive updates are handled inside [build] via [Obx] instead.
-  bool get _hasContent =>
-      (searchQuery?.value ?? '').isNotEmpty ||
-      (activeFilters?.isNotEmpty ?? false);
-
-  // ── Extents ────────────────────────────────────────────────────────────
-  //
-  // [minExtent] == [maxExtent] — the chip row never partially collapses;
-  // it is either fully visible (when _hasContent is true) or hidden via a
-  // zero-height [SizedBox] returned from [build].
-  //
-  // Using [kToolbarHeight] (56 dp) as the reserved height covers a single
-  // row of chips plus top/bottom padding.  Screens with many chips whose
-  // [Wrap] overflows a single line will clip — a multi-run chip layout
-  // should increase this constant or switch to a dynamic-height approach
-  // (Commit 4 in the iterative plan).
-  @override
-  double get minExtent => _hasContent ? kToolbarHeight : 0.0;
-
-  @override
-  double get maxExtent => minExtent;
-
-  // ── Build ──────────────────────────────────────────────────────────────
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    // Obx drives reactive rebuilds when searchQuery or activeFilters change.
-    return Obx(() {
-      final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
-      final hasFilters = (activeFilters?.isNotEmpty ?? false);
-
-      // Hide visually when nothing is active.  The sliver still occupies
-      // its reserved slot (minExtent) in the layout — that is what keeps
-      // the chip row pinned and prevents list items from shifting up.
-      if (!hasSearch && !hasFilters) return const SizedBox.shrink();
-
-      final chips = filterChipsBuilder(context);
-      if (chips.isEmpty) return const SizedBox.shrink();
-
-      final colorScheme = Theme.of(context).colorScheme;
-
-      return Material(
-        // Solid surface ensures the pinned chip row is opaque and
-        // does not show list content bleeding through behind it.
-        color: colorScheme.surface,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ...chips,
-              if (chips.length > 1 && onClearAllFilters != null)
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: colorScheme.error,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  onPressed: onClearAllFilters,
-                  icon: const Icon(Icons.clear_all, size: 16),
-                  label: const Text('Clear all'),
-                ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-
-  // ── shouldRebuild ──────────────────────────────────────────────────────
-  @override
-  bool shouldRebuild(covariant _FilterChipHeaderDelegate oldDelegate) {
-    // Identity checks on the Rx objects and callbacks are sufficient.
-    // Fine-grained value changes are handled reactively by Obx in build().
-    return filterChipsBuilder != oldDelegate.filterChipsBuilder ||
-        onClearAllFilters != oldDelegate.onClearAllFilters ||
-        searchQuery != oldDelegate.searchQuery ||
-        activeFilters != oldDelegate.activeFilters;
+  bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
+    return title != old.title ||
+        automaticallyImplyLeading != old.automaticallyImplyLeading ||
+        extraActions != old.extraActions ||
+        searchDoctype != old.searchDoctype ||
+        searchRoute != old.searchRoute ||
+        searchQuery != old.searchQuery ||
+        onSearchChanged != old.onSearchChanged ||
+        onSearchClear != old.onSearchClear ||
+        activeFilters != old.activeFilters ||
+        onFilterTap != old.onFilterTap ||
+        filterChipsBuilder != old.filterChipsBuilder ||
+        onClearAllFilters != old.onClearAllFilters;
   }
 }
