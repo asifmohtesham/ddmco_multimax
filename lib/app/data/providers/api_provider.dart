@@ -331,12 +331,11 @@ class ApiProvider {
   /// Results are sorted by balanceQty DESC so the highest-stock batch appears
   /// first in the picker.
   ///
-  /// Column order from the report (resolved dynamically from `columns` array):
-  ///   batch_id · expiry_date · warehouse · opening_qty · in_qty · out_qty
-  ///   · balance_qty · (optionally) custom_packaging_qty
-  ///
-  /// Commit 1: also resolves `custom_packaging_qty` column index and populates
-  /// [BatchWiseBalanceRow.packagingQty].
+  /// The Batch-Wise Balance History report returns rows as **Maps** with named
+  /// keys (e.g. `{"batch": "20014643-7M6", "balance_qty": 2884.0, ...}`). A
+  /// fallback List/column-index path is also kept for any report variant that
+  /// returns array rows. The trailing `["Total", ...]` array row is skipped by
+  /// the Map path guard and handled gracefully by the List path guard.
   Future<List<BatchWiseBalanceRow>> fetchBatchesForItem(
     String itemCode, {
     String? warehouse,
@@ -378,44 +377,96 @@ class ApiProvider {
     if (response.statusCode != 200) return [];
 
     try {
-      final message    = response.data['message'] as Map<String, dynamic>?;
+      final message = response.data['message'] as Map<String, dynamic>?;
       if (message == null) return [];
 
-      final rawColumns = message['columns'] as List<dynamic>?;
-      final rawRows    = message['result']  as List<dynamic>?;
-      if (rawColumns == null || rawRows == null || rawRows.isEmpty) return [];
-
-      // Resolve column indices dynamically.
-      String _fn(dynamic col) {
-        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
-        final s = col.toString().toLowerCase();
-        final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
-      }
-
-      final cols         = rawColumns.map(_fn).toList();
-      final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
-      final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
-      final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
-      final balIdx       = cols.indexWhere((c) => c.contains('balance'));
-      // Commit 1: resolve packaging qty column (may not exist in all ERPNext versions)
-      final packagingIdx = cols.indexWhere((c) => c.contains('packaging'));
-
-      if (batchIdx == -1 || balIdx == -1) return [];
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null || rawRows.isEmpty) return [];
 
       final rows = <BatchWiseBalanceRow>[];
-      for (final row in rawRows) {
-        if (row is! List || row.isEmpty) continue;
-        final parsed = BatchWiseBalanceRow.fromReportRow(
-          row,
-          batchIdx    : batchIdx,
-          balanceIdx  : balIdx,
-          warehouseIdx: whIdx >= 0 ? whIdx : 0,
-          expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
-          packagingIdx: packagingIdx,   // -1 when absent → defaults to 0.0
-        );
-        if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
-          rows.add(parsed);
+
+      // ── Detect row format on first non-null element ──────────────────────
+      // The report can return either:
+      //   (a) Map rows  : {"batch":"...", "balance_qty": 2884.0, ...}
+      //       → read keys directly; no column index lookup needed.
+      //   (b) List rows : ["batch_id", expiry, warehouse, openQty, ...]
+      //       → resolve column indices from the `columns` array.
+      // The trailing ["Total", "", ...] summary row is always a List; the
+      // Map path skips it via `if (row is! Map)`, the List path skips it
+      // because the first element is the string "Total" (batchNo.isEmpty).
+
+      final firstDataRow = rawRows.firstWhere(
+        (r) => r != null,
+        orElse: () => null,
+      );
+
+      if (firstDataRow is Map) {
+        // ── (a) Map rows — key-based parsing ────────────────────────────
+        for (final row in rawRows) {
+          if (row is! Map) continue; // skip the trailing ["Total", ...] List
+
+          final batchNo    = (row['batch'] ?? row['batch_no'] ?? row['batch_id'] ?? '').toString().trim();
+          final balanceQty = _toDouble(row['balance_qty'] ?? row['bal_qty'] ?? row['balance']);
+
+          if (batchNo.isEmpty || balanceQty <= 0) continue;
+
+          final warehouseVal = (row['warehouse'] ?? '').toString().trim();
+
+          // Expiry: may be a String ("2026-12-31") or null
+          DateTime? expiryDate;
+          final expiryRaw = row['expiry_date'] ?? row['expiration_date'];
+          if (expiryRaw != null && expiryRaw.toString().isNotEmpty) {
+            expiryDate = DateTime.tryParse(expiryRaw.toString());
+          }
+
+          final packagingQty = _toDouble(
+            row['custom_packaging_qty'] ?? row['packaging_qty'],
+          );
+
+          rows.add(BatchWiseBalanceRow(
+            batchNo      : batchNo,
+            balanceQty   : balanceQty,
+            warehouse    : warehouseVal,
+            expiryDate   : expiryDate,
+            packagingQty : packagingQty,
+          ));
+        }
+      } else {
+        // ── (b) List rows — column-index-based parsing (fallback) ────────
+        final rawColumns = message['columns'] as List<dynamic>?;
+        if (rawColumns == null) return [];
+
+        String _fn(dynamic col) {
+          if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+          final s = col.toString().toLowerCase();
+          final lastDot = s.lastIndexOf('.');
+          return lastDot >= 0
+              ? s.substring(lastDot + 1).replaceAll('`', '')
+              : s;
+        }
+
+        final cols         = rawColumns.map(_fn).toList();
+        final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
+        final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+        final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
+        final balIdx       = cols.indexWhere((c) => c.contains('balance'));
+        final packagingIdx = cols.indexWhere((c) => c.contains('packaging'));
+
+        if (batchIdx == -1 || balIdx == -1) return [];
+
+        for (final row in rawRows) {
+          if (row is! List || row.isEmpty) continue;
+          final parsed = BatchWiseBalanceRow.fromReportRow(
+            row,
+            batchIdx    : batchIdx,
+            balanceIdx  : balIdx,
+            warehouseIdx: whIdx >= 0 ? whIdx : 0,
+            expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
+            packagingIdx: packagingIdx,
+          );
+          if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
+            rows.add(parsed);
+          }
         }
       }
 
@@ -425,6 +476,13 @@ class ApiProvider {
       return [];
     }
   }
+
+  /// Coerce a dynamic value to [double]. Returns 0.0 for null / unparseable.
+  static double _toDouble(dynamic v) => switch (v) {
+    final num n    => n.toDouble(),
+    final String s => double.tryParse(s) ?? 0.0,
+    _              => 0.0,
+  };
 
   // ---------------------------------------------------------------------------
   // BOM SEARCH
