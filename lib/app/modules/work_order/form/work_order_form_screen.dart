@@ -288,6 +288,19 @@ class _WorkOrderForm extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
+            // ── Section: BOM Operations Preview (new-WO mode only) ──────────────
+            Obx(() {
+              if (controller.mode != 'new' ||
+                  controller.bomOperations.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return _BomOperationsPreview(
+                controller: controller,
+                cs: cs,
+                textTheme: textTheme,
+              );
+            }),
+
             // ── Section: Notes ───────────────────────────────────────────────────
             _SectionHeader(
                 label: 'Notes', icon: Icons.notes_outlined),
@@ -422,7 +435,6 @@ class _WorkOrderForm extends StatelessWidget {
             }),
 
             // [3] Execute — shown when submitted + status is "Not Started"
-            // Transitions the Work Order to "In Progress" on ERPNext.
             Obx(() {
               final wo         = controller.workOrder.value;
               final executing  = controller.isExecuting.value;
@@ -513,7 +525,154 @@ class _WorkOrderForm extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Operations section
+// BOM Operations Preview (new-WO mode only)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _BomOperationsPreview extends StatelessWidget {
+  final WorkOrderFormController controller;
+  final ColorScheme   cs;
+  final TextTheme     textTheme;
+  const _BomOperationsPreview({
+    required this.controller,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          label: 'Operations Preview',
+          icon: Icons.route_outlined,
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10, left: 2),
+          child: Text(
+            'Operations from the selected BOM — will be submitted with this Work Order.',
+            style: textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+        ...controller.bomOperations.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final op  = entry.value;
+          final hasWorkstation = (op.workstation ?? '').isNotEmpty;
+          final timeLabel = op.timeInMins != null && op.timeInMins! > 0
+              ? _fmtTime(op.timeInMins!)
+              : null;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: cs.primary.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Sequence badge
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${idx + 1}',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Operation name + optional workstation
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        op.operation,
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (hasWorkstation) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.precision_manufacturing_outlined,
+                              size: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              op.workstation!,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Time chip
+                if (timeLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      timeLabel,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: cs.onSecondaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  /// Format minutes → compact label: "90 min" → "1h 30m", "45 min" → "45m".
+  String _fmtTime(double mins) {
+    final total = mins.round();
+    if (total < 60) return '${total}m';
+    final h = total ~/ 60;
+    final m = total % 60;
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Operations section (saved WO)
 // ────────────────────────────────────────────────────────────────────────────
 
 class _OperationsSection extends StatelessWidget {
