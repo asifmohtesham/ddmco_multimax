@@ -77,11 +77,20 @@ class _BomScreenState extends State<BomScreen> {
         },
       ));
     }
+    // "Active only" chip — shown when pre-seeded from dashboard OR set manually
     if (controller.activeFilters.containsKey('is_active')) {
       chips.add(chip(
         icon: Icons.check_circle_outline,
         label: 'Active only',
         onDeleted: () => controller.removeFilter('is_active'),
+      ));
+    }
+    // "Submitted" chip — shown when docstatus filter is active
+    if (controller.activeFilters.containsKey('docstatus')) {
+      chips.add(chip(
+        icon: Icons.verified_outlined,
+        label: 'Submitted',
+        onDeleted: () => controller.removeFilter('docstatus'),
       ));
     }
     return chips;
@@ -90,6 +99,9 @@ class _BomScreenState extends State<BomScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // Use injected page title (from dashboard args) or fall back to default
+    final screenTitle = controller.pageTitle ?? 'Bill of Materials';
 
     return AppShellScaffold(
       // ── FAB: New BOM ───────────────────────────────────────────────────
@@ -112,7 +124,7 @@ class _BomScreenState extends State<BomScreen> {
           slivers: [
             // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
-              title: 'Bill of Materials',
+              title: screenTitle,
               searchDoctype:      'BOM',
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
@@ -148,12 +160,27 @@ class _BomScreenState extends State<BomScreen> {
                                   ?.copyWith(
                                       color: cs.onSurface,
                                       fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: controller.clearFilters,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Reload'),
+                          const SizedBox(height: 8),
+                          Text(
+                            controller.activeFilters.isNotEmpty
+                                ? 'Try clearing the active filter to see all BOMs.'
+                                : 'Tap "+ New BOM" to create your first Bill of Materials.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
                           ),
+                          const SizedBox(height: 24),
+                          if (controller.activeFilters.isNotEmpty)
+                            FilledButton.tonalIcon(
+                              onPressed: controller.clearFilters,
+                              icon: const Icon(Icons.filter_alt_off),
+                              label: const Text('Clear Filter'),
+                            )
+                          else
+                            FilledButton.tonalIcon(
+                              onPressed: () => controller.fetchBOMs(clear: true),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reload'),
+                            ),
                         ],
                       ),
                     ),

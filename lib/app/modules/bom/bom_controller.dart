@@ -17,6 +17,11 @@ class BomController extends GetxController {
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
+  /// Optional title override injected via [Get.arguments] from the Dashboard
+  /// quick-access shortcut (e.g. 'Active BOMs'). Falls back to null so
+  /// BomScreen renders its default title when navigated from the drawer.
+  String? pageTitle;
+
   Timer? _debounce;
 
   static const int _pageSize = 20;
@@ -27,6 +32,7 @@ class BomController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _applyRouteArguments();
     fetchBOMs(clear: true);
   }
 
@@ -34,6 +40,34 @@ class BomController extends GetxController {
   void onClose() {
     _debounce?.cancel();
     super.onClose();
+  }
+
+  // ── Route argument injection ─────────────────────────────────────────────────
+  //
+  // The Dashboard BOM quick-action calls:
+  //   Get.toNamed(AppRoutes.BOM, arguments: {
+  //     'filters':   {'is_active': 1},
+  //     'pageTitle': 'Active BOMs',
+  //   });
+  //
+  // Any other caller that passes no arguments (drawer, back-navigation) gets
+  // the default unfiltered list — no breaking change.
+
+  void _applyRouteArguments() {
+    final args = Get.arguments;
+    if (args is! Map) return;
+
+    // Pre-seed activeFilters
+    final rawFilters = args['filters'];
+    if (rawFilters is Map<String, dynamic>) {
+      activeFilters.addAll(rawFilters);
+    }
+
+    // Optional screen title
+    final title = args['pageTitle'];
+    if (title is String && title.isNotEmpty) {
+      pageTitle = title;
+    }
   }
 
   // ── Search ───────────────────────────────────────────────────────────────────
