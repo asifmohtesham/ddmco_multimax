@@ -61,6 +61,18 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// | **List screen** (top-level destination) | `false` | ☰ Drawer hamburger |
 /// | **Form screen** (pushed onto stack) | `true` (default) | ← Back arrow |
 ///
+/// ## Reactive rebuild chain (Fixes 1–3)
+///
+/// ```
+/// Rx mutation
+///   └─ Obx in build() re-runs DocTypeListHeader.build()     [Fix 3]
+///        └─ new delegate with fresh Rx snapshots
+///             └─ shouldRebuild compares .length / .value       [Fix 2]
+///                  └─ returns true → SliverPersistentHeader
+///                       recalculates maxExtent
+///                            └─ Column guard == maxExtent      [Fix 1]
+/// ```
+///
 /// ## Search icon
 /// When [searchQuery] is non-null an [Obx] wraps the icon so the active-dot
 /// indicator reacts to query changes.  When null no [Obx] is created.
@@ -131,8 +143,30 @@ class DocTypeListHeader extends StatelessWidget {
     this.onClearAllFilters,
   });
 
+  // ✔ FIX 3: Obx wrapper triggers a widget rebuild whenever activeFilters
+  // or searchQuery mutates in-place.  This produces a new delegate with
+  // fresh Rx snapshots, which shouldRebuild (Fix 2) detects as changed,
+  // causing SliverPersistentHeader to recalculate maxExtent (Fix 1 guard).
+  //
+  // Obx reads both Rx values unconditionally so both are registered with
+  // GetX’s reactive graph regardless of whether filterChipsBuilder is set.
+  // The reads use null-safe fallbacks so no NPE is possible.
   @override
   Widget build(BuildContext context) {
+    // Touch the Rx values inside Obx so mutations schedule a rebuild.
+    if (activeFilters != null || searchQuery != null) {
+      return Obx(() {
+        // Register both observables with the reactive graph.
+        final _ = activeFilters?.length;    // ignore: unused_local_variable
+        final __ = searchQuery?.value;      // ignore: unused_local_variable
+        return _buildSliver();
+      });
+    }
+    // No reactive props — plain StatelessWidget path, zero overhead.
+    return _buildSliver();
+  }
+
+  Widget _buildSliver() {
     return SliverPersistentHeader(
       pinned: pinnedAppBar,
       floating: floatingAppBar,
