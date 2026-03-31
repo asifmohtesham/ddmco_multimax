@@ -13,7 +13,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.da
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:multimax/app/shared/item_sheet/widgets/batch_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -334,17 +334,19 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── P3-3: openBatchPicker ──────────────────────────────────────────────
   //
-  // Opens [BatchPickerSheet] as a modal bottom sheet.
+  // Opens [BatchPickerSheet] via [showBatchPickerSheet] as a modal bottom
+  // sheet.
   //
   // Behaviour:
   //   1. If [batchWiseHistory] is empty and no fetch is in progress, kicks
   //      off [fetchBatchWiseHistory] in the background so the sheet can
   //      show live data as soon as it arrives (shimmer displayed meanwhile).
-  //   2. Shows [BatchPickerSheet] with this controller as the data-source.
+  //   2. Delegates to [showBatchPickerSheet] which registers its own
+  //      [BatchPickerController] and cleans it up on dismiss.
   //   3. When the user confirms a selection the sheet returns the chosen
-  //      [BatchWiseBalanceRow.batchNo]; this method writes it to
-  //      [batchController] and calls [validateBatch] so all downstream
-  //      state (balance ceilings, qty-cap, error text) updates normally.
+  //      batch no; this method writes it to [batchController] and calls
+  //      [validateBatch] so all downstream state (balance ceilings,
+  //      qty-cap, error text) updates normally.
   //
   // The method is intentionally fire-and-forget from the call-site
   // (SharedBatchField passes it as `onPickerTap`).
@@ -357,11 +359,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final context = Get.context;
     if (context == null) return;
 
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BatchPickerSheet(controller: this),
+    final selected = await showBatchPickerSheet(
+      context,
+      itemCode:    itemCode.value,
+      warehouse:   resolvedWarehouse,
+      accentColor: Colors.purple,
     );
 
     if (selected == null || selected.isEmpty) return;
