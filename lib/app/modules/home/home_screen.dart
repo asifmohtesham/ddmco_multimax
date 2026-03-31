@@ -163,13 +163,13 @@ class HomeScreen extends GetView<HomeController> {
         // ── Operations row ────────────────────────────────────────────────────
         final operationItems = [
           _QuickActionConfig(
-            label: 'Stock\nEntry',
+            label: 'Stock Entry',
             icon: Icons.compare_arrows_outlined,
             color: Colors.orange,
             onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
-            label: 'Delivery\nNote',
+            label: 'Delivery Note',
             icon: Icons.local_shipping_outlined,
             color: Colors.blue,
             onTap: () {
@@ -178,19 +178,19 @@ class HomeScreen extends GetView<HomeController> {
             },
           ),
           _QuickActionConfig(
-            label: 'Receipt\nEntry',
+            label: 'Purchase Receipt',
             icon: Icons.receipt_long_outlined,
             color: Colors.green,
             onTap: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
-            label: 'Packing\nSlip',
+            label: 'Packing Slip',
             icon: Icons.assignment_return_outlined,
             color: Colors.purple,
             onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
-            label: 'Fulfilment\nPOS',
+            label: 'POS Upload',
             icon: Icons.shopping_bag_outlined,
             color: Colors.deepPurple,
             onTap: () {
@@ -212,13 +212,13 @@ class HomeScreen extends GetView<HomeController> {
             ),
           ),
           _QuickActionConfig(
-            label: 'Work\nOrder',
+            label: 'Work Order',
             icon: Icons.precision_manufacturing_outlined,
             color: Colors.indigo,
             onTap: controller.goToWorkOrder,
           ),
           _QuickActionConfig(
-            label: 'Job\nCard',
+            label: 'Job Card',
             icon: Icons.assignment_ind_outlined,
             color: Colors.deepOrange,
             onTap: controller.goToJobCard,
