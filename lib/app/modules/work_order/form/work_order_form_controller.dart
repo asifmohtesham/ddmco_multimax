@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
+import 'package:multimax/app/data/models/bom_model.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
@@ -45,6 +46,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isCreatingJobCards = false.obs;
   final operations = <WorkOrderOperation>[].obs;
   final workOrder = Rx<WorkOrder?>(null);
+
+  /// BOM operations cached when a BOM is selected in 'new' mode.
+  /// Serialised into the WO creation payload so ERPNext pre-fills the
+  /// operations child table, enabling Job Card creation after submit.
+  final bomOperations = <BomOperation>[].obs;
 
   // ── Dropdown / picker data ───────────────────────────────────────────────────────────────
   final bomOptions = <String>[].obs;
@@ -189,6 +195,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     itemController.text = item.itemCode ?? '';
     selectedBom.value = null;
     bomController.text = '';
+    bomOperations.clear();
     await _autoLoadBom(item.itemCode ?? '');
     update();
   }
@@ -226,7 +233,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       if (wip.isNotEmpty) wipWarehouseController.text = wip;
       if (fg.isNotEmpty) fgWarehouseController.text = fg;
 
-      if (bomNo.isNotEmpty && (wip.isEmpty || fg.isEmpty)) {
+      // Always fetch full BOM when a bomNo is prefilled so that
+      // bomOperations is populated for the WO creation payload.
+      if (bomNo.isNotEmpty) {
         isFetchingBom.value = true;
         _applyBom(bomNo).then((_) => isFetchingBom.value = false);
       }
@@ -350,6 +359,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     selectedBom.value = null;
     isBomValid.value = false;
     bomOptions.clear();
+    bomOperations.clear();
     markDirty();
     _validateForm();
     await _autoLoadBom(itemCode);
@@ -381,19 +391,25 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
+  /// Applies a selected BOM: populates warehouses from BOM defaults and
+  /// caches the BOM operations list for inclusion in the WO creation payload.
   Future<void> _applyBom(String bomName) async {
     try {
       final res = await _provider.getBom(bomName);
       if (res.statusCode == 200 && res.data['data'] != null) {
-        final bom = res.data['data'];
+        final bom = BOM.fromJson(
+            Map<String, dynamic>.from(res.data['data'] as Map));
         bomController.text = bomName;
-        selectedBom.value = bomName;
+        selectedBom.value  = bomName;
         if (wipWarehouseController.text.isEmpty) {
-          wipWarehouseController.text = bom['wip_warehouse'] ?? '';
+          wipWarehouseController.text = bom.defaultSourceWarehouse ?? '';
         }
         if (fgWarehouseController.text.isEmpty) {
-          fgWarehouseController.text = bom['fg_warehouse'] ?? '';
+          fgWarehouseController.text = bom.defaultTargetWarehouse ?? '';
         }
+        // Cache BOM operations — sent to ERPNext during WO creation so the
+        // operations child table is pre-filled without a second round-trip.
+        bomOperations.assignAll(bom.operations);
         markDirty();
         _validateForm();
       }
@@ -504,7 +520,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     if (isSaving.value || !canSave) return;
     isSaving.value = true;
     final qty = double.tryParse(qtyController.text) ?? 0;
-    final data = {
+    final data = <String, dynamic>{
       'production_item': selectedItem.value,
       'bom_no': selectedBom.value,
       'qty': qty,
@@ -520,6 +536,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     };
     try {
       if (mode == 'new') {
+        // Include BOM operations in the creation payload so ERPNext
+        // pre-fills the Work Order operations child table, enabling
+        // Job Card generation immediately after submit.
+        if (bomOperations.isNotEmpty) {
+          data['operations'] = bomOperations
+              .map((o) => o.toWorkOrderOperationPayload())
+              .toList();
+        }
         final res = await _provider.createWorkOrder(data);
         if (res.statusCode == 200 && res.data['data'] != null) {
           name = res.data['data']['name'];
@@ -636,11 +660,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
 
     // Step 2 – extract items list and header-level warehouse values.
-    // ERPNext make_stock_entry populates:
-    //   seDoc['from_warehouse'] – the WIP source warehouse (set on the WO / BOM)
-    //   seDoc['to_warehouse']   – the WIP target warehouse
-    //   seDoc['items']          – BOM raw-material rows, each with s_warehouse /
-    //                             t_warehouse already set by the BOM explosion.
     final rawItems = seDoc['items'];
     final List<Map<String, dynamic>> prefillItems = rawItems is List
         ? rawItems
@@ -648,7 +667,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
             .toList()
         : [];
 
-    // Guard: abort if ERPNext returned no items — nothing to transfer.
     if (prefillItems.isEmpty) {
       GlobalSnackbar.error(
         message:
@@ -668,9 +686,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'mode': 'new',
         'stockEntryType': 'Material Transfer for Manufacture',
         'workOrderName': name,
-        // Header-level warehouse values from the SE doc — used by
-        // StockEntryFormController to pre-populate the Source / Target
-        // Warehouse pickers and as fallback for per-item warehouse fields.
         'fromWarehouse': fromWarehouse,
         'toWarehouse':   toWarehouse,
         'items': prefillItems,
