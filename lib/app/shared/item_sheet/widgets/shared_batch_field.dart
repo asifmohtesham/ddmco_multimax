@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 
 /// A reusable Batch No input field backed by any [ItemSheetControllerBase].
@@ -37,6 +38,10 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// P3-A : helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
 /// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
+/// C    : Added [showBrowseBatches] flag — renders a 'Browse Batches →' text
+///        button that opens [BatchPickerSheet] when the batch is not yet
+///        validated.  Passing warehouse + accentColor is optional; the field
+///        falls back to controller values automatically.
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -44,9 +49,17 @@ class SharedBatchField extends StatelessWidget {
   final bool   readOnly;
   final String? fieldKey;
 
+  /// Whether to show the "Browse Batches →" shortcut button.
+  /// Defaults to false to preserve backward compatibility.
+  final bool showBrowseBatches;
+
+  /// Optional warehouse override for the batch picker.  When null the field
+  /// reads [ItemSheetControllerBase.resolvedWarehouse].
+  final String? browseWarehouse;
+
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
   /// getter on every rebuild instead of reading [ItemSheetControllerBase.maxQty].
-  /// Use when the child controller tracks a richer balance value (e.g. SE’s
+  /// Use when the child controller tracks a richer balance value (e.g. SE's
   /// per-warehouse `batchBalance`).
   final double? Function()? balanceOverride;
 
@@ -54,10 +67,12 @@ class SharedBatchField extends StatelessWidget {
     super.key,
     required this.c,
     required this.accentColor,
-    this.editMode       = false,
-    this.readOnly       = false,
+    this.editMode          = false,
+    this.readOnly          = false,
     this.fieldKey,
     this.balanceOverride,
+    this.showBrowseBatches = false,
+    this.browseWarehouse,
   });
 
   Color get _validFill {
@@ -77,6 +92,60 @@ class SharedBatchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return editMode ? _EditModeField(this) : _SimpleField(this);
+  }
+}
+
+// ── Browse-batch button (shared by both modes) ────────────────────────────────
+class _BrowseBatchButton extends StatelessWidget {
+  final SharedBatchField w;
+  const _BrowseBatchButton(this.w);
+
+  @override
+  Widget build(BuildContext context) {
+    if (!w.showBrowseBatches) return const SizedBox.shrink();
+
+    return Obx(() {
+      final c         = w.c;
+      final isValid   = c.isBatchValid.value;
+      final isRO      = w.readOnly || c.isBatchReadOnly.value;
+      final validating= c.isValidatingBatch.value;
+
+      // Hide once a batch is selected/validated or while spinner is active.
+      if (isValid || isRO || validating) return const SizedBox.shrink();
+
+      return Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () async {
+            final warehouse = w.browseWarehouse ?? c.resolvedWarehouse;
+            final selected  = await showBatchPickerSheet(
+              context,
+              itemCode:   c.itemCode.value,
+              warehouse:  warehouse,
+              accentColor: w.accentColor,
+            );
+            if (selected != null && selected.isNotEmpty) {
+              c.batchController.text = selected;
+              await c.validateBatch(selected);
+            }
+          },
+          icon : Icon(Icons.list_alt, size: 16, color: w.accentColor),
+          label: Text(
+            'Browse Batches',
+            style: TextStyle(
+              color:    w.accentColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: Size.zero,
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -186,6 +255,7 @@ class _SimpleField extends StatelessWidget {
               ),
             ),
           ),
+          _BrowseBatchButton(w),
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -284,6 +354,7 @@ class _EditModeField extends StatelessWidget {
               },
             ),
           ),
+          _BrowseBatchButton(w),
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
