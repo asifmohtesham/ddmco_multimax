@@ -33,7 +33,7 @@ dependencies:
   sqflite_common_ffi:
   # Scales the collapsed toolbar title font down before wrapping so
   # the full DocType name always fits without ellipsis.
-  auto_size_text: ^2.1.0
+  auto_size_text: ^3.0.0
 
 dev_dependencies:
   flutter_test:
