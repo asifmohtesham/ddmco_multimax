@@ -66,18 +66,21 @@ class WorkOrderProvider {
         limit: 50,
       );
 
-  // ── Submit, Execute & Job Card ────────────────────────────────────────────────
+  // ── Submit, Execute & Job Card ──────────────────────────────────────────
 
   /// Submit a Work Order by setting docstatus to 1.
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
   /// Execute a submitted Work Order: transitions status from
-  /// "Not Started" → "In Progress".
+  /// "Not Started" → "In Process".
   ///
-  /// Uses [ApiProvider.callMethodPost] because `frappe.client.set_value`
-  /// is a write-side whitelisted method — Frappe rejects it with HTTP 403
-  /// when called via GET (`is_valid_http_method` enforcement).
+  /// NOTE: ERPNext Work Order status enum value is "In Process" (NOT
+  /// "In Progress"). Sending "In Progress" causes HTTP 417 ValidationError
+  /// from frappe.client.set_value.
+  ///
+  /// Valid status values: Draft, Submitted, Not Started, In Process,
+  /// Completed, Stopped, Closed, Cancelled.
   Future<Response> executeWorkOrder(String name) async =>
       _apiProvider.callMethodPost(
         'frappe.client.set_value',
@@ -85,7 +88,7 @@ class WorkOrderProvider {
           'doctype': 'Work Order',
           'name': name,
           'fieldname': 'status',
-          'value': 'In Progress',
+          'value': 'In Process',
         },
       );
 
