@@ -17,17 +17,15 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///
 /// ## Sticky behaviour
 ///
-/// * **AppBar ([SliverAppBar.large], `pinned: true`):**
-///   The large-title area scrolls away; the collapsed toolbar (title +
-///   action icons) is permanently pinned at the top of the viewport.
+/// Both the AppBar and the chip row honour the same [pinnedAppBar] flag so
+/// they always move together as a single visual unit.
 ///
-/// * **Filter chip row ([SliverPersistentHeader], `pinned: true`):**
-///   Pinned immediately below the collapsed toolbar whenever
-///   [filterChipsBuilder] is non-null.  The row reserves its slot in the
-///   sliver layout at all times ([_FilterChipHeaderDelegate.minExtent] is
-///   always [kToolbarHeight] when a builder is provided), but hides its
-///   visual content reactively when no chips are active — so the user sees
-///   a zero-height gap rather than a blank bar.
+/// | [pinnedAppBar] | [floatingAppBar] | Behaviour |
+/// |----------------|------------------|-----------|
+/// | `true` (default) | `false` (default) | Collapsed toolbar + chip row **permanently pinned**. Large-title area scrolls away. |
+/// | `true` | `true` | Same pinning + bar **snaps back** on any upward swipe. |
+/// | `false` | `false` | Entire header (bar + chips) scrolls off-screen. |
+/// | `false` | `true` | Header floats: scrolls away but snaps back on upward swipe. |
 ///
 /// ---
 ///
@@ -87,6 +85,31 @@ class DocTypeListHeader extends StatelessWidget {
   /// do not yet set this explicitly.
   final bool automaticallyImplyLeading;
 
+  /// Whether the collapsed toolbar and chip row remain pinned at the top
+  /// of the viewport as the list scrolls.
+  ///
+  /// `true` (default) — The header acts as a sticky header: the collapsed
+  /// toolbar (title + icons) and the chip row never leave the screen.
+  /// The large-title area above the toolbar still collapses on scroll.
+  ///
+  /// `false` — The entire header (bar + chips) scrolls off-screen.  Use
+  /// this only on screens where the content itself provides sufficient
+  /// navigation context (e.g. a single-item detail embedded in a sheet).
+  final bool pinnedAppBar;
+
+  /// Whether the app bar floats back into view on any upward swipe, even
+  /// when the list has not been scrolled all the way back to the top.
+  ///
+  /// `false` (default) — The bar only reappears when the user scrolls back
+  /// to the very top of the list.
+  ///
+  /// `true` — The bar snaps back immediately on any upward fling.
+  /// Most useful combined with [pinnedAppBar] `true` (the default) so
+  /// the collapsed bar snaps back after being hidden during a fast
+  /// downward scroll.  Setting this `true` with [pinnedAppBar] `false`
+  /// creates a pure floating bar that never stays on screen.
+  final bool floatingAppBar;
+
   // ── Search ────────────────────────────────────────────────────────────
   final String? searchDoctype;
   final String? searchRoute;
@@ -110,6 +133,11 @@ class DocTypeListHeader extends StatelessWidget {
     required this.title,
     this.extraActions,
     this.automaticallyImplyLeading = true,
+    // Stickiness — both default to the standard pinned-only behaviour.
+    // Every existing caller omits these params and gets the same result
+    // as before this commit.
+    this.pinnedAppBar = true,
+    this.floatingAppBar = false,
     this.searchDoctype,
     this.searchRoute,
     this.searchQuery,
@@ -168,7 +196,7 @@ class DocTypeListHeader extends StatelessWidget {
           },
         ),
 
-      // ── Search icon ───────────────────────────────────────────────────
+      // ── Search icon ─────────────────────────────────────────────────
       //
       // Two distinct code paths to satisfy GetX's requirement that every
       // Obx closure subscribes to at least one observable:
@@ -276,7 +304,13 @@ class DocTypeListHeader extends StatelessWidget {
       actions: actions.isEmpty ? null : actions,
       automaticallyImplyLeading: automaticallyImplyLeading,
       scrolledUnderElevation: 1.0,
-      pinned: true,
+      // ─ Stickiness ──────────────────────────────────────────────────
+      pinned: pinnedAppBar,
+      floating: floatingAppBar,
+      // snap is only meaningful — and only safe — when floating is true.
+      // When pinnedAppBar is also true the snap animation completes before
+      // the bar would otherwise scroll away, giving a crisp snap-back feel.
+      snap: floatingAppBar,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 16),
         title: Text(
@@ -293,11 +327,10 @@ class DocTypeListHeader extends StatelessWidget {
   // ── Active filter chip row ────────────────────────────────────────────
   Widget _buildFilterChips(BuildContext context) {
     return SliverPersistentHeader(
-      // pinned: true guarantees the chip row is NEVER pushed off-screen by
-      // the scroll position.  The visual content is hidden reactively inside
-      // build() when no chips are active; the sliver itself always holds its
-      // reserved slot in the layout so subsequent slivers do not shift up.
-      pinned: true,
+      // The chip row mirrors the app bar's pinning behaviour so both parts
+      // always move together as a single visual unit.  When pinnedAppBar
+      // is false the chip row is also allowed to scroll away.
+      pinned: pinnedAppBar,
       delegate: _FilterChipHeaderDelegate(
         searchQuery: searchQuery,
         activeFilters: activeFilters,
