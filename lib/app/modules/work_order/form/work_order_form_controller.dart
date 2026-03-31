@@ -25,14 +25,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Route args ──────────────────────────────────────────────────────────────────────
+  // ── Route args ────────────────────────────────────────────────────────────────────────────
   late String name;
   final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
   final linkedJobCards = <JobCard>[].obs;
   final isFetchingLinkedCards = false.obs;
   late String mode; // 'new' | 'view'
 
-  // ── Rx state ────────────────────────────────────────────────────────────────────────
+  // ── Rx state ────────────────────────────────────────────────────────────────────────────
   final isLoading = true.obs;
   final isSaving = false.obs;
   final isDirty = false.obs;
@@ -47,11 +47,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final operations = <WorkOrderOperation>[].obs;
   final workOrder = Rx<WorkOrder?>(null);
 
-  // ── Dropdown / picker data ────────────────────────────────────────────────────────────
+  // ── Dropdown / picker data ───────────────────────────────────────────────────────────────
   final bomOptions = <String>[].obs;
   final itemOptions = <String>[].obs;
 
-  // ── Form controllers ─────────────────────────────────────────────────────────────────
+  // ── Form controllers ───────────────────────────────────────────────────────────────────
   final itemController = TextEditingController();
   final bomController = TextEditingController();
   final qtyController = TextEditingController();
@@ -69,7 +69,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isBomValid = false.obs;
   final isQtyValid = false.obs;
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
@@ -109,9 +109,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       isBomValid.value &&
       isQtyValid.value;
 
-  // ── Computed: submit, execute & job card guards ─────────────────────────────────
-  /// True when the Work Order is a saved draft (docstatus 0, not new)
-  /// and no other async operation is in progress.
+  // ── Computed: submit, execute & job card guards ──────────────────────────────
   bool get canSubmit =>
       mode != 'new' &&
       workOrder.value?.docstatus == 0 &&
@@ -119,8 +117,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       !isSubmitting.value;
 
   /// True when the Work Order is submitted (docstatus 1) with status
-  /// "Not Started" and no other async operation is in progress.
-  /// Executing transitions the WO into "In Process" on ERPNext.
+  /// 'Not Started' and no other async operation is in progress.
   bool get canExecute {
     final wo = workOrder.value;
     if (wo == null) return false;
@@ -131,19 +128,16 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         !isCreatingJobCards.value;
   }
 
-  /// True when the Work Order is submitted (docstatus 1) and at least one
-  /// operation still has pending qty remaining.
   bool get canCreateJobCards {
     final wo = workOrder.value;
     if (wo == null || wo.docstatus != 1) return false;
     if (isCreatingJobCards.value) return false;
-
     return operations.any(
       (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
     );
   }
 
-  // ── BarcodeScanMixin implementation ───────────────────────────────────────────
+  // ── BarcodeScanMixin implementation ─────────────────────────────────────────────
   @override
   Future<void> onScanResult(ScanResult result) async {
     if (!result.isSuccess || result.itemData == null) {
@@ -154,10 +148,8 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       );
       return;
     }
-
     final barcode = result.rawCode.trim();
     if (barcode.isEmpty) return;
-
     await _handleScannedItemBarcode(barcode);
   }
 
@@ -172,7 +164,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         );
         return;
       }
-
       if (matches.length > 1) {
         Get.snackbar(
           'Multiple matches found',
@@ -181,7 +172,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         );
         return;
       }
-
       await _applyScannedItemSelection(matches.first);
     } catch (e) {
       Get.snackbar(
@@ -195,16 +185,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   Future<List<Item>> _findMatchingItemsByBarcode(String barcode) async {
     final res = await _apiProvider.getDocumentList(
       'Item',
-      filters: {
-        'disabled': 0,
-        'is_stock_item': 1,
-      },
+      filters: {'disabled': 0, 'is_stock_item': 1},
     );
-
     if (res.statusCode == 200 && res.data['data'] != null) {
       final List list = res.data['data'];
       final results = list.map((e) => Item.fromJson(e)).toList();
-
       return results.where((item) {
         final itemCode = (item.itemCode ?? '').trim();
         return itemCode == barcode.substring(0, 7);
@@ -216,15 +201,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   Future<void> _applyScannedItemSelection(Item item) async {
     selectedItem.value = item.itemCode;
     itemController.text = item.itemCode ?? '';
-
     selectedBom.value = null;
     bomController.text = '';
-
     await _autoLoadBom(item.itemCode ?? '');
     update();
   }
 
-  // ── Init new ───────────────────────────────────────────────────────────────────────
+  // ── Init new ─────────────────────────────────────────────────────────────────────────────
   void _initNew() {
     final today = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     plannedStartController.text = today;
@@ -280,7 +263,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     );
   }
 
-  // ── Fetch document ─────────────────────────────────────────────────────────────────
+  // ── Fetch document ───────────────────────────────────────────────────────────────────────
   Future<void> _fetchDocument() async {
     isLoading.value = true;
     try {
@@ -305,9 +288,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     isFetchingLinkedCards.value = true;
     try {
       final res = await _jobCardProvider.getJobCards(
-        filters: {
-          'work_order': ['=', name]
-        },
+        filters: {'work_order': ['=', name]},
         limit: 100,
       );
       if (res.statusCode == 200 && res.data['data'] != null) {
@@ -347,7 +328,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     isQtyValid.value = qty > 0;
   }
 
-  // ── Item search ──────────────────────────────────────────────────────────────────
+  // ── Item search ────────────────────────────────────────────────────────────────────────
   Future<void> searchItems(String query) async {
     if (query.length < 2) {
       itemOptions.clear();
@@ -378,21 +359,18 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     selectedItem.value = itemCode;
     itemController.text = itemCode;
     itemOptions.clear();
-
     try {
       final res = await _apiProvider.getDocument('Item', itemCode);
       if (res.statusCode == 200 && res.data['data'] != null) {
         selectedItemName.value = res.data['data']['item_name'] ?? itemCode;
       }
     } catch (_) {}
-
     bomController.clear();
     selectedBom.value = null;
     isBomValid.value = false;
     bomOptions.clear();
     markDirty();
     _validateForm();
-
     await _autoLoadBom(itemCode);
   }
 
@@ -407,7 +385,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
           return;
         }
       }
-
       final res2 = await _provider.getBomsForItem(itemCode);
       if (res2.statusCode == 200 && res2.data['data'] != null) {
         final list2 = res2.data['data'] as List;
@@ -430,14 +407,12 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         final bom = res.data['data'];
         bomController.text = bomName;
         selectedBom.value = bomName;
-
         if (wipWarehouseController.text.isEmpty) {
           wipWarehouseController.text = bom['wip_warehouse'] ?? '';
         }
         if (fgWarehouseController.text.isEmpty) {
           fgWarehouseController.text = bom['fg_warehouse'] ?? '';
         }
-
         markDirty();
         _validateForm();
       }
@@ -449,10 +424,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     await _applyBom(bomName);
   }
 
-  // ── Date + time picker ───────────────────────────────────────────────────────────────
+  // ── Date + time picker ──────────────────────────────────────────────────────────────────
   Future<void> pickDate(TextEditingController ctrl) async {
     if (!canEdit) return;
-
     final now = DateTime.now();
     DateTime initial = now;
     try {
@@ -462,26 +436,18 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
             : DateFormat('yyyy-MM-dd').parse(ctrl.text);
       }
     } catch (_) {}
-
     final pickedDate = await showDatePicker(
       context: Get.context!,
       initialDate: initial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
-
     if (pickedDate == null) return;
-
-    final initialTime = TimeOfDay(
-      hour: initial.hour,
-      minute: initial.minute,
-    );
-
+    final initialTime = TimeOfDay(hour: initial.hour, minute: initial.minute);
     final pickedTime = await showTimePicker(
       context: Get.context!,
       initialTime: initialTime,
     );
-
     final combined = DateTime(
       pickedDate.year,
       pickedDate.month,
@@ -489,15 +455,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       pickedTime?.hour ?? 0,
       pickedTime?.minute ?? 0,
     );
-
     ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
     markDirty();
   }
 
-  // ── Warehouse picker (bottom sheet) ──────────────────────────────────────────────
+  // ── Warehouse picker ───────────────────────────────────────────────────────────────────
   Future<void> showWarehousePicker(TextEditingController ctrl) async {
     if (!canEdit) return;
-
     final selected = await showDocTypePickerBottomSheet(
       Get.context!,
       config: DocTypePickerConfig(
@@ -510,45 +474,32 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
             isPrimary: true,
           ),
         ],
-        filters: const [
-          ['Warehouse', 'is_group', '=', 0],
-        ],
+        filters: const [['Warehouse', 'is_group', '=', 0]],
         allowRefresh: true,
       ),
     );
-
     if (selected != null) {
       ctrl.text = selected['name'] as String;
       markDirty();
     }
   }
 
-  // ── BOM picker (bottom sheet) ──────────────────────────────────────────────────────
+  // ── BOM picker ──────────────────────────────────────────────────────────────────────
   Future<void> showBomPicker() async {
     if (!canEdit) return;
-
     final selectedItemCode = selectedItem.value;
     if (selectedItemCode == null || selectedItemCode.isEmpty) {
       GlobalSnackbar.info(message: 'Select an item first to load BOMs');
       return;
     }
-
     final selected = await showDocTypePickerBottomSheet(
       Get.context!,
       config: DocTypePickerConfig(
         doctype: 'BOM',
         title: 'Select BOM',
         columns: [
-          DocTypePickerColumn(
-            fieldname: 'name',
-            label: 'BOM',
-            isPrimary: true,
-          ),
-          DocTypePickerColumn(
-            fieldname: 'item',
-            label: 'Item',
-            isSecondary: true,
-          ),
+          DocTypePickerColumn(fieldname: 'name', label: 'BOM', isPrimary: true),
+          DocTypePickerColumn(fieldname: 'item', label: 'Item', isSecondary: true),
         ],
         filters: [
           ['BOM', 'item', '=', selectedItemCode],
@@ -557,30 +508,25 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         allowRefresh: true,
       ),
     );
-
     if (selected != null) {
-      final bomName = selected['name'] as String;
-      onBomSelected(bomName);
+      onBomSelected(selected['name'] as String);
     }
   }
 
-  // ── Adjust qty ──────────────────────────────────────────────────────────────────
+  // ── Adjust qty ──────────────────────────────────────────────────────────────────────
   void adjustQty(int delta) {
     if (!canEdit) return;
-
     final current = double.tryParse(qtyController.text) ?? 0;
     final newVal = (current + delta).clamp(1, double.infinity);
-
     qtyController.text =
         newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
     markDirty();
   }
 
-  // ── Save ─────────────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────────────────
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
     isSaving.value = true;
-
     final qty = double.tryParse(qtyController.text) ?? 0;
     final data = {
       'production_item': selectedItem.value,
@@ -596,7 +542,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       if (descriptionController.text.isNotEmpty)
         'description': descriptionController.text,
     };
-
     try {
       if (mode == 'new') {
         final res = await _provider.createWorkOrder(data);
@@ -629,16 +574,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────────────
-  /// Submit the Work Order (docstatus 0 → 1), then automatically create
-  /// Job Cards for all eligible operations (those with pending qty > 0).
-  ///
-  /// Job Card auto-creation runs silently after submission. If it fails,
-  /// a warning snackbar is shown but the submission is still considered
-  /// successful so the WO is not re-locked in the draft state.
+  // ── Submit ────────────────────────────────────────────────────────────────────────
   Future<void> submitWorkOrder() async {
     if (!canSubmit) return;
-
     final confirmed = await GlobalDialog.confirm(
       title: 'Submit Work Order',
       message:
@@ -646,17 +584,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
           'create Job Cards for all pending operations. Continue?',
       confirmText: 'Submit',
     );
-
     if (confirmed != true) return;
-
     isSubmitting.value = true;
     try {
       final res = await _provider.submitWorkOrder(name);
       if (res.statusCode == 200) {
         await _fetchDocument();
         GlobalSnackbar.success(message: 'Work Order $name submitted');
-
-        // ── Auto-create Job Cards for all eligible operations ──────────────
         await _autoCreateJobCards();
       } else {
         GlobalSnackbar.error(message: 'Failed to submit Work Order');
@@ -670,74 +604,130 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Execute ─────────────────────────────────────────────────────────────────────
-  /// Show a bottom-sheet dialog that lets the operator enter a **partial
-  /// execution quantity**, then transitions the Work Order status from
-  /// "Not Started" → "In Process" on ERPNext.
+  // ── Execute: Material Transfer for Manufacture ──────────────────────────────
+  /// Executes the Work Order by creating and submitting a
+  /// Material Transfer for Manufacture Stock Entry.
   ///
-  /// The qty input is pre-filled with [WorkOrder.qty] (the full order qty)
-  /// but the operator may enter any positive value ≤ [WorkOrder.qty] to
-  /// indicate they are only starting production for part of the order.
+  /// Flow:
+  ///   1. Call make_stock_entry to fetch a pre-filled SE document from ERPNext
+  ///      (items, qtys, warehouses are all populated by the server).
+  ///   2. Show _MaterialTransferConfirmSheet so the operator can review the
+  ///      raw-material items and adjust the transfer qty before confirming.
+  ///   3. On confirm: POST the SE doc to save it (ERPNext generates a name
+  ///      like STE-00001), then PATCH docstatus=1 to submit it.
+  ///   4. ERPNext's Stock Entry on_submit hook posts the stock ledger entries
+  ///      and automatically updates the Work Order status to 'In Process'.
+  ///
+  /// The Work Order status is NEVER patched manually by the app.
   Future<void> executeWorkOrder() async {
     if (!canExecute) return;
 
     final wo = workOrder.value!;
-    final maxQty = wo.qty;
-
-    // ── Partial-qty bottom sheet ──────────────────────────────────────────────
-    final enteredQty = await _showExecuteQtySheet(maxQty: maxQty);
-    if (enteredQty == null) return; // user dismissed
-
     isExecuting.value = true;
+
+    // Step 1: fetch the pre-filled SE doc from ERPNext.
+    Map<String, dynamic> seDoc;
     try {
-      // FIX (Bug 3): ERPNext Work Order status enum uses 'In Process',
-      // NOT 'In Progress'. Sending 'In Progress' causes HTTP 417
-      // (ValidationError) from frappe.client.set_value.
-      final res = await _provider.executeWorkOrder(name);
-      if (res.statusCode == 200) {
+      final res = await _provider.getMaterialTransferForManufacture(
+        name,
+        qty: wo.qty,
+      );
+      if (res.statusCode != 200 || res.data['message'] == null) {
+        GlobalSnackbar.error(
+          message: 'Could not build Material Transfer — check BOM and warehouses.',
+        );
+        isExecuting.value = false;
+        return;
+      }
+      // make_stock_entry returns the doc under the 'message' key.
+      seDoc = Map<String, dynamic>.from(res.data['message'] as Map);
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+        message: _extractErrorMessage(e, 'Failed to build Material Transfer'),
+      );
+      isExecuting.value = false;
+      return;
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+      isExecuting.value = false;
+      return;
+    } finally {
+      // Keep isExecuting true — we're still mid-flow. Only set false on
+      // early-return error paths above or after the SE is submitted below.
+    }
+
+    // Step 2: show the confirmation sheet (items list + qty review).
+    // isExecuting is still true so the button stays disabled while the
+    // sheet is open.
+    final confirmed = await _showMaterialTransferConfirmSheet(seDoc: seDoc);
+    if (confirmed != true) {
+      isExecuting.value = false;
+      return;
+    }
+
+    // Step 3a: save (POST) the SE document to give it a real name.
+    String seName;
+    try {
+      final saveRes = await _provider.saveStockEntry(seDoc);
+      if (saveRes.statusCode != 200 || saveRes.data['data'] == null) {
+        GlobalSnackbar.error(message: 'Failed to save Material Transfer Stock Entry');
+        isExecuting.value = false;
+        return;
+      }
+      seName = saveRes.data['data']['name'] as String;
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+        message: _extractErrorMessage(e, 'Failed to save Stock Entry'),
+      );
+      isExecuting.value = false;
+      return;
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error saving Stock Entry: $e');
+      isExecuting.value = false;
+      return;
+    }
+
+    // Step 3b: submit (PATCH docstatus=1) the saved SE.
+    // ERPNext's on_submit hook updates the WO status automatically.
+    try {
+      final submitRes = await _provider.submitStockEntry(seName);
+      if (submitRes.statusCode == 200) {
+        // Refresh the WO so the updated status ('In Process') is reflected.
         await _fetchDocument();
         GlobalSnackbar.success(
-          message: 'Work Order $name is now In Process'
-              '${enteredQty < maxQty ? ' (partial: $enteredQty / $maxQty)' : ''}',
+          message: 'Material Transfer $seName submitted. '
+              'Work Order $name is now In Process.',
         );
       } else {
-        GlobalSnackbar.error(message: 'Failed to execute Work Order');
+        GlobalSnackbar.error(
+          message: 'Stock Entry $seName saved but could not be submitted. '
+              'Submit it manually from the Stock Entry list.',
+        );
       }
     } on DioException catch (e) {
       GlobalSnackbar.error(
-          message: _extractErrorMessage(e, 'Execute failed'));
+        message: _extractErrorMessage(
+          e,
+          'Stock Entry $seName saved but submit failed — submit manually.',
+        ),
+      );
     } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
+      GlobalSnackbar.error(message: 'Error submitting Stock Entry: $e');
     } finally {
       isExecuting.value = false;
     }
   }
 
-  // ── Execute qty bottom-sheet (private helper) ─────────────────────────────────
-  /// Shows a Material bottom sheet with a numeric qty input.
+  // ── Material Transfer confirm sheet (private helper) ───────────────────────
+  /// Shows a bottom sheet that displays all raw-material items in the
+  /// pre-filled Stock Entry so the operator can review before confirming.
   ///
-  /// FIX (Bug 1): The previous implementation created a [TextEditingController]
-  /// outside the builder and called `ctrl.dispose()` after
-  /// `showModalBottomSheet` returned. Any reactive rebuild triggered while
-  /// the sheet was still open (e.g. from an Obx ancestor reacting to
-  /// `isExecuting`) would try to re-attach to the already-disposed controller
-  /// and crash with "A TextEditingController was used after being disposed".
-  ///
-  /// Fix: create the controller *inside* a [StatefulBuilder] so its lifetime
-  /// is tied to the sheet's own [State] object, not to this method's stack
-  /// frame. The controller is initialised in [initState] and disposed in
-  /// [dispose] automatically when the sheet widget is removed from the tree.
-  ///
-  /// FIX (Bug 2): Wrapping the Column content in a [SingleChildScrollView]
-  /// prevents the "RenderFlex overflowed by 99655 pixels" crash that occurs
-  /// when `autofocus: true` raises the software keyboard and the sheet's
-  /// inner Column (mainAxisSize: min) exceeds the available viewport height.
-  ///
-  /// Returns the validated [double] qty when the operator confirms,
-  /// or `null` when they dismiss / cancel.
-  Future<double?> _showExecuteQtySheet({required double maxQty}) {
-    final completer = Completer<double?>();
-
+  /// Returns true when the operator taps 'Confirm Transfer', false/null
+  /// when they dismiss or cancel.
+  Future<bool?> _showMaterialTransferConfirmSheet({
+    required Map<String, dynamic> seDoc,
+  }) {
+    final completer = Completer<bool?>();
     showModalBottomSheet<void>(
       context: Get.context!,
       isScrollControlled: true,
@@ -745,60 +735,35 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) {
-        // StatefulBuilder gives the sheet its own State so the
-        // TextEditingController lives inside dispose() of that State,
-        // never touching the controller after the sheet is gone.
-        return StatefulBuilder(
-          builder: (ctx, setState) {
-            return _ExecuteQtySheetContent(
-              maxQty: maxQty,
-              onConfirm: (qty) {
-                Navigator.of(ctx).pop();
-                completer.complete(qty);
-              },
-              onCancel: () {
-                Navigator.of(ctx).pop();
-                completer.complete(null);
-              },
-            );
-          },
-        );
-      },
+      builder: (_) => _MaterialTransferConfirmSheet(
+        seDoc: seDoc,
+        onConfirm: () {
+          Navigator.of(Get.context!).pop();
+          completer.complete(true);
+        },
+        onCancel: () {
+          Navigator.of(Get.context!).pop();
+          completer.complete(false);
+        },
+      ),
     ).then((_) {
-      // Safety valve: if the sheet was dismissed via back-gesture / barrier
-      // tap (not via the Cancel / Execute buttons) the completer may still
-      // be incomplete. Complete with null so executeWorkOrder() returns early.
-      if (!completer.isCompleted) completer.complete(null);
+      if (!completer.isCompleted) completer.complete(false);
     });
-
     return completer.future;
   }
 
-  // ── Create Job Cards (public — called by JobCardCreationSheet) ────────────────
-  /// Creates Job Cards for a caller-supplied list of operations using
-  /// the quantities chosen by the user in [JobCardCreationSheet].
-  ///
-  /// Unlike [_autoCreateJobCards] (which runs silently after submission with
-  /// full pending-qty for every eligible op), this method honours the
-  /// explicit [ops] + [qtys] the operator selected in the bottom sheet.
-  ///
-  /// On success the linked Job Cards list is refreshed and a success
-  /// snackbar is shown.  On failure a warning snackbar is shown so the
-  /// operator knows to retry — the Work Order itself is unaffected.
+  // ── Create Job Cards (public) ───────────────────────────────────────────────────
   Future<void> createJobCards(
     List<WorkOrderOperation> ops,
     Map<String, double> qtys,
   ) async {
     if (ops.isEmpty || isCreatingJobCards.value) return;
-
     isCreatingJobCards.value = true;
     try {
       final payload = ops.map((op) {
         final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
         return op.toJobCardPayload(qty: qty);
       }).toList();
-
       final res = await _provider.makeJobCard(name, payload);
       if (res.statusCode == 200) {
         await fetchLinkedJobCards();
@@ -806,46 +771,32 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
           message: '${ops.length} Job Card${ops.length == 1 ? '' : 's'} created successfully',
         );
       } else {
-        GlobalSnackbar.warning(
-          message: 'Job Card creation failed. Please try again.',
-        );
+        GlobalSnackbar.warning(message: 'Job Card creation failed. Please try again.');
       }
     } on DioException catch (e) {
       GlobalSnackbar.warning(
         message: _extractErrorMessage(e, 'Job Card creation failed'),
       );
     } catch (_) {
-      GlobalSnackbar.warning(
-        message: 'Job Card creation failed — please try again.',
-      );
+      GlobalSnackbar.warning(message: 'Job Card creation failed — please try again.');
     } finally {
       isCreatingJobCards.value = false;
     }
   }
 
-  // ── Auto-create Job Cards (internal) ──────────────────────────────────────────
-  /// Silently creates Job Cards for all eligible operations after submission.
-  /// Called internally by [submitWorkOrder] — not exposed to the UI.
-  ///
-  /// Eligible = not completed AND pendingQty > 0.
-  /// On failure only a warning is shown; does not revert the submission.
+  // ── Auto-create Job Cards (internal) ─────────────────────────────────────────────
   Future<void> _autoCreateJobCards() async {
     final wo = workOrder.value;
     if (wo == null) return;
-
-    final eligibleOps = operations.where(
-      (op) => !op.isCompleted && op.pendingQty(wo.qty) > 0,
-    ).toList();
-
+    final eligibleOps = operations
+        .where((op) => !op.isCompleted && op.pendingQty(wo.qty) > 0)
+        .toList();
     if (eligibleOps.isEmpty) return;
-
     isCreatingJobCards.value = true;
     try {
-      final payload = eligibleOps.map((op) {
-        final pending = op.pendingQty(wo.qty);
-        return op.toJobCardPayload(qty: pending);
-      }).toList();
-
+      final payload = eligibleOps
+          .map((op) => op.toJobCardPayload(qty: op.pendingQty(wo.qty)))
+          .toList();
       final res = await _provider.makeJobCard(name, payload);
       if (res.statusCode == 200) {
         await fetchLinkedJobCards();
@@ -854,28 +805,22 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         );
       } else {
         GlobalSnackbar.warning(
-          message:
-              'Work Order submitted but Job Card creation failed. '
+          message: 'Work Order submitted but Job Card creation failed. '
               'Create them manually from the Job Cards section.',
         );
       }
     } on DioException catch (e) {
       GlobalSnackbar.warning(
-        message: _extractErrorMessage(
-          e,
-          'Job Card creation failed — create manually',
-        ),
+        message: _extractErrorMessage(e, 'Job Card creation failed — create manually'),
       );
     } catch (_) {
-      GlobalSnackbar.warning(
-        message: 'Job Card creation failed — create them manually.',
-      );
+      GlobalSnackbar.warning(message: 'Job Card creation failed — create them manually.');
     } finally {
       isCreatingJobCards.value = false;
     }
   }
 
-  // ── Confirm discard ───────────────────────────────────────────────────────────
+  // ── Confirm discard ────────────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     final confirmed = await GlobalDialog.confirm(
       title: 'Discard Changes',
@@ -885,15 +830,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     if (confirmed == true) Get.back();
   }
 
-  // ── Error extraction helper ───────────────────────────────────────────────────
+  // ── Error extraction helper ─────────────────────────────────────────────────────────
   String _extractErrorMessage(DioException e, String fallback) {
     try {
       final data = e.response?.data;
       if (data is Map) {
         final exc = data['exception'] as String? ?? '';
         if (exc.isNotEmpty) {
-          // Strip the Python exception class prefix (e.g.
-          // "frappe.exceptions.ValidationError: ") and return the message.
           final colonIdx = exc.indexOf(':');
           if (colonIdx != -1 && colonIdx < exc.length - 1) {
             return exc.substring(colonIdx + 1).trim();
@@ -909,148 +852,201 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _ExecuteQtySheetContent
+// _MaterialTransferConfirmSheet
 // ─────────────────────────────────────────────────────────────────────────────
-/// Extracted into its own [StatefulWidget] so the [TextEditingController]
-/// and [GlobalKey<FormState>] are owned by this widget's [State] and are
-/// disposed automatically when the bottom sheet is removed from the tree.
+/// Bottom sheet that shows the raw-material items in the pre-filled
+/// Material Transfer for Manufacture Stock Entry so the operator can
+/// verify what will be transferred before confirming submission.
 ///
-/// This is the canonical Flutter pattern for owning a [TextEditingController]
-/// in a widget that is shown modally — controllers must never be created in a
-/// plain function and passed into a builder closure.
-class _ExecuteQtySheetContent extends StatefulWidget {
-  final double maxQty;
-  final ValueChanged<double> onConfirm;
+/// The seDoc is the dict returned by ERPNext's make_stock_entry and contains
+/// an 'items' list where each entry has:
+///   item_code, item_name, qty, uom, s_warehouse (source), t_warehouse (target)
+class _MaterialTransferConfirmSheet extends StatelessWidget {
+  final Map<String, dynamic> seDoc;
+  final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
-  const _ExecuteQtySheetContent({
-    required this.maxQty,
+  const _MaterialTransferConfirmSheet({
+    required this.seDoc,
     required this.onConfirm,
     required this.onCancel,
   });
 
   @override
-  State<_ExecuteQtySheetContent> createState() =>
-      _ExecuteQtySheetContentState();
-}
-
-class _ExecuteQtySheetContentState extends State<_ExecuteQtySheetContent> {
-  late final TextEditingController _ctrl;
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void initState() {
-    super.initState();
-    final q = widget.maxQty;
-    _ctrl = TextEditingController(
-      text: q % 1 == 0 ? q.toInt().toString() : q.toString(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final maxQty = widget.maxQty;
     final theme = Theme.of(context);
+    final items = (seDoc['items'] as List? ?? []).cast<Map<String, dynamic>>();
 
-    return Padding(
-      // viewInsets.bottom pushes the sheet above the keyboard.
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
-      ),
-      // FIX (Bug 2): SingleChildScrollView absorbs any residual overflow
-      // caused by the keyboard appearing while the sheet is rendering.
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Header ──────────────────────────────────────────────────────
-              Row(
-                children: [
-                  const Icon(Icons.play_circle_outline, size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Execute Work Order',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      builder: (_, scrollCtrl) => Column(
+        children: [
+          // ── Drag handle ─────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // ── Header ───────────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.swap_horiz_rounded,
+                    size: 22, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Material Transfer for Manufacture',
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Review materials to be transferred to WIP warehouse.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Enter the quantity to execute (max: $maxQty). '
-                'This will mark the Work Order as In Process.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
-              ),
-              const SizedBox(height: 20),
-              // ── Qty input ────────────────────────────────────────────────────
-              TextFormField(
-                controller: _ctrl,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: false,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Qty to Execute',
-                  hintText: 'e.g. ${maxQty.toInt()}',
-                  border: const OutlineInputBorder(),
-                  suffixText:
-                      maxQty % 1 == 0 ? '/ ${maxQty.toInt()}' : '/ $maxQty',
-                ),
-                validator: (v) {
-                  final parsed = double.tryParse(v ?? '');
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter a valid quantity greater than 0';
-                  }
-                  if (parsed > maxQty) {
-                    return 'Cannot exceed order qty ($maxQty)';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              // ── Action row ──────────────────────────────────────────────────
-              Row(
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // ── Items list ───────────────────────────────────────────────────────────
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'No items found in the Stock Entry.\n'
+                        'Ensure the BOM has raw materials defined.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8, horizontal: 16),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final item = items[i];
+                      final qty = item['qty'];
+                      final qtyStr = qty is double
+                          ? (qty % 1 == 0
+                              ? qty.toInt().toString()
+                              : qty.toString())
+                          : '$qty';
+                      final uom = item['uom'] as String? ?? '';
+                      final fromWh = item['s_warehouse'] as String? ?? '—';
+                      final toWh = item['t_warehouse'] as String? ?? '—';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item['item_name'] as String? ??
+                                        item['item_code'] as String? ??
+                                        'Unknown item',
+                                    style: theme.textTheme.bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Text(
+                                  '$qtyStr $uom',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item['item_code'] as String? ?? '',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color:
+                                    theme.colorScheme.onSurface.withOpacity(0.55),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(Icons.warehouse_outlined,
+                                    size: 14,
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.4)),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    '$fromWh  →  $toWh',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.55),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          // ── Action buttons ─────────────────────────────────────────────────────
+          const Divider(height: 1),
+          SafeArea(
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: widget.onCancel,
+                    onPressed: onCancel,
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.play_arrow, size: 18),
-                    label: const Text('Execute'),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    label: const Text('Confirm Transfer'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange.shade700,
                       foregroundColor: Colors.white,
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        widget.onConfirm(double.parse(_ctrl.text.trim()));
-                      }
-                    },
+                    onPressed: items.isEmpty ? null : onConfirm,
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
