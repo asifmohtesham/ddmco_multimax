@@ -382,16 +382,45 @@ class StockEntryFormController extends GetxController
 
     if (entrySource == StockEntrySource.workOrder) {
       // ── Work Order execute path ───────────────────────────────────────────────────────────
-      // args['items'] = List<Map> from ERPNext make_stock_entry BOM explosion.
-      // Each map has at minimum: item_code, item_name, qty,
-      //   s_warehouse, t_warehouse, uom, stock_uom.
-      // We materialise them directly into stockEntry.items so the
-      // StandardItemsView renders tappable DocItemCard rows immediately.
+      // args['items']         = List<Map> from ERPNext make_stock_entry BOM explosion.
+      // args['fromWarehouse'] = header-level from_warehouse on the SE doc (Commit 1).
+      // args['toWarehouse']   = header-level to_warehouse on the SE doc (Commit 1).
+      //
+      // Priority for per-item warehouse:
+      //   1. Row-level s_warehouse / t_warehouse from ERPNext (most precise).
+      //   2. Header-level fromWarehouse / toWarehouse forwarded in args (fallback).
+      // This guarantees warehouse fields are never null on any item row, which
+      // prevents the Items tab from appearing empty due to missing warehouse data.
+
+      final argFromWarehouse = Get.arguments?['fromWarehouse'] as String?;
+      final argToWarehouse   = Get.arguments?['toWarehouse']   as String?;
+
+      // ── Prefill header warehouse pickers immediately from args ────────────────────────────
+      // This makes the Details tab show the correct warehouses before the user
+      // even taps that tab, matching the WO's configured WIP/source warehouse.
+      if (argFromWarehouse != null && argFromWarehouse.isNotEmpty) {
+        selectedFromWarehouse.value = argFromWarehouse;
+      }
+      if (argToWarehouse != null && argToWarehouse.isNotEmpty) {
+        selectedToWarehouse.value = argToWarehouse;
+      }
+
       final rawItems = Get.arguments?['items'] as List? ?? [];
       prefillItems = rawItems.asMap().entries.map((entry) {
         final idx = entry.key;
         final e   = Map<String, dynamic>.from(entry.value as Map);
         final uniqueId = 'wo_prefill_${idx}_${DateTime.now().millisecondsSinceEpoch}';
+
+        // Per-item warehouse: prefer ERPNext row value, fall back to header arg.
+        final rowSWarehouse = e['s_warehouse'] as String?;
+        final rowTWarehouse = e['t_warehouse'] as String?;
+        final resolvedS = (rowSWarehouse != null && rowSWarehouse.isNotEmpty)
+            ? rowSWarehouse
+            : argFromWarehouse;
+        final resolvedT = (rowTWarehouse != null && rowTWarehouse.isNotEmpty)
+            ? rowTWarehouse
+            : argToWarehouse;
+
         return StockEntryItem(
           name:       uniqueId,
           itemCode:   e['item_code']   as String? ?? '',
@@ -403,18 +432,22 @@ class StockEntryFormController extends GetxController
           batchNo:    e['batch_no']    as String?,
           rack:       e['rack']        as String?,
           toRack:     null,
-          sWarehouse: e['s_warehouse'] as String?,
-          tWarehouse: e['t_warehouse'] as String?,
+          sWarehouse: resolvedS,
+          tWarehouse: resolvedT,
           customInvoiceSerialNumber: null,
           materialRequest:     null,
           materialRequestItem: null,
         );
       }).toList();
 
-      // Populate from/to warehouses from first item if available.
-      if (prefillItems.isNotEmpty) {
+      // ── Sync header pickers from first item if args were absent ───────────────────────────
+      // Covers the edge case where argFromWarehouse/argToWarehouse are null but
+      // ERPNext populated them at the row level (older ERPNext responses).
+      if (selectedFromWarehouse.value == null && prefillItems.isNotEmpty) {
         selectedFromWarehouse.value = prefillItems.first.sWarehouse;
-        selectedToWarehouse.value   = prefillItems.first.tWarehouse;
+      }
+      if (selectedToWarehouse.value == null && prefillItems.isNotEmpty) {
+        selectedToWarehouse.value = prefillItems.first.tWarehouse;
       }
     } else if (entrySource == StockEntrySource.materialRequest) {
       await _initMaterialRequestFlow(ref);
@@ -448,13 +481,26 @@ class StockEntryFormController extends GetxController
     isDirty.value   = true;
   }
 
+  /// Determines the source type for this Stock Entry.
+  ///
+  /// Work Order path requires BOTH:
+  ///   • [argWorkOrderName] to be non-null/non-empty, AND
+  ///   • args['items'] to be a non-empty List (guarded against empty list []).
+  ///
+  /// An empty list is NOT treated as a valid WO prefill — Commit 1 already
+  /// blocks navigation when ERPNext returns no items, so reaching here with
+  /// an empty list would be a fallback edge-case that must not enter WO path.
   void determineSource(String type, String ref) {
-    // Work Order execute path: argWorkOrderName is set AND items list is passed.
+    final rawItems = Get.arguments?['items'];
+    final hasItems = rawItems is List && rawItems.isNotEmpty;
+
     if (argWorkOrderName != null &&
         argWorkOrderName!.isNotEmpty &&
-        Get.arguments?['items'] != null) {
+        hasItems) {
+      // Work Order execute path: WO name set + non-empty items list.
       entrySource = StockEntrySource.workOrder;
-    } else if (Get.arguments?['items'] != null) {
+    } else if (hasItems) {
+      // Non-WO path with items list (Material Request prefill).
       entrySource = StockEntrySource.materialRequest;
     } else if (type == 'Material Issue' &&
         (ref.startsWith('KX') || ref.startsWith('MX'))) {
