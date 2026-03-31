@@ -48,7 +48,7 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// ```
 /// maxExtent = _kToolbar            (56 dp — always)
 ///           + _kExpandedExtra      (96 dp — large-title extra)
-///           + _kChipRow            (56 dp — only when chips are active)
+///           + _kChipRow            (56 dp — only when _chipsActive is true)
 /// minExtent = _kToolbar            (56 dp — collapsed, always pinned)
 /// ```
 ///
@@ -160,13 +160,10 @@ class DocTypeListHeader extends StatelessWidget {
 
 /// Minimum font size the collapsed toolbar title may shrink to before
 /// [TextOverflow.clip] is used as a last resort.
-/// 11 sp is the smallest readable size in a 56 dp toolbar at normal
-/// display density.
 const double _kAutoSizeMinFont = 11.0;
 
 /// Maximum number of lines the collapsed toolbar title may wrap to before
-/// AutoSizeText starts reducing the font size.  Two lines gives enough room
-/// for most long names without enlarging the 56 dp toolbar.
+/// AutoSizeText starts reducing the font size.
 const int _kAutoSizeMaxLines = 2;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -202,7 +199,11 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onClearAllFilters,
   });
 
-  // ── Chip presence (synchronous, no Obx) ────────────────────────────────
+  // ── Chip presence ─────────────────────────────────────────────────────────
+  //
+  // Read synchronously (no Obx).  Used by BOTH maxExtent and the Column
+  // child guard so they always agree on whether the chip row is present.
+  // This is the single source of truth for chip row height allocation.
   bool get _chipsActive =>
       filterChipsBuilder != null &&
       ((searchQuery?.value ?? '').isNotEmpty ||
@@ -226,6 +227,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final collapseProgress =
         math.min(1.0, shrinkOffset / _kExpandedExtra);
     final expandProgress = 1.0 - collapseProgress;
+
+    // Snapshot _chipsActive once per build so Column guard and chipRow
+    // builder use the identical value within the same layout pass.
+    final chipsNowActive = _chipsActive;
 
     // ─ Toolbar row ─────────────────────────────────────────────────────────
     final toolbar = _buildToolbar(context, colorScheme, theme);
@@ -251,18 +256,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
 
-    // ─ Chip row (Obx for reactivity) ───────────────────────────────────
+    // ─ Chip row ──────────────────────────────────────────────────────────
     Widget? chipRow;
-    if (filterChipsBuilder != null) {
-      chipRow = Obx(() {
-        final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
-        final hasFilters = (activeFilters?.isNotEmpty ?? false);
-        if (!hasSearch && !hasFilters) return const SizedBox.shrink();
-
-        final chips = filterChipsBuilder!(context);
-        if (chips.isEmpty) return const SizedBox.shrink();
-
-        return Material(
+    if (chipsNowActive) {
+      final chips = filterChipsBuilder!(context);
+      if (chips.isNotEmpty) {
+        chipRow = Material(
           color: colorScheme.surface,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
@@ -287,10 +286,14 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
         );
-      });
+      }
     }
 
     // ─ Full layout ─────────────────────────────────────────────────────────
+    //
+    // Column is anchored to the bottom.  The chip SizedBox is only added
+    // when chipsNowActive is true — the SAME condition maxExtent uses to
+    // include _kChipRow.  Column natural height therefore always == maxExtent.
     return Material(
       color: colorScheme.surface,
       elevation: overlapsContent ? 1.0 : 0.0,
@@ -303,7 +306,11 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
             child: largeTitle,
           ),
           toolbar,
-          if (chipRow != null)
+          // ✔ FIX 1: guard on chipsNowActive, not chipRow != null.
+          // Previously used `if (chipRow != null)` which fired whenever
+          // filterChipsBuilder was provided — even when no chips were active.
+          // That caused the Column to exceed maxExtent by exactly 56 dp.
+          if (chipsNowActive && chipRow != null)
             SizedBox(height: _kChipRow, child: chipRow),
         ],
       ),
@@ -311,16 +318,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   // ── Toolbar row ──────────────────────────────────────────────────────────
-  //
-  // The title slot uses AutoSizeText so the full DocType name is always
-  // visible in the 56 dp collapsed bar:
-  //
-  //   Step 1 — wrap up to _kAutoSizeMaxLines (2) lines at full font size.
-  //   Step 2 — if it still overflows, shrink in 0.5 sp steps.
-  //   Step 3 — only clip as an absolute last resort at _kAutoSizeMinFont.
-  //
-  // NavigationToolbar clips its middle slot to its own 56 dp height so
-  // the toolbar never grows taller even if the text overflows.
   Widget _buildToolbar(
     BuildContext context,
     ColorScheme colorScheme,
@@ -336,16 +333,11 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         middle: AutoSizeText(
           title,
           style: titleStyle,
-          // Allow up to 2 lines before shrinking the font.
           maxLines: _kAutoSizeMaxLines,
-          // Font scale range: theme titleLarge size → 11 sp floor.
           minFontSize: _kAutoSizeMinFont,
           maxFontSize: maxFontSize,
-          // Smooth shrinking — 0.5 sp steps avoids jarring size jumps.
           stepGranularity: 0.5,
-          // Hard safety net: only clips after font is already at floor.
           overflow: TextOverflow.clip,
-          // Required by AutoSizeText to attempt wrapping before shrinking.
           softWrap: true,
         ),
         trailing: _buildActions(context, colorScheme),
