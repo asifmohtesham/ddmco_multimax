@@ -38,10 +38,12 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// P3-A : helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
 /// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
-/// C    : Added [showBrowseBatches] flag — renders a 'Browse Batches →' text
+/// C    : Added [showBrowseBatches] flag — renders a ‘Browse Batches →’ text
 ///        button that opens [BatchPickerSheet] when the batch is not yet
 ///        validated.  Passing warehouse + accentColor is optional; the field
 ///        falls back to controller values automatically.
+/// P3-2 : Added [onPickerTap] — when provided, a list-picker icon button is
+///        injected into the suffixIcon Row in the idle state for both modes.
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -49,7 +51,7 @@ class SharedBatchField extends StatelessWidget {
   final bool   readOnly;
   final String? fieldKey;
 
-  /// Whether to show the "Browse Batches →" shortcut button.
+  /// Whether to show the "Browse Batches →" shortcut button below the field.
   /// Defaults to false to preserve backward compatibility.
   final bool showBrowseBatches;
 
@@ -59,9 +61,15 @@ class SharedBatchField extends StatelessWidget {
 
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
   /// getter on every rebuild instead of reading [ItemSheetControllerBase.maxQty].
-  /// Use when the child controller tracks a richer balance value (e.g. SE's
-  /// per-warehouse `batchBalance`).
   final double? Function()? balanceOverride;
+
+  /// Optional callback fired when the list-picker icon button inside the
+  /// suffixIcon is tapped.  When provided, the button is shown in the idle
+  /// (not-yet-valid) state only.  The full picker lifecycle is owned by the
+  /// caller — this widget only renders the button and fires the callback.
+  ///
+  /// When null (default) no picker button is added to the suffix row.
+  final VoidCallback? onPickerTap;
 
   const SharedBatchField({
     super.key,
@@ -73,6 +81,7 @@ class SharedBatchField extends StatelessWidget {
     this.balanceOverride,
     this.showBrowseBatches = false,
     this.browseWarehouse,
+    this.onPickerTap,
   });
 
   Color get _validFill {
@@ -95,7 +104,16 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// ── Browse-batch button (shared by both modes) ────────────────────────────────
+// ── Picker suffix icon button (shared helper) ──────────────────────────────────
+Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
+      icon:     Icon(Icons.format_list_bulleted_rounded, color: color, size: 20),
+      onPressed: onTap,
+      tooltip:  'Browse batches',
+      padding:  EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+    );
+
+// ── Browse-batch button (shared by both modes, below the field) ─────────────
 class _BrowseBatchButton extends StatelessWidget {
   final SharedBatchField w;
   const _BrowseBatchButton(this.w);
@@ -149,7 +167,7 @@ class _BrowseBatchButton extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode ─────────────────────────────────────────────────
+// ── Simple (borderless) mode ────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -242,6 +260,9 @@ class _SimpleField extends StatelessWidget {
                               color: w.accentColor, size: 20),
                         ),
                       ),
+                    // P3-2: picker icon in idle state only.
+                    if (!validating && !isValid && w.onPickerTap != null)
+                      _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
                     if (c.batchController.text.isNotEmpty && !isReadOnly)
                       IconButton(
                         icon: const Icon(Icons.clear, size: 18),
@@ -268,7 +289,7 @@ class _SimpleField extends StatelessWidget {
   }
 }
 
-// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
+// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ────────────
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
@@ -346,7 +367,8 @@ class _EditModeField extends StatelessWidget {
                 ),
                 filled:    true,
                 fillColor: isValid ? w._validFill : Colors.white,
-                suffixIcon: _suffixIcon(c, isValid, validating, isWarning),
+                suffixIcon: _suffixIcon(
+                    c, isValid, validating, isWarning),
               ),
               onChanged: (_) => c.validateSheet(),
               onFieldSubmitted: (val) {
@@ -411,11 +433,20 @@ class _EditModeField extends StatelessWidget {
         ],
       );
     }
-    return IconButton(
-      icon:      const Icon(Icons.arrow_forward),
-      onPressed: () => c.validateBatch(c.batchController.text),
-      tooltip:   'Validate',
-      color:     Colors.grey,
+    // Idle state: validate arrow + optional picker icon.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // P3-2: picker icon before the validate arrow in idle state.
+        if (w.onPickerTap != null)
+          _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
+        IconButton(
+          icon:      const Icon(Icons.arrow_forward),
+          onPressed: () => c.validateBatch(c.batchController.text),
+          tooltip:   'Validate',
+          color:     Colors.grey,
+        ),
+      ],
     );
   }
 }
