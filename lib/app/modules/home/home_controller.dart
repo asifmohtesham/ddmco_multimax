@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -26,7 +27,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
@@ -34,6 +35,7 @@ class HomeController extends GetxController {
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
   final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
+  final BomProvider _bomProvider = Get.find<BomProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
@@ -65,11 +67,16 @@ class HomeController extends GetxController {
   var userList = <User>[].obs;
   Rx<User?> selectedFilterUser = Rx<User?>(null);
 
+  // --- KPI Counts ---
   var activeWorkOrdersCount = 0.obs;
   final int targetWorkOrders = 12;
 
   var activeJobCardsCount = 0.obs;
   final int targetJobCards = 40;
+
+  /// Count of active BOMs (is_active = 1). No target needed — displayed
+  /// as a flat count via [FlatCountKpiCard].
+  var activeBomCount = 0.obs;
 
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
@@ -166,7 +173,6 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    // Use Get.back() to close the bottom sheet.
     Get.back();
     fetchDashboardData();
     fetchPerformanceData();
@@ -175,19 +181,28 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
-      Map<String, dynamic> woFilters = {'status': 'In Process'};
-      Map<String, dynamic> jcFilters = {'status': 'Open'};
       final filterEmail = selectedFilterUser.value?.email;
+
+      final Map<String, dynamic> woFilters = {'status': 'In Process'};
+      final Map<String, dynamic> jcFilters = {'status': 'Open'};
+      // BOM active count is global — not scoped to a user — because BOMs
+      // are master data, not transactional records owned by a single person.
+      const Map<String, dynamic> bomFilters = {'is_active': 1};
+
       if (filterEmail != null) {
         woFilters['owner'] = filterEmail;
         jcFilters['owner'] = filterEmail;
       }
+
       final results = await Future.wait([
         _woProvider.getWorkOrders(limit: 0, filters: woFilters),
         _jcProvider.getJobCards(limit: 0, filters: jcFilters),
+        _bomProvider.getBOMs(limit: 0, filters: bomFilters),
       ]);
+
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
-      activeJobCardsCount.value = _getCountFromResponse(results[1]);
+      activeJobCardsCount.value   = _getCountFromResponse(results[1]);
+      activeBomCount.value        = _getCountFromResponse(results[2]);
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
@@ -367,8 +382,6 @@ class HomeController extends GetxController {
   }
 
   void _openItemDetailSheet(String itemCode) {
-    // Register the ticker controller FIRST so ItemFormScreen's build()
-    // can call Get.find<ItemTabController>() without a GetNotFound error.
     Get.put(ItemTabController());
     Get.put(ItemFormController())..loadItem(itemCode);
     barcodeController.clear();
@@ -385,8 +398,6 @@ class HomeController extends GetxController {
       enableDrag: true,
       backgroundColor: Colors.white,
     ).then((_) {
-      // .then() fires after the close animation completes and Flutter has
-      // fully deactivated the overlay entry from the widget tree.
       Get.delete<ItemTabController>(force: true);
       Get.delete<ItemFormController>(force: true);
     });
@@ -502,7 +513,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // Helpers
+  // --- Private Helpers ---
   int _getWeekOfMonth(DateTime date) {
     int week = ((date.day - 1) / 7).floor() + 1;
     return week > 4 ? 4 : week;
@@ -526,6 +537,7 @@ class HomeController extends GetxController {
     return 0;
   }
 
+  // --- Navigation ---
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
 
@@ -542,7 +554,7 @@ class HomeController extends GetxController {
       case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
       case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
       case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
-      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 11; break;
+      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.bom;             selectedDrawerIndex.value = 11; break;
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
@@ -23,6 +24,7 @@ class HomeBinding extends Bindings {
     Get.put(PermissionService());
 
     // Providers
+    Get.lazyPut<BomProvider>(() => BomProvider());
     Get.lazyPut<DeliveryNoteProvider>(() => DeliveryNoteProvider());
     Get.lazyPut<PackingSlipProvider>(() => PackingSlipProvider());
     Get.lazyPut<PosUploadProvider>(() => PosUploadProvider());
