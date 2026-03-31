@@ -331,12 +331,12 @@ class ApiProvider {
   /// Results are sorted by balanceQty DESC so the highest-stock batch appears
   /// first in the picker.
   ///
-  /// Column order from the report:
-  ///   [0] batch_id  [1] expiry_date  [2] warehouse
-  ///   [3] opening_qty  [4] in_qty  [5] out_qty  [6] balance_qty
+  /// Column order from the report (resolved dynamically from `columns` array):
+  ///   batch_id · expiry_date · warehouse · opening_qty · in_qty · out_qty
+  ///   · balance_qty · (optionally) custom_packaging_qty
   ///
-  /// Column indices are resolved dynamically from the `columns` array so the
-  /// method is resilient to ERPNext version differences.
+  /// Commit 1: also resolves `custom_packaging_qty` column index and populates
+  /// [BatchWiseBalanceRow.packagingQty].
   Future<List<BatchWiseBalanceRow>> fetchBatchesForItem(
     String itemCode, {
     String? warehouse,
@@ -389,16 +389,17 @@ class ApiProvider {
       String _fn(dynamic col) {
         if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         final s = col.toString().toLowerCase();
-        // Strip table prefix e.g. '`tabBatch`.`batch_id`' → 'batch_id'
         final lastDot = s.lastIndexOf('.');
         return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
       }
 
-      final cols       = rawColumns.map(_fn).toList();
-      final batchIdx   = cols.indexWhere((c) => c.contains('batch'));
-      final expiryIdx  = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
-      final whIdx      = cols.indexWhere((c) => c.contains('warehouse'));
-      final balIdx     = cols.indexWhere((c) => c.contains('balance'));
+      final cols         = rawColumns.map(_fn).toList();
+      final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
+      final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+      final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
+      final balIdx       = cols.indexWhere((c) => c.contains('balance'));
+      // Commit 1: resolve packaging qty column (may not exist in all ERPNext versions)
+      final packagingIdx = cols.indexWhere((c) => c.contains('packaging'));
 
       if (batchIdx == -1 || balIdx == -1) return [];
 
@@ -411,6 +412,7 @@ class ApiProvider {
           balanceIdx  : balIdx,
           warehouseIdx: whIdx >= 0 ? whIdx : 0,
           expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
+          packagingIdx: packagingIdx,   // -1 when absent → defaults to 0.0
         );
         if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
           rows.add(parsed);

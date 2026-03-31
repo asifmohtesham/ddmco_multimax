@@ -4,17 +4,28 @@
 /// Used by [BatchPickerSheet] to display available batches with live
 /// balance data so operators can select the right batch without
 /// knowing batch numbers in advance.
+///
+/// Commit 1: added [packagingQty] parsed from the `custom_packaging_qty`
+/// column in the report result. The column index is resolved dynamically
+/// by [BatchWiseBalanceRow.fromReportRow] via the caller-supplied
+/// [packagingIdx]; absent columns default to 0.0 (no change to callers
+/// that pass -1).
 class BatchWiseBalanceRow {
   final String batchNo;
   final double balanceQty;
   final DateTime? expiryDate;
   final String warehouse;
 
+  /// Qty per package/carton, sourced from `custom_packaging_qty` on the Batch
+  /// DocType.  0.0 when the field is absent or the column was not in the report.
+  final double packagingQty;
+
   const BatchWiseBalanceRow({
     required this.batchNo,
     required this.balanceQty,
     required this.warehouse,
     this.expiryDate,
+    this.packagingQty = 0.0,
   });
 
   /// Whether this batch expires within the next [days] days.
@@ -32,18 +43,18 @@ class BatchWiseBalanceRow {
 
   /// Parse a row from the Batch-Wise Balance History report result.
   ///
-  /// The report returns rows as [List<dynamic>] where column order is:
-  ///   [0] batch_id, [1] expiry_date, [2] warehouse,
-  ///   [3] opening_qty, [4] in_qty, [5] out_qty, [6] balance_qty
+  /// Column indices are resolved dynamically by the caller (see
+  /// [ApiProvider.fetchBatchesForItem]) so this factory is resilient to
+  /// ERPNext version differences.
   ///
-  /// Column indices are resolved dynamically via [columnIndex] to guard
-  /// against ERPNext version differences.
+  /// Pass [packagingIdx] == -1 (or omit) when the column is absent.
   factory BatchWiseBalanceRow.fromReportRow(
     List<dynamic> row, {
     required int batchIdx,
     required int balanceIdx,
     required int warehouseIdx,
     required int expiryIdx,
+    int packagingIdx = -1,
   }) {
     final batchNo    = row[batchIdx]?.toString().trim() ?? '';
     final warehouse  = row[warehouseIdx]?.toString().trim() ?? '';
@@ -59,11 +70,21 @@ class BatchWiseBalanceRow {
       expiry = DateTime.tryParse(rawExpiry.toString());
     }
 
+    double packagingQty = 0.0;
+    if (packagingIdx >= 0 && packagingIdx < row.length) {
+      packagingQty = switch (row[packagingIdx]) {
+        final num n    => n.toDouble(),
+        final String s => double.tryParse(s) ?? 0.0,
+        _              => 0.0,
+      };
+    }
+
     return BatchWiseBalanceRow(
-      batchNo:    batchNo,
-      balanceQty: balanceQty,
-      warehouse:  warehouse,
-      expiryDate: expiry,
+      batchNo:      batchNo,
+      balanceQty:   balanceQty,
+      warehouse:    warehouse,
+      expiryDate:   expiry,
+      packagingQty: packagingQty,
     );
   }
 }

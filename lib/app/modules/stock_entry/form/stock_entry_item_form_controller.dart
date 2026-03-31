@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 
+import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
@@ -27,6 +28,14 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 /// Commit A:
 ///   • [liveRemaining]    — Rx written in validateSheet(); drives chip rebuild.
 ///   • [posSerialCapText] — chip label, decoupled from qtyInfoText.
+///
+/// Commit 1 (UX – WO Execute):
+///   • [batchWiseHistory]      — RxList<BatchWiseBalanceRow> pre-fetched for
+///     the item + source warehouse; consumed by BatchPickerSheet so the picker
+///     opens instantly without a second network round-trip.
+///   • [isLoadingBatchHistory] — loading flag for the picker shimmer.
+///   • [fetchBatchWiseHistory] — public method so the sheet/picker can
+///     trigger a manual refresh (pull-to-refresh).
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
   // ── Parent reference ─────────────────────────────────────────────
@@ -58,6 +67,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── Commit A: reactive remaining for chip ──────────────────────────────
   var liveRemaining = 0.0.obs;
+
+  // ── Commit 1: pre-fetched Batch-Wise Balance History for the picker ────
+  //
+  // Populated by [fetchBatchWiseHistory] on sheet open and on warehouse
+  // change. The BatchPickerSheet reads this list directly (via the
+  // controller arg) so it never needs to issue its own report call when
+  // the data is already fresh.
+  //
+  // Remains empty ([]) while loading or when warehouse is unknown.
+  final batchWiseHistory      = <BatchWiseBalanceRow>[].obs;
+  var   isLoadingBatchHistory = false.obs;
 
   // ── Dirty-check snapshots ─────────────────────────────────────────────
   String _snapshotSourceRack = '';
@@ -91,10 +111,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isValidatingTargetRack.value;
 
   // ── posSerialCapText: dedicated chip label (Commit A) ───────────────────
-  //
-  // Returns 'Invoice #N — Remaining: X / Y pcs'.
-  // Decoupled from qtyInfoText so the chip and the Qty badge serve
-  // independent purposes after Commit C.
   String? get posSerialCapText {
     final serial = selectedSerial.value;
     if (serial == null || serial == '0' || serial.isEmpty) return null;
@@ -104,18 +120,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final cap       = _parent.posQtyCapForSerial(serial);
     final used      = _parent.scannedQtyForSerial(
       serial, excludeItemName: editingItemName.value);
-    final currentQty = double.tryParse(qtyController.text) ?? 0.0;     final remaining = (cap - used - currentQty).clamp(0.0, cap);
+    final currentQty = double.tryParse(qtyController.text) ?? 0.0;
+    final remaining = (cap - used - currentQty).clamp(0.0, cap);
 
-    String _fmt(double v) =>
+    String fmt(double v) =>
         v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
 
-    return 'Invoice #$serialNo \u2014 Remaining: ${_fmt(remaining)} / ${_fmt(cap)} pcs';
+    return 'Invoice #$serialNo \u2014 Remaining: ${fmt(remaining)} / ${fmt(cap)} pcs';
   }
 
   // ── qtyInfoText: 'Max: N' or 'Max: -' (Commit C-2) ─────────────────────
-  //
-  // Returns 'Max: -' when no ceiling is active so the badge is always
-  // present (signals 'ceiling not yet computed') rather than absent.
   @override
   String? get qtyInfoText {
     final eff = effectiveMaxQty;
@@ -125,9 +139,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── qtyInfoTooltip: breakdown shown on badge tap (Commit C-2) ───────────
-  //
-  // Builds a · -separated list of every active ceiling with its value.
-  // Returns null when no ceiling is active → widget hides tap target.
   @override
   String? get qtyInfoTooltip {
     final parts = <String>[];
@@ -141,7 +152,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final cap  = _parent.posQtyCapForSerial(serial);
       final used = _parent.scannedQtyForSerial(
           serial, excludeItemName: editingItemName.value);
-      final currentQty = double.tryParse(qtyController.text) ?? 0.0;         final rem  = (cap - used - currentQty).clamp(0.0, cap);
+      final currentQty = double.tryParse(qtyController.text) ?? 0.0;
+      final rem  = (cap - used - currentQty).clamp(0.0, cap);
       final remStr = rem % 1 == 0
           ? rem.toInt().toString()
           : rem.toStringAsFixed(2);
@@ -224,6 +236,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isLoadingRackBalance.value   = false;
     isBatchReadOnly.value        = false;
     liveRemaining.value          = 0.0;
+
+    // Commit 1: reset history list on each sheet open
+    batchWiseHistory.clear();
+    isLoadingBatchHistory.value = false;
+
     sourceRackController.clear();
     targetRackController.clear();
 
@@ -252,6 +269,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     ever(itemSourceWarehouse, (_) async {
       await _updateAvailableStock();
       await _updateBatchBalance();
+      // Commit 1: refresh batch history whenever source warehouse changes
+      unawaited(fetchBatchWiseHistory());
     });
 
     captureSnapshot();
@@ -263,11 +282,47 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _updateAvailableStock();
         await _updateBatchBalance();
+        // Commit 1: pre-fetch all batches for the picker after frame settles
+        unawaited(fetchBatchWiseHistory());
+      });
+    } else {
+      // New item: warehouse may already be known from the SE header
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(fetchBatchWiseHistory());
       });
     }
 
     validateSheet();
     fetchAllRackStocks();
+  }
+
+  // ── Commit 1: fetchBatchWiseHistory ────────────────────────────────────
+  //
+  // Fetches all in-stock batches for [itemCode] in [resolvedWarehouse] from
+  // the Batch-Wise Balance History report and writes them to [batchWiseHistory].
+  //
+  // Safe to call repeatedly — guards against concurrent calls via
+  // [isLoadingBatchHistory]. Silently swallows errors (the picker has its
+  // own fallback fetch path via BatchPickerController).
+  Future<void> fetchBatchWiseHistory() async {
+    final code = itemCode.value;
+    final wh   = resolvedWarehouse;
+    if (code.isEmpty || wh == null || wh.isEmpty) return;
+    if (isLoadingBatchHistory.value) return;
+
+    isLoadingBatchHistory.value = true;
+    try {
+      final api  = Get.find<ApiProvider>();
+      final rows = await api.fetchBatchesForItem(code, warehouse: wh);
+      batchWiseHistory.assignAll(rows);
+      log('[SE:ItemSheet] batchWiseHistory: ${rows.length} rows for $code @ $wh',
+          name: 'SE:ItemSheet');
+    } catch (e) {
+      log('[SE:ItemSheet] fetchBatchWiseHistory error: $e', name: 'SE:ItemSheet');
+      // Intentionally not showing a snackbar — picker has its own error state
+    } finally {
+      isLoadingBatchHistory.value = false;
+    }
   }
 
   void _loadExistingItem(
@@ -363,7 +418,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final cap  = _parent.posQtyCapForSerial(serial);
       final used = _parent.scannedQtyForSerial(
           serial, excludeItemName: editingItemName.value);
-      final currentQty = double.tryParse(qtyController.text) ?? 0.0;         liveRemaining.value = (cap - used - currentQty).clamp(0.0, cap);
+      final currentQty = double.tryParse(qtyController.text) ?? 0.0;
+      liveRemaining.value = (cap - used - currentQty).clamp(0.0, cap);
     } else {
       liveRemaining.value = 0.0;
     }
@@ -415,7 +471,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       final cap  = _parent.posQtyCapForSerial(serial);
       final used = _parent.scannedQtyForSerial(
           serial, excludeItemName: editingItemName.value);
-              final currentQty = double.tryParse(qtyController.text) ?? 0.0;
+      final currentQty = double.tryParse(qtyController.text) ?? 0.0;
       final rem  = (cap - used - currentQty).clamp(0.0, double.infinity);
       if (rem < limit) limit = rem;
     }
