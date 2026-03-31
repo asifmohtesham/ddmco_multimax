@@ -11,91 +11,8 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
-// ---------------------------------------------------------------------------
-// Data class — eliminates inline magic values in the Quick Access grid.
-// Adding/removing a tile is a single list-entry change. (OCP / DRY)
-// ---------------------------------------------------------------------------
-class _QuickActionConfig {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _QuickActionConfig({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-}
-
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
-
-  // ── Operations row ────────────────────────────────────────────────────────
-  List<_QuickActionConfig> _operationsActions(BuildContext context) => [
-    _QuickActionConfig(
-      label: 'Stock\nEntry',
-      icon: Icons.compare_arrows_outlined,
-      color: Colors.orange,
-      onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
-    ),
-    _QuickActionConfig(
-      label: 'Delivery\nNote',
-      icon: Icons.local_shipping_outlined,
-      color: Colors.blue,
-      onTap: () {
-        controller.setFulfillmentPrefixFilter(['KA', 'ML']);
-        _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
-      },
-    ),
-    _QuickActionConfig(
-      label: 'Receipt\nEntry',
-      icon: Icons.receipt_long_outlined,
-      color: Colors.green,
-      onTap: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true}),
-    ),
-    _QuickActionConfig(
-      label: 'Packing\nSlip',
-      icon: Icons.assignment_return_outlined,
-      color: Colors.purple,
-      onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true}),
-    ),
-    _QuickActionConfig(
-      label: 'Fulfilment\nPOS',
-      icon: Icons.shopping_bag_outlined,
-      color: Colors.deepPurple,
-      onTap: () {
-        controller.setFulfillmentPrefixFilter([]);
-        _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
-      },
-    ),
-  ];
-
-  // ── Manufacturing row ─────────────────────────────────────────────────────
-  List<_QuickActionConfig> _manufacturingActions() => [
-    _QuickActionConfig(
-      label: 'BOM',
-      icon: Icons.account_tree_outlined,
-      color: Colors.teal,
-      // Opens BOM list pre-filtered to active BOMs (is_active = 1).
-      onTap: () => Get.toNamed(
-        AppRoutes.BOM,
-        arguments: {'filters': {'is_active': 1}, 'pageTitle': 'Active BOMs'},
-      ),
-    ),
-    _QuickActionConfig(
-      label: 'Work\nOrder',
-      icon: Icons.precision_manufacturing_outlined,
-      color: Colors.indigo,
-      onTap: () => controller.goToWorkOrder(),
-    ),
-    _QuickActionConfig(
-      label: 'Job\nCard',
-      icon: Icons.assignment_ind_outlined,
-      color: Colors.deepOrange,
-      onTap: () => controller.goToJobCard(),
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +83,7 @@ class HomeScreen extends GetView<HomeController> {
 
                     const SizedBox(height: 24),
 
-                    // 3. KPIs
+                    // 3. KPIs — Manufacturing Pulse
                     Text('Manufacturing Pulse', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Obx(() {
@@ -199,11 +116,8 @@ class HomeScreen extends GetView<HomeController> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          FlatKpiCard(
-                            title: 'Active BOMs',
+                          BomCountCard(
                             count: controller.activeBomCount.value,
-                            icon: Icons.account_tree_outlined,
-                            color: Colors.teal,
                             onTap: controller.goToBOM,
                           ),
                         ],
@@ -234,62 +148,127 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Quick Access Grid
+  // ---------------------------------------------------------------------------
+
+  /// Configuration-driven quick action — adding a new tile is a one-line change
+  /// in each section list below. Satisfies OCP: open for extension, no inline
+  /// mutation of the builder method.
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double itemWidth = (constraints.maxWidth - 24) / 3;
-        final theme = Theme.of(context);
 
-        // ── Operations section ───────────────────────────────────────────
-        final opsItems = _operationsActions(context);
-        final mfgItems = _manufacturingActions();
+        // ── Operations row ────────────────────────────────────────────────────
+        final operationItems = [
+          _QuickActionConfig(
+            label: 'Stock\nEntry',
+            icon: Icons.compare_arrows_outlined,
+            color: Colors.orange,
+            onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Delivery\nNote',
+            icon: Icons.local_shipping_outlined,
+            color: Colors.blue,
+            onTap: () {
+              controller.setFulfillmentPrefixFilter(['KA', 'ML']);
+              _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
+            },
+          ),
+          _QuickActionConfig(
+            label: 'Receipt\nEntry',
+            icon: Icons.receipt_long_outlined,
+            color: Colors.green,
+            onTap: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Packing\nSlip',
+            icon: Icons.assignment_return_outlined,
+            color: Colors.purple,
+            onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Fulfilment\nPOS',
+            icon: Icons.shopping_bag_outlined,
+            color: Colors.deepPurple,
+            onTap: () {
+              controller.setFulfillmentPrefixFilter([]);
+              _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
+            },
+          ),
+        ];
+
+        // ── Manufacturing row ────────────────────────────────────────────────
+        final manufacturingItems = [
+          _QuickActionConfig(
+            label: 'BOM',
+            icon: Icons.account_tree_outlined,
+            color: Colors.teal,
+            onTap: () => Get.toNamed(
+              AppRoutes.BOM,
+              arguments: {'filters': {'is_active': 1}, 'pageTitle': 'Active BOMs'},
+            ),
+          ),
+          _QuickActionConfig(
+            label: 'Work\nOrder',
+            icon: Icons.precision_manufacturing_outlined,
+            color: Colors.indigo,
+            onTap: controller.goToWorkOrder,
+          ),
+          _QuickActionConfig(
+            label: 'Job\nCard',
+            icon: Icons.assignment_ind_outlined,
+            color: Colors.deepOrange,
+            onTap: controller.goToJobCard,
+          ),
+        ];
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Operations tiles
+            _buildSectionDivider('Operations'),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: opsItems
+              children: operationItems
                   .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
                   .toList(),
             ),
-
             const SizedBox(height: 16),
-
-            // ── Visual divider with label ──────────────────────────────
-            Row(
-              children: [
-                Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Text(
-                    'MANUFACTURING',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.grey.shade500,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // Manufacturing tiles
+            _buildSectionDivider('Manufacturing'),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: mfgItems
+              children: manufacturingItems
                   .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
                   .toList(),
             ),
           ],
         );
       },
+    );
+  }
+
+  /// Slim labelled divider between quick-access sections.
+  Widget _buildSectionDivider(String label) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: Colors.grey.shade300, height: 1)),
+      ],
     );
   }
 
@@ -331,6 +310,10 @@ class HomeScreen extends GetView<HomeController> {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Fulfillment bottom sheet
+  // ---------------------------------------------------------------------------
 
   void _showFulfillmentSelectionSheet(BuildContext context, {String title = 'Select POS Upload'}) {
     controller.fetchFulfillmentPosUploads();
@@ -391,7 +374,10 @@ class HomeScreen extends GetView<HomeController> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(pos.customer),
-                                Text(FormattingHelper.getRelativeTime(pos.modified), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                Text(
+                                  FormattingHelper.getRelativeTime(pos.modified),
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
                               ],
                             ),
                             trailing: Container(
@@ -399,9 +385,18 @@ class HomeScreen extends GetView<HomeController> {
                               decoration: BoxDecoration(
                                 color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200),
+                                border: Border.all(
+                                  color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200,
+                                ),
                               ),
-                              child: Text(pos.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800)),
+                              child: Text(
+                                pos.status,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800,
+                                ),
+                              ),
                             ),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
@@ -418,6 +413,10 @@ class HomeScreen extends GetView<HomeController> {
       isScrollControlled: true,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // User Context Card
+  // ---------------------------------------------------------------------------
 
   Widget _buildUserContextCard(BuildContext context) {
     return Card(
@@ -492,7 +491,9 @@ class HomeScreen extends GetView<HomeController> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
@@ -504,9 +505,21 @@ class HomeScreen extends GetView<HomeController> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  const Text("Select User", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Select User",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: searchController,
@@ -516,31 +529,47 @@ class HomeScreen extends GetView<HomeController> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onChanged: (val) {
-                      filteredUsers.assignAll(controller.userList.where((user) {
-                        final name = user.name.toLowerCase();
-                        final email = user.email.toLowerCase();
-                        return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
-                      }).toList());
+                      filteredUsers.assignAll(
+                        controller.userList.where((user) {
+                          final name = user.name.toLowerCase();
+                          final email = user.email.toLowerCase();
+                          return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
+                        }).toList(),
+                      );
                     },
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: Obx(() => ListView.separated(
-                      controller: scrollController,
-                      itemCount: filteredUsers.length,
-                      separatorBuilder: (c, i) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final user = filteredUsers[index];
-                        final isSelected = user.email == controller.selectedFilterUser.value?.email;
-                        return ListTile(
-                          leading: CircleAvatar(child: Text(user.name.isNotEmpty ? user.name[0] : 'U')),
-                          title: Text(user.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                          subtitle: Text(user.email),
-                          trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
-                          onTap: () => controller.onUserFilterChanged(user),
-                        );
-                      },
-                    )),
+                    child: Obx(
+                      () => ListView.separated(
+                        controller: scrollController,
+                        itemCount: filteredUsers.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final user = filteredUsers[index];
+                          final isSelected =
+                              user.email == controller.selectedFilterUser.value?.email;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(user.name.isNotEmpty ? user.name[0] : 'U'),
+                            ),
+                            title: Text(
+                              user.name,
+                              style: TextStyle(
+                                fontWeight:
+                                    isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            subtitle: Text(user.email),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                    color: Theme.of(context).primaryColor)
+                                : null,
+                            onTap: () => controller.onUserFilterChanged(user),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -552,9 +581,101 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SpeedometerKpiCard — unchanged, kept in same file for locality.
-// ---------------------------------------------------------------------------
+// =============================================================================
+// _QuickActionConfig — data class to drive the quick-access grid (DRY/OCP)
+// =============================================================================
+
+class _QuickActionConfig {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionConfig({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+}
+
+// =============================================================================
+// BomCountCard — flat count card for active BOMs
+// =============================================================================
+
+class BomCountCard extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const BomCountCard({super.key, required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.teal.withValues(alpha: 0.15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.account_tree_outlined, color: Colors.teal, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Active BOMs',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Submitted & active bills of materials',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// SpeedometerKpiCard — half-arc KPI gauge (Work Orders, Job Cards)
+// =============================================================================
+
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -581,7 +702,9 @@ class SpeedometerKpiCard extends StatelessWidget {
       tileMode: TileMode.clamp,
     );
 
-    Color textColor = percent < 0.4 ? Colors.redAccent : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
+    Color textColor = percent < 0.4
+        ? Colors.redAccent
+        : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
 
     return Card(
       elevation: 2,
@@ -624,84 +747,37 @@ class SpeedometerKpiCard extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("$actual", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24.0, color: textColor)),
-                      const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
+                      Text(
+                        "$actual",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24.0,
+                          color: textColor,
+                        ),
+                      ),
+                      const Text(
+                        "Actual",
+                        style: TextStyle(fontSize: 10.0, color: Colors.grey),
+                      ),
                     ],
                   ),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                child: Text("Target: $target", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey.shade700)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// FlatKpiCard — lightweight count card for metrics without a daily target
-// (e.g. Active BOMs). Full-width, tappable, navigates to the list screen.
-// ---------------------------------------------------------------------------
-class FlatKpiCard extends StatelessWidget {
-  final String title;
-  final int count;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const FlatKpiCard({
-    super.key,
-    required this.title,
-    required this.count,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shadowColor: color.withValues(alpha: 0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: color, size: 26),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$count',
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
-                    ),
-                  ],
+                child: Text(
+                  "Target: $target",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.0,
+                    color: Colors.grey.shade700,
+                  ),
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
             ],
           ),
         ),
