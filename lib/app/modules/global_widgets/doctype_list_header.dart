@@ -15,12 +15,21 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 ///
 /// ---
 ///
+/// ## Sticky behavior
+///
+/// * **AppBar (SliverAppBar.large):** The large-title area scrolls away, but the 
+///   collapsed toolbar (containing the title and action icons) pins to the top.
+/// * **Filter Chips (SliverPersistentHeader):** Currently scrolls with the list.
+///   (See Iterative Commit Plan for upcoming pinning changes).
+///
+/// ---
+///
 /// ## Leading button convention
 ///
 /// | Screen type | [automaticallyImplyLeading] | Result |
 /// |-------------|----------------------------|--------|
 /// | **List screen** (top-level nav destination) | `false` | ☰ Drawer / hamburger icon |
-/// | **Form screen** (pushed on top of a list) | `true` (default) | ← Back arrow |
+/// | **Form screen** (pushed on top of a list)  | `true` (default) | ← Back arrow |
 ///
 /// > **⚠️** The hamburger only appears when the owning [Scaffold] has a
 /// > [Scaffold.drawer] set. Use `AppShellScaffold` (which injects
@@ -50,11 +59,11 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 /// ## Title visibility
 /// The [title] is always rendered in full — no ellipsis, no clamping.
 /// When the name is long the large-title area expands vertically to
-/// accommodate it.  The collapsed (pinned) bar also never truncates:
+/// accommodate it. The collapsed (pinned) bar also never truncates:
 /// it wraps onto a second line if necessary rather than cutting the text.
+
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
-
   final String title;
   final List<Widget>? extraActions;
 
@@ -75,7 +84,6 @@ class DocTypeListHeader extends StatelessWidget {
   final bool automaticallyImplyLeading;
 
   // ── Search ────────────────────────────────────────────────────────────
-
   final String? searchDoctype;
   final String? searchRoute;
 
@@ -86,12 +94,10 @@ class DocTypeListHeader extends StatelessWidget {
   final VoidCallback? onSearchClear;
 
   // ── Filter ────────────────────────────────────────────────────────────
-
-  final RxMap<String, dynamic>? activeFilters;
+  final RxMap? activeFilters;
   final VoidCallback? onFilterTap;
 
   // ── Chip row ─────────────────────────────────────────────────────────────
-
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
@@ -122,7 +128,6 @@ class DocTypeListHeader extends StatelessWidget {
   }
 
   // ── AppBar ────────────────────────────────────────────────────────────
-
   Widget _buildAppBar(BuildContext context) {
     final List<Widget> actions = [
       ...(extraActions ?? []),
@@ -164,11 +169,10 @@ class DocTypeListHeader extends StatelessWidget {
       // Two distinct code paths to satisfy GetX's requirement that every
       // Obx closure subscribes to at least one observable:
       //
-      //   searchQuery != null → Obx that reads searchQuery!.value for the
-      //                         active-dot indicator. Observable guaranteed.
-      //   searchQuery == null → No dot needed, no Obx created at all.
-      if (searchQuery != null ||
-          (searchDoctype != null && searchRoute != null))
+      // searchQuery != null → Obx that reads searchQuery!.value for the
+      // active-dot indicator. Observable guaranteed.
+      // searchQuery == null → No dot needed, no Obx created at all.
+      if (searchQuery != null || (searchDoctype != null && searchRoute != null))
         Builder(
           builder: (ctx) {
             // ─ path A: searchQuery is non-null — wrap in Obx ──────────────
@@ -230,9 +234,8 @@ class DocTypeListHeader extends StatelessWidget {
               width: 48,
               height: 48,
               child: Tooltip(
-                message: searchDoctype != null
-                    ? 'Search $searchDoctype'
-                    : 'Search',
+                message:
+                    searchDoctype != null ? 'Search $searchDoctype' : 'Search',
                 child: IconButton(
                   icon: const Icon(Icons.search),
                   onPressed: () => showSearch(
@@ -256,11 +259,11 @@ class DocTypeListHeader extends StatelessWidget {
 
     // ── Title widget ───────────────────────────────────────────────────────
     //
-    // softWrap: true  — allow the text to break across lines.
-    // overflow: clip  — never add an ellipsis; clip only if absolutely forced
-    //                   by some extreme container constraint (should not occur
-    //                   with a SliverAppBar that grows with its content).
-    // maxLines: null  — unlimited lines; the large-title area expands to fit.
+    // softWrap: true — allow the text to break across lines.
+    // overflow: clip — never add an ellipsis; clip only if absolutely forced
+    //     by some extreme container constraint (should not occur
+    //     with a SliverAppBar that grows with its content).
+    // maxLines: null — unlimited lines; the large-title area expands to fit.
     //
     // The same Text widget is reused for both the collapsed (toolbar) title
     // and the expanded large title via FlexibleSpaceBar so the user always
@@ -277,12 +280,15 @@ class DocTypeListHeader extends StatelessWidget {
       title: titleWidget,
       actions: actions.isEmpty ? null : actions,
       automaticallyImplyLeading: automaticallyImplyLeading,
+
       // A subtle elevation line when content scrolls under the pinned bar
       // so the header remains visually distinct from list items.
       scrolledUnderElevation: 1.0,
+
       pinned: true,
+
       // expandedHeight: null lets the SliverAppBar.large calculate its own
-      // default large-title height (≈152 dp).  For very long names the
+      // default large-title height (≈152 dp). For very long names the
       // FlexibleSpaceBar below will simply grow taller automatically because
       // stretchModes and fit are unrestricted.
       //
@@ -303,7 +309,6 @@ class DocTypeListHeader extends StatelessWidget {
   }
 
   // ── Active filter chip row ────────────────────────────────────────────────
-
   Widget _buildFilterChips(BuildContext context) {
     return SliverPersistentHeader(
       pinned: true,
@@ -323,7 +328,6 @@ class DocTypeListHeader extends StatelessWidget {
 
 class MultiSliver extends StatelessWidget {
   final List<Widget> children;
-
   const MultiSliver({super.key, required this.children});
 
   @override
@@ -338,7 +342,7 @@ class MultiSliver extends StatelessWidget {
 
 class _FilterChipHeaderDelegate extends SliverPersistentHeaderDelegate {
   final RxString? searchQuery;
-  final RxMap<String, dynamic>? activeFilters;
+  final RxMap? activeFilters;
   final List<Widget> Function(BuildContext context) filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
