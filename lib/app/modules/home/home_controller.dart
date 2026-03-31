@@ -542,6 +542,7 @@ class HomeController extends GetxController {
       case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
       case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
       case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
+      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 11; break;
     }
   }
 
@@ -566,4 +567,5 @@ class HomeController extends GetxController {
   void goToWorkOrder()       => changeDrawerPage(8,  AppRoutes.WORK_ORDER);
   void goToJobCard()         => changeDrawerPage(9,  AppRoutes.JOB_CARD);
   void goToBatch()           => changeDrawerPage(10, AppRoutes.BATCH);
+  void goToBOM()             => changeDrawerPage(11, AppRoutes.BOM);
 }

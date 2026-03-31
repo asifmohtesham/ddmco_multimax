@@ -94,6 +94,17 @@ class HomeScreen extends GetView<HomeController> {
                         children: [
                           Expanded(
                             child: SpeedometerKpiCard(
+                              title: 'BOMs Active',
+                              // actual: controller.activeBomCount.value ?? 0,
+                              // target: controller.targetBoms,
+                              actual: 0,
+                              target: 1,
+                              icon: Icons.account_tree_outlined,
+                              onTap: controller.goToBOM,
+                            ),
+                          ),
+                          Expanded(
+                            child: SpeedometerKpiCard(
                               title: 'Work Orders',
                               actual: controller.activeWorkOrdersCount.value,
                               target: controller.targetWorkOrders,
@@ -147,28 +158,49 @@ class HomeScreen extends GetView<HomeController> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
+              _buildQuickActionItem(context, 'Stock Entry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
                       () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
 
               // Modified: Delivery Note now opens the selection sheet with KA/ML filter
-              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
+              _buildQuickActionItem(context, 'Delivery Note', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
                 controller.setFulfillmentPrefixFilter(['KA', 'ML']);
                 _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
               }),
 
-              _buildQuickActionItem(context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
+              _buildQuickActionItem(context, 'Purchase Receipt', Icons.receipt_long_outlined, Colors.green, itemWidth,
                       () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})),
-              _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
+              _buildQuickActionItem(context, 'Packing Slip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
                       () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
 
               // Modified: Fulfilment POS explicitly clears filters
-              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
+              _buildQuickActionItem(context, 'POS Upload', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
                 controller.setFulfillmentPrefixFilter([]); // Empty list = No filter
                 _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
               }),
 
-              _buildQuickActionItem(context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
-                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }),
+              _buildQuickActionItem(
+                context, 'BOM',
+                Icons.account_tree_outlined,
+                Colors.teal,
+                itemWidth,
+                () => Get.toNamed(AppRoutes.BOM),
+              ),
+
+              _buildQuickActionItem(
+                context, 'Work Order',
+                Icons.precision_manufacturing_outlined,
+                Colors.indigo,
+                itemWidth,
+                () => controller.goToWorkOrder(),
+              ),
+
+              _buildQuickActionItem(
+                context, 'Job Card',
+                Icons.assignment_ind_outlined,
+                Colors.deepOrange,
+                itemWidth,
+                () => controller.goToJobCard(),
+              ),
             ],
           );
         }
