@@ -69,22 +69,17 @@ class WorkOrderProvider {
   // ── Submit, Execute & Job Card ────────────────────────────────────────────────
 
   /// Submit a Work Order by setting docstatus to 1.
-  ///
-  /// ERPNext validates submission server-side (required qty, BOM active,
-  /// warehouses set). Any validation error is returned as a 417/400 with
-  /// `exc_type` in the response body — the controller handles this.
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
   /// Execute a submitted Work Order: transitions status from
   /// "Not Started" → "In Progress".
   ///
-  /// Uses `frappe.client.set_value` — always whitelisted — to directly
-  /// write the `status` field on the submitted document. ERPNext does not
-  /// expose a dedicated RPC method for this transition; the status update
-  /// is the canonical way to mark manufacturing as started from the API.
+  /// Uses [ApiProvider.callMethodPost] because `frappe.client.set_value`
+  /// is a write-side whitelisted method — Frappe rejects it with HTTP 403
+  /// when called via GET (`is_valid_http_method` enforcement).
   Future<Response> executeWorkOrder(String name) async =>
-      _apiProvider.callMethod(
+      _apiProvider.callMethodPost(
         'frappe.client.set_value',
         params: {
           'doctype': 'Work Order',
@@ -95,17 +90,6 @@ class WorkOrderProvider {
       );
 
   /// Create Job Cards for the selected operations on a submitted Work Order.
-  ///
-  /// Calls the whitelisted server method:
-  ///   `erpnext.manufacturing.doctype.work_order.work_order.make_job_card`
-  ///
-  /// [workOrderName] — the Work Order document name.
-  /// [operations] — list of operation row payloads built via
-  ///   `WorkOrderOperation.toJobCardPayload(qty: pendingQty)`. Each map
-  ///   must include: `name`, `operation`, `qty`, `pending_qty`,
-  ///   `sequence_id`, `batch_size`, and optionally `workstation`.
-  ///
-  /// Returns the list of created Job Card names in `message`.
   Future<Response> makeJobCard(
     String workOrderName,
     List<Map<String, dynamic>> operations,
