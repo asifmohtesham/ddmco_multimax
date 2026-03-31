@@ -201,9 +201,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   // ── Chip presence ─────────────────────────────────────────────────────────
   //
-  // Read synchronously (no Obx).  Used by BOTH maxExtent and the Column
-  // child guard so they always agree on whether the chip row is present.
-  // This is the single source of truth for chip row height allocation.
+  // Single source of truth for chip row height allocation.
+  // Read synchronously (no Obx) — used by maxExtent AND the Column guard.
   bool get _chipsActive =>
       filterChipsBuilder != null &&
       ((searchQuery?.value ?? '').isNotEmpty ||
@@ -228,14 +227,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         math.min(1.0, shrinkOffset / _kExpandedExtra);
     final expandProgress = 1.0 - collapseProgress;
 
-    // Snapshot _chipsActive once per build so Column guard and chipRow
-    // builder use the identical value within the same layout pass.
     final chipsNowActive = _chipsActive;
 
-    // ─ Toolbar row ─────────────────────────────────────────────────────────
     final toolbar = _buildToolbar(context, colorScheme, theme);
 
-    // ─ Large title (fades out as user scrolls) ───────────────────────────
     final largeTitle = Opacity(
       opacity: expandProgress,
       child: Padding(
@@ -256,7 +251,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
 
-    // ─ Chip row ──────────────────────────────────────────────────────────
     Widget? chipRow;
     if (chipsNowActive) {
       final chips = filterChipsBuilder!(context);
@@ -289,11 +283,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       }
     }
 
-    // ─ Full layout ─────────────────────────────────────────────────────────
-    //
-    // Column is anchored to the bottom.  The chip SizedBox is only added
-    // when chipsNowActive is true — the SAME condition maxExtent uses to
-    // include _kChipRow.  Column natural height therefore always == maxExtent.
     return Material(
       color: colorScheme.surface,
       elevation: overlapsContent ? 1.0 : 0.0,
@@ -306,10 +295,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
             child: largeTitle,
           ),
           toolbar,
-          // ✔ FIX 1: guard on chipsNowActive, not chipRow != null.
-          // Previously used `if (chipRow != null)` which fired whenever
-          // filterChipsBuilder was provided — even when no chips were active.
-          // That caused the Column to exceed maxExtent by exactly 56 dp.
           if (chipsNowActive && chipRow != null)
             SizedBox(height: _kChipRow, child: chipRow),
         ],
@@ -482,9 +467,28 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   // ── shouldRebuild ────────────────────────────────────────────────────────
+  //
+  // ✔ FIX 2: also compare Rx *values*, not just object identity.
+  //
+  // GetX mutates RxMap / RxString in-place, so the same object reference
+  // is passed on both calls.  Pure identity checks miss content changes
+  // and leave maxExtent stale.
+  //
+  // Reading .length / .value here is intentionally outside Obx — we want
+  // a synchronous snapshot for the sliver layout protocol.  The reads do
+  // NOT register with GetX’s reactive graph from this context; fine-grained
+  // reactivity inside the built widget tree is still handled by Obx in
+  // _buildActions.
   @override
   bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
-    return title != old.title ||
+    final filtersChanged =
+        (activeFilters?.length ?? 0) != (old.activeFilters?.length ?? 0);
+    final searchChanged =
+        (searchQuery?.value ?? '') != (old.searchQuery?.value ?? '');
+
+    return filtersChanged ||
+        searchChanged ||
+        title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         extraActions != old.extraActions ||
         searchDoctype != old.searchDoctype ||
