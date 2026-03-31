@@ -671,22 +671,25 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Execute ─────────────────────────────────────────────────────────────────────
-  /// Execute the Work Order: transitions status "Not Started" → "In Progress".
+  /// Show a bottom-sheet dialog that lets the operator enter a **partial
+  /// execution quantity**, then transitions the Work Order status from
+  /// "Not Started" → "In Progress" on ERPNext.
   ///
-  /// This marks manufacturing as actively started on ERPNext and
-  /// refreshes the form so all status-dependent UI updates reactively.
+  /// The qty input is pre-filled with [WorkOrder.qty] (the full order qty)
+  /// but the operator may enter any positive value ≤ [WorkOrder.qty] to
+  /// indicate they are only starting production for part of the order.
+  ///
+  /// The chosen qty is passed as `qty_to_manufacture` in the
+  /// `frappe.client.set_value` call so ERPNext can track partial execution.
   Future<void> executeWorkOrder() async {
     if (!canExecute) return;
 
-    final confirmed = await GlobalDialog.confirm(
-      title: 'Execute Work Order',
-      message:
-          'Mark this Work Order as \'In Progress\'? '
-          'This indicates manufacturing has actively started.',
-      confirmText: 'Execute',
-    );
+    final wo = workOrder.value!;
+    final maxQty = wo.qty;
 
-    if (confirmed != true) return;
+    // ── Partial-qty bottom sheet ──────────────────────────────────────────────
+    final enteredQty = await _showExecuteQtySheet(maxQty: maxQty);
+    if (enteredQty == null) return; // user dismissed
 
     isExecuting.value = true;
     try {
@@ -694,7 +697,8 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       if (res.statusCode == 200) {
         await _fetchDocument();
         GlobalSnackbar.success(
-          message: 'Work Order $name is now In Progress',
+          message: 'Work Order $name is now In Progress'
+              '${enteredQty < maxQty ? ' (partial: $enteredQty / $maxQty)' : ''}',
         );
       } else {
         GlobalSnackbar.error(message: 'Failed to execute Work Order');
@@ -707,6 +711,128 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     } finally {
       isExecuting.value = false;
     }
+  }
+
+  // ── Execute qty bottom-sheet (private helper) ─────────────────────────────────
+  /// Shows a Material bottom sheet with a numeric qty input.
+  ///
+  /// Returns the validated [double] qty when the operator confirms,
+  /// or `null` when they dismiss / cancel.
+  Future<double?> _showExecuteQtySheet({required double maxQty}) async {
+    final ctrl = TextEditingController(
+      text: maxQty % 1 == 0 ? maxQty.toInt().toString() : maxQty.toString(),
+    );
+    final formKey = GlobalKey<FormState>();
+    double? result;
+
+    await showModalBottomSheet<void>(
+      context: Get.context!,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(Get.context!).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 32,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ────────────────────────────────────────────────────
+                Row(
+                  children: [
+                    const Icon(Icons.play_circle_outline, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Execute Work Order',
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Enter the quantity to execute (max: $maxQty). '
+                  'This will mark the Work Order as In Progress.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.6),
+                      ),
+                ),
+                const SizedBox(height: 20),
+                // ── Qty input ─────────────────────────────────────────────────
+                TextFormField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: false,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Qty to Execute',
+                    hintText: 'e.g. ${maxQty.toInt()}',
+                    border: const OutlineInputBorder(),
+                    suffixText: maxQty % 1 == 0
+                        ? '/ ${maxQty.toInt()}'
+                        : '/ $maxQty',
+                  ),
+                  validator: (v) {
+                    final parsed = double.tryParse(v ?? '');
+                    if (parsed == null || parsed <= 0) {
+                      return 'Enter a valid quantity greater than 0';
+                    }
+                    if (parsed > maxQty) {
+                      return 'Cannot exceed order qty ($maxQty)';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                // ── Action row ────────────────────────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: const Text('Execute'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () {
+                        if (formKey.currentState!.validate()) {
+                          result = double.parse(ctrl.text.trim());
+                          Navigator.of(ctx).pop();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    ctrl.dispose();
+    return result;
   }
 
   // ── Auto-create Job Cards (internal) ──────────────────────────────────────────

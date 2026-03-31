@@ -1,3 +1,4 @@
+import 'package:multimax/app/data/models/work_order_item_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 
 /// Model for the **Work Order** DocType.
@@ -7,6 +8,10 @@ import 'package:multimax/app/data/models/work_order_operation_model.dart';
 /// [operations] maps the `Work Order Operation` child table — populated
 /// only when fetching a single document (GET /api/resource/Work Order/{name}).
 /// List-view responses omit child tables; the field defaults to [].
+///
+/// [requiredItems] maps the `Work Order Item` child table (`required_items`)
+/// which lists the raw materials / components required for the production run.
+/// Like [operations], it is only present in single-document responses.
 ///
 /// [skipTransfer] and [transferMaterialAgainst] are needed by the
 /// Job Card creation flow to determine WIP warehouse behaviour.
@@ -31,6 +36,12 @@ class WorkOrder {
   /// Empty when the Work Order has no routing / operations defined,
   /// or when loaded from a list view (child tables not included).
   final List<WorkOrderOperation> operations;
+
+  // ── Required Items child table ─────────────────────────────────────────────
+  /// Rows from the `Work Order Item` child table (`required_items` JSON key).
+  /// Lists all raw materials / components required for this production run.
+  /// Empty when loaded from a list view (child tables not included).
+  final List<WorkOrderItem> requiredItems;
 
   // ── Material transfer flags ─────────────────────────────────────────────────
   /// When true, raw material transfer is skipped for this Work Order.
@@ -58,6 +69,7 @@ class WorkOrder {
     this.modified,
     required this.docstatus,
     this.operations = const [],
+    this.requiredItems = const [],
     this.skipTransfer = false,
     this.transferMaterialAgainst,
   });
@@ -78,11 +90,15 @@ class WorkOrder {
       description:     json['description'],
       modified:        json['modified'],
       docstatus:       json['docstatus']         as int? ?? 0,
-      // ── Child table ───────────────────────────────────────────────────────
+      // ── Operations child table ─────────────────────────────────────────────
       operations: (json['operations'] as List? ?? [])
           .map((e) => WorkOrderOperation.fromJson(e as Map<String, dynamic>))
           .toList(),
-      // ── Transfer flags ────────────────────────────────────────────────────
+      // ── Required Items child table ─────────────────────────────────────────
+      requiredItems: (json['required_items'] as List? ?? [])
+          .map((e) => WorkOrderItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      // ── Transfer flags ─────────────────────────────────────────────────────
       skipTransfer: (json['skip_transfer'] as int? ?? 0) == 1,
       transferMaterialAgainst: json['transfer_material_against'] as String?,
     );
@@ -98,6 +114,6 @@ class WorkOrder {
     if (fg_warehouse    != null) 'fg_warehouse':      fg_warehouse,
     if (description     != null) 'description':       description,
     'docstatus': docstatus,
-    // operations intentionally excluded — child table is read-only from app
+    // operations and requiredItems are read-only from the app — excluded
   };
 }
