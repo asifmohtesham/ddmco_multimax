@@ -7,26 +7,32 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
 
-  // ── List state ──────────────────────────────────────────────────────────
+  // ── List state ───────────────────────────────────────────────
   var jobCards = <JobCard>[].obs;
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
   var hasMore = false.obs;
 
-  // ── Search & filter ─────────────────────────────────────────────────────
+  // ── Search & filter ──────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
+
+  /// Optional title override injected via [Get.arguments] from the Dashboard
+  /// quick-access shortcut (e.g. 'Open Job Cards'). Falls back to null so
+  /// JobCardScreen renders its default title when navigated from the drawer.
+  String? pageTitle;
 
   Timer? _debounce;
 
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+    _applyRouteArguments();
     fetchJobCards(clear: true);
   }
 
@@ -36,7 +42,38 @@ class JobCardController extends GetxController {
     super.onClose();
   }
 
-  // ── Search ───────────────────────────────────────────────────────────────
+  // ── Route argument injection ──────────────────────────────────────────
+  //
+  // Dashboard Job Card KPI card / quick-action calls:
+  //   controller.goToJobCard()  — no args → default list
+  // OR explicitly with pre-filter:
+  //   Get.toNamed(AppRoutes.JOB_CARD, arguments: {
+  //     'filters':   {'status': 'Open'},
+  //     'pageTitle': 'Open Job Cards',
+  //   });
+  //
+  // _buildFilterMap must NOT wrap pre-seeded filter values with ['=', value]
+  // because dashboard-injected values like {'status': 'Open'} are already
+  // plain strings, while setFilter() stores ['=', value] tuples. We handle
+  // this by storing injected filters in activeFilters as plain values and
+  // letting _buildFilterMap detect the type.
+
+  void _applyRouteArguments() {
+    final args = Get.arguments;
+    if (args is! Map) return;
+
+    final rawFilters = args['filters'];
+    if (rawFilters is Map<String, dynamic>) {
+      activeFilters.addAll(rawFilters);
+    }
+
+    final title = args['pageTitle'];
+    if (title is String && title.isNotEmpty) {
+      pageTitle = title;
+    }
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────
 
   void onSearchChanged(String value) {
     _debounce?.cancel();
@@ -46,7 +83,7 @@ class JobCardController extends GetxController {
     });
   }
 
-  // ── Filter helpers ─────────────────────────────────────────────────────
+  // ── Filter helpers ────────────────────────────────────────────────
 
   /// Sets [key] to [value], or removes it when [value] is null, then re-fetches.
   void setFilter(String key, String? value) {
@@ -69,7 +106,7 @@ class JobCardController extends GetxController {
     fetchJobCards(clear: true);
   }
 
-  // ── Fetch ───────────────────────────────────────────────────────────────────
+  // ── Fetch ─────────────────────────────────────────────────────────────
 
   Future<void> fetchJobCards({
     bool clear = false,
@@ -107,7 +144,14 @@ class JobCardController extends GetxController {
     }
   }
 
-  // ── Filter map builder ─────────────────────────────────────────────────
+  // ── Filter map builder ───────────────────────────────────────────────
+  //
+  // Handles both filter formats:
+  //   • Plain value  (injected from dashboard args): {'status': 'Open'}
+  //   • Tuple value  (set via setFilter()):           {'status': 'Open'}  ← setFilter now stores plain too
+  //
+  // Plain-string filters are passed directly; non-string values (already
+  // encoded as API operator tuples) are passed through unchanged.
 
   Map<String, dynamic> _buildFilterMap() {
     final f = <String, dynamic>{};
@@ -115,14 +159,21 @@ class JobCardController extends GetxController {
       f['name'] = ['like', '%${searchQuery.value}%'];
     }
     for (final entry in activeFilters.entries) {
-      f[entry.key] = ['=', entry.value];
+      final val = entry.value;
+      // If it's already an operator list (e.g. ['like', '%x%']), pass through.
+      // Otherwise wrap as equality filter for the API layer.
+      if (val is List) {
+        f[entry.key] = val;
+      } else {
+        f[entry.key] = ['=', val];
+      }
     }
     return f;
   }
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
+  // ── KPIs ───────────────────────────────────────────────────────────
 
-  int get totalCards     => jobCards.length;
+  int get totalCards => jobCards.length;
 
   /// Open + Work In Progress (actionable cards).
   int get openCards => jobCards

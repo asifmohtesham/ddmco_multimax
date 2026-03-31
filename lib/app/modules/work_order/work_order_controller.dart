@@ -17,16 +17,22 @@ class WorkOrderController extends GetxController {
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
+  /// Optional title override injected via [Get.arguments] from the Dashboard
+  /// quick-access shortcut (e.g. 'In-Process Orders'). Falls back to null so
+  /// WorkOrderScreen renders its default title when navigated from the drawer.
+  String? pageTitle;
+
   Timer? _debounce;
 
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+    _applyRouteArguments();
     fetchWorkOrders(clear: true);
   }
 
@@ -34,6 +40,31 @@ class WorkOrderController extends GetxController {
   void onClose() {
     _debounce?.cancel();
     super.onClose();
+  }
+
+  // ── Route argument injection ───────────────────────────────────────────────
+  //
+  // Dashboard Work Order KPI card / quick-action calls:
+  //   controller.goToWorkOrder()  — no args → default list
+  // OR explicitly with pre-filter:
+  //   Get.toNamed(AppRoutes.WORK_ORDER, arguments: {
+  //     'filters':   {'status': 'In Process'},
+  //     'pageTitle': 'In-Process Orders',
+  //   });
+
+  void _applyRouteArguments() {
+    final args = Get.arguments;
+    if (args is! Map) return;
+
+    final rawFilters = args['filters'];
+    if (rawFilters is Map<String, dynamic>) {
+      activeFilters.addAll(rawFilters);
+    }
+
+    final title = args['pageTitle'];
+    if (title is String && title.isNotEmpty) {
+      pageTitle = title;
+    }
   }
 
   // ── Search ───────────────────────────────────────────────────────────────────
@@ -46,7 +77,7 @@ class WorkOrderController extends GetxController {
     });
   }
 
-  // ── Filter helpers ───────────────────────────────────────────────────────────
+  // ── Filter helpers ─────────────────────────────────────────────────────────
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -59,7 +90,7 @@ class WorkOrderController extends GetxController {
     fetchWorkOrders(clear: true);
   }
 
-  // ── Fetch ────────────────────────────────────────────────────────────────────
+  // ── Fetch ───────────────────────────────────────────────────────────────────
 
   Future<void> fetchWorkOrders({
     bool clear = false,
@@ -111,7 +142,7 @@ class WorkOrderController extends GetxController {
     return f;
   }
 
-  // ── KPIs ─────────────────────────────────────────────────────────────────────
+  // ── KPIs ────────────────────────────────────────────────────────────────────
 
   int get totalCount => workOrders.length;
 

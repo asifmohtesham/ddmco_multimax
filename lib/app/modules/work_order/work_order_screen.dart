@@ -76,9 +76,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       ));
     }
     if (controller.activeFilters.containsKey('status')) {
+      final statusVal = controller.activeFilters['status'];
       chips.add(chip(
         icon: Icons.flag_outlined,
-        label: 'Status: ${controller.activeFilters['status']}',
+        label: 'Status: $statusVal',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -89,12 +90,22 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         onDeleted: () => controller.removeFilter('production_item'),
       ));
     }
+    if (controller.activeFilters.containsKey('owner')) {
+      chips.add(chip(
+        icon: Icons.person_outline,
+        label: 'Owner: ${controller.activeFilters['owner']}',
+        onDeleted: () => controller.removeFilter('owner'),
+      ));
+    }
     return chips;
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // Use injected page title (from dashboard args) or fall back to default
+    final screenTitle = controller.pageTitle ?? 'Work Orders';
 
     return AppShellScaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -116,9 +127,9 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ──────────────────────────────────────────
+            // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
-              title: 'Work Orders',
+              title: screenTitle,
               searchDoctype:      'Work Order',
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
@@ -131,7 +142,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               onClearAllFilters:  controller.clearFilters,
             ),
 
-            // ── List content ──────────────────────────────────────────
+            // ── List content ─────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
@@ -170,6 +181,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                     color: cs.onSurface,
                                     fontWeight: FontWeight.bold),
                           ),
+                          const SizedBox(height: 8),
+                          Text(
+                            hasFilters
+                                ? 'Try clearing the active filter to see all Work Orders.'
+                                : 'No Work Orders found. Tap "+ New Work Order" to create one.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: cs.onSurfaceVariant, fontSize: 13),
+                          ),
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
                             onPressed: hasFilters
@@ -177,7 +197,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                 : () => controller.fetchWorkOrders(
                                     clear: true),
                             icon: Icon(hasFilters
-                                ? Icons.clear_all
+                                ? Icons.filter_alt_off
                                 : Icons.refresh),
                             label: Text(hasFilters
                                 ? 'Clear Filters'
