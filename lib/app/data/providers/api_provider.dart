@@ -4,6 +4,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData;
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -322,6 +323,105 @@ class ApiProvider {
           '_': DateTime.now().millisecondsSinceEpoch
         }
     );
+  }
+
+  /// Fetch all available batches for [itemCode] in [warehouse] from the
+  /// Batch-Wise Balance History report, returning only rows where balance > 0.
+  ///
+  /// Results are sorted by balanceQty DESC so the highest-stock batch appears
+  /// first in the picker.
+  ///
+  /// Column order from the report:
+  ///   [0] batch_id  [1] expiry_date  [2] warehouse
+  ///   [3] opening_qty  [4] in_qty  [5] out_qty  [6] balance_qty
+  ///
+  /// Column indices are resolved dynamically from the `columns` array so the
+  /// method is resilient to ERPNext version differences.
+  Future<List<BatchWiseBalanceRow>> fetchBatchesForItem(
+    String itemCode, {
+    String? warehouse,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+    final company = storage.getCompany();
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = <String, dynamic>{
+      'company'   : company,
+      'from_date' : today,
+      'to_date'   : today,
+      'item_code' : itemCode,
+    };
+    if (warehouse != null && warehouse.isNotEmpty) {
+      filters['warehouse'] = warehouse;
+    }
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
+    }
+
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message    = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+
+      final rawColumns = message['columns'] as List<dynamic>?;
+      final rawRows    = message['result']  as List<dynamic>?;
+      if (rawColumns == null || rawRows == null || rawRows.isEmpty) return [];
+
+      // Resolve column indices dynamically.
+      String _fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        // Strip table prefix e.g. '`tabBatch`.`batch_id`' → 'batch_id'
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0 ? s.substring(lastDot + 1).replaceAll('`', '') : s;
+      }
+
+      final cols       = rawColumns.map(_fn).toList();
+      final batchIdx   = cols.indexWhere((c) => c.contains('batch'));
+      final expiryIdx  = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+      final whIdx      = cols.indexWhere((c) => c.contains('warehouse'));
+      final balIdx     = cols.indexWhere((c) => c.contains('balance'));
+
+      if (batchIdx == -1 || balIdx == -1) return [];
+
+      final rows = <BatchWiseBalanceRow>[];
+      for (final row in rawRows) {
+        if (row is! List || row.isEmpty) continue;
+        final parsed = BatchWiseBalanceRow.fromReportRow(
+          row,
+          batchIdx    : batchIdx,
+          balanceIdx  : balIdx,
+          warehouseIdx: whIdx >= 0 ? whIdx : 0,
+          expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
+        );
+        if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
+          rows.add(parsed);
+        }
+      }
+
+      rows.sort((a, b) => b.balanceQty.compareTo(a.balanceQty));
+      return rows;
+    } catch (_) {
+      return [];
+    }
   }
 
   // ---------------------------------------------------------------------------
