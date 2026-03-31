@@ -93,6 +93,18 @@ class WarehousePicker {
                           } else {
                             controller.selectedToWarehouse.value = wh;
                           }
+                          // ── Commit 3: propagate to WO prefill items ──────────────────
+                          // When this SE was opened from executeWorkOrder() the items
+                          // list was pre-populated with per-item sWarehouse/tWarehouse
+                          // values from ERPNext.  If the operator overrides the header
+                          // warehouse here, those per-item fields must follow so the
+                          // Items tab, the item edit sheet, and the final save payload
+                          // all reflect the chosen warehouse consistently.
+                          if (controller.argWorkOrderName != null &&
+                              controller.argWorkOrderName!.isNotEmpty) {
+                            controller.propagateHeaderWarehouseToItems(
+                                source: isSource);
+                          }
                           NavigatorUtils.popSheet(ctx);
                         },
                       );
