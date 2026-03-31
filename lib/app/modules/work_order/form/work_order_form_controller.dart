@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -581,23 +580,24 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  // ── Execute: Material Transfer for Manufacture ──────────────────────────────
+  // ── Execute: Navigate to Stock Entry Form with prefilled items ──────────────
   /// Flow:
-  ///   1. Fetch pre-filled SE doc from ERPNext via make_stock_entry.
-  ///   2. Show _MaterialTransferConfirmSheet: operator reviews items and
-  ///      enters Batch No (picker) + Rack (text) for every item row.
-  ///   3. Sheet returns the mutated seDoc with batch_no + custom_rack
-  ///      injected into each items[] row, or null if cancelled.
-  ///   4. POST the enriched seDoc to save it (gets name e.g. STE-00001).
-  ///   5. PATCH docstatus=1 to submit it; ERPNext on_submit hook
-  ///      updates WO status automatically.
+  ///   1. Call ERPNext make_stock_entry to get the pre-filled SE doc.
+  ///   2. Extract the items[] list from the response.
+  ///   3. Navigate to StockEntryForm in 'new' mode, passing:
+  ///        stockEntryType  = 'Material Transfer for Manufacture'
+  ///        workOrderName   = this WO name  (for SE header linking)
+  ///        items           = the pre-filled items list
+  ///      The SE form controller will treat items in its
+  ///      materialRequest-style flow, showing each row for operator review.
+  ///   4. On SE save + submit, ERPNext's on_submit hook updates WO → In Process.
   Future<void> executeWorkOrder() async {
     if (!canExecute) return;
 
     final wo = workOrder.value!;
     isExecuting.value = true;
 
-    // Step 1: fetch the pre-filled SE doc.
+    // Step 1 – fetch pre-filled SE doc from ERPNext.
     Map<String, dynamic> seDoc;
     try {
       final res = await _provider.getMaterialTransferForManufacture(
@@ -623,97 +623,28 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       GlobalSnackbar.error(message: 'Error: $e');
       isExecuting.value = false;
       return;
-    }
-
-    // Step 2: show confirm sheet; get back the enriched seDoc or null.
-    final enrichedDoc =
-        await _showMaterialTransferConfirmSheet(seDoc: seDoc);
-    if (enrichedDoc == null) {
-      isExecuting.value = false;
-      return;
-    }
-
-    // Step 3a: save (POST) the enriched SE.
-    String seName;
-    try {
-      final saveRes = await _provider.saveStockEntry(enrichedDoc);
-      if (saveRes.statusCode != 200 || saveRes.data['data'] == null) {
-        GlobalSnackbar.error(
-            message: 'Failed to save Material Transfer Stock Entry');
-        isExecuting.value = false;
-        return;
-      }
-      seName = saveRes.data['data']['name'] as String;
-    } on DioException catch (e) {
-      GlobalSnackbar.error(
-          message: _extractErrorMessage(e, 'Failed to save Stock Entry'));
-      isExecuting.value = false;
-      return;
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Error saving Stock Entry: $e');
-      isExecuting.value = false;
-      return;
-    }
-
-    // Step 3b: submit the saved SE.
-    try {
-      final submitRes = await _provider.submitStockEntry(seName);
-      if (submitRes.statusCode == 200) {
-        await _fetchDocument();
-        GlobalSnackbar.success(
-          message: 'Material Transfer $seName submitted. '
-              'Work Order $name is now In Process.',
-        );
-      } else {
-        GlobalSnackbar.error(
-          message: 'Stock Entry $seName saved but could not be submitted. '
-              'Submit it manually from the Stock Entry list.',
-        );
-      }
-    } on DioException catch (e) {
-      GlobalSnackbar.error(
-        message: _extractErrorMessage(
-          e,
-          'Stock Entry $seName saved but submit failed — submit manually.',
-        ),
-      );
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Error submitting Stock Entry: $e');
     } finally {
       isExecuting.value = false;
     }
-  }
 
-  // ── Material Transfer confirm sheet ────────────────────────────────────────────
-  /// Opens the confirm sheet and returns the **mutated** seDoc with
-  /// batch_no and custom_rack set on every item row, or null if cancelled.
-  Future<Map<String, dynamic>?> _showMaterialTransferConfirmSheet({
-    required Map<String, dynamic> seDoc,
-  }) {
-    final completer = Completer<Map<String, dynamic>?>();
-    showModalBottomSheet<void>(
-      context: Get.context!,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(Get.context!).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _MaterialTransferConfirmSheet(
-        seDoc: seDoc,
-        onConfirm: (enrichedDoc) {
-          Navigator.of(Get.context!).pop();
-          completer.complete(enrichedDoc);
-        },
-        onCancel: () {
-          Navigator.of(Get.context!).pop();
-          completer.complete(null);
-        },
-      ),
-    ).then((_) {
-      if (!completer.isCompleted) completer.complete(null);
-    });
-    return completer.future;
+    // Step 2 – extract items list.
+    final rawItems = seDoc['items'];
+    final List<Map<String, dynamic>> prefillItems = rawItems is List
+        ? rawItems
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList()
+        : [];
+
+    // Step 3 – navigate to Stock Entry Form with prefilled data.
+    Get.toNamed(
+      AppRoutes.STOCK_ENTRY_FORM,
+      arguments: {
+        'mode': 'new',
+        'stockEntryType': 'Material Transfer for Manufacture',
+        'workOrderName': name,
+        'items': prefillItems,
+      },
+    );
   }
 
   // ── Create Job Cards (public) ───────────────────────────────────────────────────
@@ -814,419 +745,5 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       }
     } catch (_) {}
     return fallback;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _MaterialTransferConfirmSheet
-// ─────────────────────────────────────────────────────────────────────────────
-/// StatefulWidget bottom sheet for reviewing the Material Transfer for
-/// Manufacture Stock Entry before submission.
-///
-/// Each SE item row exposes two required fields:
-///   - Batch No: tappable chip → opens a DocTypePickerBottomSheet filtered
-///     to the item_code, showing batch_id + expiry_date. Required.
-///   - Rack (custom_rack): free-text TextField. Required.
-///
-/// The "Confirm Transfer" button is disabled until every item has both
-/// fields filled. On confirm, [onConfirm] is called with the mutated
-/// seDoc (batch_no + custom_rack merged into each items[] row).
-class _MaterialTransferConfirmSheet extends StatefulWidget {
-  final Map<String, dynamic> seDoc;
-
-  /// Called with the enriched seDoc when the operator confirms.
-  final void Function(Map<String, dynamic> enrichedDoc) onConfirm;
-  final VoidCallback onCancel;
-
-  const _MaterialTransferConfirmSheet({
-    required this.seDoc,
-    required this.onConfirm,
-    required this.onCancel,
-  });
-
-  @override
-  State<_MaterialTransferConfirmSheet> createState() =>
-      _MaterialTransferConfirmSheetState();
-}
-
-class _MaterialTransferConfirmSheetState
-    extends State<_MaterialTransferConfirmSheet> {
-  // Per-item controllers keyed by list index.
-  late final List<TextEditingController> _batchControllers;
-  late final List<TextEditingController> _rackControllers;
-  late final List<Map<String, dynamic>> _items;
-
-  bool _showValidationError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _items =
-        (widget.seDoc['items'] as List? ?? []).cast<Map<String, dynamic>>();
-    _batchControllers =
-        List.generate(_items.length, (_) => TextEditingController());
-    _rackControllers =
-        List.generate(_items.length, (_) => TextEditingController());
-  }
-
-  @override
-  void dispose() {
-    for (final c in _batchControllers) c.dispose();
-    for (final c in _rackControllers) c.dispose();
-    super.dispose();
-  }
-
-  bool get _allFilled {
-    for (int i = 0; i < _items.length; i++) {
-      if (_batchControllers[i].text.trim().isEmpty) return false;
-      if (_rackControllers[i].text.trim().isEmpty) return false;
-    }
-    return _items.isNotEmpty;
-  }
-
-  Future<void> _pickBatch(int index) async {
-    final itemCode = _items[index]['item_code'] as String? ?? '';
-    final selected = await showDocTypePickerBottomSheet(
-      context,
-      config: DocTypePickerConfig(
-        doctype: 'Batch',
-        title: 'Select Batch — $itemCode',
-        columns: [
-          DocTypePickerColumn(
-              fieldname: 'name', label: 'Batch ID', isPrimary: true),
-          DocTypePickerColumn(
-              fieldname: 'expiry_date',
-              label: 'Expiry Date',
-              isSecondary: true),
-        ],
-        filters: [
-          ['Batch', 'item', '=', itemCode],
-          ['Batch', 'disabled', '=', 0],
-        ],
-        allowRefresh: true,
-      ),
-    );
-    if (selected != null && mounted) {
-      setState(() {
-        _batchControllers[index].text = selected['name'] as String;
-        if (_showValidationError && _allFilled) {
-          _showValidationError = false;
-        }
-      });
-    }
-  }
-
-  void _handleConfirm() {
-    if (!_allFilled) {
-      setState(() => _showValidationError = true);
-      return;
-    }
-    // Merge batch_no + custom_rack into each item row and return.
-    final enrichedDoc =
-        Map<String, dynamic>.from(widget.seDoc);
-    final enrichedItems = _items.asMap().entries.map((entry) {
-      final i = entry.key;
-      final item = Map<String, dynamic>.from(entry.value);
-      item['batch_no'] = _batchControllers[i].text.trim();
-      item['custom_rack'] = _rackControllers[i].text.trim();
-      return item;
-    }).toList();
-    enrichedDoc['items'] = enrichedItems;
-    widget.onConfirm(enrichedDoc);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.7,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Column(
-        children: [
-          // ── Drag handle ───────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 4),
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // ── Header ───────────────────────────────────────────────────────────
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Icon(Icons.swap_horiz_rounded,
-                    size: 22, color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Material Transfer for Manufacture',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Enter Batch No and Rack for every item before confirming.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // ── Validation banner ───────────────────────────────────────────────
-          if (_showValidationError)
-            Container(
-              width: double.infinity,
-              color: theme.colorScheme.errorContainer,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.error_outline,
-                      size: 16,
-                      color: theme.colorScheme.onErrorContainer),
-                  const SizedBox(width: 8),
-                  Text(
-                    'All items require Batch No and Rack',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const Divider(height: 1),
-          // ── Items list ───────────────────────────────────────────────────────────
-          Expanded(
-            child: _items.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'No items found in the Stock Entry.\n'
-                        'Ensure the BOM has raw materials defined.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.5),
-                        ),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    controller: scrollCtrl,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 8, horizontal: 16),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final item = _items[i];
-                      final qty = item['qty'];
-                      final qtyStr = qty is double
-                          ? (qty % 1 == 0
-                              ? qty.toInt().toString()
-                              : qty.toString())
-                          : '$qty';
-                      final uom = item['uom'] as String? ?? '';
-                      final fromWh =
-                          item['s_warehouse'] as String? ?? '—';
-                      final toWh = item['t_warehouse'] as String? ?? '—';
-
-                      final batchMissing = _showValidationError &&
-                          _batchControllers[i].text.trim().isEmpty;
-                      final rackMissing = _showValidationError &&
-                          _rackControllers[i].text.trim().isEmpty;
-
-                      return Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Item name + qty header
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item['item_name'] as String? ??
-                                        item['item_code'] as String? ??
-                                        'Unknown item',
-                                    style: theme.textTheme.bodyMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                                Text(
-                                  '$qtyStr $uom',
-                                  style:
-                                      theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            // Item code
-                            Text(
-                              item['item_code'] as String? ?? '',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.55),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            // Warehouse route
-                            Row(
-                              children: [
-                                Icon(Icons.warehouse_outlined,
-                                    size: 14,
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.4)),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    '$fromWh  →  $toWh',
-                                    style:
-                                        theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface
-                                          .withOpacity(0.55),
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            // Batch No (picker)
-                            GestureDetector(
-                              onTap: () => _pickBatch(i),
-                              child: InputDecorator(
-                                decoration: InputDecoration(
-                                  labelText: 'Batch No *',
-                                  isDense: true,
-                                  suffixIcon: const Icon(
-                                      Icons.arrow_drop_down,
-                                      size: 20),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: batchMissing
-                                          ? theme.colorScheme.error
-                                          : theme.colorScheme.outline,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                        color: theme.colorScheme.primary,
-                                        width: 2),
-                                  ),
-                                  errorText: batchMissing
-                                      ? 'Required'
-                                      : null,
-                                ),
-                                child: Text(
-                                  _batchControllers[i].text.isNotEmpty
-                                      ? _batchControllers[i].text
-                                      : 'Tap to select batch',
-                                  style: _batchControllers[i]
-                                          .text
-                                          .isNotEmpty
-                                      ? theme.textTheme.bodyMedium
-                                      : theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                              color: theme
-                                                  .colorScheme.onSurface
-                                                  .withOpacity(0.4)),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            // Rack (free text)
-                            TextField(
-                              controller: _rackControllers[i],
-                              decoration: InputDecoration(
-                                labelText: 'Rack *',
-                                isDense: true,
-                                border: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8)),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                    color: rackMissing
-                                        ? theme.colorScheme.error
-                                        : theme.colorScheme.outline,
-                                  ),
-                                ),
-                                errorText:
-                                    rackMissing ? 'Required' : null,
-                              ),
-                              onChanged: (_) {
-                                if (_showValidationError && _allFilled) {
-                                  setState(
-                                      () => _showValidationError = false);
-                                } else {
-                                  setState(() {});
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          // ── Action buttons ───────────────────────────────────────────────────
-          const Divider(height: 1),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon:
-                      const Icon(Icons.swap_horiz_rounded, size: 18),
-                  label: const Text('Confirm Transfer'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange.shade700,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: _items.isEmpty ? null : _handleConfirm,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
