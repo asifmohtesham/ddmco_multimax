@@ -13,8 +13,15 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.da
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/batch_picker_sheet.dart';
 
 /// Item-level sheet controller for Stock Entry.
+///
+/// Commit P3-3:
+///   • [openBatchPicker]  → opens [BatchPickerSheet] as a modal bottom sheet.
+///     Pre-fetches [batchWiseHistory] if empty, passes this controller as the
+///     data-source, and writes the selected batch to [batchController] before
+///     triggering [validateBatch].
 ///
 /// Commit C-2:
 ///   • [qtyInfoText]    → 'Max: N' (binding ceiling) or 'Max: -' (no ceiling).
@@ -323,6 +330,46 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     } finally {
       isLoadingBatchHistory.value = false;
     }
+  }
+
+  // ── P3-3: openBatchPicker ──────────────────────────────────────────────
+  //
+  // Opens [BatchPickerSheet] as a modal bottom sheet.
+  //
+  // Behaviour:
+  //   1. If [batchWiseHistory] is empty and no fetch is in progress, kicks
+  //      off [fetchBatchWiseHistory] in the background so the sheet can
+  //      show live data as soon as it arrives (shimmer displayed meanwhile).
+  //   2. Shows [BatchPickerSheet] with this controller as the data-source.
+  //   3. When the user confirms a selection the sheet returns the chosen
+  //      [BatchWiseBalanceRow.batchNo]; this method writes it to
+  //      [batchController] and calls [validateBatch] so all downstream
+  //      state (balance ceilings, qty-cap, error text) updates normally.
+  //
+  // The method is intentionally fire-and-forget from the call-site
+  // (SharedBatchField passes it as `onPickerTap`).
+  Future<void> openBatchPicker() async {
+    // Kick off a background fetch if we have no data yet.
+    if (batchWiseHistory.isEmpty && !isLoadingBatchHistory.value) {
+      unawaited(fetchBatchWiseHistory());
+    }
+
+    final context = Get.context;
+    if (context == null) return;
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BatchPickerSheet(controller: this),
+    );
+
+    if (selected == null || selected.isEmpty) return;
+
+    // Write selection and trigger full validation pipeline.
+    batchController.text  = selected;
+    isBatchReadOnly.value = false; // validateBatch will re-lock on success
+    await validateBatch(selected);
   }
 
   void _loadExistingItem(
