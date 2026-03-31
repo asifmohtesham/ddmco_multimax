@@ -8,7 +8,6 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
-import 'package:multimax/app/data/providers/bom_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -26,6 +25,7 @@ import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -35,11 +35,11 @@ class HomeController extends GetxController {
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
   final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
-  final BomProvider _bomProvider = Get.find<BomProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
+  final BomProvider _bomProvider = Get.find<BomProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
@@ -67,15 +67,13 @@ class HomeController extends GetxController {
   var userList = <User>[].obs;
   Rx<User?> selectedFilterUser = Rx<User?>(null);
 
-  // --- KPI Counts ---
   var activeWorkOrdersCount = 0.obs;
   final int targetWorkOrders = 12;
 
   var activeJobCardsCount = 0.obs;
   final int targetJobCards = 40;
 
-  /// Count of active BOMs (is_active = 1). No target needed — displayed
-  /// as a flat count via [FlatCountKpiCard].
+  /// Count of active (is_active = 1) BOMs fetched on dashboard load.
   var activeBomCount = 0.obs;
 
   final TextEditingController barcodeController = TextEditingController();
@@ -181,18 +179,16 @@ class HomeController extends GetxController {
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
     try {
+      Map<String, dynamic> woFilters = {'status': 'In Process'};
+      Map<String, dynamic> jcFilters = {'status': 'Open'};
       final filterEmail = selectedFilterUser.value?.email;
-
-      final Map<String, dynamic> woFilters = {'status': 'In Process'};
-      final Map<String, dynamic> jcFilters = {'status': 'Open'};
-      // BOM active count is global — not scoped to a user — because BOMs
-      // are master data, not transactional records owned by a single person.
-      const Map<String, dynamic> bomFilters = {'is_active': 1};
-
       if (filterEmail != null) {
         woFilters['owner'] = filterEmail;
         jcFilters['owner'] = filterEmail;
       }
+
+      // BOM count is company-wide (is_active only — not user-scoped).
+      const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
 
       final results = await Future.wait([
         _woProvider.getWorkOrders(limit: 0, filters: woFilters),
@@ -513,7 +509,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // --- Private Helpers ---
+  // Helpers
   int _getWeekOfMonth(DateTime date) {
     int week = ((date.day - 1) / 7).floor() + 1;
     return week > 4 ? 4 : week;
@@ -537,7 +533,6 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  // --- Navigation ---
   void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
 
@@ -558,8 +553,6 @@ class HomeController extends GetxController {
     }
   }
 
-  /// Navigates to [route] only when it differs from the current route,
-  /// preventing GetX from tearing down the active controller on same-route taps.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
     if (Get.currentRoute != route) {

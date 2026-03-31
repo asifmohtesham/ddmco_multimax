@@ -12,16 +12,14 @@ import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 // ---------------------------------------------------------------------------
-// QuickActionConfig — data-driven DRY pattern for the quick-access grid.
-// Adding or removing an action is a one-line change in the config list;
-// no widget code needs to be modified (Open/Closed Principle).
+// Data class — eliminates inline magic values in the Quick Access grid.
+// Adding/removing a tile is a single list-entry change. (OCP / DRY)
 // ---------------------------------------------------------------------------
 class _QuickActionConfig {
   final String label;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
-
   const _QuickActionConfig({
     required this.label,
     required this.icon,
@@ -33,7 +31,7 @@ class _QuickActionConfig {
 class HomeScreen extends GetView<HomeController> {
   const HomeScreen({super.key});
 
-  // ── Operations actions ────────────────────────────────────────────────────
+  // ── Operations row ────────────────────────────────────────────────────────
   List<_QuickActionConfig> _operationsActions(BuildContext context) => [
     _QuickActionConfig(
       label: 'Stock\nEntry',
@@ -73,16 +71,16 @@ class HomeScreen extends GetView<HomeController> {
     ),
   ];
 
-  // ── Manufacturing actions ─────────────────────────────────────────────────
+  // ── Manufacturing row ─────────────────────────────────────────────────────
   List<_QuickActionConfig> _manufacturingActions() => [
     _QuickActionConfig(
       label: 'BOM',
       icon: Icons.account_tree_outlined,
       color: Colors.teal,
-      // Opens BOM list pre-filtered to is_active = 1 only.
+      // Opens BOM list pre-filtered to active BOMs (is_active = 1).
       onTap: () => Get.toNamed(
         AppRoutes.BOM,
-        arguments: {'filters': {'is_active': 1}},
+        arguments: {'filters': {'is_active': 1}, 'pageTitle': 'Active BOMs'},
       ),
     ),
     _QuickActionConfig(
@@ -168,52 +166,45 @@ class HomeScreen extends GetView<HomeController> {
 
                     const SizedBox(height: 24),
 
-                    // 3. Manufacturing Pulse KPIs
+                    // 3. KPIs
                     Text('Manufacturing Pulse', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Obx(() {
                       if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
                         return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
                       }
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      return Column(
                         children: [
-                          // Work Orders & Job Cards share the speedometer (they have targets).
-                          Expanded(
-                            flex: 3,
-                            child: SpeedometerKpiCard(
-                              title: 'Work Orders',
-                              actual: controller.activeWorkOrdersCount.value,
-                              target: controller.targetWorkOrders,
-                              icon: Icons.precision_manufacturing_outlined,
-                              onTap: controller.goToWorkOrder,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 3,
-                            child: SpeedometerKpiCard(
-                              title: 'Job Cards',
-                              actual: controller.activeJobCardsCount.value,
-                              target: controller.targetJobCards,
-                              icon: Icons.assignment_ind_outlined,
-                              onTap: controller.goToJobCard,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // BOM uses a flat count card — master data has no daily target.
-                          Expanded(
-                            flex: 2,
-                            child: FlatCountKpiCard(
-                              title: 'Active BOMs',
-                              count: controller.activeBomCount.value,
-                              icon: Icons.account_tree_outlined,
-                              color: Colors.teal,
-                              onTap: () => Get.toNamed(
-                                AppRoutes.BOM,
-                                arguments: {'filters': {'is_active': 1}},
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SpeedometerKpiCard(
+                                  title: 'Work Orders',
+                                  actual: controller.activeWorkOrdersCount.value,
+                                  target: controller.targetWorkOrders,
+                                  icon: Icons.precision_manufacturing_outlined,
+                                  onTap: controller.goToWorkOrder,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: SpeedometerKpiCard(
+                                  title: 'Job Cards',
+                                  actual: controller.activeJobCardsCount.value,
+                                  target: controller.targetJobCards,
+                                  icon: Icons.assignment_ind_outlined,
+                                  onTap: controller.goToJobCard,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          FlatKpiCard(
+                            title: 'Active BOMs',
+                            count: controller.activeBomCount.value,
+                            icon: Icons.account_tree_outlined,
+                            color: Colors.teal,
+                            onTap: controller.goToBOM,
                           ),
                         ],
                       );
@@ -243,59 +234,103 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
-  // ── Quick Access Grid ─────────────────────────────────────────────────────
-
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 3 tiles per row with 12px gaps between them.
         final double itemWidth = (constraints.maxWidth - 24) / 3;
+        final theme = Theme.of(context);
 
-        Widget buildSection(List<_QuickActionConfig> actions) {
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: actions
-                .map((cfg) => _QuickActionTile(config: cfg, width: itemWidth))
-                .toList(),
-          );
-        }
+        // ── Operations section ───────────────────────────────────────────
+        final opsItems = _operationsActions(context);
+        final mfgItems = _manufacturingActions();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Operations row ──
-            buildSection(_operationsActions(context)),
-
-            // ── Section divider with label ──
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
-              child: Row(
-                children: [
-                  Expanded(child: Divider(thickness: 1, endIndent: 10)),
-                  Text(
-                    'Manufacturing',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  Expanded(child: Divider(thickness: 1, indent: 10)),
-                ],
-              ),
+            // Operations tiles
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: opsItems
+                  .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
+                  .toList(),
             ),
 
-            // ── Manufacturing row ──
-            buildSection(_manufacturingActions()),
+            const SizedBox(height: 16),
+
+            // ── Visual divider with label ──────────────────────────────
+            Row(
+              children: [
+                Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(
+                    'MANUFACTURING',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.grey.shade500,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Manufacturing tiles
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: mfgItems
+                  .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
+                  .toList(),
+            ),
           ],
         );
       },
     );
   }
 
-  // ── Fulfillment bottom sheet ──────────────────────────────────────────────
+  Widget _buildQuickActionItem(
+    BuildContext context,
+    _QuickActionConfig cfg,
+    double width,
+  ) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      elevation: 1,
+      child: InkWell(
+        onTap: cfg.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: width,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cfg.color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(cfg.icon, color: cfg.color, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                cfg.label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showFulfillmentSelectionSheet(BuildContext context, {String title = 'Select POS Upload'}) {
     controller.fetchFulfillmentPosUploads();
@@ -383,8 +418,6 @@ class HomeScreen extends GetView<HomeController> {
       isScrollControlled: true,
     );
   }
-
-  // ── User context card ─────────────────────────────────────────────────────
 
   Widget _buildUserContextCard(BuildContext context) {
     return Card(
@@ -519,56 +552,9 @@ class HomeScreen extends GetView<HomeController> {
   }
 }
 
-// ===========================================================================
-// _QuickActionTile — extracted stateless widget for each grid cell.
-// Receives a [_QuickActionConfig]; layout is controlled by the parent Wrap.
-// ===========================================================================
-class _QuickActionTile extends StatelessWidget {
-  final _QuickActionConfig config;
-  final double width;
-
-  const _QuickActionTile({required this.config, required this.width});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 1,
-      child: InkWell(
-        onTap: config.onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: width,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: config.color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(config.icon, color: config.color, size: 24),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                config.label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ===========================================================================
-// SpeedometerKpiCard — half-arc gauge for KPIs with a measurable daily target.
-// ===========================================================================
+// ---------------------------------------------------------------------------
+// SpeedometerKpiCard — unchanged, kept in same file for locality.
+// ---------------------------------------------------------------------------
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
   final int actual;
@@ -657,18 +643,18 @@ class SpeedometerKpiCard extends StatelessWidget {
   }
 }
 
-// ===========================================================================
-// FlatCountKpiCard — compact count card for master-data KPIs with no target.
-// Used for Active BOMs where a daily target is not meaningful.
-// ===========================================================================
-class FlatCountKpiCard extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// FlatKpiCard — lightweight count card for metrics without a daily target
+// (e.g. Active BOMs). Full-width, tappable, navigates to the list screen.
+// ---------------------------------------------------------------------------
+class FlatKpiCard extends StatelessWidget {
   final String title;
   final int count;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const FlatCountKpiCard({
+  const FlatKpiCard({
     super.key,
     required this.title,
     required this.count,
@@ -687,45 +673,35 @@ class FlatCountKpiCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 22),
+                child: Icon(icon, color: color, size: 26),
               ),
-              const SizedBox(height: 12),
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$count',
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.arrow_forward_ios, size: 10, color: color.withValues(alpha: 0.6)),
-                  const SizedBox(width: 3),
-                  Text(
-                    'View All',
-                    style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
             ],
           ),
         ),
