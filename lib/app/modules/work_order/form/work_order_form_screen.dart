@@ -351,37 +351,43 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 8),
 
             // [1] Save — shown when draft & dirty
-            if (canEdit)
-              Obx(() {
-                final saving  = controller.isSaving.value;
-                final canSave = controller.isDirty.value &&
-                    controller.isItemValid.value &&
-                    controller.isBomValid.value &&
-                    controller.isQtyValid.value;
-                return SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: canSave ? controller.save : null,
-                    icon: saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.save_outlined),
-                    label: Text(
-                      saving
-                          ? 'Saving…'
-                          : controller.mode == 'new'
-                              ? 'Create Work Order'
-                              : 'Save Changes',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.all(16)),
+            // NOTE: canEdit guard is INSIDE the Obx, not wrapping it.
+            // Wrapping Obx with `if (canEdit)` in a Column children list causes
+            // GetX to throw "improper use" when the parent Obx rebuilds and
+            // mounts/unmounts the inner Obx before it registers any observables.
+            Obx(() {
+              final wo      = controller.workOrder.value;
+              final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
+              if (!canEdit) return const SizedBox.shrink();
+              final saving  = controller.isSaving.value;
+              final canSave = controller.isDirty.value &&
+                  controller.isItemValid.value &&
+                  controller.isBomValid.value &&
+                  controller.isQtyValid.value;
+              return SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: canSave ? controller.save : null,
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.save_outlined),
+                  label: Text(
+                    saving
+                        ? 'Saving…'
+                        : controller.mode == 'new'
+                            ? 'Create Work Order'
+                            : 'Save Changes',
+                    style: const TextStyle(fontSize: 16),
                   ),
-                );
-              }),
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16)),
+                ),
+              );
+            }),
 
             // [2] Submit — shown for saved drafts (docstatus 0, mode view)
             Obx(() {
