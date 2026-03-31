@@ -583,13 +583,21 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   // ── Execute: Navigate to Stock Entry Form with prefilled items ──────────────
   /// Flow:
   ///   1. Call ERPNext make_stock_entry to get the pre-filled SE doc.
-  ///   2. Extract the items[] list from the response.
+  ///   2. Extract items[], from_warehouse, and to_warehouse from the SE doc.
+  ///      Guard: if items list is empty (BOM has no raw-material components or
+  ///      warehouses are not configured in ERPNext) abort with an error — there
+  ///      is nothing to transfer.
   ///   3. Navigate to StockEntryForm in 'new' mode, passing:
   ///        stockEntryType  = 'Material Transfer for Manufacture'
-  ///        workOrderName   = this WO name  (for SE header linking)
-  ///        items           = the pre-filled items list
-  ///      The SE form controller will treat items in its
-  ///      materialRequest-style flow, showing each row for operator review.
+  ///        workOrderName   = this WO name
+  ///        fromWarehouse   = seDoc['from_warehouse']  ← header-level source WH
+  ///        toWarehouse     = seDoc['to_warehouse']    ← header-level target WH
+  ///        items           = the pre-filled items list (each item carries its
+  ///                          own s_warehouse / t_warehouse from the BOM explosion)
+  ///      StockEntryFormController uses fromWarehouse / toWarehouse to pre-set
+  ///      the header pickers so the operator does not need to fill them manually,
+  ///      and applies them as fallback to any item row that lacks its own
+  ///      s_warehouse / t_warehouse.
   ///   4. On SE save + submit, ERPNext's on_submit hook updates WO → In Process.
   Future<void> executeWorkOrder() async {
     if (!canExecute) return;
@@ -627,13 +635,31 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       isExecuting.value = false;
     }
 
-    // Step 2 – extract items list.
+    // Step 2 – extract items list and header-level warehouse values.
+    // ERPNext make_stock_entry populates:
+    //   seDoc['from_warehouse'] – the WIP source warehouse (set on the WO / BOM)
+    //   seDoc['to_warehouse']   – the WIP target warehouse
+    //   seDoc['items']          – BOM raw-material rows, each with s_warehouse /
+    //                             t_warehouse already set by the BOM explosion.
     final rawItems = seDoc['items'];
     final List<Map<String, dynamic>> prefillItems = rawItems is List
         ? rawItems
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList()
         : [];
+
+    // Guard: abort if ERPNext returned no items — nothing to transfer.
+    if (prefillItems.isEmpty) {
+      GlobalSnackbar.error(
+        message:
+            'No items found for Material Transfer. '
+            'Verify the BOM has raw-material components and the WIP warehouse is set on the Work Order.',
+      );
+      return;
+    }
+
+    final String? fromWarehouse = seDoc['from_warehouse'] as String?;
+    final String? toWarehouse   = seDoc['to_warehouse']   as String?;
 
     // Step 3 – navigate to Stock Entry Form with prefilled data.
     Get.toNamed(
@@ -642,6 +668,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'mode': 'new',
         'stockEntryType': 'Material Transfer for Manufacture',
         'workOrderName': name,
+        // Header-level warehouse values from the SE doc — used by
+        // StockEntryFormController to pre-populate the Source / Target
+        // Warehouse pickers and as fallback for per-item warehouse fields.
+        'fromWarehouse': fromWarehouse,
+        'toWarehouse':   toWarehouse,
         'items': prefillItems,
       },
     );
