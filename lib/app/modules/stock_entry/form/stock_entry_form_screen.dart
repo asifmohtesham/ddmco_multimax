@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/mr_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/pos_upload_items_view.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/work_order_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/empty_scan_state.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/bottom_scan_bar.dart';
 
@@ -100,6 +101,13 @@ class _ItemsTab extends StatelessWidget {
           children: [
             Expanded(
               child: Builder(builder: (_) {
+                // Work Order path: BOM items are pre-filled, always show them.
+                if (controller.entrySource == StockEntrySource.workOrder) {
+                  if (_entry.items.isEmpty) return const EmptyScanState();
+                  return WorkOrderItemsView(
+                      controller: controller, entry: _entry);
+                }
+
                 if (_entry.items.isEmpty &&
                     controller.entrySource !=
                         StockEntrySource.posUpload &&
@@ -113,6 +121,10 @@ class _ItemsTab extends StatelessWidget {
                         controller: controller, entry: _entry);
                   case StockEntrySource.materialRequest:
                     return MrItemsView(
+                        controller: controller, entry: _entry);
+                  case StockEntrySource.workOrder:
+                    // Already handled above; unreachable.
+                    return WorkOrderItemsView(
                         controller: controller, entry: _entry);
                   case StockEntrySource.manual:
                   default:
