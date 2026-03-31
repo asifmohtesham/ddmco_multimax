@@ -22,6 +22,7 @@ class BOM {
   final String? creation;
   final List<BomItem>         items;
   final List<BomExplodedItem> explodedItems;
+  final List<BomOperation>    operations;
 
   const BOM({
     required this.name,
@@ -46,6 +47,7 @@ class BOM {
     this.creation,
     required this.items,
     required this.explodedItems,
+    this.operations = const [],
   });
 
   /// Derived display status — mirrors Frappe label logic.
@@ -84,6 +86,9 @@ class BOM {
       explodedItems: (json['exploded_items'] as List<dynamic>? ?? [])
           .map((e) => BomExplodedItem.fromJson(e as Map<String, dynamic>))
           .toList(),
+      operations: (json['operations'] as List<dynamic>? ?? [])
+          .map((e) => BomOperation.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -108,8 +113,52 @@ class BOM {
       creation: creation,
       items:         items,
       explodedItems: explodedItems,
+      operations:    operations,
     );
   }
+}
+
+// ── BOM Operation (child table: operations) ───────────────────────────────────
+class BomOperation {
+  final String  operation;
+  final String? workstation;
+  final String? workstationType;
+  final double  timeInMins;
+  final double  operatingCost;
+  final int     sequenceId;
+  final String? description;
+
+  const BomOperation({
+    required this.operation,
+    this.workstation,
+    this.workstationType,
+    required this.timeInMins,
+    required this.operatingCost,
+    required this.sequenceId,
+    this.description,
+  });
+
+  factory BomOperation.fromJson(Map<String, dynamic> json) => BomOperation(
+    operation:       json['operation']        as String? ?? '',
+    workstation:     json['workstation']      as String?,
+    workstationType: json['workstation_type'] as String?,
+    timeInMins:      (json['time_in_mins']    as num?)?.toDouble() ?? 0.0,
+    operatingCost:   (json['operating_cost']  as num?)?.toDouble() ?? 0.0,
+    sequenceId:      (json['sequence_id']     as num?)?.toInt()    ?? 0,
+    description:     json['description']      as String?,
+  );
+
+  /// Converts to a Work Order `operations` child-table payload row.
+  /// ERPNext Work Order Operation fields mirror BOM Operation fields.
+  Map<String, dynamic> toWorkOrderOperationPayload() => {
+    'operation':      operation,
+    'workstation':    workstation     ?? '',
+    'time_in_mins':   timeInMins,
+    'operating_cost': operatingCost,
+    'sequence_id':    sequenceId,
+    if (description != null && description!.isNotEmpty)
+      'description': description,
+  };
 }
 
 // ── BOM Item (child table: items) ─────────────────────────────────────────────
