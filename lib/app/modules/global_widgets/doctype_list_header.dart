@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
@@ -68,8 +69,17 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// • Idle — plain [Icons.filter_list].
 /// • Active — [IconButton.filled] ([Icons.filter_alt]) + [Badge] count.
 ///
-/// ## Title visibility
-/// Always rendered in full — no ellipsis, no clamping.
+/// ## Title visibility — collapsed toolbar
+/// The collapsed toolbar title uses [AutoSizeText] to guarantee the full
+/// DocType name is always readable:
+///
+/// 1. Up to [_kAutoSizeMaxLines] lines are allowed before the font shrinks.
+/// 2. Font shrinks in 0.5 sp steps down to [_kAutoSizeMinFont] (11 sp).
+/// 3. Only if the text still overflows at 11 sp does [TextOverflow.clip]
+///    fire — this is the hard safety net, not the first resort.
+///
+/// The expanded (large) title in the area above the toolbar never clips:
+/// [softWrap] is `true`, [maxLines] is `null`.
 class DocTypeListHeader extends StatelessWidget {
   // ── AppBar ────────────────────────────────────────────────────────────
   final String title;
@@ -123,7 +133,6 @@ class DocTypeListHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Single sliver — the delegate owns all layout.
     return SliverPersistentHeader(
       pinned: pinnedAppBar,
       floating: floatingAppBar,
@@ -144,6 +153,21 @@ class DocTypeListHeader extends StatelessWidget {
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// AutoSizeText tuning constants
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Minimum font size the collapsed toolbar title may shrink to before
+/// [TextOverflow.clip] is used as a last resort.
+/// 11 sp is the smallest readable size in a 56 dp toolbar at normal
+/// display density.
+const double _kAutoSizeMinFont = 11.0;
+
+/// Maximum number of lines the collapsed toolbar title may wrap to before
+/// AutoSizeText starts reducing the font size.  Two lines gives enough room
+/// for most long names without enlarging the 56 dp toolbar.
+const int _kAutoSizeMaxLines = 2;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Master delegate — owns the full header layout
@@ -185,9 +209,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
           (activeFilters?.isNotEmpty ?? false));
 
   // ── Extents ────────────────────────────────────────────────────────────
-  //
-  // minExtent: collapsed toolbar only — always pinned, never shrinks further.
-  // maxExtent: toolbar + large-title extra + chip row (when active).
   @override
   double get minExtent => _kToolbar;
 
@@ -202,8 +223,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // How far through the collapse animation are we? (0.0 → 1.0)
-    // Clamp to [0,1] so rounding errors never produce negative opacity.
     final collapseProgress =
         math.min(1.0, shrinkOffset / _kExpandedExtra);
     final expandProgress = 1.0 - collapseProgress;
@@ -271,12 +290,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       });
     }
 
-    // ─ Full layout ───────────────────────────────────────────────────────────
-    //
-    // The SliverPersistentHeader gives us a fixed-height box that shrinks
-    // from maxExtent down to minExtent.  We lay the content out in a Column
-    // anchored to the BOTTOM of that box so the toolbar row is always at the
-    // bottom (i.e. always visible) and the large title scrolls off the top.
+    // ─ Full layout ─────────────────────────────────────────────────────────
     return Material(
       color: colorScheme.surface,
       elevation: overlapsContent ? 1.0 : 0.0,
@@ -284,15 +298,11 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Large title occupies the space above the toolbar.
-          // SizedBox clamps to zero when fully collapsed.
           SizedBox(
             height: math.max(0.0, _kExpandedExtra * expandProgress),
             child: largeTitle,
           ),
-          // Pinned toolbar — always visible, always 56 dp.
           toolbar,
-          // Chip row — always below the toolbar; shown/hidden via Obx.
           if (chipRow != null)
             SizedBox(height: _kChipRow, child: chipRow),
         ],
@@ -301,21 +311,42 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   // ── Toolbar row ──────────────────────────────────────────────────────────
+  //
+  // The title slot uses AutoSizeText so the full DocType name is always
+  // visible in the 56 dp collapsed bar:
+  //
+  //   Step 1 — wrap up to _kAutoSizeMaxLines (2) lines at full font size.
+  //   Step 2 — if it still overflows, shrink in 0.5 sp steps.
+  //   Step 3 — only clip as an absolute last resort at _kAutoSizeMinFont.
+  //
+  // NavigationToolbar clips its middle slot to its own 56 dp height so
+  // the toolbar never grows taller even if the text overflows.
   Widget _buildToolbar(
     BuildContext context,
     ColorScheme colorScheme,
     ThemeData theme,
   ) {
+    final titleStyle = theme.textTheme.titleLarge;
+    final maxFontSize = (titleStyle?.fontSize ?? 22.0);
+
     return SizedBox(
       height: _kToolbar,
       child: NavigationToolbar(
         leading: _buildLeading(context),
-        middle: Text(
+        middle: AutoSizeText(
           title,
-          style: theme.textTheme.titleLarge,
-          softWrap: true,
+          style: titleStyle,
+          // Allow up to 2 lines before shrinking the font.
+          maxLines: _kAutoSizeMaxLines,
+          // Font scale range: theme titleLarge size → 11 sp floor.
+          minFontSize: _kAutoSizeMinFont,
+          maxFontSize: maxFontSize,
+          // Smooth shrinking — 0.5 sp steps avoids jarring size jumps.
+          stepGranularity: 0.5,
+          // Hard safety net: only clips after font is already at floor.
           overflow: TextOverflow.clip,
-          maxLines: null,
+          // Required by AutoSizeText to attempt wrapping before shrinking.
+          softWrap: true,
         ),
         trailing: _buildActions(context, colorScheme),
         centerMiddle: false,
@@ -327,7 +358,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   // ── Leading widget ────────────────────────────────────────────────────────
   Widget? _buildLeading(BuildContext context) {
     if (!automaticallyImplyLeading) {
-      // Top-level screen: show the drawer hamburger.
       return Builder(
         builder: (ctx) => IconButton(
           icon: const Icon(Icons.menu),
@@ -336,7 +366,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         ),
       );
     }
-    // Form screen: let Navigator provide the back button.
     final ModalRoute<Object?>? parentRoute = ModalRoute.of(context);
     final bool canPop = parentRoute?.canPop ?? false;
     if (canPop) {
@@ -354,7 +383,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final items = <Widget>[
       ...(extraActions ?? []),
 
-      // ─ Filter icon ─────────────────────────────────────────────────────
       if (onFilterTap != null)
         Obx(() {
           final count = activeFilters?.length ?? 0;
@@ -378,7 +406,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
           return isActive ? Badge(label: Text('$count'), child: button) : button;
         }),
 
-      // ─ Search icon ────────────────────────────────────────────────────
       if (searchQuery != null || (searchDoctype != null && searchRoute != null))
         Builder(
           builder: (ctx) {
