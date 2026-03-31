@@ -77,17 +77,20 @@ class WorkOrderProvider {
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
   /// Execute a submitted Work Order: transitions status from
-  /// "Not Started" → "In Progress" via the ERPNext whitelisted method.
+  /// "Not Started" → "In Progress".
   ///
-  /// Internally calls `set_work_order_ops` server method which validates
-  /// that the Work Order is submitted (docstatus == 1) and updates the
-  /// `status` field to "In Progress" along with resetting planned times.
+  /// Uses `frappe.client.set_value` — always whitelisted — to directly
+  /// write the `status` field on the submitted document. ERPNext does not
+  /// expose a dedicated RPC method for this transition; the status update
+  /// is the canonical way to mark manufacturing as started from the API.
   Future<Response> executeWorkOrder(String name) async =>
       _apiProvider.callMethod(
-        'erpnext.manufacturing.doctype.work_order.work_order.update_work_order_status',
+        'frappe.client.set_value',
         params: {
-          'work_order': name,
-          'status': 'In Progress',
+          'doctype': 'Work Order',
+          'name': name,
+          'fieldname': 'status',
+          'value': 'In Progress',
         },
       );
 
