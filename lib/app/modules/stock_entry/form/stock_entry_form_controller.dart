@@ -67,13 +67,17 @@ class StockEntryFormController extends GetxController
   final DataWedgeService    _dataWedgeService = Get.find<DataWedgeService>();
 
   // ── Arguments ─────────────────────────────────────────────────────────────────────────────
-  String name = Get.arguments?['name'] ?? '';
-  String mode = Get.arguments?['mode'] ?? 'view';
-  final String? argStockEntryType    = Get.arguments?['stockEntryType'];
-  final String? argCustomReferenceNo = Get.arguments?['customReferenceNo'];
+  // NOTE: these MUST be assigned inside onInit(), not as field initializers.
+  // Field initializers run at class instantiation time when Get.arguments still
+  // points to the previous route (WorkOrderForm). By onInit() the route
+  // transition is complete and Get.arguments reflects StockEntryForm's args.
+  String name = '';
+  String mode = 'view';
+  String? argStockEntryType;
+  String? argCustomReferenceNo;
   /// Work Order name passed from executeWorkOrder(). Non-null only for
   /// the 'Material Transfer for Manufacture' flow.
-  final String? argWorkOrderName     = Get.arguments?['workOrderName'];
+  String? argWorkOrderName;
 
   // ── Document state ──────────────────────────────────────────────────────────────────────────
   var isLoading        = true.obs;
@@ -259,6 +263,14 @@ class StockEntryFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // Read route arguments here — after the route transition is complete —
+    // so Get.arguments reliably reflects StockEntryForm's own arguments.
+    name                 = Get.arguments?['name']              ?? '';
+    mode                 = Get.arguments?['mode']              ?? 'view';
+    argStockEntryType    = Get.arguments?['stockEntryType']    as String?;
+    argCustomReferenceNo = Get.arguments?['customReferenceNo'] as String?;
+    argWorkOrderName     = Get.arguments?['workOrderName']     as String?;
+
     initScanWiring();
     _initDependencies();
     if (mode == 'new') {
