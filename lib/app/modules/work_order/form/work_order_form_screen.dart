@@ -106,16 +106,8 @@ class _WorkOrderForm extends StatelessWidget {
                                   canEdit
                               ? IconButton(
                                   icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    controller.itemController.clear();
-                                    controller.selectedItem.value = null;
-                                    controller.selectedItemName.value = null;
-                                    controller.bomController.clear();
-                                    controller.selectedBom.value = null;
-                                    controller.bomOptions.clear();
-                                    controller.isItemValid.value = false;
-                                    controller.isBomValid.value  = false;
-                                  })
+                                  onPressed:
+                                      controller._clearItemSelection)
                               : null),
                     ),
                     onChanged: controller.searchItems,
