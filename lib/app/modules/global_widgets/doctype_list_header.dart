@@ -25,10 +25,37 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// A unified sliver header for every DocType **list** screen.
 ///
 /// Emits **exactly one sliver** — a [SliverPersistentHeader] whose delegate
-/// owns the full layout (collapsed toolbar + expanding large title +
-/// optional filter chip row) inside a single coordinated layout pass.
-/// This guarantees the entire header moves as one indivisible unit and
-/// never allows the chip row to scroll away independently of the toolbar.
+/// owns the full layout (status-bar shield + collapsed toolbar +
+/// expanding large title + optional filter chip row) inside a single
+/// coordinated layout pass.
+///
+/// ---
+///
+/// ## Status-bar / notification-panel overlap
+///
+/// [SliverPersistentHeader] positions its delegate widget at `y = 0` of
+/// the scroll viewport, which is itself at `y = 0` of the [Scaffold] body.
+/// When the [Scaffold] does **not** pad the body for the system status bar
+/// (e.g. `extendBodyBehindAppBar: true`, transparent system UI, or
+/// Android 15+ edge-to-edge mode) the header would paint directly behind
+/// the notification pull-down panel.
+///
+/// The delegate reads `MediaQuery.paddingOf(context).top` every build and
+/// adds that value — `_kStatusBar` — to both the height extents and the
+/// Column layout:
+///
+/// ```
+/// minExtent = _kStatusBar + _kToolbar
+/// maxExtent = _kStatusBar + _kToolbar + _kExpandedExtra
+///             + (_chipsActive ? _kChipRow : 0)
+/// ```
+///
+/// A `SizedBox(_kStatusBar)` filled with the surface colour sits at the
+/// very top of the Column, acting as an opaque shield that matches the
+/// AppBar background so the transition looks seamless.  When
+/// `_kStatusBar == 0` (tablet / desktop / Scaffold that already pads the
+/// body) the SizedBox collapses to zero height and the layout is
+/// identical to before.
 ///
 /// ---
 ///
@@ -46,10 +73,11 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// ## Height budget
 ///
 /// ```
-/// maxExtent = _kToolbar            (56 dp — always)
+/// maxExtent = _kStatusBar          (MediaQuery top padding — 0 when not needed)
+///           + _kToolbar            (56 dp — always)
 ///           + _kExpandedExtra      (96 dp — large-title extra)
 ///           + _kChipRow            (56 dp — only when _chipsActive is true)
-/// minExtent = _kToolbar            (56 dp — collapsed, always pinned)
+/// minExtent = _kStatusBar + _kToolbar
 /// ```
 ///
 /// ---
@@ -149,24 +177,28 @@ class DocTypeListHeader extends StatelessWidget {
   // causing SliverPersistentHeader to recalculate maxExtent (Fix 1 guard).
   //
   // Obx reads both Rx values unconditionally so both are registered with
-  // GetX’s reactive graph regardless of whether filterChipsBuilder is set.
+  // GetX's reactive graph regardless of whether filterChipsBuilder is set.
   // The reads use null-safe fallbacks so no NPE is possible.
   @override
   Widget build(BuildContext context) {
-    // Touch the Rx values inside Obx so mutations schedule a rebuild.
     if (activeFilters != null || searchQuery != null) {
       return Obx(() {
-        // Register both observables with the reactive graph.
         final _ = activeFilters?.length;    // ignore: unused_local_variable
         final __ = searchQuery?.value;      // ignore: unused_local_variable
-        return _buildSliver();
+        return _buildSliver(context);
       });
     }
-    // No reactive props — plain StatelessWidget path, zero overhead.
-    return _buildSliver();
+    return _buildSliver(context);
   }
 
-  Widget _buildSliver() {
+  Widget _buildSliver(BuildContext context) {
+    // Read the status-bar height once per build and pass it into the
+    // delegate.  SliverPersistentHeader calls the delegate's build() with
+    // the same BuildContext, so the delegate can re-read it there too —
+    // but passing it explicitly keeps minExtent / maxExtent consistent
+    // with the same snapshot used for layout.
+    final statusBarHeight = MediaQuery.paddingOf(context).top;
+
     return SliverPersistentHeader(
       pinned: pinnedAppBar,
       floating: floatingAppBar,
@@ -183,6 +215,7 @@ class DocTypeListHeader extends StatelessWidget {
         onFilterTap: onFilterTap,
         filterChipsBuilder: filterChipsBuilder,
         onClearAllFilters: onClearAllFilters,
+        statusBarHeight: statusBarHeight,
       ),
     );
   }
@@ -218,6 +251,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  /// Height of the system status bar on this device / orientation.
+  /// Comes from [MediaQuery.paddingOf(context).top] captured in
+  /// [DocTypeListHeader._buildSliver].
+  /// Zero on tablets, desktops, and Scaffolds that already pad the body.
+  final double statusBarHeight;
+
   const _DocTypeListHeaderDelegate({
     required this.title,
     required this.extraActions,
@@ -231,6 +270,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onFilterTap,
     required this.filterChipsBuilder,
     required this.onClearAllFilters,
+    required this.statusBarHeight,
   });
 
   // ── Chip presence ─────────────────────────────────────────────────────────
@@ -243,12 +283,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
           (activeFilters?.isNotEmpty ?? false));
 
   // ── Extents ────────────────────────────────────────────────────────────
+  //
+  // statusBarHeight is included in BOTH min and max so the sliver layout
+  // protocol allocates the correct amount of space at all collapse states.
   @override
-  double get minExtent => _kToolbar;
+  double get minExtent => statusBarHeight + _kToolbar;
 
   @override
   double get maxExtent =>
-      _kToolbar + _kExpandedExtra + (_chipsActive ? _kChipRow : 0.0);
+      statusBarHeight +
+      _kToolbar +
+      _kExpandedExtra +
+      (_chipsActive ? _kChipRow : 0.0);
 
   // ── Build ──────────────────────────────────────────────────────────────
   @override
@@ -257,14 +303,27 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // collapseProgress is computed against the *content* shrink range only
+    // (i.e. _kExpandedExtra), not the status-bar height, so the large-title
+    // fade is unaffected by the inset.
     final collapseProgress =
         math.min(1.0, shrinkOffset / _kExpandedExtra);
     final expandProgress = 1.0 - collapseProgress;
 
     final chipsNowActive = _chipsActive;
 
+    // ─ Status-bar shield ───────────────────────────────────────────────────
+    // An opaque block that fills the inset with the surface colour.
+    // Collapses to zero on devices/configs where statusBarHeight == 0.
+    final statusBarShield = SizedBox(
+      height: statusBarHeight,
+      // No child needed — the parent Material provides the background colour.
+    );
+
+    // ─ Toolbar row ─────────────────────────────────────────────────────────
     final toolbar = _buildToolbar(context, colorScheme, theme);
 
+    // ─ Large title (fades out as user scrolls) ───────────────────────────
     final largeTitle = Opacity(
       opacity: expandProgress,
       child: Padding(
@@ -285,6 +344,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
 
+    // ─ Chip row ──────────────────────────────────────────────────────────
     Widget? chipRow;
     if (chipsNowActive) {
       final chips = filterChipsBuilder!(context);
@@ -317,6 +377,16 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       }
     }
 
+    // ─ Full layout ─────────────────────────────────────────────────────────
+    //
+    // Stack order (top → bottom on screen):
+    //   1. statusBarShield  — covers the system status bar area
+    //   2. large-title fade — collapses as shrinkOffset grows
+    //   3. toolbar          — always present
+    //   4. chip row         — only when chipsNowActive
+    //
+    // Column is anchored to the bottom so that as the header shrinks the
+    // toolbar and chip row stay pinned at the bottom of the allocated space.
     return Material(
       color: colorScheme.surface,
       elevation: overlapsContent ? 1.0 : 0.0,
@@ -324,13 +394,40 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            height: math.max(0.0, _kExpandedExtra * expandProgress),
-            child: largeTitle,
+          // Status-bar shield: always at the very top, always full height.
+          // Because the Column is end-aligned we pin it to the top with a
+          // Spacer trick: prepend the shield before the expanding region so
+          // it stays fixed regardless of collapse state.
+          //
+          // To achieve top-pinning inside an end-aligned Column we flip the
+          // anchor: place the shield first (it will be pushed up), then
+          // the content below it fills the remaining space.
+          //
+          // Actually we need the shield at the top regardless of shrink —
+          // use a Stack instead of relying on Column ordering:
+          //   The outer SizedBox constrains to maxExtent height.
+          //   The shield is Positioned at top:0.
+          //   The content Column is below it.
+          //
+          // Simpler: add the shield as the first child of the Column and
+          // use mainAxisAlignment.end only on the *content* children.
+          // We achieve this by wrapping content in an Expanded + Column.
+          statusBarShield,
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: math.max(0.0, _kExpandedExtra * expandProgress),
+                  child: largeTitle,
+                ),
+                toolbar,
+                if (chipsNowActive && chipRow != null)
+                  SizedBox(height: _kChipRow, child: chipRow),
+              ],
+            ),
           ),
-          toolbar,
-          if (chipsNowActive && chipRow != null)
-            SizedBox(height: _kChipRow, child: chipRow),
         ],
       ),
     );
@@ -503,16 +600,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   // ── shouldRebuild ────────────────────────────────────────────────────────
   //
   // ✔ FIX 2: also compare Rx *values*, not just object identity.
-  //
-  // GetX mutates RxMap / RxString in-place, so the same object reference
-  // is passed on both calls.  Pure identity checks miss content changes
-  // and leave maxExtent stale.
-  //
-  // Reading .length / .value here is intentionally outside Obx — we want
-  // a synchronous snapshot for the sliver layout protocol.  The reads do
-  // NOT register with GetX’s reactive graph from this context; fine-grained
-  // reactivity inside the built widget tree is still handled by Obx in
-  // _buildActions.
+  // statusBarHeight is also compared so an orientation change (portrait ↔
+  // landscape, which changes the status-bar height on some devices) forces
+  // a full recalculation of minExtent / maxExtent.
   @override
   bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
     final filtersChanged =
@@ -522,6 +612,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     return filtersChanged ||
         searchChanged ||
+        statusBarHeight != old.statusBarHeight ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         extraActions != old.extraActions ||
