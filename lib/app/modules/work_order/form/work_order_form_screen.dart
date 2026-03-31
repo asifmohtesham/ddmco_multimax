@@ -60,8 +60,16 @@ class _WorkOrderForm extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Obx(() {
-      final wo      = controller.workOrder.value;
-      final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
+      final wo          = controller.workOrder.value;
+      final canEdit     = wo?.docstatus == 0 || controller.mode == 'new';
+
+      // ── Lift all RxList / Rx reads here so the parent Obx always
+      //    subscribes to them — child visibility is then gated with plain
+      //    `if` conditionals, eliminating nested Obx improper-use crashes.
+      final bomOps      = controller.bomOperations;
+      final operations  = controller.operations;
+      final linkedCards = controller.linkedJobCards;
+      final fetchingJC  = controller.isFetchingLinkedCards.value;
 
       return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
@@ -290,17 +298,13 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Section: BOM Operations Preview (new-WO mode only) ──────────────
-            Obx(() {
-              if (controller.mode != 'new' ||
-                  controller.bomOperations.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return _BomOperationsPreview(
+            // Plain `if` — no nested Obx. bomOps is already subscribed above.
+            if (controller.mode == 'new' && bomOps.isNotEmpty)
+              _BomOperationsPreview(
                 controller: controller,
                 cs: cs,
                 textTheme: textTheme,
-              );
-            }),
+              ),
 
             // ── Section: Notes ───────────────────────────────────────────────────
             _SectionHeader(
@@ -324,37 +328,32 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Section: Operations ───────────────────────────────────────────────
-            Obx(() {
-              if (controller.operations.isEmpty) return const SizedBox.shrink();
-              return _OperationsSection(
+            // Plain `if` — no nested Obx. operations is already subscribed above.
+            if (operations.isNotEmpty)
+              _OperationsSection(
                 controller: controller,
                 cs: cs,
                 textTheme: textTheme,
-              );
-            }),
+              ),
 
             // ── Section: Linked Job Cards ──────────────────────────────────────
-            Obx(() {
-              final cards = controller.linkedJobCards;
-              if (cards.isEmpty && !controller.isFetchingLinkedCards.value) {
-                return const SizedBox.shrink();
-              }
-              return Column(
+            // Plain `if` — no nested Obx. linkedCards/fetchingJC subscribed above.
+            if (linkedCards.isNotEmpty || fetchingJC)
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _SectionHeader(
-                    label: 'Job Cards (${cards.length})',
+                    label: 'Job Cards (${linkedCards.length})',
                     icon: Icons.assignment_ind_outlined,
                   ),
                   const SizedBox(height: 12),
-                  if (controller.isFetchingLinkedCards.value)
+                  if (fetchingJC)
                     const Center(child: CircularProgressIndicator())
                   else
-                    ...cards.map((jc) => _JobCardRow(jc: jc)),
+                    ...linkedCards.map((jc) => _JobCardRow(jc: jc)),
                   const SizedBox(height: 24),
                 ],
-              );
-            }),
+              ),
 
             // ── Action buttons ───────────────────────────────────────────────────────
             const SizedBox(height: 8),
