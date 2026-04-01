@@ -110,7 +110,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     // Display Generated Batch ID for new documents
                     if (controller.generatedBatchId.value.isNotEmpty) ...[
                       TextFormField(
-                        // key: ValueKey(controller.generatedBatchId.value),
                         controller: controller.batchIdController,
                         readOnly: controller.isEditMode,
                         decoration: const InputDecoration(
@@ -269,6 +268,19 @@ class BatchFormScreen extends GetView<BatchFormController> {
   }
 
   Widget _buildLabelPreview(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // The label simulates a physical printed label: white background + black
+    // ink are intentional and must stay theme-independent (print-accurate).
+    // Only the border colour and shadow opacity are guarded for dark mode so
+    // the white card remains visually separated from the dark scaffold.
+    const Color labelBackground = Colors.white;
+    const Color labelInk = Colors.black;
+    final Color labelBorder = isDark
+        ? const Color(0xFF424242) // visible separation against dark bg
+        : const Color(0xFFE0E0E0); // equivalent to grey.shade300 in light
+    final double shadowOpacity = isDark ? 0.18 : 0.05;
+
     final String variant = controller.itemVariantOf.value.isNotEmpty
         ? controller.itemVariantOf.value
         : controller.itemController.text;
@@ -283,10 +295,15 @@ class BatchFormScreen extends GetView<BatchFormController> {
       child: Container(
         width: 300,
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.grey.shade300, width: 1),
+          color: labelBackground,
+          border: Border.all(color: labelBorder, width: 1),
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: shadowOpacity),
+              blurRadius: 4,
+            ),
+          ],
         ),
         padding: const EdgeInsets.all(8.0),
         child: Row(
@@ -299,7 +316,12 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 children: [
                   Text(
                     variant,
-                    style: const TextStyle(fontFamily: 'ShureTechMono', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black),
+                    style: const TextStyle(
+                      fontFamily: 'ShureTechMono',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: labelInk,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -314,7 +336,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       style: const TextStyle(
                         fontSize: 18,
                         fontFamily: 'ShureTechMono',
-                        color: Colors.black,
+                        color: labelInk,
                         fontFeatures: [FontFeature.slashedZero()],
                       ),
                     ),
@@ -331,13 +353,20 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   AspectRatio(
                     aspectRatio: 1,
                     child: QrImageView(
-                      eyeStyle: QrEyeStyle(color: Theme.of(context).colorScheme.primary, eyeShape: QrEyeShape.circle),
-                      dataModuleStyle: QrDataModuleStyle(color: Theme.of(context).colorScheme.primary),
-                      embeddedImageStyle: QrEmbeddedImageStyle(color: Theme.of(context).colorScheme.primary),
+                      eyeStyle: QrEyeStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        eyeShape: QrEyeShape.circle,
+                      ),
+                      dataModuleStyle: QrDataModuleStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      embeddedImageStyle: QrEmbeddedImageStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       errorCorrectionLevel: QrErrorCorrectLevel.H,
                       data: controller.generatedBatchId.value,
                       version: QrVersions.auto,
-                      padding: EdgeInsets.all(2),
+                      padding: const EdgeInsets.all(2),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -348,7 +377,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       fontFamily: 'ShureTechMono',
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
-                      fontFeatures: [FontFeature.slashedZero()],
+                      fontFeatures: const [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,
                     textAlign: TextAlign.center,
