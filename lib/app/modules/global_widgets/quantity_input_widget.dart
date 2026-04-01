@@ -32,7 +32,17 @@ class QuantityInputWidget extends StatelessWidget {
   final Color color;
   final Function(String)? onChanged;
 
-  QuantityInputWidget({
+  /// Optional stable identifier used to derive [Key]s for the internal
+  /// increment / decrement buttons.
+  ///
+  /// Pass a unique value per item (e.g. [itemCode]) so that GetX's reactive
+  /// rebuilds produce the same [ValueKey]s across widget re-instantiations,
+  /// preventing the "Failed assertion" AnimatedState listener crash.
+  ///
+  /// Defaults to null; falls back to [label] when not supplied.
+  final String? widgetTag;
+
+  const QuantityInputWidget({
     super.key,
     required this.controller,
     required this.onIncrement,
@@ -43,10 +53,14 @@ class QuantityInputWidget extends StatelessWidget {
     this.onInfoTap,
     this.color = Colors.black87,
     this.onChanged,
+    this.widgetTag,
   });
 
-  final UniqueKey _decKey = UniqueKey();
-  final UniqueKey _incKey = UniqueKey();
+  // Stable keys derived from widgetTag (or label as fallback).
+  // Using ValueKey instead of UniqueKey prevents element-identity mismatches
+  // when the parent rebuilds and re-instantiates this StatelessWidget object.
+  Key get _decKey => ValueKey('qty_dec_${widgetTag ?? label}');
+  Key get _incKey => ValueKey('qty_inc_${widgetTag ?? label}');
 
   @override
   Widget build(BuildContext context) {
