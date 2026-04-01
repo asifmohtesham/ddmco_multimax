@@ -2,9 +2,11 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/utils/search_helper.dart';
+import 'package:multimax/app/modules/item/item_scroll_mixin.dart';
 
 /// Model to represent a single row in the unified filter list.
 class FilterRow {
@@ -37,8 +39,12 @@ class FilterRow {
       );
 }
 
-class ItemController extends GetxController {
+class ItemController extends GetxController with ItemScrollMixin {
   final ItemProvider _provider = Get.find<ItemProvider>();
+
+  /// Base URL for constructing item image URIs.
+  /// Sourced from [ApiProvider] at controller construction time.
+  final String baseUrl = Get.find<ApiProvider>().baseUrl;
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -59,7 +65,7 @@ class ItemController extends GetxController {
   /// Whether a stock fetch is in-flight for a specific item code.
   final _stockLoadingSet = <String>{}.obs;
 
-  // ── Filter state ─────────────────────────────────────────────────────────
+  // ── Filter state ────────────────────────────────────────────────────────────
   final activeFilters = <FilterRow>[].obs;
 
   final List<FilterRow> availableFields = [
@@ -79,7 +85,7 @@ class ItemController extends GetxController {
   var sortOrder = 'desc'.obs;
   var searchQuery = ''.obs;
 
-  // ── Reference data (lazy-loaded on first filter sheet open) ─────────────
+  // ── Reference data (lazy-loaded on first filter sheet open) ────────────────
   // Fix #7: not fetched in onInit anymore.
   var itemGroups = <String>[].obs;
   var templateItems = <String>[].obs;
@@ -103,6 +109,13 @@ class ItemController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
+    // Wire scroll listener — triggers load-more at 90 % scroll depth.
+    initScroll(() {
+      if (hasMore.value && !isFetchingMore.value) {
+        fetchItems(isLoadMore: true);
+      }
+    });
 
     if (Get.arguments != null && Get.arguments is Map) {
       final args = Get.arguments as Map;
@@ -141,6 +154,12 @@ class ItemController extends GetxController {
       (_) => _applySearch(),
       time: const Duration(milliseconds: 200),
     );
+  }
+
+  /// [ItemScrollMixin.onClose] disposes scrollController automatically.
+  @override
+  void onClose() {
+    super.onClose();
   }
 
   void toggleLayout() => isGridView.value = !isGridView.value;
@@ -185,7 +204,7 @@ class ItemController extends GetxController {
     fetchItems(clear: true);
   }
 
-  // ── Lazy reference data loader (Fix #7) ──────────────────────────────
+  // ── Lazy reference data loader (Fix #7) ───────────────────────────────
 
   /// Called the first time the filter sheet is opened.
   Future<void> ensureReferenceDataLoaded() async {
@@ -198,7 +217,7 @@ class ItemController extends GetxController {
     referenceDataLoaded.value = true;
   }
 
-  // ── Fetch items ──────────────────────────────────────────────────────
+  // ── Fetch items ────────────────────────────────────────────────────────────
 
   Future<void> fetchItems({bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
@@ -311,7 +330,7 @@ class ItemController extends GetxController {
     }
   }
 
-  // ── Reference data fetchers (Fix #3: log + kDebugMode) ────────────────
+  // ── Reference data fetchers (Fix #3: log + kDebugMode) ──────────────────
 
   Future<void> fetchItemGroups() async {
     isLoadingGroups.value = true;
@@ -382,7 +401,7 @@ class ItemController extends GetxController {
     }
   }
 
-  // ── Stock levels (Fix #8: per-item state) ────────────────────────────
+  // ── Stock levels (Fix #8: per-item state) ────────────────────────────────
 
   List<WarehouseStock>? getStockFor(String itemCode) =>
       _stockLevelsCache[itemCode];

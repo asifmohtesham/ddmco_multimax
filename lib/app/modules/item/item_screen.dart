@@ -5,7 +5,6 @@ import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/item/widgets/item_image.dart';
@@ -21,60 +20,51 @@ class ItemScreen extends StatefulWidget {
 
 class _ItemScreenState extends State<ItemScreen> {
   final ItemController controller = Get.find();
-  final _scrollController = ScrollController();
-  final String _baseUrl = Get.find<ApiProvider>().baseUrl;
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
 
   // ── build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return AppShellScaffold(
-      body: NotificationListener<ScrollEndNotification>(
-        onNotification: (notification) {
-          final metrics = notification.metrics;
-          if (metrics.pixels >= metrics.maxScrollExtent * 0.9 &&
-              controller.hasMore.value &&
-              !controller.isFetchingMore.value) {
-            controller.fetchItems(isLoadMore: true);
-          }
-          return false;
-        },
-        child: RefreshIndicator(
-          onRefresh: () => controller.fetchItems(clear: true),
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const ItemListAppBar(),
+      floatingActionButton: Obx(
+        () => controller.isFarFromTop.value
+            ? FloatingActionButton(
+                onPressed: controller.scrollToTop,
+                tooltip: 'Scroll to top',
+                mini: false,
+                child: const Icon(Icons.keyboard_arrow_up),
+              )
+            : const SizedBox.shrink(),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchItems(clear: true),
+        child: CustomScrollView(
+          controller: controller.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            const ItemListAppBar(),
 
-              Obx(() {
-                if (controller.isLoading.value &&
-                    controller.displayedItems.isEmpty) {
-                  return const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
+            Obx(() {
+              if (controller.isLoading.value &&
+                  controller.displayedItems.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
 
-                if (controller.displayedItems.isEmpty) {
-                  return _buildEmptyState(context);
-                }
+              if (controller.displayedItems.isEmpty) {
+                return _buildEmptyState(context);
+              }
 
-                if (controller.isGridView.value) {
-                  return _buildGrid();
-                }
+              if (controller.isGridView.value) {
+                return _buildGrid();
+              }
 
-                return _buildList();
-              }),
+              return _buildList();
+            }),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
-            ],
-          ),
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
         ),
       ),
     );
@@ -208,7 +198,9 @@ class _ItemScreenState extends State<ItemScreen> {
         status: item.itemGroup,
         leading: ItemImage(
           key: ValueKey(item.itemCode),
-          imageUrl: item.image != null ? '$_baseUrl${item.image}' : null,
+          imageUrl: item.image != null
+              ? '${controller.baseUrl}${item.image}'
+              : null,
           size: 56,
         ),
         isExpanded: isExpanded,
@@ -251,7 +243,10 @@ class _ItemScreenState extends State<ItemScreen> {
       ),
       child: InkWell(
         onTap: () => Get.bottomSheet(
-          ItemGridPreviewSheet(item: item, baseUrl: _baseUrl),
+          ItemGridPreviewSheet(
+            item: item,
+            baseUrl: controller.baseUrl,
+          ),
           isScrollControlled: true,
         ),
         onLongPress: () => Get.toNamed(
@@ -266,8 +261,9 @@ class _ItemScreenState extends State<ItemScreen> {
                 width: double.infinity,
                 child: ItemImage(
                   key: ValueKey('grid_${item.itemCode}'),
-                  imageUrl:
-                      item.image != null ? '$_baseUrl${item.image}' : null,
+                  imageUrl: item.image != null
+                      ? '${controller.baseUrl}${item.image}'
+                      : null,
                   fit: BoxFit.cover,
                 ),
               ),
