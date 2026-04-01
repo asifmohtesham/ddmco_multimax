@@ -125,6 +125,7 @@ class _BomScreenState extends State<BomScreen> {
             // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
               title: screenTitle,
+              automaticallyImplyLeading: false,
               searchDoctype:      'BOM',
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
@@ -132,6 +133,7 @@ class _BomScreenState extends State<BomScreen> {
               activeFilters:      controller.activeFilters,
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
+              onFilterTap:        () => _showFilterSheet(context),
             ),
 
             // ── KPI strip + list — single Obx owns all Rx reads ────────
@@ -234,6 +236,112 @@ class _BomScreenState extends State<BomScreen> {
                         },
                         childCount: boms.length + 1,
                       ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _BomFilterSheet(controller: controller),
+    );
+  }
+}
+
+// ── Filter bottom sheet ────────────────────────────────────────────────────────
+
+class _BomFilterSheet extends StatelessWidget {
+  final BomController controller;
+  const _BomFilterSheet({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Filter BOMs',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                TextButton(
+                  onPressed: () {
+                    controller.clearFilters();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Clear all'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Status', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Obx(() {
+              final isActiveOnly =
+                  controller.activeFilters.containsKey('is_active');
+              final isSubmitted =
+                  controller.activeFilters.containsKey('docstatus');
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Active only'),
+                    selected: isActiveOnly,
+                    onSelected: (_) {
+                      if (isActiveOnly) {
+                        controller.removeFilter('is_active');
+                      } else {
+                        controller.setFilter('is_active', 1);
+                      }
+                      Navigator.pop(context);
+                    },
+                    avatar: Icon(
+                      Icons.check_circle_outline,
+                      size: 16,
+                      color: isActiveOnly
+                          ? cs.onSecondaryContainer
+                          : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Submitted'),
+                    selected: isSubmitted,
+                    onSelected: (_) {
+                      if (isSubmitted) {
+                        controller.removeFilter('docstatus');
+                      } else {
+                        controller.setFilter('docstatus', 1);
+                      }
+                      Navigator.pop(context);
+                    },
+                    avatar: Icon(
+                      Icons.verified_outlined,
+                      size: 16,
+                      color: isSubmitted
+                          ? cs.onSecondaryContainer
+                          : cs.onSurfaceVariant,
                     ),
                   ),
                 ],

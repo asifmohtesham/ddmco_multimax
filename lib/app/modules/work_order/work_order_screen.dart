@@ -130,6 +130,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
               title: screenTitle,
+              automaticallyImplyLeading: false,
               searchDoctype:      'Work Order',
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
@@ -140,6 +141,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               activeFilters:      controller.activeFilters,
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
+              onFilterTap:        () => _showFilterSheet(context),
             ),
 
             // ── List content ─────────────────────────────────────────
@@ -397,6 +399,87 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     childCount: baseCount + 1,
                   ),
                 ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _WorkOrderFilterSheet(controller: controller),
+    );
+  }
+}
+
+// ── Filter bottom sheet ────────────────────────────────────────────────────────
+
+class _WorkOrderFilterSheet extends StatelessWidget {
+  final WorkOrderController controller;
+  const _WorkOrderFilterSheet({required this.controller});
+
+  static const List<String> _statuses = [
+    'Not Started',
+    'In Process',
+    'Completed',
+    'Stopped',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Filter Work Orders',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                TextButton(
+                  onPressed: () {
+                    controller.clearFilters();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Clear all'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Status', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Obx(() {
+              final active = controller.activeFilters['status'] as String?;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _statuses.map((s) {
+                  final selected = active == s;
+                  return ChoiceChip(
+                    label: Text(s),
+                    selected: selected,
+                    onSelected: (_) {
+                      controller.setFilter(
+                          'status', selected ? null : s);
+                      Navigator.pop(context);
+                    },
+                  );
+                }).toList(),
               );
             }),
           ],

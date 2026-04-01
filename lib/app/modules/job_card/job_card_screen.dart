@@ -90,142 +90,133 @@ class _JobCardScreenState extends State<JobCardScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size.zero,
-        child: AppBar(
-          automaticallyImplyLeading: false,
-          toolbarHeight: 0,
-          elevation: 0,
-        ),
-      ),
-      body: AppShellScaffold(
-        body: RefreshIndicator(
-          onRefresh: () => controller.fetchJobCards(clear: true),
-          color: cs.primary,
-          backgroundColor: cs.surfaceContainerHighest,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // ── Unified header ─────────────────────────────────────────────
-              DocTypeListHeader(
-                title: 'Job Cards',
-                searchDoctype:      'Job Card',
-                searchQuery:        controller.searchQuery,
-                onSearchChanged:    controller.onSearchChanged,
-                onSearchClear: () {
-                  controller.searchQuery.value = '';
-                  controller.fetchJobCards(clear: true);
-                },
-                activeFilters:      controller.activeFilters,
-                filterChipsBuilder: _buildFilterChips,
-                onClearAllFilters:  controller.clearFilters,
-                onFilterTap: () => _showFilterSheet(context),
-              ),
+    return AppShellScaffold(
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchJobCards(clear: true),
+        color: cs.primary,
+        backgroundColor: cs.surfaceContainerHighest,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // ── Unified header ─────────────────────────────────────────────
+            DocTypeListHeader(
+              title: 'Job Cards',
+              automaticallyImplyLeading: false,
+              searchDoctype:      'Job Card',
+              searchQuery:        controller.searchQuery,
+              onSearchChanged:    controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchJobCards(clear: true);
+              },
+              activeFilters:      controller.activeFilters,
+              filterChipsBuilder: _buildFilterChips,
+              onClearAllFilters:  controller.clearFilters,
+              onFilterTap: () => _showFilterSheet(context),
+            ),
 
-              // ── KPI strip + list ──────────────────────────────────────────
-              Obx(() {
-                // ─ loading splash ────────────────────────────────
-                if (controller.isLoading.value &&
-                    controller.jobCards.isEmpty) {
-                  return const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()));
-                }
+            // ── KPI strip + list ──────────────────────────────────────────
+            Obx(() {
+              // ─ loading splash ────────────────────────────────
+              if (controller.isLoading.value &&
+                  controller.jobCards.isEmpty) {
+                return const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()));
+              }
 
-                // ─ empty state ──────────────────────────────────
-                if (controller.jobCards.isEmpty) {
-                  final hasFilters =
-                      controller.activeFilters.isNotEmpty ||
-                          controller.searchQuery.value.isNotEmpty;
-                  return SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              hasFilters
-                                  ? Icons.filter_alt_off_outlined
-                                  : Icons.assignment_ind_outlined,
-                              size: 64,
-                              color: cs.outlineVariant,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              hasFilters
-                                  ? 'No Matching Job Cards'
-                                  : 'No Job Cards',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                      color: cs.onSurface,
-                                      fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 24),
-                            FilledButton.tonalIcon(
-                              onPressed: hasFilters
-                                  ? controller.clearFilters
-                                  : () => controller.fetchJobCards(
-                                      clear: true),
-                              icon: Icon(hasFilters
-                                  ? Icons.clear_all
-                                  : Icons.refresh),
-                              label: Text(hasFilters
-                                  ? 'Clear Filters'
-                                  : 'Reload'),
-                            ),
-                          ],
-                        ),
+              // ─ empty state ──────────────────────────────────
+              if (controller.jobCards.isEmpty) {
+                final hasFilters =
+                    controller.activeFilters.isNotEmpty ||
+                        controller.searchQuery.value.isNotEmpty;
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasFilters
+                                ? Icons.filter_alt_off_outlined
+                                : Icons.assignment_ind_outlined,
+                            size: 64,
+                            color: cs.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasFilters
+                                ? 'No Matching Job Cards'
+                                : 'No Job Cards',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                    color: cs.onSurface,
+                                    fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton.tonalIcon(
+                            onPressed: hasFilters
+                                ? controller.clearFilters
+                                : () => controller.fetchJobCards(
+                                    clear: true),
+                            icon: Icon(hasFilters
+                                ? Icons.clear_all
+                                : Icons.refresh),
+                            label: Text(hasFilters
+                                ? 'Clear Filters'
+                                : 'Reload'),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }
-
-                // ─ KPI strip + list ─────────────────────────────────
-                final cards = controller.jobCards;
-                return SliverMainAxisGroup(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: _JobCardKpiStrip(controller: controller),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            if (index >= cards.length) {
-                              return controller.hasMore.value
-                                  ? const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.all(16),
-                                        child: CircularProgressIndicator()))
-                                  : const SizedBox(height: 80);
-                            }
-                            final jc = cards[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _JobCardTile(
-                                jc: jc,
-                                onTap: () => Get.toNamed(
-                                  AppRoutes.JOB_CARD_FORM,
-                                  arguments: {'name': jc.name},
-                                ),
-                              ),
-                            );
-                          },
-                          childCount: cards.length + 1,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 );
-              }),
-            ],
-          ),
+              }
+
+              // ─ KPI strip + list ─────────────────────────────────
+              final cards = controller.jobCards;
+              return SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _JobCardKpiStrip(controller: controller),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index >= cards.length) {
+                            return controller.hasMore.value
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: CircularProgressIndicator()))
+                                : const SizedBox(height: 80);
+                          }
+                          final jc = cards[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _JobCardTile(
+                              jc: jc,
+                              onTap: () => Get.toNamed(
+                                AppRoutes.JOB_CARD_FORM,
+                                arguments: {'name': jc.name},
+                              ),
+                            ),
+                          );
+                        },
+                        childCount: cards.length + 1,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -250,8 +241,6 @@ class _JobCardFilterSheet extends StatelessWidget {
   final JobCardController controller;
   const _JobCardFilterSheet({required this.controller});
 
-  // Added 'Submitted' to the filter list so users can filter by docstatus==1
-  // cards whose ERPNext status may still show 'Completed' or 'Open'.
   static const List<String> _statuses = [
     'Open',
     'Work In Progress',
@@ -388,7 +377,6 @@ class _JobCardTile extends StatelessWidget {
   final VoidCallback onTap;
   const _JobCardTile({required this.jc, required this.onTap});
 
-  // ── Single status→color helper used by both the icon bg and progress bar.
   Color _statusColor(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return switch (jc.status) {
@@ -423,7 +411,6 @@ class _JobCardTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Status icon badge ──
                   Container(
                     height: 44,
                     width: 44,
@@ -434,8 +421,6 @@ class _JobCardTile extends StatelessWidget {
                     child: Icon(Icons.build_outlined, color: clr, size: 22),
                   ),
                   const SizedBox(width: 12),
-
-                  // ── Operation + workstation + status pill ──
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,14 +445,10 @@ class _JobCardTile extends StatelessWidget {
                       ],
                     ),
                   ),
-
-                  // ── Action / state badge (right-side) ──
                   const SizedBox(width: 8),
                   _ActionBadge(jc: jc),
                 ],
               ),
-
-              // ── Progress bar — only when forQuantity > 0 ─────────────
               if (hasProgress) ...[
                 const SizedBox(height: 10),
                 Row(
@@ -506,13 +487,6 @@ class _JobCardTile extends StatelessWidget {
       q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(1);
 }
 
-/// Right-side badge on each tile showing the actionable state.
-///
-/// Priority (high → low):
-///   1. docstatus == 1  → 'SUBMITTED' (tertiaryContainer tint)
-///   2. Work In Progress → 'IN PROGRESS' pill (primaryContainer tint)
-///   3. Open            → 'START' CTA  (primary filled)
-///   4. anything else   → empty SizedBox
 class _ActionBadge extends StatelessWidget {
   final JobCard jc;
   const _ActionBadge({required this.jc});
