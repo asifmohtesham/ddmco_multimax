@@ -4,10 +4,10 @@ import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -167,7 +167,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   @override
   Future<void> reloadDocument() async {
     await fetchBatch();
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    AppNotification.success('Document reloaded successfully');
   }
 
   Future<void> fetchBatch() async {
@@ -195,7 +195,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         itemBarcode.value = b.customItemBarcode ?? '';
         itemVariantOf.value = b.variantOf ?? '';
 
-        if(b.item.isNotEmpty) {
+        if (b.item.isNotEmpty) {
           // Await this to ensure itemBarcode/Variant are synced from Item Master
           // BEFORE we snapshot the form state as "clean"
           await _fetchItemDetails(b.item, generateId: false);
@@ -206,7 +206,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         isDirty.value = false;
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load batch: $e');
+      AppNotification.error('Failed to load batch: $e');
     } finally {
       isLoading.value = false;
       _isFetching = false; // Re-enable dirty checks
@@ -246,7 +246,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         itemList.assignAll(List<Map<String, dynamic>>.from(response.data['data']));
       }
     } catch (e) {
-      print(e);
+      AppNotification.error('Failed to search items: $e');
     } finally {
       isFetchingItems.value = false;
     }
@@ -260,7 +260,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         poList.assignAll(List<Map<String, dynamic>>.from(response.data['data']));
       }
     } catch (e) {
-      print(e);
+      AppNotification.error('Failed to search purchase orders: $e');
     } finally {
       isFetchingPOs.value = false;
     }
@@ -280,7 +280,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   Future<void> _fetchItemDetails(String itemCode, {bool generateId = false}) async {
     try {
       final response = await _provider.getItemDetails(itemCode);
-      if(response.statusCode == 200 && response.data['data'] != null) {
+      if (response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         String barcode = '';
         if (data['barcodes'] != null && (data['barcodes'] as List).isNotEmpty) {
@@ -297,7 +297,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         }
       }
     } catch (e) {
-      print('Error fetching item details: $e');
+      AppNotification.error('Failed to fetch item details: $e');
     }
   }
 
@@ -341,15 +341,13 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     if (checkStaleAndBlock()) return;
 
     if (itemController.text.isEmpty) {
-      GlobalSnackbar.warning(message: 'Item Code is required');
+      AppNotification.warning('Item Code is required');
       return;
     }
 
     // Critical check for the mandatory field
     if (itemBarcode.value.isEmpty) {
-      // Try to fetch it one last time if missing?
-      // Or just fail. Let's assume _fetchItemDetails ran.
-      // If it is truly empty, we might use item code as fallback here too.
+      // If truly empty, fall back to item code
       itemBarcode.value = itemController.text;
     }
 
@@ -365,7 +363,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       if (isEditMode) {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
-          GlobalSnackbar.success(message: 'Batch updated successfully');
+          AppNotification.success('Batch updated successfully');
           // Await fetchBatch to ensure isDirty is reset and data is refreshed
           await fetchBatch();
         } else {
@@ -381,7 +379,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
 
         final response = await _provider.createBatch(data);
         if (response.statusCode == 200) {
-          GlobalSnackbar.success(message: 'Batch created: ${data['name']}');
+          AppNotification.success('Batch created: ${data['name']}');
 
           // Switch to Edit Mode and fetch data to update UI (Status, Title, Actions)
           name = data['name'];
@@ -395,7 +393,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       // 4. HANDLE CONFLICT
       if (handleVersionConflict(e)) return;
 
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      AppNotification.error('Save failed: $e');
     } finally {
       isSaving.value = false;
     }
@@ -440,7 +438,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         await Share.shareXFiles([XFile(file.path)], text: 'Batch QR Code: ${generatedBatchId.value}');
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to export PNG: $e');
+      AppNotification.error('Failed to export PNG: $e');
     } finally {
       isExporting.value = false;
     }
@@ -516,7 +514,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       await file.writeAsBytes(await pdf.save());
       await Share.shareXFiles([XFile(file.path)], text: 'Batch Label: ${generatedBatchId.value}');
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to export PDF: $e');
+      AppNotification.error('Failed to export PDF: $e');
     } finally {
       isExporting.value = false;
     }
