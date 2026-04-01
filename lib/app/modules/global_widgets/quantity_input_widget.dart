@@ -1,13 +1,13 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
 /// A quantity input row with press-and-hold increment / decrement buttons.
 ///
 /// [QuantityInputWidget] is a pure [StatelessWidget]; mutable repeat-timer
-/// state lives in a [_QtyRepeatController] scoped per button via an explicit
-/// [Get.put] call keyed on [key.toString()].
+/// state lives in a [QuantityInputController] scoped per button via an
+/// explicit [Get.put] call keyed on [key.toString()].
 ///
 /// Commit C-3: tappable Max badge
 ///   When [onInfoTap] is provided the infoText badge becomes an [InkWell]
@@ -237,32 +237,11 @@ class _InfoBadge extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// GetxController: owns the repeat Timer for a single button.
-// ---------------------------------------------------------------------------
-class _QtyRepeatController extends GetxController {
-  Timer? _repeatTimer;
-
-  void startRepeat(VoidCallback action) {
-    action();
-    _repeatTimer?.cancel();
-    _repeatTimer = Timer.periodic(
-        const Duration(milliseconds: 150), (_) => action());
-  }
-
-  void stopRepeat() {
-    _repeatTimer?.cancel();
-    _repeatTimer = null;
-  }
-
-  @override
-  void onClose() {
-    _repeatTimer?.cancel();
-    super.onClose();
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Press-and-hold button.
+//
+// Uses [QuantityInputController] (from quantity_input_controller.dart) for
+// the repeat-timer state. The controller is registered once per unique key
+// and auto-removed by GetX when the widget is disposed.
 // ---------------------------------------------------------------------------
 class _QtyActionButton extends StatelessWidget {
   final IconData icon;
@@ -278,12 +257,12 @@ class _QtyActionButton extends StatelessWidget {
     this.borderRadius,
   });
 
-  _QtyRepeatController _controller() {
+  QuantityInputController _controller() {
     final tag = key.toString();
-    if (!Get.isRegistered<_QtyRepeatController>(tag: tag)) {
-      Get.put(_QtyRepeatController(), tag: tag, permanent: false);
+    if (!Get.isRegistered<QuantityInputController>(tag: tag)) {
+      Get.put(QuantityInputController(), tag: tag, permanent: false);
     }
-    return Get.find<_QtyRepeatController>(tag: tag);
+    return Get.find<QuantityInputController>(tag: tag);
   }
 
   @override
@@ -294,6 +273,9 @@ class _QtyActionButton extends StatelessWidget {
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
         onTapDown: (_) {
+          // HapticFeedback fires here (first press) only.
+          // QuantityInputController.startRepeat intentionally does NOT call
+          // HapticFeedback so repeat ticks are silent — matching platform UX.
           HapticFeedback.lightImpact();
           ctrl.startRepeat(onPressed);
         },
