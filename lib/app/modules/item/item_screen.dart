@@ -98,7 +98,7 @@ class ItemScreen extends GetView<ItemController> {
               }),
             ),
 
-            // ── List / grid content ────────────────────────────────────────
+            // ── List / grid content ──────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.displayedItems.isEmpty) {
@@ -286,7 +286,8 @@ class ItemScreen extends GetView<ItemController> {
   // ── grid card ──────────────────────────────────────────────────────────────────
 
   Widget _buildGridCard(BuildContext context, Item item) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Card(
       elevation: 0,
@@ -327,19 +328,18 @@ class ItemScreen extends GetView<ItemController> {
                 children: [
                   Text(
                     item.itemName,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: cs.onSurface),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     item.itemCode,
-                    style: TextStyle(
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontFamily: 'monospace',
-                      fontSize: 11,
                       color: cs.onSurfaceVariant,
                       fontFeatures: const [FontFeature.slashedZero()],
                     ),
