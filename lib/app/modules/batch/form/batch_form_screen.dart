@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -80,8 +81,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
               children: [
                 // --- Label Preview Section ---
                 if (controller.generatedBatchId.value.isNotEmpty)
-                  _buildSectionCard(
-                    context,
+                  DocSectionCard(
                     title: 'Label Preview',
                     children: [
                       Center(child: _buildLabelPreview(context)),
@@ -89,11 +89,10 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   ),
 
                 // --- Primary Details ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'General Information',
                   headerAction: StatusPill(
-                    status: controller.batchStatus, // Kept for inline visibility
+                    status: controller.batchStatus,
                   ),
                   children: [
                     // Status Toggle
@@ -155,8 +154,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 ),
 
                 // --- Purchase Details ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'Source',
                   children: [
                     GestureDetector(
@@ -178,8 +176,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 ),
 
                 // --- Dates & Quantity ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'Dates & Packaging',
                   children: [
                     Row(
@@ -230,41 +227,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
         }),
       ),
     ));
-  }
-
-  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children, Widget? headerAction}) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (headerAction != null) headerAction,
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildLabelPreview(BuildContext context) {
