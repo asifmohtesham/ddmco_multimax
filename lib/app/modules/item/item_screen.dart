@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/item/widgets/item_image.dart';
 import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
+import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -29,7 +30,7 @@ class _ItemScreenState extends State<ItemScreen> {
     super.dispose();
   }
 
-  // ── build ───────────────────────────────────────────────────────────────────────
+  // ── build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +80,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── grid ──────────────────────────────────────────────────────────────────────
+  // ── grid ─────────────────────────────────────────────────────────────────────
 
   Widget _buildGrid() {
     final items = controller.displayedItems;
@@ -112,7 +113,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list ───────────────────────────────────────────────────────────────────────
+  // ── list ──────────────────────────────────────────────────────────────────────
 
   Widget _buildList() {
     final itemCount = controller.displayedItems.length +
@@ -135,7 +136,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── empty state ────────────────────────────────────────────────────────────────
+  // ── empty state ───────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
@@ -191,7 +192,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list card ───────────────────────────────────────────────────────────────────
+  // ── list card ──────────────────────────────────────────────────────────────────
 
   Widget _buildListCard(Item item) {
     return Obx(() {
@@ -235,7 +236,7 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // ── grid card ───────────────────────────────────────────────────────────────────
+  // ── grid card ──────────────────────────────────────────────────────────────────
 
   Widget _buildGridCard(Item item) {
     final cs = Theme.of(context).colorScheme;
@@ -249,7 +250,10 @@ class _ItemScreenState extends State<ItemScreen> {
         side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: InkWell(
-        onTap: () => _showGridItemPreview(item),
+        onTap: () => Get.bottomSheet(
+          ItemGridPreviewSheet(item: item, baseUrl: _baseUrl),
+          isScrollControlled: true,
+        ),
         onLongPress: () => Get.toNamed(
           AppRoutes.ITEM_FORM,
           arguments: {'itemCode': item.itemCode},
@@ -298,103 +302,6 @@ class _ItemScreenState extends State<ItemScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  // ── grid preview bottom sheet ────────────────────────────────────────────────────
-
-  void _showGridItemPreview(Item item) {
-    final cs = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    controller.fetchStockLevels(item.itemCode);
-
-    Get.bottomSheet(
-      Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  ItemImage(
-                    key: ValueKey('preview_${item.itemCode}'),
-                    imageUrl:
-                        item.image != null ? '$_baseUrl${item.image}' : null,
-                    size: 64,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.itemName,
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.bold)),
-                        Text(item.itemCode,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant)),
-                        Text(item.itemGroup,
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(color: cs.primary)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 24),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.4),
-              child: Obx(() {
-                final stockList = controller.getStockFor(item.itemCode);
-                final isLoading = controller.isStockLoading(item.itemCode);
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: ItemExpandedContent(
-                    item: item,
-                    stockList: stockList,
-                    isLoading: isLoading,
-                    colorScheme: cs,
-                    theme: theme,
-                  ),
-                );
-              }),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    Get.back();
-                    Get.toNamed(
-                      AppRoutes.ITEM_FORM,
-                      arguments: {'itemCode': item.itemCode},
-                    );
-                  },
-                  child: const Text('View Full Details'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      isScrollControlled: true,
     );
   }
 }
