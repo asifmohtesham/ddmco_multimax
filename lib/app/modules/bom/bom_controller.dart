@@ -82,6 +82,12 @@ class BomController extends GetxController {
 
   // ── Filter helpers ───────────────────────────────────────────────────────────
 
+  /// Adds or updates a single filter key and re-fetches the list.
+  void setFilter(String key, dynamic value) {
+    activeFilters[key] = value;
+    fetchBOMs(clear: true);
+  }
+
   void removeFilter(String key) {
     activeFilters.remove(key);
     fetchBOMs(clear: true);
