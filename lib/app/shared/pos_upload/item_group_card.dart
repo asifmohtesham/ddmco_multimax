@@ -102,7 +102,7 @@ class ItemGroupCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Completion rail ────────────────────────────────────────────────
+            // ── Completion rail ──────────────────────────────────────────────
             Container(
               width: 4,
               decoration: BoxDecoration(
@@ -114,11 +114,11 @@ class ItemGroupCard extends StatelessWidget {
               ),
             ),
 
-            // ── Card content ──────────────────────────────────────────────────
+            // ── Card content ─────────────────────────────────────────────────
             Expanded(
               child: Column(
                 children: [
-                  // ── Group header (always visible) ──────────────────────
+                  // ── Group header (always visible) ────────────────────────
                   InkWell(
                     onTap: onToggle,
                     borderRadius: const BorderRadius.only(
@@ -177,48 +177,46 @@ class ItemGroupCard extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Stats row — always visible ─────────────────────────────
+                  // ── Stats row — always visible ───────────────────────────
+                  // IG-1: Wrap replaces Row so that a 4th chip (Remaining)
+                  // flows to a second run instead of overflowing the card
+                  // Column's tight height constraint from IntrinsicHeight.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 16, 12),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
                       children: [
                         _buildStatChip(
                           context: context,
                           label: 'Required',
-                          value:
-                              '${NumberFormat('#,##0.##').format(totalQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
                           valueColor: cs.onSurfaceVariant,
                         ),
-                        const SizedBox(width: 12),
                         _buildStatChip(
                           context: context,
                           label: 'Scanned',
-                          value:
-                              '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
                           valueColor: completionColor,
                         ),
-                        const SizedBox(width: 12),
                         _buildStatChip(
                           context: context,
                           label: 'Rate',
                           value: rateDisplay,
                           valueColor: cs.secondary,
                         ),
-                        // Remaining chip — only shown in POS context
-                        if (remainingDisplay != null) ...[
-                          const SizedBox(width: 12),
+                        if (remainingDisplay != null)
                           _buildStatChip(
                             context: context,
                             label: 'Remaining',
                             value: remainingDisplay,
                             valueColor: remainingColor!,
                           ),
-                        ],
                       ],
                     ),
                   ),
 
-                  // ── Collapsible child items ──────────────────────────────
+                  // ── Collapsible child items ─────────────────────────────
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
