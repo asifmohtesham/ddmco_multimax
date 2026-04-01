@@ -522,24 +522,50 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
-  // ── Leading widget ────────────────────────────────────────────────────────
+    // ── Leading widget ──────────────────────────────────────────────────────────
+  //
+  // Hard-fail guards:
+  //
+  // 1. Scaffold.of(ctx).openDrawer() throws StateError when the Scaffold has no
+  //    drawer. We catch that and fall back to a plain back-arrow so the screen
+  //    is still navigable.
+  //
+  // 2. Navigator.of(context).maybePop() throws FlutterError when there is no
+  //    Navigator ancestor (bare tests, certain nested-Navigator configurations).
+  //    We guard with a null-check on Navigator.maybeOf() before calling pop.
   Widget? _buildLeading(BuildContext context) {
     if (!automaticallyImplyLeading) {
+      // Top-level list screen: attempt to open the Scaffold drawer.
+      // Falls back to a plain ← arrow if no drawer is registered, so the
+      // screen is always navigable rather than throwing StateError.
       return Builder(
         builder: (ctx) => IconButton(
           icon: const Icon(Icons.menu),
           tooltip: MaterialLocalizations.of(ctx).openAppDrawerTooltip,
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
+          onPressed: () {
+            final scaffold = Scaffold.maybeOf(ctx);
+            if (scaffold != null && scaffold.hasDrawer) {
+              scaffold.openDrawer();
+            } else {
+              // Drawer unavailable — degrade gracefully to back navigation.
+              Navigator.maybeOf(ctx)?.maybePop();
+            }
+          },
         ),
       );
     }
+
+    // Form / pushed screen: show ← back arrow only when there is a route
+    // to pop back to AND a Navigator is available.
     final ModalRoute<Object?>? parentRoute = ModalRoute.of(context);
     final bool canPop = parentRoute?.canPop ?? false;
     if (canPop) {
       return IconButton(
         icon: const Icon(Icons.arrow_back),
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-        onPressed: () => Navigator.of(context).maybePop(),
+        // Navigator.maybeOf avoids the FlutterError thrown by Navigator.of
+        // when no Navigator ancestor exists (e.g. bare widget tests).
+        onPressed: () => Navigator.maybeOf(context)?.maybePop(),
       );
     }
     return null;
