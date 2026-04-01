@@ -43,27 +43,16 @@ class BomController extends GetxController {
   }
 
   // ── Route argument injection ─────────────────────────────────────────────────
-  //
-  // The Dashboard BOM quick-action calls:
-  //   Get.toNamed(AppRoutes.BOM, arguments: {
-  //     'filters':   {'is_active': 1},
-  //     'pageTitle': 'Active BOMs',
-  //   });
-  //
-  // Any other caller that passes no arguments (drawer, back-navigation) gets
-  // the default unfiltered list — no breaking change.
 
   void _applyRouteArguments() {
     final args = Get.arguments;
     if (args is! Map) return;
 
-    // Pre-seed activeFilters
     final rawFilters = args['filters'];
     if (rawFilters is Map<String, dynamic>) {
       activeFilters.addAll(rawFilters);
     }
 
-    // Optional screen title
     final title = args['pageTitle'];
     if (title is String && title.isNotEmpty) {
       pageTitle = title;
@@ -117,8 +106,10 @@ class BomController extends GetxController {
     }
 
     try {
+      final (:filters, :orFilters) = _buildSearchFilters();
       final response = await _provider.getBOMs(
-        filters: _buildFilterMap(),
+        filters: filters,
+        orFilters: orFilters,
         limit: _pageSize,
         limitStart: _start,
       );
@@ -137,15 +128,37 @@ class BomController extends GetxController {
     }
   }
 
-  // ── Filter map builder ───────────────────────────────────────────────────────
-
-  Map<String, dynamic> _buildFilterMap() {
+  // ── Filter / OR-filter builder ────────────────────────────────────────────────
+  //
+  // activeFilters  → AND filters (is_active, docstatus, etc.)
+  // searchQuery    → OR filters across all card-visible fields:
+  //                    name, item (Item Code), item_name
+  //
+  // Keeping them separate ensures the server correctly applies:
+  //   (name LIKE '%q%' OR item LIKE '%q%' OR item_name LIKE '%q%')
+  //   AND is_active = 1   ← if that filter is active
+  //
+  ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
+      _buildSearchFilters() {
+    // AND filters — all activeFilters entries.
     final f = <String, dynamic>{};
-    if (searchQuery.value.isNotEmpty) {
-      f['name'] = ['like', '%${searchQuery.value}%'];
+    for (final entry in activeFilters.entries) {
+      final val = entry.value;
+      f[entry.key] = val is List ? val : ['=', val];
     }
-    f.addAll(activeFilters);
-    return f;
+
+    // OR filters — search query matched across all rendered card fields.
+    Map<String, dynamic>? or;
+    if (searchQuery.value.isNotEmpty) {
+      final q = '%${searchQuery.value}%';
+      or = {
+        'name':      ['like', q],
+        'item':      ['like', q],
+        'item_name': ['like', q],
+      };
+    }
+
+    return (filters: f.isEmpty ? {} : f, orFilters: or);
   }
 
   // ── KPI Getters ──────────────────────────────────────────────────────────────

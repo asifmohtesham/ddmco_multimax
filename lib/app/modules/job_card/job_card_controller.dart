@@ -43,20 +43,6 @@ class JobCardController extends GetxController {
   }
 
   // ── Route argument injection ──────────────────────────────────────────
-  //
-  // Dashboard Job Card KPI card / quick-action calls:
-  //   controller.goToJobCard()  — no args → default list
-  // OR explicitly with pre-filter:
-  //   Get.toNamed(AppRoutes.JOB_CARD, arguments: {
-  //     'filters':   {'status': 'Open'},
-  //     'pageTitle': 'Open Job Cards',
-  //   });
-  //
-  // _buildFilterMap must NOT wrap pre-seeded filter values with ['=', value]
-  // because dashboard-injected values like {'status': 'Open'} are already
-  // plain strings, while setFilter() stores ['=', value] tuples. We handle
-  // this by storing injected filters in activeFilters as plain values and
-  // letting _buildFilterMap detect the type.
 
   void _applyRouteArguments() {
     final args = Get.arguments;
@@ -124,8 +110,10 @@ class JobCardController extends GetxController {
     }
 
     try {
+      final (:filters, :orFilters) = _buildSearchFilters();
       final response = await _provider.getJobCards(
-        filters: _buildFilterMap(),
+        filters: filters,
+        orFilters: orFilters,
         limit: _pageSize,
         limitStart: _start,
       );
@@ -144,31 +132,33 @@ class JobCardController extends GetxController {
     }
   }
 
-  // ── Filter map builder ───────────────────────────────────────────────
+  // ── Filter / OR-filter builder ───────────────────────────────────────────
   //
-  // Handles both filter formats:
-  //   • Plain value  (injected from dashboard args): {'status': 'Open'}
-  //   • Tuple value  (set via setFilter()):           {'status': 'Open'}  ← setFilter now stores plain too
+  // activeFilters  → AND filters (status, etc.)
+  // searchQuery    → OR filters across all card-visible fields:
+  //                    name, operation, workstation, status
   //
-  // Plain-string filters are passed directly; non-string values (already
-  // encoded as API operator tuples) are passed through unchanged.
-
-  Map<String, dynamic> _buildFilterMap() {
+  ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
+      _buildSearchFilters() {
     final f = <String, dynamic>{};
-    if (searchQuery.value.isNotEmpty) {
-      f['name'] = ['like', '%${searchQuery.value}%'];
-    }
     for (final entry in activeFilters.entries) {
       final val = entry.value;
-      // If it's already an operator list (e.g. ['like', '%x%']), pass through.
-      // Otherwise wrap as equality filter for the API layer.
-      if (val is List) {
-        f[entry.key] = val;
-      } else {
-        f[entry.key] = ['=', val];
-      }
+      // Already-encoded operator lists pass through; plain values get '='.
+      f[entry.key] = val is List ? val : ['=', val];
     }
-    return f;
+
+    Map<String, dynamic>? or;
+    if (searchQuery.value.isNotEmpty) {
+      final q = '%${searchQuery.value}%';
+      or = {
+        'name':        ['like', q],
+        'operation':   ['like', q],
+        'workstation': ['like', q],
+        'status':      ['like', q],
+      };
+    }
+
+    return (filters: f.isEmpty ? {} : f, orFilters: or);
   }
 
   // ── KPIs ───────────────────────────────────────────────────────────

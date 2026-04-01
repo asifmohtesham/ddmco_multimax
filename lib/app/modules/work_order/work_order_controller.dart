@@ -43,14 +43,6 @@ class WorkOrderController extends GetxController {
   }
 
   // ── Route argument injection ─────────────────────────────────────────────────
-  //
-  // Dashboard Work Order KPI card / quick-action calls:
-  //   controller.goToWorkOrder()  — no args → default list
-  // OR explicitly with pre-filter:
-  //   Get.toNamed(AppRoutes.WORK_ORDER, arguments: {
-  //     'filters':   {'status': 'In Process'},
-  //     'pageTitle': 'In-Process Orders',
-  //   });
 
   void _applyRouteArguments() {
     final args = Get.arguments;
@@ -114,8 +106,10 @@ class WorkOrderController extends GetxController {
     }
 
     try {
+      final (:filters, :orFilters) = _buildSearchFilters();
       final response = await _provider.getWorkOrders(
-        filters: _buildFilterMap(),
+        filters: filters,
+        orFilters: orFilters,
         limit: _pageSize,
         limitStart: _start,
       );
@@ -134,18 +128,32 @@ class WorkOrderController extends GetxController {
     }
   }
 
-  // ── Filter map builder ───────────────────────────────────────────────────────
-  // Produces a flat Map<String,dynamic> compatible with the provider signature.
-  // A name search is injected as a 'like' operator tuple so the API layer can
-  // encode it as ["name","like","%query%"].
-
-  Map<String, dynamic> _buildFilterMap() {
+  // ── Filter / OR-filter builder ────────────────────────────────────────────────
+  //
+  // activeFilters  → AND filters (status, production_item, owner, etc.)
+  // searchQuery    → OR filters across all card-visible fields:
+  //                    name, item_name, bom_no, status
+  //
+  ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
+      _buildSearchFilters() {
     final f = <String, dynamic>{};
-    if (searchQuery.value.isNotEmpty) {
-      f['name'] = ['like', '%${searchQuery.value}%'];
+    for (final entry in activeFilters.entries) {
+      final val = entry.value;
+      f[entry.key] = val is List ? val : ['=', val];
     }
-    f.addAll(activeFilters);
-    return f;
+
+    Map<String, dynamic>? or;
+    if (searchQuery.value.isNotEmpty) {
+      final q = '%${searchQuery.value}%';
+      or = {
+        'name':      ['like', q],
+        'item_name': ['like', q],
+        'bom_no':    ['like', q],
+        'status':    ['like', q],
+      };
+    }
+
+    return (filters: f.isEmpty ? {} : f, orFilters: or);
   }
 
   // ── KPIs ────────────────────────────────────────────────────────────────────

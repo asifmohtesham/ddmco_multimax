@@ -11,12 +11,14 @@ class BomProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters,
   }) async {
     return _apiProvider.getDocumentList(
       'BOM',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilters: orFilters,
       fields: [
         'name',
         'item',

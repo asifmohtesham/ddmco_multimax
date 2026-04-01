@@ -9,12 +9,14 @@ class WorkOrderProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters,
   }) async {
     return _apiProvider.getDocumentList(
       'Work Order',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilters: orFilters,
       fields: [
         'name',
         'production_item',
@@ -76,22 +78,6 @@ class WorkOrderProvider {
 
   /// Ask ERPNext to build a pre-filled Material Transfer for Manufacture
   /// Stock Entry for [workOrderName].
-  ///
-  /// Calls the whitelisted server method:
-  ///   erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry
-  ///
-  /// ERPNext returns a ready-to-save Stock Entry document dict with:
-  ///   - purpose = 'Material Transfer for Manufacture'
-  ///   - work_order linked
-  ///   - items[] populated from the BOM required materials
-  ///   - from_warehouse / to_warehouse (wip_warehouse) pre-filled
-  ///
-  /// The caller should save (POST /api/resource/Stock Entry) and then
-  /// submit the saved SE. ERPNext's Stock Entry on_submit hook
-  /// automatically updates the Work Order status to 'In Process'.
-  ///
-  /// [qty] is the quantity to transfer. Pass the full Work Order qty for
-  /// a complete transfer, or a partial qty for staged execution.
   Future<Response> getMaterialTransferForManufacture(
     String workOrderName, {
     required double qty,
@@ -107,20 +93,10 @@ class WorkOrderProvider {
 
   /// Save a pre-filled Stock Entry document returned by
   /// [getMaterialTransferForManufacture] (or any other SE builder).
-  ///
-  /// Returns the saved SE with its auto-generated [name] (e.g. STE-0001).
   Future<Response> saveStockEntry(Map<String, dynamic> data) async =>
       _apiProvider.createDocument('Stock Entry', data);
 
   /// Submit a saved Stock Entry (docstatus 0 → 1).
-  ///
-  /// Submitting a Material Transfer for Manufacture SE triggers ERPNext's
-  /// Stock Entry on_submit hook which:
-  ///   1. Posts the stock ledger entries (deducts raw-material stock).
-  ///   2. Updates the linked Work Order status to 'In Process'.
-  ///
-  /// This is the ONLY correct way to transition the Work Order to
-  /// 'In Process' — never call set_value on the WO status directly.
   Future<Response> submitStockEntry(String stockEntryName) async =>
       _apiProvider.updateDocument(
         'Stock Entry',

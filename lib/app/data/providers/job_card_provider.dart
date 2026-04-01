@@ -12,12 +12,14 @@ class JobCardProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters,
   }) async {
     return _apiProvider.getDocumentList(
       'Job Card',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilters: orFilters,
       fields: [
         'name',
         'work_order',
@@ -27,7 +29,7 @@ class JobCardProvider {
         'status',
         'for_quantity',
         'total_completed_qty',
-        'process_loss_qty',   // needed for _autoSubmitIfComplete check
+        'process_loss_qty',
         'docstatus',
         'modified',
         'posting_date',
@@ -43,12 +45,6 @@ class JobCardProvider {
 
   // ── Time log: add ────────────────────────────────────────────────────────
 
-  /// Add a manual time log entry to a Job Card via `make_time_log`.
-  ///
-  /// [status] values:
-  ///   `'Work In Progress'` — start / resume
-  ///   `'Resume Job'`       — pause
-  ///   `'Complete'`         — close session (requires [completeTime])
   Future<Response> addTimeLog({
     required String jobCardId,
     required String startTime,
@@ -71,9 +67,8 @@ class JobCardProvider {
     );
   }
 
-  // ── Time log: update (PATCH child-table row) ─────────────────────────────
+  // ── Time log: update ─────────────────────────────────────────────────────
 
-  /// Update an existing **Job Card Time Log** child row.
   Future<Response> updateTimeLog({
     required String timeLogName,
     required String toTime,
@@ -94,12 +89,9 @@ class JobCardProvider {
 
   // ── Time log: delete ─────────────────────────────────────────────────────
 
-  /// Delete a **Job Card Time Log** child row.
   Future<Response> deleteTimeLog(String timeLogName) async =>
       _apiProvider.deleteDocument('Job Card Time Log', timeLogName);
 
-  /// Touch the parent Job Card (empty PUT) so the server recalculates
-  /// `total_completed_qty` after a child-row edit or deletion.
   Future<Response> touchJobCard(String jobCardName) async =>
       _apiProvider.updateDocument('Job Card', jobCardName, {});
 
