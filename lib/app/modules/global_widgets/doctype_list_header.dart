@@ -3,6 +3,7 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:flutter/foundation.dart'; // clampDouble
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -344,8 +345,14 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // collapseProgress is computed against the *content* shrink range only
     // (i.e. _kExpandedExtra), not the status-bar height, so the large-title
     // fade is unaffected by the inset.
-    final collapseProgress = math.min(1.0, shrinkOffset / _kExpandedExtra);
-    final expandProgress = 1.0 - collapseProgress;
+    //
+    // clampDouble is the Flutter SDK utility — faster than math.min/max on
+    // double and avoids NaN propagation if shrinkOffset is ever non-finite.
+    // Dividing by zero (_kExpandedExtra == 0) is also guarded.
+    final collapseProgress = _kExpandedExtra > 0
+        ? clampDouble(shrinkOffset / _kExpandedExtra, 0.0, 1.0)
+        : 1.0; // collapsed immediately if no expanded region
+    final expandProgress = 1.0 - collapseProgress; // always ∈ [0.0, 1.0]
     final chipsNowActive = _chipsActiveFor(
       currentSearch: currentSearch,
       currentFilterCount: currentFilterCount,
