@@ -16,73 +16,136 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
+/// GetX controller for the **Batch form** screen.
+///
+/// Operates in two modes determined by [mode]:
+/// - `'new'`  — blank form, generates a Batch ID from the selected item's
+///   EAN barcode + a random 6-character alphanumeric suffix.
+/// - `'edit'` — fetches the existing [Batch] document from ERPNext and
+///   populates all form controllers.
+///
+/// Uses [OptimisticLockingMixin] to guard against concurrent edits:
+/// - [checkStaleAndBlock] is called at the start of [saveBatch].
+/// - [handleVersionConflict] is called in the catch block.
+/// - [reloadDocument] is implemented to delegate to [fetchBatch].
 class BatchFormController extends GetxController with OptimisticLockingMixin {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
-  // Initialise with defaults, populated in onInit
+  /// Batch document name (ERPNext `name` field).  Empty string in new mode.
   String name = '';
+
+  /// Form mode: `'new'` or `'edit'`.  Switches to `'edit'` after a
+  /// successful [saveBatch] in new mode.
   String mode = 'new';
 
+  /// `true` during any API fetch (initial load or reload).
   var isLoading = true.obs;
-  var isSaving = false.obs;
-  var isExporting = false.obs;
-  var isDirty = false.obs;
-  String _originalJson = '';
-  bool _isFetching = false; // Guard flag to prevent listener noise
 
+  /// `true` while [saveBatch] is in flight.
+  var isSaving = false.obs;
+
+  /// `true` while [exportQrAsPng] or [exportQrAsPdf] is in flight.
+  var isExporting = false.obs;
+
+  /// `true` when the form has unsaved changes relative to [_originalJson].
+  /// Always `true` in new mode.
+  var isDirty = false.obs;
+
+  /// JSON snapshot of the form state immediately after a successful fetch.
+  /// Used by [_checkForChanges] to detect mutations.
+  String _originalJson = '';
+
+  /// Guard flag set to `true` while [fetchBatch] is populating controllers
+  /// programmatically.  Prevents the controller change listeners from
+  /// incorrectly marking the form as dirty during a fetch.
+  bool _isFetching = false;
+
+  /// Reactive reference to the current [Batch] model.
   var batch = Rx<Batch?>(null);
 
-  // Form Controllers
+  // ── Form controllers — one per Frappe Batch field ─────────────────────
+
+  /// Maps to Frappe `batch_id` / `name`.
   final batchIdController = TextEditingController();
+
+  /// Maps to Frappe `item` (Item Code).
   final itemController = TextEditingController();
+
+  /// Maps to Frappe `description`.
   final descriptionController = TextEditingController();
+
+  /// Maps to Frappe `manufacturing_date` (ISO date string `yyyy-MM-dd`).
   final mfgDateController = TextEditingController();
+
+  /// Maps to Frappe `expiry_date` (ISO date string `yyyy-MM-dd`).
   final expDateController = TextEditingController();
+
+  /// Maps to Frappe `custom_packaging_qty`.
   final customPackagingQtyController = TextEditingController();
+
+  /// Maps to Frappe `custom_purchase_order`.
   final customPurchaseOrderController = TextEditingController();
 
-  // Status State
+  // ── Status state ───────────────────────────────────────────────────────
+
+  /// Whether the batch is disabled in ERPNext (`disabled == 1`).
   var isDisabled = false.obs;
 
-  // New State
+  // ── Derived / supplementary state ─────────────────────────────────────
+
+  /// The batch ID shown in the QR / label preview.  Set by
+  /// [_generateBatchId] (new mode) or loaded from [Batch.name] (edit mode).
   var generatedBatchId = ''.obs;
+
+  /// EAN/barcode value for the selected item, sourced from the Item master's
+  /// `barcodes` child table, falling back to the item code itself.
   var itemBarcode = ''.obs;
+
+  /// `variant_of` value from the Item master.  Used as the variant label
+  /// in the PDF label layout.
   var itemVariantOf = ''.obs;
 
-  // Selection Lists
+  // ── Picker list state ─────────────────────────────────────────────────
+
+  /// `true` while [searchItems] is in flight.
   var isFetchingItems = false.obs;
+
+  /// Results from [searchItems], rendered in the item picker sheet.
   var itemList = <Map<String, dynamic>>[].obs;
 
+  /// `true` while [searchPurchaseOrders] is in flight.
   var isFetchingPOs = false.obs;
+
+  /// Results from [searchPurchaseOrders], rendered in the PO picker sheet.
   var poList = <Map<String, dynamic>>[].obs;
 
+  /// `true` when [mode] is `'edit'`.
   bool get isEditMode => mode == 'edit';
 
-  // Store the random suffix to persist it across Item Code changes
+  /// Persists the random 6-char suffix across item code changes in new mode.
+  /// Ensures the suffix stays stable if the user re-selects an item or
+  /// the EAN barcode is refreshed, preserving the batch ID they see.
   String? _currentRandomSuffix;
 
-  // --- Status Logic ---
-  // Returns a simple String. Colors are handled by StatusPill.
+  // ── Status logic ──────────────────────────────────────────────────────
+
+  /// Computed batch status string.  Priority order:
+  ///
+  /// 1. **Not Saved** — [isDirty] is `true` (unsaved changes exist).
+  /// 2. **Disabled**  — [isDisabled] is `true`.
+  /// 3. **Expired**   — [expDateController] holds a date in the past.
+  /// 4. **Active**    — none of the above conditions are met.
+  ///
+  /// Colours for each state are applied by `StatusPill`, not here.
   String get batchStatus {
-    // 1. Not Saved (Dirty)
-    if (isDirty.value) {
-      return 'Not Saved';
-    }
-
-    // 2. Disabled
-    if (isDisabled.value) {
-      return 'Disabled';
-    }
-
-    // 3. Expired
+    if (isDirty.value) return 'Not Saved';
+    if (isDisabled.value) return 'Disabled';
     if (expDateController.text.isNotEmpty) {
       final expiry = DateTime.tryParse(expDateController.text);
       if (expiry != null && expiry.isBefore(DateTime.now())) {
         return 'Expired';
       }
     }
-
-    // 4. Active (Default)
     return 'Active';
   }
 
@@ -115,7 +178,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         name = args['name'] ?? '';
         mode = args['mode'] ?? 'new';
       } else if (args is String) {
-        // Handle GlobalSearchDelegate argument (just the ID)
+        // Handle GlobalSearchDelegate argument (just the document ID).
         name = args;
         mode = 'edit';
       }
@@ -133,12 +196,15 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     super.onClose();
   }
 
-  // --- PopScope Logic ---
+  // ── PopScope / discard ──────────────────────────────────────────────────
+
+  /// Shows the standard "Unsaved Changes" dialog ([GlobalDialog.showUnsavedChanges]).
+  /// On confirm-discard, resets [isDirty] and pops the route.
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
-        isDirty.value = false; // Reset dirty flag
-        Get.back(); // Pop the screen (Navigation)
+        isDirty.value = false;
+        Get.back();
       },
     );
   }
@@ -155,7 +221,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     customPackagingQtyController.text = '12';
     isDisabled.value = false;
     itemBarcode.value = '';
-    _currentRandomSuffix = null; // Reset suffix for new batch
+    _currentRandomSuffix = null;
 
     isDirty.value = true;
     _originalJson = '';
@@ -163,23 +229,34 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     isLoading.value = false;
   }
 
-  // 1. IMPLEMENT MIXIN
+  // ── OptimisticLockingMixin implementation ─────────────────────────────
+
+  /// Required by [OptimisticLockingMixin].  Delegates to [fetchBatch] and
+  /// shows a success notification when the reload completes.
   @override
   Future<void> reloadDocument() async {
     await fetchBatch();
     AppNotification.success('Document reloaded successfully');
   }
 
+  // ── Fetch ─────────────────────────────────────────────────────────────
+
+  /// Loads the Batch document identified by [name] from ERPNext.
+  ///
+  /// Sets [_isFetching] to `true` for the duration of the call to suppress
+  /// dirty-check noise from the controller listeners being updated
+  /// programmatically.  [_fetchItemDetails] is awaited before snapshotting
+  /// [_originalJson] so that [itemBarcode] and [itemVariantOf] are already
+  /// populated — preventing a spurious dirty state on first render.
   Future<void> fetchBatch() async {
     isLoading.value = true;
-    _isFetching = true; // Block dirty checks while programmatic updates happen
+    _isFetching = true;
     try {
       final response = await _provider.getBatch(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final b = Batch.fromJson(response.data['data']);
         batch.value = b;
 
-        // Populate Controllers
         batchIdController.text = b.name;
         itemController.text = b.item;
         descriptionController.text = b.description ?? '';
@@ -191,17 +268,13 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
 
         generatedBatchId.value = b.name;
 
-        // Pre-fill from Batch document first
         itemBarcode.value = b.customItemBarcode ?? '';
         itemVariantOf.value = b.variantOf ?? '';
 
         if (b.item.isNotEmpty) {
-          // Await this to ensure itemBarcode/Variant are synced from Item Master
-          // BEFORE we snapshot the form state as "clean"
           await _fetchItemDetails(b.item, generateId: false);
         }
 
-        // Snapshot original state and reset dirty flag
         _originalJson = jsonEncode(_getCurrentFormData());
         isDirty.value = false;
       }
@@ -209,13 +282,12 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       AppNotification.error('Failed to load batch: $e');
     } finally {
       isLoading.value = false;
-      _isFetching = false; // Re-enable dirty checks
+      _isFetching = false;
     }
   }
 
   void _checkForChanges() {
-    if (_isFetching) return; // Ignore changes during fetch
-
+    if (_isFetching) return;
     if (mode == 'new') {
       isDirty.value = true;
       return;
@@ -238,6 +310,10 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     };
   }
 
+  // ── Picker search ────────────────────────────────────────────────────────
+
+  /// Queries [BatchProvider.searchItems] and populates [itemList].
+  /// Only returns batch-managed items (`has_batch_no == 1`).
   Future<void> searchItems(String query) async {
     isFetchingItems.value = true;
     try {
@@ -252,6 +328,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  /// Queries [BatchProvider.searchPurchaseOrders] and populates [poList].
   Future<void> searchPurchaseOrders(String query) async {
     isFetchingPOs.value = true;
     try {
@@ -266,12 +343,17 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  /// Commits [itemData] selection: updates [itemController], dismisses the
+  /// picker sheet via [Get.back], and fetches item details to populate
+  /// [itemBarcode], [itemVariantOf], and trigger [_generateBatchId].
   void selectItem(Map<String, dynamic> itemData) {
     itemController.text = itemData['item_code'];
     Get.back();
     _fetchItemDetails(itemData['item_code'], generateId: true);
   }
 
+  /// Commits PO selection: updates [customPurchaseOrderController] and
+  /// dismisses the picker sheet via [Get.back].
   void selectPurchaseOrder(String poName) {
     customPurchaseOrderController.text = poName;
     Get.back();
@@ -301,8 +383,16 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  /// Generates [generatedBatchId] in the format `{ean}-{suffix}` where:
+  /// - `ean` is the item's EAN/barcode value.
+  /// - `suffix` is a 6-character alphanumeric string drawn from
+  ///   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (ambiguous characters removed).
+  ///
+  /// The suffix is generated once and cached in [_currentRandomSuffix] so
+  /// that changing the selected item refreshes the EAN prefix while keeping
+  /// the suffix stable — preventing the batch ID from changing unexpectedly
+  /// mid-session.
   void _generateBatchId(String ean) {
-    // Generate suffix only if it doesn't exist yet
     if (_currentRandomSuffix == null) {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       final rnd = Random();
@@ -310,12 +400,9 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
           6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
     }
 
-    // Format: {ean8}-{6-character alphanumeric}
-    // This preserves the suffix while updating the EAN prefix
     generatedBatchId.value = '$ean-$_currentRandomSuffix';
     batchIdController.text = generatedBatchId.value;
 
-    // Update the Batch Model name immediately so UI (AppBar) updates
     if (batch.value != null) {
       batch.value = Batch(
         name: generatedBatchId.value,
@@ -334,10 +421,22 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  // ── Save ─────────────────────────────────────────────────────────────────
+
+  /// Persists the form to ERPNext.
+  ///
+  /// Guard sequence:
+  /// 1. Short-circuits if [isDirty] is `false` in edit mode (no changes).
+  /// 2. Calls [checkStaleAndBlock] ([OptimisticLockingMixin]) — returns early
+  ///    if the document is stale (modified by another user since last fetch).
+  /// 3. Validates that [itemController] is non-empty.
+  ///
+  /// On conflict the catch block delegates to [handleVersionConflict]
+  /// ([OptimisticLockingMixin]) which shows the conflict dialog and returns
+  /// `true`, causing [saveBatch] to return without showing a generic error.
   Future<void> saveBatch() async {
     if (!isDirty.value && isEditMode) return;
 
-    // 2. USE GUARD
     if (checkStaleAndBlock()) return;
 
     if (itemController.text.isEmpty) {
@@ -345,16 +444,13 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       return;
     }
 
-    // Critical check for the mandatory field
     if (itemBarcode.value.isEmpty) {
-      // If truly empty, fall back to item code
       itemBarcode.value = itemController.text;
     }
 
     isSaving.value = true;
     final data = _getCurrentFormData();
 
-    // 3. ADD MODIFIED TIMESTAMP
     if (isEditMode) {
       data['modified'] = batch.value?.modified;
     }
@@ -364,7 +460,6 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
           AppNotification.success('Batch updated successfully');
-          // Await fetchBatch to ensure isDirty is reset and data is refreshed
           await fetchBatch();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
@@ -380,8 +475,6 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         final response = await _provider.createBatch(data);
         if (response.statusCode == 200) {
           AppNotification.success('Batch created: ${data['name']}');
-
-          // Switch to Edit Mode and fetch data to update UI (Status, Title, Actions)
           name = data['name'];
           mode = 'edit';
           await fetchBatch();
@@ -390,15 +483,17 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         }
       }
     } catch (e) {
-      // 4. HANDLE CONFLICT
       if (handleVersionConflict(e)) return;
-
       AppNotification.error('Save failed: $e');
     } finally {
       isSaving.value = false;
     }
   }
 
+  // ── Date picker ──────────────────────────────────────────────────────────
+
+  /// Opens a [showDatePicker] dialog and writes the selected date in
+  /// `yyyy-MM-dd` format to [controller].  No-ops if the user cancels.
   Future<void> pickDate(TextEditingController controller) async {
     final DateTime? picked = await showDatePicker(
       context: Get.context!,
@@ -411,6 +506,10 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  // ── Export ───────────────────────────────────────────────────────────────
+
+  /// Renders [generatedBatchId] as a 1024×1024 QR code PNG and shares it
+  /// via the platform share sheet.  No-ops if [generatedBatchId] is empty.
   Future<void> exportQrAsPng() async {
     if (generatedBatchId.value.isEmpty) return;
     isExporting.value = true;
@@ -444,6 +543,15 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
+  /// Renders a thermal label as a PDF (51 mm × 26 mm) and shares it via
+  /// the platform share sheet.
+  ///
+  /// Label layout (left-to-right, 65/35 flex split):
+  /// - **Left column**: variant name (bold, Code128 barcode of [itemBarcode],
+  ///   barcode text in 6 pt Courier).
+  /// - **Right column**: QR code of [generatedBatchId], batch ID text below.
+  ///
+  /// No-ops if [generatedBatchId] is empty.
   Future<void> exportQrAsPdf() async {
     if (generatedBatchId.value.isEmpty) return;
     isExporting.value = true;
