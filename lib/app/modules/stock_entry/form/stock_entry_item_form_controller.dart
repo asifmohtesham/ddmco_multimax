@@ -485,6 +485,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── submit ─────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final qty        = double.tryParse(qtyController.text) ?? 0;
     final batch      = batchController.text;
     final sourceRack = sourceRackController.text;
