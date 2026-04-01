@@ -2,6 +2,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_list_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -54,7 +55,11 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      drawer: const AppNavDrawer(),
+      drawer: DocTypeListHeader(
+        title: 'Packing Slip',
+        automaticallyImplyLeading: false,
+        searchDoctype: 'Packing Slip',
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await controller.fetchPackingSlips(clear: true);
