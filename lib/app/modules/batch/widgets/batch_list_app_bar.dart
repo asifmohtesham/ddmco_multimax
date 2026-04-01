@@ -14,22 +14,24 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 class BatchListAppBar extends StatelessWidget {
   const BatchListAppBar({super.key});
 
-  // ── filter sheet ──────────────────────────────────────────────────────────
+  // ── filter sheet ──────────────────────────────────────────────────
 
   static void _openFilterSheet() {
     Get.bottomSheet(
       const BatchFilterBottomSheet(),
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      // backgroundColor defaults to transparent — no need to specify.
     );
   }
 
-  // ── active filter chips ───────────────────────────────────────────────────
+  // ── active filter chips ───────────────────────────────────────────
 
   List<Widget> _buildFilterChips(
       BuildContext context, BatchController ctrl) {
     final chips = <Widget>[];
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
     Widget chip({
       required IconData icon,
@@ -40,10 +42,10 @@ class BatchListAppBar extends StatelessWidget {
         avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
         label: Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSecondaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
+          style: textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSecondaryContainer,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: colorScheme.secondaryContainer,
         deleteIconColor: colorScheme.onSecondaryContainer,
@@ -117,11 +119,11 @@ class BatchListAppBar extends StatelessWidget {
     return DocTypeListHeader(
       title: 'Batch',
 
-      // Global ERPNext API search ──────────────────────────────────────────
+      // Global ERPNext API search ─────────────────────────────────────
       searchDoctype: 'Batch',
       searchRoute: AppRoutes.BATCH_FORM,
 
-      // Search & filter wiring ─────────────────────────────────────────────
+      // Search & filter wiring ────────────────────────────────────
       searchQuery: ctrl.searchQuery,
       onSearchChanged: ctrl.onSearchChanged,
       onSearchClear: () {
@@ -134,7 +136,7 @@ class BatchListAppBar extends StatelessWidget {
       activeFilters: ctrl.activeFilters,
       onFilterTap: _openFilterSheet,
 
-      // Active filter chips ────────────────────────────────────────────────
+      // Active filter chips ──────────────────────────────────────
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, ctrl),
       onClearAllFilters: ctrl.clearFilters,
     );
