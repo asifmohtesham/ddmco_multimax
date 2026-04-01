@@ -118,6 +118,7 @@ class BatchListAppBar extends StatelessWidget {
 
     return DocTypeListHeader(
       title: 'Batch',
+      automaticallyImplyLeading: false,
 
       // Global ERPNext API search ─────────────────────────────────────
       searchDoctype: 'Batch',
