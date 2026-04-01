@@ -93,8 +93,7 @@ class ItemExpandedContent extends StatelessWidget {
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child:
-                  CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+              child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
             ),
           )
         else if (stockList == null || stockList!.isEmpty)
@@ -125,7 +124,9 @@ class ItemExpandedContent extends StatelessWidget {
                     '${item.stockUom ?? ""}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: stock.quantity > 0 ? Colors.green.shade600 : cs.error,
+                      // cs.tertiary for positive stock; cs.error for zero/negative.
+                      // Avoids hardcoded Colors.green.shade600.
+                      color: stock.quantity > 0 ? cs.tertiary : cs.error,
                     ),
                   ),
                 ],

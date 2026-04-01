@@ -243,10 +243,7 @@ class _ItemScreenState extends State<ItemScreen> {
       ),
       child: InkWell(
         onTap: () => Get.bottomSheet(
-          ItemGridPreviewSheet(
-            item: item,
-            baseUrl: controller.baseUrl,
-          ),
+          ItemGridPreviewSheet(item: item),
           isScrollControlled: true,
         ),
         onLongPress: () => Get.toNamed(

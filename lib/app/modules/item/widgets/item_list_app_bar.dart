@@ -66,6 +66,19 @@ class ItemListAppBar extends StatelessWidget {
     return chips;
   }
 
+  /// Returns a lightweight [RxMap] whose [length], [isEmpty], and [isNotEmpty]
+  /// reflect [controller.filterCount]. [DocTypeListHeader] only reads these
+  /// three members, so this is the full contract with the shared widget.
+  RxMap<String, dynamic> _buildActiveFiltersMap(ItemController controller) {
+    // Construct a fresh RxMap populated with one sentinel entry per active
+    // filter so that .length == filterCount and .isEmpty == (filterCount == 0).
+    final map = <String, dynamic>{};
+    for (var i = 0; i < controller.filterCount; i++) {
+      map['_$i'] = true;
+    }
+    return RxMap(map);
+  }
+
   @override
   Widget build(BuildContext context) {
     final ItemController controller = Get.find();
@@ -113,30 +126,11 @@ class ItemListAppBar extends StatelessWidget {
         controller.fetchItems(clear: true);
       },
 
-      // Fix #13: shim now returns activeFilters.length only (no showImagesOnly).
-      activeFilters: _ActiveFiltersShim(controller),
+      activeFilters: _buildActiveFiltersMap(controller),
       onFilterTap: () => _openFilterSheet(controller),
 
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, controller),
       onClearAllFilters: controller.clearFilters,
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// _ActiveFiltersShim
-// ---------------------------------------------------------------------------
-
-class _ActiveFiltersShim extends RxMap<String, dynamic> {
-  final ItemController _ctrl;
-  _ActiveFiltersShim(this._ctrl) : super({});
-
-  @override
-  int get length => _ctrl.filterCount;
-
-  @override
-  bool get isEmpty => _ctrl.filterCount == 0;
-
-  @override
-  bool get isNotEmpty => _ctrl.filterCount > 0;
 }

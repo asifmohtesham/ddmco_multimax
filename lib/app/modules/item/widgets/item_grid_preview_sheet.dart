@@ -10,21 +10,10 @@ import 'package:multimax/app/modules/item/widgets/item_image.dart';
 ///
 /// Displays the item image, name, code, group, and a reactive stock-balance
 /// section. Navigates to ITEM_FORM when the user taps "View Full Details".
-///
-/// [baseUrl] will be removed in a follow-up commit once [ItemController]
-/// exposes it directly. For now it is passed from the call site.
 class ItemGridPreviewSheet extends StatelessWidget {
   final Item item;
 
-  /// Base URL for constructing image URIs.
-  /// Temporary — will be sourced from the controller in the next commit.
-  final String baseUrl;
-
-  const ItemGridPreviewSheet({
-    super.key,
-    required this.item,
-    required this.baseUrl,
-  });
+  const ItemGridPreviewSheet({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +51,9 @@ class ItemGridPreviewSheet extends StatelessWidget {
               children: [
                 ItemImage(
                   key: ValueKey('preview_${item.itemCode}'),
-                  imageUrl:
-                      item.image != null ? '$baseUrl${item.image}' : null,
+                  imageUrl: item.image != null
+                      ? '${controller.baseUrl}${item.image}'
+                      : null,
                   size: 64,
                 ),
                 const SizedBox(width: 12),
