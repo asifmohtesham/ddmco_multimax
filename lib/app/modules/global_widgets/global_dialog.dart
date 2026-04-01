@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 // ── POS Upload error reason ─────────────────────────────────────────────────
 
@@ -237,6 +238,149 @@ class GlobalDialog {
                 child: const Text('Reload Document'),
               ),
             ],
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  /// Shows a hard-block dialog when the customer on a Delivery Note (or
+  /// Stock Entry) cannot be resolved in the system.
+  ///
+  /// This is a **non-dismissible** modal — the operator must tap
+  /// **Go to Dashboard** to acknowledge the error.  The CTA calls
+  /// [Get.offAllNamed] with [AppRoutes.DASHBOARD] so the broken document
+  /// screen is fully removed from the navigation stack.
+  ///
+  /// Trigger this **instead of** setting only [customerError] whenever the
+  /// customer is missing and the document was opened from a POS Upload,
+  /// because the customer field is read-only and there is no in-screen
+  /// recovery path.
+  ///
+  /// ```dart
+  /// GlobalDialog.showCustomerNotFound(customer: posUploadCustomer ?? '');
+  /// ```
+  static void showCustomerNotFound({required String customer}) {
+    Get.dialog(
+      Builder(
+        builder: (context) => WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 28, vertical: 40),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon ────────────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.person_off_outlined,
+                      color: Colors.red.shade700,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Title ────────────────────────────────────────────────
+                  const Text(
+                    'Customer Not Found',
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ── Body ────────────────────────────────────────────────
+                  Text(
+                    customer.isNotEmpty
+                        ? 'The customer referenced in this POS Upload could not be found in the system:'
+                        : 'No customer is set on this POS Upload document.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 14, color: Colors.grey.shade700),
+                  ),
+
+                  if (customer.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    // ── Customer name chip ──────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_outline,
+                              size: 15, color: Colors.red.shade400),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              customer,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red.shade700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // ── Hint ────────────────────────────────────────────────
+                  Text(
+                    'Please verify the POS Upload document and ensure the '
+                    'customer exists before retrying.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── CTA ─────────────────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () =>
+                          Get.offAllNamed(AppRoutes.DASHBOARD),
+                      icon: const Icon(Icons.home_outlined, size: 20),
+                      label: const Text(
+                        'Go to Dashboard',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.red.shade700,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
