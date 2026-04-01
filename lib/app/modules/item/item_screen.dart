@@ -11,15 +11,8 @@ import 'package:multimax/app/modules/item/widgets/item_image.dart';
 import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
 import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
 
-class ItemScreen extends StatefulWidget {
+class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
-
-  @override
-  State<ItemScreen> createState() => _ItemScreenState();
-}
-
-class _ItemScreenState extends State<ItemScreen> {
-  final ItemController controller = Get.find();
 
   // ── build ───────────────────────────────────────────────────────────────────
 
@@ -95,7 +88,7 @@ class _ItemScreenState extends State<ItemScreen> {
                 ),
               );
             }
-            return _buildGridCard(items[index]);
+            return _buildGridCard(context, items[index]);
           },
           childCount: cellCount,
         ),
@@ -119,7 +112,7 @@ class _ItemScreenState extends State<ItemScreen> {
               ),
             );
           }
-          return _buildListCard(controller.displayedItems[index]);
+          return _buildListCard(context, controller.displayedItems[index]);
         },
         childCount: itemCount,
       ),
@@ -184,7 +177,7 @@ class _ItemScreenState extends State<ItemScreen> {
 
   // ── list card ──────────────────────────────────────────────────────────────────
 
-  Widget _buildListCard(Item item) {
+  Widget _buildListCard(BuildContext context, Item item) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
@@ -230,7 +223,7 @@ class _ItemScreenState extends State<ItemScreen> {
 
   // ── grid card ──────────────────────────────────────────────────────────────────
 
-  Widget _buildGridCard(Item item) {
+  Widget _buildGridCard(BuildContext context, Item item) {
     final cs = Theme.of(context).colorScheme;
 
     return Card(
