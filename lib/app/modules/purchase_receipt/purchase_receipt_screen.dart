@@ -165,6 +165,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
             // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
               title: 'Purchase Receipts',
+              automaticallyImplyLeading: false,
               searchDoctype: 'Purchase Receipt',
               searchRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
               activeFilters: controller.activeFilters,

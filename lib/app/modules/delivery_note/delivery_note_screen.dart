@@ -203,6 +203,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             // ── Unified header ─────────────────────────────────────────────
             DocTypeListHeader(
               title: 'Delivery Notes',
+              automaticallyImplyLeading: false,
               searchDoctype: 'Delivery Note',
               searchRoute: AppRoutes.DELIVERY_NOTE_FORM,
               searchQuery: controller.searchQuery,

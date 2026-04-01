@@ -56,6 +56,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
               // ── Unified header ───────────────────────────────────────────
               DocTypeListHeader(
                 title: 'Batch-Wise Balance',
+                automaticallyImplyLeading: false,
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,

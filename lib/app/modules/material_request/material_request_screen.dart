@@ -223,6 +223,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             // ── AppBar + search/filter icons + active-filter chip row ─────────
             DocTypeListHeader(
               title: 'Material Requests',
+              automaticallyImplyLeading: false,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

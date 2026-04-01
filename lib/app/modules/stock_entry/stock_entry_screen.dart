@@ -224,7 +224,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           slivers: [
             // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
-              title: 'Stock Entries',
+              title: 'Stock Entry',
+              automaticallyImplyLeading: false,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

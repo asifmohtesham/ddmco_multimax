@@ -141,7 +141,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           slivers: [
             // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
-              title: 'Purchase Orders',
+              title: 'Purchase Order',
+              automaticallyImplyLeading: false,
+              searchDoctype: 'Purchase Order',
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {
