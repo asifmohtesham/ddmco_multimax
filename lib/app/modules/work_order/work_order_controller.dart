@@ -42,7 +42,7 @@ class WorkOrderController extends GetxController {
     super.onClose();
   }
 
-  // ── Route argument injection ───────────────────────────────────────────────
+  // ── Route argument injection ─────────────────────────────────────────────────
   //
   // Dashboard Work Order KPI card / quick-action calls:
   //   controller.goToWorkOrder()  — no args → default list
@@ -77,7 +77,13 @@ class WorkOrderController extends GetxController {
     });
   }
 
-  // ── Filter helpers ─────────────────────────────────────────────────────────
+  // ── Filter helpers ───────────────────────────────────────────────────────────
+
+  /// Adds or updates a single filter key and re-fetches the list.
+  void setFilter(String key, dynamic value) {
+    activeFilters[key] = value;
+    fetchWorkOrders(clear: true);
+  }
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -90,7 +96,7 @@ class WorkOrderController extends GetxController {
     fetchWorkOrders(clear: true);
   }
 
-  // ── Fetch ───────────────────────────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────────────────────
 
   Future<void> fetchWorkOrders({
     bool clear = false,
