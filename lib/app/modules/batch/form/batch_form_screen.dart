@@ -32,42 +32,8 @@ class BatchFormScreen extends GetView<BatchFormController> {
           isSaving: controller.isSaving.value,
           onSave: controller.saveBatch,
           actions: [
-            // Export Button
             if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty)
-              PopupMenuButton<String>(
-                icon: controller.isExporting.value
-                    ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        color: colorScheme.onPrimary,
-                        strokeWidth: 2
-                    )
-                )
-                    : const Icon(Icons.share),
-                onSelected: (value) {
-                  if (value == 'png') controller.exportQrAsPng();
-                  if (value == 'pdf') controller.exportQrAsPdf();
-                },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                  const PopupMenuItem<String>(
-                    value: 'png',
-                    child: ListTile(
-                      leading: Icon(Icons.image, color: Colors.blue),
-                      title: Text('Export PNG'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'pdf',
-                    child: ListTile(
-                      leading: Icon(Icons.picture_as_pdf, color: Colors.red),
-                      title: Text('Export PDF (Vector)'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
+              _buildExportActions(colorScheme),
           ],
         ),
         body: Obx(() {
@@ -123,8 +89,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Item Code — LinkFieldWidget replaces
-                    // GestureDetector > AbsorbPointer > TextFormField
+                    // Item Code
                     LinkFieldWidget(
                       controller: controller.itemController,
                       labelText: 'Item Code',
@@ -152,10 +117,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 DocSectionCard(
                   title: 'Source',
                   children: [
-                    // Purchase Order — LinkFieldWidget replaces
-                    // GestureDetector > AbsorbPointer > TextFormField.
-                    // onClear lets the user deselect a linked PO without
-                    // reopening the picker (mirrors Stock Entry behaviour).
                     Obx(() => LinkFieldWidget(
                       controller: controller.customPurchaseOrderController,
                       labelText: 'Purchase Order',
@@ -225,6 +186,56 @@ class BatchFormScreen extends GetView<BatchFormController> {
       ),
     ));
   }
+
+  // ---------------------------------------------------------------------------
+  // App-bar helpers
+  // ---------------------------------------------------------------------------
+
+  /// Builds the share/export [PopupMenuButton] shown in the app bar when
+  /// the batch is in edit mode and a batch ID has been generated.
+  ///
+  /// Accepts [colorScheme] directly so the method remains stateless and
+  /// avoids an extra [BuildContext] / [Theme.of] call.
+  Widget _buildExportActions(ColorScheme colorScheme) {
+    return PopupMenuButton<String>(
+      icon: controller.isExporting.value
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: colorScheme.onPrimary,
+                strokeWidth: 2,
+              ),
+            )
+          : const Icon(Icons.share),
+      onSelected: (value) {
+        if (value == 'png') controller.exportQrAsPng();
+        if (value == 'pdf') controller.exportQrAsPdf();
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'png',
+          child: ListTile(
+            leading: Icon(Icons.image, color: Colors.blue),
+            title: Text('Export PNG'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'pdf',
+          child: ListTile(
+            leading: Icon(Icons.picture_as_pdf, color: Colors.red),
+            title: Text('Export PDF (Vector)'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Body helpers
+  // ---------------------------------------------------------------------------
 
   Widget _buildLabelPreview(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
