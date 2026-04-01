@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -122,22 +123,16 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Item Code
-                    GestureDetector(
-                      onTap: controller.isEditMode ? null : () => _showItemPicker(context),
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: controller.itemController,
-                          decoration: const InputDecoration(
-                            labelText: 'Item Code *',
-                            hintText: 'Select Item',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.inventory_2_outlined),
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                          readOnly: true,
-                        ),
-                      ),
+                    // Item Code — LinkFieldWidget replaces
+                    // GestureDetector > AbsorbPointer > TextFormField
+                    LinkFieldWidget(
+                      controller: controller.itemController,
+                      labelText: 'Item Code',
+                      hintText: 'Select Item',
+                      prefixIcon: Icons.inventory_2_outlined,
+                      isRequired: true,
+                      isReadOnly: controller.isEditMode,
+                      onTap: () => _showItemPicker(context),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -157,21 +152,23 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 DocSectionCard(
                   title: 'Source',
                   children: [
-                    GestureDetector(
+                    // Purchase Order — LinkFieldWidget replaces
+                    // GestureDetector > AbsorbPointer > TextFormField.
+                    // onClear lets the user deselect a linked PO without
+                    // reopening the picker (mirrors Stock Entry behaviour).
+                    Obx(() => LinkFieldWidget(
+                      controller: controller.customPurchaseOrderController,
+                      labelText: 'Purchase Order',
+                      hintText: 'Link PO',
+                      prefixIcon: Icons.receipt_long_outlined,
                       onTap: () => _showPOPicker(context),
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: controller.customPurchaseOrderController,
-                          decoration: const InputDecoration(
-                            labelText: 'Purchase Order',
-                            hintText: 'Link PO',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.receipt_long_outlined),
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                        ),
-                      ),
-                    ),
+                      onClear: controller.customPurchaseOrderController.text.isNotEmpty
+                          ? () {
+                              controller.customPurchaseOrderController.clear();
+                              controller.isDirty.value = true;
+                            }
+                          : null,
+                    )),
                   ],
                 ),
 
