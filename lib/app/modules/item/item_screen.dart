@@ -18,6 +18,9 @@ class ItemScreen extends GetView<ItemController> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return AppShellScaffold(
       floatingActionButton: Obx(
         () => controller.isFarFromTop.value
@@ -37,6 +40,65 @@ class ItemScreen extends GetView<ItemController> {
           slivers: [
             const ItemListAppBar(),
 
+            // ── Result count pill ────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
+                if (controller.isLoading.value &&
+                    controller.displayedItems.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                final count = controller.displayedItems.length;
+                final hasMore = controller.hasMore.value;
+                final hasFilters = controller.filterCount > 0 ||
+                    controller.searchQuery.value.isNotEmpty;
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 14,
+                              color: cs.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              hasMore
+                                  ? '$count+ items'
+                                  : '$count item${count == 1 ? '' : 's'}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: cs.onSecondaryContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (hasFilters) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.filter_alt,
+                                size: 12,
+                                color: cs.onSecondaryContainer
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+
+            // ── List / grid content ────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.displayedItems.isEmpty) {
