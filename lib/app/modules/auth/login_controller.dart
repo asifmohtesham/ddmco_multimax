@@ -16,30 +16,91 @@ class LoginController extends GetxController {
   final DatabaseService _dbService = Get.find<DatabaseService>();
 
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
-  final TextEditingController emailController = TextEditingController();
+  final TextEditingController emailController    = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
   final TextEditingController serverUrlController = TextEditingController();
 
-  var currentServerUrl = ''.obs;
+  // ---------------------------------------------------------------------------
+  // Server-history search
+  // ---------------------------------------------------------------------------
+
+  /// Full list of historically-connected server URLs (most-recent first).
+  final savedServerUrls = <String>[].obs;
+
+  /// Subset of [savedServerUrls] matching the current [searchController] text.
+  final filteredServerUrls = <String>[].obs;
+
+  /// Search / filter field inside the server-config sheet.
+  final TextEditingController searchController = TextEditingController();
+
+  // ---------------------------------------------------------------------------
+  // Other observables
+  // ---------------------------------------------------------------------------
+
+  var currentServerUrl    = ''.obs;
   var isCheckingConnection = false.obs;
-  var isLoading = false.obs;
-  var isPasswordHidden = true.obs;
-  var showServerGuide = false.obs;
+  var isLoading           = false.obs;
+  var isPasswordHidden    = true.obs;
+  var showServerGuide     = false.obs;
 
   @override
   void onInit() {
     super.onInit();
     _loadSavedServerUrl();
+    searchController.addListener(_filterServerUrls);
   }
 
+  // ---------------------------------------------------------------------------
+  // Server URL helpers
+  // ---------------------------------------------------------------------------
+
   Future<void> _loadSavedServerUrl() async {
+    // Load the currently-active URL
     final savedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
     final targetUrl = savedUrl ?? ApiProvider.defaultBaseUrl;
     serverUrlController.text = targetUrl;
-    currentServerUrl.value = targetUrl;
+    currentServerUrl.value   = targetUrl;
     _apiProvider.setBaseUrl(targetUrl);
+
+    // Load full history list
+    await refreshServerHistory();
   }
+
+  /// Reloads [savedServerUrls] from DB and resets the filter.
+  Future<void> refreshServerHistory() async {
+    final urls = await _dbService.getServerUrls();
+    savedServerUrls.assignAll(urls);
+    _filterServerUrls();
+  }
+
+  /// Called by the search field listener — keeps [filteredServerUrls] in sync.
+  void _filterServerUrls() {
+    final query = searchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      filteredServerUrls.assignAll(savedServerUrls);
+    } else {
+      filteredServerUrls.assignAll(
+        savedServerUrls.where((u) => u.toLowerCase().contains(query)),
+      );
+    }
+  }
+
+  /// Fills [serverUrlController] with [url] and clears the search field.
+  void selectSavedUrl(String url) {
+    serverUrlController.text = url;
+    searchController.clear();
+  }
+
+  /// Removes [url] from history (both DB and observable lists).
+  Future<void> deleteSavedUrl(String url) async {
+    await _dbService.removeServerUrl(url);
+    savedServerUrls.remove(url);
+    _filterServerUrls();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Connect / save
+  // ---------------------------------------------------------------------------
 
   Future<void> saveServerConfiguration() async {
     String url = serverUrlController.text.trim();
@@ -69,8 +130,6 @@ class LoginController extends GetxController {
       }
     } catch (e) {
       isCheckingConnection.value = false;
-      // Builder gives dialog buttons a valid local BuildContext so they
-      // can call Navigator.of(context).pop() without touching Get.back().
       Get.dialog(
         Builder(
           builder: (context) => AlertDialog(
@@ -105,20 +164,36 @@ class LoginController extends GetxController {
     }
   }
 
-  /// Persists the validated URL and closes any open overlay.
+  /// Persists the validated URL as the active URL **and** appends it to history,
+  /// then closes any open overlay.
   Future<void> _confirmAndSave(String url) async {
+    // Save as the active server URL
     await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
+    // Push into the searchable history list
+    await _pushToServerHistory(url);
     serverUrlController.text = url;
-    currentServerUrl.value = url;
+    currentServerUrl.value   = url;
     _apiProvider.setBaseUrl(url);
     AppNavigator.pop();
   }
+
+  /// Appends [url] to the persistent server-URL history and refreshes the
+  /// in-memory observable list.
+  Future<void> _pushToServerHistory(String url) async {
+    await _dbService.saveServerUrl(url);
+    await refreshServerHistory();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth helpers
+  // ---------------------------------------------------------------------------
 
   @override
   void onClose() {
     emailController.dispose();
     passwordController.dispose();
     serverUrlController.dispose();
+    searchController.dispose();
     super.onClose();
   }
 
