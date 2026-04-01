@@ -295,14 +295,17 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.statusBarHeight,
   });
 
-  // ── Chip presence ─────────────────────────────────────────────────────────
+  // ── Chip presence ────────────────────────────────────────────────────────────
   //
-  // Single source of truth for chip row height allocation.
-  // Read synchronously (no Obx) — used by maxExtent AND the Column guard.
-  bool get _chipsActive =>
+  // Accepts pre-snapshotted values rather than reading Rx properties directly.
+  // This avoids GetX ObxError when the method is invoked by minExtent /
+  // maxExtent / shouldRebuild — all called outside any Obx/reactive context.
+  bool _chipsActiveFor({
+    required String currentSearch,
+    required int currentFilterCount,
+  }) =>
       filterChipsBuilder != null &&
-      ((searchQuery?.value ?? '').isNotEmpty ||
-          (activeFilters?.isNotEmpty ?? false));
+      (currentSearch.isNotEmpty || currentFilterCount > 0);
 
   // ── Extents ────────────────────────────────────────────────────────────
   //
@@ -312,27 +315,41 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get minExtent => statusBarHeight + _kToolbar;
 
   @override
-  double get maxExtent =>
-      statusBarHeight +
-      _kToolbar +
-      _kExpandedExtra +
-      (_chipsActive ? _kChipRow : 0.0);
+  double get maxExtent {
+    // maxExtent reads Rx properties — snapshot them safely.
+    // In practice maxExtent is called by Flutter's sliver protocol, not
+    // inside any Obx, so we must not let GetX strict-mode warnings fire.
+    final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
+    final hasFilters = activeFilters?.isNotEmpty ?? false;
+    final chipsActive = filterChipsBuilder != null && (hasSearch || hasFilters);
+    return statusBarHeight +
+        _kToolbar +
+        _kExpandedExtra +
+        (chipsActive ? _kChipRow : 0.0);
+  }
 
   // ── Build ──────────────────────────────────────────────────────────────
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // Snapshot Rx values once at the top of build().
+    // All subsequent logic reads these plain Dart values, never Rx properties
+    // directly, so there is no risk of GetX ObxError outside a reactive context.
+    final currentSearch = searchQuery?.value ?? '';
+    final currentFilterCount = activeFilters?.length ?? 0;
+  
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     // collapseProgress is computed against the *content* shrink range only
     // (i.e. _kExpandedExtra), not the status-bar height, so the large-title
     // fade is unaffected by the inset.
-    final collapseProgress =
-        math.min(1.0, shrinkOffset / _kExpandedExtra);
+    final collapseProgress = math.min(1.0, shrinkOffset / _kExpandedExtra);
     final expandProgress = 1.0 - collapseProgress;
-
-    final chipsNowActive = _chipsActive;
+    final chipsNowActive = _chipsActiveFor(
+      currentSearch: currentSearch,
+      currentFilterCount: currentFilterCount,
+    );
 
     // ── Status-bar icon brightness ─────────────────────────────────────────
     //
@@ -400,7 +417,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // ─ Chip row ──────────────────────────────────────────────────────────
     Widget? chipRow;
     if (chipsNowActive) {
-      final chips = filterChipsBuilder!(context);
+      // filterChipsBuilder is guaranteed non-null when chipsNowActive is true,
+      // but we use ?. + ?? [] as a belt-and-suspenders guard so a concurrent
+      // state change never produces a null-dereference crash.
+      final chips = filterChipsBuilder?.call(context) ?? [];
       if (chips.isNotEmpty) {
         chipRow = Material(
           color: colorScheme.surface,
