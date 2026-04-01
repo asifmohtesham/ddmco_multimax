@@ -436,7 +436,7 @@ class _ItemsTabState extends State<_ItemsTab> {
                         ? cs.onPrimaryContainer
                         : cs.onSurfaceVariant,
                   ),
-                  label: Text(opt.label),
+                  label: Text('${opt.label} • ${PosUploadFormController.fmtQty(opt.totalQty)}'),
                   selected: isSelected,
                   onSelected: (_) =>
                       ctrl.filterByCase(isSelected ? null : opt),
