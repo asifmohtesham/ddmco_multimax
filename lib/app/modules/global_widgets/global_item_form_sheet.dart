@@ -380,15 +380,19 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       ),
 
-      // ── Quantity input ────────────────────────────────────────────────────
-      // onInfoTap: shows an AlertDialog with the full ceiling breakdown.
-      // Null when qtyInfoTooltip is null → badge renders without tap target.
+      // ── Quantity input ─────────────────────────────────────────────────────
+      // widgetTag: itemCode scopes the internal _QtyActionButton ValueKeys
+      // to this specific item (qty_dec_<itemCode> / qty_inc_<itemCode>).
+      // Without this, both keys fall back to 'qty_dec_Quantity', which is
+      // identical across all sheets and causes GetX to find the wrong
+      // QuantityInputController instance on concurrent or rapid rebuilds.
       QuantityInputWidget(
         controller: qtyController,
         onIncrement: onIncrement,
         onDecrement: onDecrement,
         isReadOnly: isQtyReadOnly,
         label: 'Quantity',
+        widgetTag: itemCode,
         infoText: qtyInfoText,
         onInfoTap: qtyInfoTooltip != null
             ? () => showDialog<void>(
