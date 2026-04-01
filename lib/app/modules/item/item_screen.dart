@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
@@ -8,6 +7,8 @@ import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/item/widgets/item_image.dart';
+import 'dart:ui';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -218,7 +219,7 @@ class _ItemScreenState extends State<ItemScreen> {
         title: item.itemName,
         subtitle: item.itemCode,
         status: item.itemGroup,
-        leading: _ItemImage(
+        leading: ItemImage(
           key: ValueKey(item.itemCode),
           imageUrl: item.image != null ? '$_baseUrl${item.image}' : null,
           size: 56,
@@ -275,7 +276,7 @@ class _ItemScreenState extends State<ItemScreen> {
             Expanded(
               child: SizedBox(
                 width: double.infinity,
-                child: _ItemImage(
+                child: ItemImage(
                   key: ValueKey('grid_${item.itemCode}'),
                   imageUrl:
                       item.image != null ? '$_baseUrl${item.image}' : null,
@@ -344,7 +345,7 @@ class _ItemScreenState extends State<ItemScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _ItemImage(
+                  ItemImage(
                     key: ValueKey('preview_${item.itemCode}'),
                     imageUrl:
                         item.image != null ? '$_baseUrl${item.image}' : null,
@@ -411,79 +412,6 @@ class _ItemScreenState extends State<ItemScreen> {
       isScrollControlled: true,
     );
   }
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-// _ItemImage  (Fix #6: extracted to StatelessWidget with key)
-// ───────────────────────────────────────────────────────────────────────────────
-
-class _ItemImage extends StatelessWidget {
-  final String? imageUrl;
-  final double? size;
-  final BoxFit fit;
-
-  const _ItemImage({
-    super.key,
-    required this.imageUrl,
-    this.size,
-    this.fit = BoxFit.contain,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          imageUrl!,
-          width: size,
-          height: size,
-          fit: fit,
-          // Fix #11: shimmer-style placeholder during network load
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              width: size,
-              height: size,
-              color: cs.surfaceContainerHighest,
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    value: progress.expectedTotalBytes != null
-                        ? progress.cumulativeBytesLoaded /
-                            progress.expectedTotalBytes!
-                        : null,
-                    color: cs.primary,
-                  ),
-                ),
-              ),
-            );
-          },
-          errorBuilder: (_, __, ___) => _placeholder(cs),
-        ),
-      );
-    }
-    return _placeholder(cs);
-  }
-
-  Widget _placeholder(ColorScheme cs) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          Icons.image_not_supported_outlined,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-          size: size != null ? size! * 0.5 : 30,
-        ),
-      );
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
