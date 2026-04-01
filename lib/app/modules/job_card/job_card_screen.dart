@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class JobCardScreen extends StatefulWidget {
@@ -99,7 +100,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ─────────────────────────────────────────────
             DocTypeListHeader(
               title: 'Job Cards',
               automaticallyImplyLeading: false,
@@ -116,16 +116,13 @@ class _JobCardScreenState extends State<JobCardScreen> {
               onFilterTap: () => _showFilterSheet(context),
             ),
 
-            // ── KPI strip + list ──────────────────────────────────────────
             Obx(() {
-              // ─ loading splash ────────────────────────────────
               if (controller.isLoading.value &&
                   controller.jobCards.isEmpty) {
                 return const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()));
               }
 
-              // ─ empty state ──────────────────────────────────
               if (controller.jobCards.isEmpty) {
                 final hasFilters =
                     controller.activeFilters.isNotEmpty ||
@@ -166,9 +163,8 @@ class _JobCardScreenState extends State<JobCardScreen> {
                             icon: Icon(hasFilters
                                 ? Icons.clear_all
                                 : Icons.refresh),
-                            label: Text(hasFilters
-                                ? 'Clear Filters'
-                                : 'Reload'),
+                            label: Text(
+                                hasFilters ? 'Clear Filters' : 'Reload'),
                           ),
                         ],
                       ),
@@ -177,8 +173,10 @@ class _JobCardScreenState extends State<JobCardScreen> {
                 );
               }
 
-              // ─ KPI strip + list ─────────────────────────────────
+              // Capture query once — passed into each tile to avoid extra Obx.
+              final query = controller.searchQuery.value;
               final cards = controller.jobCards;
+
               return SliverMainAxisGroup(
                 slivers: [
                   SliverToBoxAdapter(
@@ -194,7 +192,8 @@ class _JobCardScreenState extends State<JobCardScreen> {
                                 ? const Center(
                                     child: Padding(
                                       padding: EdgeInsets.all(16),
-                                      child: CircularProgressIndicator()))
+                                      child:
+                                          CircularProgressIndicator()))
                                 : const SizedBox(height: 80);
                           }
                           final jc = cards[index];
@@ -202,6 +201,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _JobCardTile(
                               jc: jc,
+                              searchQuery: query,
                               onTap: () => Get.toNamed(
                                 AppRoutes.JOB_CARD_FORM,
                                 arguments: {'name': jc.name},
@@ -235,7 +235,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
   }
 }
 
-// ── Filter bottom sheet ───────────────────────────────────────────────────
+// ── Filter bottom sheet ────────────────────────────────────────────────
 
 class _JobCardFilterSheet extends StatelessWidget {
   final JobCardController controller;
@@ -263,11 +263,9 @@ class _JobCardFilterSheet extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Filter by Status',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
+                Text('Filter by Status',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: () {
                     controller.removeFilter('status');
@@ -305,7 +303,7 @@ class _JobCardFilterSheet extends StatelessWidget {
   }
 }
 
-// ── KPI strip ────────────────────────────────────────────────────────
+// ── KPI strip ───────────────────────────────────────────────────────────
 
 class _JobCardKpiStrip extends StatelessWidget {
   final JobCardController controller;
@@ -334,7 +332,7 @@ class _JobCardKpiStrip extends StatelessWidget {
 class _Kpi extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
+  final Color  color;
   const _Kpi(this.label, this.value, this.color);
 
   @override
@@ -370,12 +368,19 @@ class _Kpi extends StatelessWidget {
   }
 }
 
-// ── Job Card tile ──────────────────────────────────────────────────────
+// ── Job Card tile ──────────────────────────────────────────────────────────────
 
 class _JobCardTile extends StatelessWidget {
   final JobCard jc;
   final VoidCallback onTap;
-  const _JobCardTile({required this.jc, required this.onTap});
+  /// Current search query — passed from the parent Obx to avoid extra rebuilds.
+  final String searchQuery;
+
+  const _JobCardTile({
+    required this.jc,
+    required this.onTap,
+    required this.searchQuery,
+  });
 
   Color _statusColor(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -391,9 +396,9 @@ class _JobCardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs      = Theme.of(context).colorScheme;
-    final theme   = Theme.of(context);
-    final clr     = _statusColor(context);
+    final cs          = Theme.of(context).colorScheme;
+    final theme       = Theme.of(context);
+    final clr         = _statusColor(context);
     final hasProgress = jc.forQuantity > 0;
 
     return Material(
@@ -418,27 +423,32 @@ class _JobCardTile extends StatelessWidget {
                       color: clr.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(Icons.build_outlined, color: clr, size: 22),
+                    child:
+                        Icon(Icons.build_outlined, color: clr, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          jc.operation,
+                        // Operation — highlighted
+                        SearchHighlight(
+                          text: jc.operation,
+                          query: searchQuery,
                           style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          '${jc.workstation ?? 'Unassigned'} • '
-                          '${_fmtQty(jc.totalCompletedQty)}/'
-                          '${_fmtQty(jc.forQuantity)} units',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant),
+                        // Workstation + qty row — workstation part highlighted
+                        SearchHighlight(
+                          text: '${jc.workstation ?? 'Unassigned'} • '
+                              '${_fmtQty(jc.totalCompletedQty)}/'
+                              '${_fmtQty(jc.forQuantity)} units',
+                          query: searchQuery,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                         const SizedBox(height: 5),
                         StatusPill(status: jc.status),
@@ -497,35 +507,26 @@ class _ActionBadge extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (jc.docstatus == 1) {
-      return _badge(
-        context,
-        label: 'SUBMITTED',
-        bg:    cs.tertiaryContainer,
-        fg:    cs.onTertiaryContainer,
-        theme: theme,
-      );
+      return _badge(context,
+          label: 'SUBMITTED',
+          bg: cs.tertiaryContainer,
+          fg: cs.onTertiaryContainer,
+          theme: theme);
     }
-
     if (jc.isWorkInProgress) {
-      return _badge(
-        context,
-        label: 'IN PROGRESS',
-        bg:    cs.primaryContainer,
-        fg:    cs.onPrimaryContainer,
-        theme: theme,
-      );
+      return _badge(context,
+          label: 'IN PROGRESS',
+          bg: cs.primaryContainer,
+          fg: cs.onPrimaryContainer,
+          theme: theme);
     }
-
     if (jc.isOpen) {
-      return _badge(
-        context,
-        label: 'START',
-        bg:    cs.primary,
-        fg:    cs.onPrimary,
-        theme: theme,
-      );
+      return _badge(context,
+          label: 'START',
+          bg: cs.primary,
+          fg: cs.onPrimary,
+          theme: theme);
     }
-
     return const SizedBox.shrink();
   }
 

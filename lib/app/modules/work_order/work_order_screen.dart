@@ -4,6 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/work_order/work_order_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class WorkOrderScreen extends StatefulWidget {
@@ -103,8 +104,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    // Use injected page title (from dashboard args) or fall back to default
     final screenTitle = controller.pageTitle ?? 'Work Orders';
 
     return AppShellScaffold(
@@ -127,7 +126,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
               title: screenTitle,
               automaticallyImplyLeading: false,
@@ -144,7 +142,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               onFilterTap:        () => _showFilterSheet(context),
             ),
 
-            // ── List content ─────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
@@ -187,7 +184,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           Text(
                             hasFilters
                                 ? 'Try clearing the active filter to see all Work Orders.'
-                                : 'No Work Orders found. Tap "+ New Work Order" to create one.',
+                                : 'No Work Orders found. Tap "+ New Work Order" to create one.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: cs.onSurfaceVariant, fontSize: 13),
@@ -201,9 +198,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             icon: Icon(hasFilters
                                 ? Icons.filter_alt_off
                                 : Icons.refresh),
-                            label: Text(hasFilters
-                                ? 'Clear Filters'
-                                : 'Reload'),
+                            label: Text(
+                                hasFilters ? 'Clear Filters' : 'Reload'),
                           ),
                         ],
                       ),
@@ -212,7 +208,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 );
               }
 
+              // Capture query once — passed into each inline card.
+              final query    = controller.searchQuery.value;
               final baseCount = controller.workOrders.length;
+
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                 sliver: SliverList(
@@ -226,7 +225,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                   child: CircularProgressIndicator()))
                             : const SizedBox(height: 80);
                       }
-                      final wo = controller.workOrders[index];
+                      final wo  = controller.workOrders[index];
                       final double pct = (wo.qty > 0)
                           ? (wo.producedQty / wo.qty).clamp(0.0, 1.0)
                           : 0.0;
@@ -238,17 +237,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           borderRadius: BorderRadius.circular(16),
                           onTap: () => Get.toNamed(
                             AppRoutes.WORK_ORDER_FORM,
-                            arguments: {
-                              'name': wo.name,
-                              'mode': 'view',
-                            },
+                            arguments: {'name': wo.name, 'mode': 'view'},
                           ),
                           child: Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                  color: cs.outlineVariant),
+                              side: BorderSide(color: cs.outlineVariant),
                             ),
                             color: cs.surfaceContainerLowest,
                             child: Padding(
@@ -259,22 +254,27 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                 children: [
                                   Row(
                                     mainAxisAlignment:
-                                        MainAxisAlignment
-                                            .spaceBetween,
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       StatusPill(status: wo.status),
-                                      Text(wo.name,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
-                                                  color: cs
-                                                      .onSurfaceVariant)),
+                                      // WO name — highlighted
+                                      SearchHighlight(
+                                        text: wo.name,
+                                        query: query,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                                color:
+                                                    cs.onSurfaceVariant),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  Text(
-                                    wo.itemName,
+                                  // Item name — highlighted
+                                  SearchHighlight(
+                                    text: wo.itemName,
+                                    query: query,
                                     style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold),
@@ -283,8 +283,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                     Padding(
                                       padding:
                                           const EdgeInsets.only(top: 2),
-                                      child: Text(
-                                        'BOM: ${wo.bomNo}',
+                                      // BOM no — highlighted
+                                      child: SearchHighlight(
+                                        text: 'BOM: ${wo.bomNo}',
+                                        query: query,
                                         style: Theme.of(context)
                                             .textTheme
                                             .labelSmall
@@ -310,16 +312,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                                             .onSurfaceVariant)),
                                             const SizedBox(height: 4),
                                             RichText(
-                                              text:
-                                                  TextSpan(children: [
+                                              text: TextSpan(children: [
                                                 TextSpan(
-                                                  text:
-                                                      '${wo.producedQty.toInt()}',
+                                                  text: '${wo.producedQty.toInt()}',
                                                   style: TextStyle(
                                                       color: cs.primary,
                                                       fontWeight:
-                                                          FontWeight
-                                                              .bold,
+                                                          FontWeight.bold,
                                                       fontSize: 16),
                                                 ),
                                                 TextSpan(
@@ -344,8 +343,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                                           strokeWidth: 4,
                                         ),
                                       if (done)
-                                        const Icon(
-                                            Icons.check_circle,
+                                        const Icon(Icons.check_circle,
                                             color: Colors.green,
                                             size: 32),
                                     ],
@@ -420,7 +418,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 }
 
-// ── Filter bottom sheet ────────────────────────────────────────────────────────
+// ── Filter bottom sheet ─────────────────────────────────────────────────────────
 
 class _WorkOrderFilterSheet extends StatelessWidget {
   final WorkOrderController controller;
@@ -446,11 +444,9 @@ class _WorkOrderFilterSheet extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Filter Work Orders',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
+                Text('Filter Work Orders',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: () {
                     controller.clearFilters();
@@ -464,7 +460,8 @@ class _WorkOrderFilterSheet extends StatelessWidget {
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             Obx(() {
-              final active = controller.activeFilters['status'] as String?;
+              final active =
+                  controller.activeFilters['status'] as String?;
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,

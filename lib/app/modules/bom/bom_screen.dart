@@ -7,6 +7,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/bom/bom_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 
 class BomScreen extends StatefulWidget {
   const BomScreen({super.key});
@@ -77,7 +78,6 @@ class _BomScreenState extends State<BomScreen> {
         },
       ));
     }
-    // "Active only" chip — shown when pre-seeded from dashboard OR set manually
     if (controller.activeFilters.containsKey('is_active')) {
       chips.add(chip(
         icon: Icons.check_circle_outline,
@@ -85,7 +85,6 @@ class _BomScreenState extends State<BomScreen> {
         onDeleted: () => controller.removeFilter('is_active'),
       ));
     }
-    // "Submitted" chip — shown when docstatus filter is active
     if (controller.activeFilters.containsKey('docstatus')) {
       chips.add(chip(
         icon: Icons.verified_outlined,
@@ -99,12 +98,9 @@ class _BomScreenState extends State<BomScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    // Use injected page title (from dashboard args) or fall back to default
     final screenTitle = controller.pageTitle ?? 'Bill of Materials';
 
     return AppShellScaffold(
-      // ── FAB: New BOM ───────────────────────────────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed(
           AppRoutes.BOM_FORM,
@@ -122,7 +118,6 @@ class _BomScreenState extends State<BomScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ─────────────────────────────────────────
             DocTypeListHeader(
               title: screenTitle,
               automaticallyImplyLeading: false,
@@ -136,7 +131,6 @@ class _BomScreenState extends State<BomScreen> {
               onFilterTap:        () => _showFilterSheet(context),
             ),
 
-            // ── KPI strip + list — single Obx owns all Rx reads ────────
             Obx(() {
               if (controller.isLoading.value && controller.boms.isEmpty) {
                 return const SliverFillRemaining(
@@ -166,9 +160,10 @@ class _BomScreenState extends State<BomScreen> {
                           Text(
                             controller.activeFilters.isNotEmpty
                                 ? 'Try clearing the active filter to see all BOMs.'
-                                : 'Tap "+ New BOM" to create your first Bill of Materials.',
+                                : 'Tap "+ New BOM" to create your first Bill of Materials.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                            style: TextStyle(
+                                color: cs.onSurfaceVariant, fontSize: 13),
                           ),
                           const SizedBox(height: 24),
                           if (controller.activeFilters.isNotEmpty)
@@ -179,7 +174,8 @@ class _BomScreenState extends State<BomScreen> {
                             )
                           else
                             FilledButton.tonalIcon(
-                              onPressed: () => controller.fetchBOMs(clear: true),
+                              onPressed: () =>
+                                  controller.fetchBOMs(clear: true),
                               icon: const Icon(Icons.refresh),
                               label: const Text('Reload'),
                             ),
@@ -190,7 +186,10 @@ class _BomScreenState extends State<BomScreen> {
                 );
               }
 
-              final boms = controller.boms;
+              // Capture query once — passed down to every card.
+              final query = controller.searchQuery.value;
+              final boms  = controller.boms;
+
               return SliverMainAxisGroup(
                 slivers: [
                   SliverToBoxAdapter(
@@ -206,7 +205,8 @@ class _BomScreenState extends State<BomScreen> {
                                 ? const Center(
                                     child: Padding(
                                       padding: EdgeInsets.all(16),
-                                      child: CircularProgressIndicator()))
+                                      child:
+                                          CircularProgressIndicator()))
                                 : const SizedBox(height: 80);
                           }
                           final bom = boms[index];
@@ -214,6 +214,7 @@ class _BomScreenState extends State<BomScreen> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _BomCard(
                               bom: bom,
+                              searchQuery: query,
                               onTap: () => Get.toNamed(
                                 AppRoutes.BOM_FORM,
                                 arguments: {'name': bom.name},
@@ -260,7 +261,7 @@ class _BomScreenState extends State<BomScreen> {
   }
 }
 
-// ── Filter bottom sheet ────────────────────────────────────────────────────────
+// ── Filter bottom sheet ─────────────────────────────────────────────────────────
 
 class _BomFilterSheet extends StatelessWidget {
   final BomController controller;
@@ -269,7 +270,7 @@ class _BomFilterSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final cs    = theme.colorScheme;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
@@ -280,11 +281,9 @@ class _BomFilterSheet extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Filter BOMs',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
+                Text('Filter BOMs',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: () {
                     controller.clearFilters();
@@ -317,13 +316,11 @@ class _BomFilterSheet extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    avatar: Icon(
-                      Icons.check_circle_outline,
-                      size: 16,
-                      color: isActiveOnly
-                          ? cs.onSecondaryContainer
-                          : cs.onSurfaceVariant,
-                    ),
+                    avatar: Icon(Icons.check_circle_outline,
+                        size: 16,
+                        color: isActiveOnly
+                            ? cs.onSecondaryContainer
+                            : cs.onSurfaceVariant),
                   ),
                   ChoiceChip(
                     label: const Text('Submitted'),
@@ -336,13 +333,11 @@ class _BomFilterSheet extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    avatar: Icon(
-                      Icons.verified_outlined,
-                      size: 16,
-                      color: isSubmitted
-                          ? cs.onSecondaryContainer
-                          : cs.onSurfaceVariant,
-                    ),
+                    avatar: Icon(Icons.verified_outlined,
+                        size: 16,
+                        color: isSubmitted
+                            ? cs.onSecondaryContainer
+                            : cs.onSurfaceVariant),
                   ),
                 ],
               );
@@ -354,7 +349,7 @@ class _BomFilterSheet extends StatelessWidget {
   }
 }
 
-// ── KPI strip ──────────────────────────────────────────────────────────────────
+// ── KPI strip ────────────────────────────────────────────────────────────────────
 
 class _BomKpiStrip extends StatelessWidget {
   final BomController controller;
@@ -367,16 +362,14 @@ class _BomKpiStrip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
-          _Kpi('Total', '${controller.totalBoms}', cs.primary),
+          _Kpi('Total',    '${controller.totalBoms}',                cs.primary),
           const SizedBox(width: 8),
           _Kpi('Active',
-              '${(controller.activeRate * 100).toInt()}%', cs.tertiary),
+              '${(controller.activeRate * 100).toInt()}%',           cs.tertiary),
           const SizedBox(width: 8),
-          _Kpi(
-              'Avg Cost',
+          _Kpi('Avg Cost',
               NumberFormat.compactSimpleCurrency()
-                  .format(controller.averageCost),
-              cs.secondary),
+                  .format(controller.averageCost),                    cs.secondary),
         ],
       ),
     );
@@ -386,7 +379,7 @@ class _BomKpiStrip extends StatelessWidget {
 class _Kpi extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
+  final Color  color;
   const _Kpi(this.label, this.value, this.color);
 
   @override
@@ -420,19 +413,30 @@ class _Kpi extends StatelessWidget {
   }
 }
 
-// ── BOM card ───────────────────────────────────────────────────────────────────
+// ── BOM card ──────────────────────────────────────────────────────────────────────
 
 class _BomCard extends StatelessWidget {
   final BOM bom;
   final VoidCallback onTap;
   final VoidCallback onCreateWo;
-  const _BomCard(
-      {required this.bom, required this.onTap, required this.onCreateWo});
+  /// Current search query — passed from the parent Obx to avoid extra rebuilds.
+  final String searchQuery;
+
+  const _BomCard({
+    required this.bom,
+    required this.onTap,
+    required this.onCreateWo,
+    required this.searchQuery,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs       = Theme.of(context).colorScheme;
     final isActive = bom.isActive == 1;
+
+    // Primary display text: prefer itemName, fall back to item code.
+    final displayName =
+        (bom.itemName?.isNotEmpty ?? false) ? bom.itemName! : bom.item;
 
     return Card(
       elevation: 0,
@@ -466,18 +470,22 @@ class _BomCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      (bom.itemName?.isNotEmpty ?? false)
-                          ? bom.itemName!
-                          : bom.item,
+                    // Item name — highlighted
+                    SearchHighlight(
+                      text: displayName,
+                      query: searchQuery,
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 15),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Text(bom.name,
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant)),
+                    // BOM name (item code) — highlighted
+                    SearchHighlight(
+                      text: bom.name,
+                      query: searchQuery,
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ),
