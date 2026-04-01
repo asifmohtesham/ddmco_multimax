@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
@@ -8,7 +9,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/item/widgets/item_image.dart';
-import 'dart:ui';
+import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
 
 class ItemScreen extends StatefulWidget {
   const ItemScreen({super.key});
@@ -23,14 +24,6 @@ class _ItemScreenState extends State<ItemScreen> {
   final String _baseUrl = Get.find<ApiProvider>().baseUrl;
 
   @override
-  void initState() {
-    super.initState();
-    // Fix #1: scroll listener removed; infinite scroll is handled by
-    // NotificationListener<ScrollEndNotification> in build() instead,
-    // which only fires once at scroll end, not on every pixel change.
-  }
-
-  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
@@ -40,10 +33,6 @@ class _ItemScreenState extends State<ItemScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    // Fix #1: wrap in NotificationListener to fire load-more only once at
-    // scroll end, preventing double-fire from _stockLevelsCache obs updates.
     return AppShellScaffold(
       body: NotificationListener<ScrollEndNotification>(
         onNotification: (notification) {
@@ -72,12 +61,11 @@ class _ItemScreenState extends State<ItemScreen> {
                 }
 
                 if (controller.displayedItems.isEmpty) {
-                  return _buildEmptyState(context, cs);
+                  return _buildEmptyState(context);
                 }
 
-                // Fix #5: grid view now also has load-more footer
                 if (controller.isGridView.value) {
-                  return _buildGrid(cs);
+                  return _buildGrid();
                 }
 
                 return _buildList();
@@ -93,9 +81,8 @@ class _ItemScreenState extends State<ItemScreen> {
 
   // ── grid ──────────────────────────────────────────────────────────────────────
 
-  Widget _buildGrid(ColorScheme cs) {
+  Widget _buildGrid() {
     final items = controller.displayedItems;
-    // +1 slot for the load-more footer when more pages exist
     final cellCount = items.length + (controller.hasMore.value ? 1 : 0);
 
     return SliverPadding(
@@ -109,7 +96,6 @@ class _ItemScreenState extends State<ItemScreen> {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            // Fix #5: last cell is the load-more spinner
             if (index >= items.length) {
               return const Center(
                 child: Padding(
@@ -151,8 +137,9 @@ class _ItemScreenState extends State<ItemScreen> {
 
   // ── empty state ────────────────────────────────────────────────────────────────
 
-  Widget _buildEmptyState(BuildContext context, ColorScheme cs) {
+  Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final hasFilters = controller.filterCount > 0;
 
     return SliverFillRemaining(
@@ -210,7 +197,6 @@ class _ItemScreenState extends State<ItemScreen> {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
-      // Fix #8: per-item loading state via _stockLoadingSet
       final isLoadingThisItem = controller.isStockLoading(item.itemCode);
       final theme = Theme.of(context);
       final cs = theme.colorScheme;
@@ -226,7 +212,6 @@ class _ItemScreenState extends State<ItemScreen> {
         ),
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingThisItem,
-        // Fix #10: long-press navigates directly without needing expansion
         onLongPress: () => Get.toNamed(
           AppRoutes.ITEM_FORM,
           arguments: {'itemCode': item.itemCode},
@@ -239,7 +224,7 @@ class _ItemScreenState extends State<ItemScreen> {
             GenericDocumentCard.buildIconStat(
                 context, Icons.copy, item.variantOf ?? ''),
         ],
-        expandedContent: _ExpandedContent(
+        expandedContent: ItemExpandedContent(
           item: item,
           stockList: stockList,
           isLoading: isLoadingThisItem,
@@ -263,7 +248,6 @@ class _ItemScreenState extends State<ItemScreen> {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
-      // Fix #12: tap shows bottom sheet preview; no direct navigation
       child: InkWell(
         onTap: () => _showGridItemPreview(item),
         onLongPress: () => Get.toNamed(
@@ -317,7 +301,8 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // Fix #12: bottom sheet preview for grid card tap
+  // ── grid preview bottom sheet ────────────────────────────────────────────────────
+
   void _showGridItemPreview(Item item) {
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
@@ -380,7 +365,7 @@ class _ItemScreenState extends State<ItemScreen> {
                 final isLoading = controller.isStockLoading(item.itemCode);
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: _ExpandedContent(
+                  child: ItemExpandedContent(
                     item: item,
                     stockList: stockList,
                     isLoading: isLoading,
@@ -410,151 +395,6 @@ class _ItemScreenState extends State<ItemScreen> {
         ),
       ),
       isScrollControlled: true,
-    );
-  }
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-// _ExpandedContent  (Fix #9: theme colours throughout)
-// Shared by list card expanded section and grid preview bottom sheet.
-// ───────────────────────────────────────────────────────────────────────────────
-
-class _ExpandedContent extends StatelessWidget {
-  final Item item;
-  final List<WarehouseStock>? stockList;
-  final bool isLoading;
-  final ColorScheme colorScheme;
-  final ThemeData theme;
-
-  const _ExpandedContent({
-    required this.item,
-    required this.stockList,
-    required this.isLoading,
-    required this.colorScheme,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Description
-        if (item.description != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              item.description!,
-              // Fix #9: theme colour instead of hardcoded Colors.black87
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-
-        // Customer References
-        if (item.customerItems.isNotEmpty) ...[
-          Text(
-            'Customer References',
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...item.customerItems.map(
-            (ci) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(ci.customerName,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant)),
-                  Text(ci.refCode,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Divider(color: cs.outlineVariant),
-          const SizedBox(height: 12),
-        ],
-
-        // Stock Balance
-        Text(
-          'Stock Balance',
-          style: theme.textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Fix #8: show per-item spinner; only show "no data" when fetched
-        if (isLoading)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
-            ),
-          )
-        else if (stockList == null || stockList!.isEmpty)
-          Text(
-            'No stock data available.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
-            ),
-          )
-        else
-          ...stockList!.map(
-            (stock) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${stock.warehouse}'
-                      '${stock.rack != null ? " (${stock.rack})" : ""}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  ),
-                  Text(
-                    '${stock.quantity.toStringAsFixed(2)} '
-                    '${item.stockUom ?? ""}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: stock.quantity > 0
-                          ? Colors.green.shade600
-                          : cs.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.tonal(
-            onPressed: () => Get.toNamed(
-              AppRoutes.ITEM_FORM,
-              arguments: {'itemCode': item.itemCode},
-            ),
-            child: const Text('View Full Details'),
-          ),
-        ),
-      ],
     );
   }
 }
