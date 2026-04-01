@@ -84,7 +84,8 @@ class ItemListAppBar extends StatelessWidget {
     final ItemController controller = Get.find();
 
     return DocTypeListHeader(
-      title: 'Item Master',
+      title: 'Item',
+      automaticallyImplyLeading: false,
       searchDoctype: 'Item',
       searchRoute: AppRoutes.ITEM_FORM,
 

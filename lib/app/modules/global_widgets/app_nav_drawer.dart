@@ -227,7 +227,7 @@ class AppNavDrawer extends StatelessWidget {
                           doctype: 'Item',
                           loading: skeleton,
                           child: _DrawerItem(
-                            title: 'Item Master',
+                            title: 'Item',
                             icon: Icons.category_rounded,
                             route: AppRoutes.ITEM,
                             currentRoute: currentRoute,
