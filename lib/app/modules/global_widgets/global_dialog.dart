@@ -360,7 +360,7 @@ class GlobalDialog {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () =>
-                          Get.offAllNamed(AppRoutes.DASHBOARD),
+                          Get.offAllNamed(AppRoutes.HOME),
                       icon: const Icon(Icons.home_outlined, size: 20),
                       label: const Text(
                         'Go to Dashboard',
