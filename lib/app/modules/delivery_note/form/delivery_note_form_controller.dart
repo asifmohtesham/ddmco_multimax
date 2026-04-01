@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
@@ -28,8 +29,6 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
-
-// (delivery_note_item_form_sheet.dart is now a stub re-export)
 
 class DeliveryNoteFormController extends GetxController
     with OptimisticLockingMixin, ControllerFeedbackMixin {
@@ -130,12 +129,8 @@ class DeliveryNoteFormController extends GetxController
 
   // ── Raw scan entry point ─────────────────────────────────────────────────────
   void _onRawScan(String code) {
-    if (code.isEmpty) {
-      return;
-    }
-    if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) {
-      return;
-    }
+    if (code.isEmpty) return;
+    if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
     final clean = code.trim();
     barcodeController.text = clean;
     scanBarcode(clean);
@@ -265,9 +260,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── POS qty-cap helpers ─────────────────────────────────────────────────────────
-
-  /// Returns the POS Upload qty cap for [serial] (the idx string),
-  /// or [double.infinity] when there is no POS context.
   double posQtyCapForSerial(String serial) {
     final idx = int.tryParse(serial);
     if (idx == null || posUpload.value == null) return double.infinity;
@@ -277,8 +269,6 @@ class DeliveryNoteFormController extends GetxController
         double.infinity;
   }
 
-  /// Returns the qty already recorded on this DN for [serial],
-  /// optionally excluding a specific row being edited ([excludeItemName]).
   double scannedQtyForSerial(String serial, {String? excludeItemName}) {
     return (deliveryNote.value?.items ?? [])
         .where((i) =>
@@ -287,7 +277,6 @@ class DeliveryNoteFormController extends GetxController
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
-  /// Returns the live remaining qty for [serial] against the POS Upload cap.
   double remainingQtyForSerial(String serial) {
     final cap = posQtyCapForSerial(serial);
     if (cap == double.infinity) return double.infinity;
@@ -352,20 +341,12 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Customer-not-found hard block ──────────────────────────────────────────────
-
-  /// Called whenever a save attempt returns a Customer-not-found error from
-  /// the ERPNext server.  Sets [customerError] for the field decoration and
-  /// surfaces [GlobalDialog.showCustomerNotFound], which is a non-dismissible
-  /// dialog whose sole CTA navigates the operator back to the Dashboard via
-  /// [Get.offAllNamed].  There is no in-screen recovery path because the
-  /// Customer field is read-only on this form.
   void _handleCustomerNotFound(String customer) {
     customerError.value = 'Customer not found in the system';
     GlobalDialog.showCustomerNotFound(customer: customer);
   }
 
   // ── Save ───────────────────────────────────────────────────────────────────────
-
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     isSaving.value = true;
@@ -384,7 +365,6 @@ class DeliveryNoteFormController extends GetxController
       }
 
       if (response.statusCode == 200 && response.data['data'] != null) {
-        // ── Success path ───────────────────────────────────────────────────────
         final saved = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = saved;
         setWarehouse.value = saved.setWarehouse;
@@ -396,18 +376,11 @@ class DeliveryNoteFormController extends GetxController
         }
         _setSaveResult(SaveResult.success);
       } else {
-        // ── Non-200 / missing data ──────────────────────────────────────────────
         _setSaveResult(SaveResult.error);
         showBanner('Failed to save delivery note', type: BannerType.error);
       }
     } on DioException catch (e) {
       _setSaveResult(SaveResult.error);
-      // ── Customer-not-found detection ─────────────────────────────────────────
-      // ERPNext returns HTTP 417 with a server-side exception message that
-      // mentions the customer link field when the customer does not exist.
-      // We match on status code 417 first (LinkValidation / DoesNotExistError)
-      // and fall back to a case-insensitive substring match on the error body
-      // so the detection is resilient to minor copy changes in ERPNext.
       final int? statusCode = e.response?.statusCode;
       final String rawError = (() {
         final data = e.response?.data;
@@ -425,7 +398,6 @@ class DeliveryNoteFormController extends GetxController
         _handleCustomerNotFound(
             deliveryNote.value?.customer ?? posUploadCustomer ?? '');
       } else {
-        // Generic server / network error — fall through to banner
         final message = e.response?.data is Map
             ? (e.response!.data['exception'] ??
                e.response!.data['message'] ??
@@ -435,15 +407,13 @@ class DeliveryNoteFormController extends GetxController
       }
     } catch (e) {
       _setSaveResult(SaveResult.error);
-      showBanner('An unexpected error occurred: $e',
-          type: BannerType.error);
+      showBanner('An unexpected error occurred: $e', type: BannerType.error);
     } finally {
       isSaving.value = false;
     }
   }
 
   // ── Header validation (pre-scan guard) ────────────────────────────────────────────
-
   bool _validateHeaderBeforeScan() {
     final note = deliveryNote.value;
     if (note == null) {
@@ -461,7 +431,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Scanning ──────────────────────────────────────────────────────────────────────
-
   Future<void> scanBarcode(String barcode) async {
     if (!_validateHeaderBeforeScan()) return;
     if (isScanning.value || isAddingItem.value) return;
@@ -484,6 +453,7 @@ class DeliveryNoteFormController extends GetxController
           break;
         case ScanType.multiple:
           isScanning.value = false;
+          // candidates is List<Item>? — pass it typed correctly
           await _showMultipleMatchSheet(result.candidates ?? []);
           break;
         case ScanType.rack:
@@ -506,7 +476,6 @@ class DeliveryNoteFormController extends GetxController
   Future<void> _handleScanResult(ScanResult result) async {
     final posUploadLocal = posUpload.value;
     if (posUploadLocal == null) {
-      // Non-POS flow: open sheet immediately
       isScanning.value = false;
       await _openItemSheet(
         itemCode: result.itemCode!,
@@ -516,7 +485,6 @@ class DeliveryNoteFormController extends GetxController
       return;
     }
 
-    // POS flow: find the matching POS item by item name
     final matchingPosItem = posUploadLocal.items.firstWhereOrNull(
       (pi) => result.itemData?.itemName != null
           ? pi.itemName == result.itemData!.itemName
@@ -525,15 +493,14 @@ class DeliveryNoteFormController extends GetxController
 
     if (matchingPosItem == null) {
       GlobalSnackbar.error(
-        message:
-            'Item "${result.itemCode}" is not part of this POS Upload.',
+        message: 'Item "${result.itemCode}" is not part of this POS Upload.',
       );
       return;
     }
 
-    final serial   = matchingPosItem.idx.toString();
-    final capQty   = posQtyCapForSerial(serial);
-    final usedQty  = scannedQtyForSerial(serial);
+    final serial    = matchingPosItem.idx.toString();
+    final capQty    = posQtyCapForSerial(serial);
+    final usedQty   = scannedQtyForSerial(serial);
     final remaining = (capQty - usedQty).clamp(0.0, capQty);
 
     if (remaining <= 0) {
@@ -556,7 +523,8 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  Future<void> _showMultipleMatchSheet(List<ScanResult> candidates) async {
+  // candidates is List<Item> (from ScanResult.candidates)
+  Future<void> _showMultipleMatchSheet(List<Item> candidates) async {
     await Get.bottomSheet(
       _MultipleMatchSheet(candidates: candidates, parent: this),
       isScrollControlled: true,
@@ -570,8 +538,7 @@ class DeliveryNoteFormController extends GetxController
     deliveryNote.refresh();
     _checkForChanges();
     recentlyAddedItemCode.value = newItem.itemCode;
-    recentlyAddedSerial.value   =
-        newItem.customInvoiceSerialNumber ?? '';
+    recentlyAddedSerial.value   = newItem.customInvoiceSerialNumber ?? '';
     Future.delayed(const Duration(seconds: 2), () {
       if (recentlyAddedItemCode.value == newItem.itemCode) {
         recentlyAddedItemCode.value = '';
@@ -593,10 +560,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── addItemLocally / updateItemLocally ─────────────────────────────────────────
-  // Called by DeliveryNoteItemFormController.submit() via the parent reference.
-  // These methods build the DeliveryNoteItem from primitive params and delegate
-  // to addItem() / updateItem() which handle dirty-tracking and auto-save.
-
   void addItemLocally(
     String code,
     String itemName,
@@ -606,18 +569,19 @@ class DeliveryNoteFormController extends GetxController
     String? serial,
   ) {
     final newItem = DeliveryNoteItem(
-      name:                        null,
-      itemCode:                    code,
-      itemName:                    itemName,
-      qty:                         qty,
-      rack:                        rack.isEmpty ? null : rack,
-      batchNo:                     batch.isEmpty ? null : batch,
-      uom:                         'Nos',
-      customInvoiceSerialNumber:   serial,
-      owner:                       null,
-      creation:                    null,
-      modified:                    null,
-      modifiedBy:                  null,
+      name:                       null,
+      itemCode:                   code,
+      itemName:                   itemName,
+      qty:                        qty,
+      rate:                       0.0,
+      rack:                       rack.isEmpty ? null : rack,
+      batchNo:                    batch.isEmpty ? null : batch,
+      uom:                        'Nos',
+      customInvoiceSerialNumber:  serial,
+      owner:                      null,
+      creation:                   null,
+      modified:                   null,
+      modifiedBy:                 null,
     );
     addItem(newItem);
   }
@@ -629,28 +593,28 @@ class DeliveryNoteFormController extends GetxController
     String batch,
     String? serial,
   ) {
-    final items = deliveryNote.value?.items ?? [];
+    final items   = deliveryNote.value?.items ?? [];
     final existing = items.firstWhereOrNull((i) => i.name == existingName);
     if (existing == null) return;
     final updated = DeliveryNoteItem(
-      name:                        existing.name,
-      itemCode:                    existing.itemCode,
-      itemName:                    existing.itemName,
-      qty:                         qty,
-      rack:                        rack.isEmpty ? null : rack,
-      batchNo:                     batch.isEmpty ? null : batch,
-      uom:                         existing.uom,
-      customInvoiceSerialNumber:   serial,
-      owner:                       existing.owner,
-      creation:                    existing.creation,
-      modified:                    existing.modified,
-      modifiedBy:                  existing.modifiedBy,
+      name:                       existing.name,
+      itemCode:                   existing.itemCode,
+      itemName:                   existing.itemName,
+      qty:                        qty,
+      rate:                       existing.rate,
+      rack:                       rack.isEmpty ? null : rack,
+      batchNo:                    batch.isEmpty ? null : batch,
+      uom:                        existing.uom,
+      customInvoiceSerialNumber:  serial,
+      owner:                      existing.owner,
+      creation:                   existing.creation,
+      modified:                   existing.modified,
+      modifiedBy:                 existing.modifiedBy,
     );
     updateItem(updated);
   }
 
   // ── confirmAndDeleteItem ──────────────────────────────────────────────────────────
-
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
     final confirmed = await GlobalDialog.confirm(
       title:        'Remove Item',
@@ -680,7 +644,7 @@ class DeliveryNoteFormController extends GetxController
 
       await _openItemSheet(
         itemCode:      item.itemCode,
-        itemName:      item.itemName,
+        itemName:      item.itemName ?? item.itemCode,
         batchNo:       item.batchNo,
         initialMaxQty: maxQty,
         editingItem:   item,
@@ -705,7 +669,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Filtering ─────────────────────────────────────────────────────────────────────
-
   void setFilter(String filter) => itemFilter.value = filter;
 
   int get allCount => posUpload.value?.items.length ??
@@ -716,8 +679,7 @@ class DeliveryNoteFormController extends GetxController
     return posUpload.value!.items.where((posItem) {
       final serial = posItem.idx.toString();
       final used   = groupedItems[serial]
-              ?.fold(0.0, (s, i) => s + i.qty) ??
-          0.0;
+              ?.fold(0.0, (s, i) => s + i.qty) ?? 0.0;
       return used < posItem.quantity;
     }).length;
   }
@@ -727,8 +689,7 @@ class DeliveryNoteFormController extends GetxController
     return posUpload.value!.items.where((posItem) {
       final serial = posItem.idx.toString();
       final used   = groupedItems[serial]
-              ?.fold(0.0, (s, i) => s + i.qty) ??
-          0.0;
+              ?.fold(0.0, (s, i) => s + i.qty) ?? 0.0;
       return used >= posItem.quantity;
     }).length;
   }
@@ -743,22 +704,19 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Item-card expansion ──────────────────────────────────────────────────────────
-  // toggleExpand is called by DeliveryNoteItemCard (line 84).
-  // It toggles expandedItemCode; the card's Obx rebuilds on the Rx change.
-
   void toggleExpand(String itemCode) {
     expandedItemCode.value =
         expandedItemCode.value == itemCode ? '' : itemCode;
   }
 
   // ── Invoice expansion ────────────────────────────────────────────────────────────
-
   void toggleInvoiceExpand(String key) {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
 }
 
 // ── Multiple-match sheet (private widget) ────────────────────────────────────────────
+// candidates is List<Item> — each Item carries itemCode + itemName
 
 class _MultipleMatchSheet extends StatelessWidget {
   const _MultipleMatchSheet({
@@ -766,7 +724,7 @@ class _MultipleMatchSheet extends StatelessWidget {
     required this.parent,
   });
 
-  final List<ScanResult> candidates;
+  final List<Item> candidates;
   final DeliveryNoteFormController parent;
 
   @override
@@ -784,8 +742,7 @@ class _MultipleMatchSheet extends StatelessWidget {
           children: [
             const Text(
               'Multiple Items Found',
-              style:
-                  TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
@@ -793,15 +750,14 @@ class _MultipleMatchSheet extends StatelessWidget {
               style: TextStyle(color: Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
-            ...candidates.map((r) => ListTile(
-                  title: Text(r.itemData?.itemName ?? r.itemCode ?? ''),
-                  subtitle: Text(r.itemCode ?? ''),
+            ...candidates.map((item) => ListTile(
+                  title: Text(item.itemName ?? item.itemCode),
+                  subtitle: Text(item.itemCode),
                   onTap: () async {
                     Get.back();
                     await parent._openItemSheet(
-                      itemCode: r.itemCode!,
-                      itemName: r.itemData?.itemName ?? r.itemCode!,
-                      batchNo:  r.batchNo,
+                      itemCode: item.itemCode,
+                      itemName: item.itemName ?? item.itemCode,
                     );
                   },
                 )),
