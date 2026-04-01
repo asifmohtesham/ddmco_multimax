@@ -576,27 +576,43 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final items = <Widget>[
       ...(extraActions ?? []),
 
-      if (onFilterTap != null)
-        Obx(() {
-          final count = activeFilters?.length ?? 0;
-          final isActive = count > 0;
-          final tooltip = isActive
-              ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
-              : 'Filter';
-          final button = isActive
-              ? IconButton.filled(
-                  icon: const Icon(Icons.filter_alt),
-                  onPressed: onFilterTap,
-                  tooltip: tooltip,
-                  constraints:
-                      const BoxConstraints(minWidth: 40, minHeight: 40),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: onFilterTap,
-                  tooltip: tooltip,
-                );
-          return isActive ? Badge(label: Text('$count'), child: button) : button;
+            if (onFilterTap != null)
+        // Guard: if activeFilters is null the Obx closure would subscribe to
+        // zero observables, causing GetX to throw ObxError at runtime.
+        // We provide a static filter button when activeFilters is unavailable.
+        Builder(builder: (ctx) {
+          // When activeFilters is null we can't use Obx (no observable to
+          // subscribe to). Render a static filter button instead.
+          if (activeFilters == null) {
+            return IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: onFilterTap,
+              tooltip: 'Filter',
+            );
+          }
+          return Obx(() {
+            final count = activeFilters!.length; // non-null guaranteed above
+            final isActive = count > 0;
+            final tooltip = isActive
+                ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
+                : 'Filter';
+            final button = isActive
+                ? IconButton.filled(
+                    icon: const Icon(Icons.filter_alt),
+                    onPressed: onFilterTap,
+                    tooltip: tooltip,
+                    constraints:
+                        const BoxConstraints(minWidth: 40, minHeight: 40),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.filter_list),
+                    onPressed: onFilterTap,
+                    tooltip: tooltip,
+                  );
+            return isActive
+                ? Badge(label: Text('$count'), child: button)
+                : button;
+          });
         }),
 
       if (searchQuery != null || (searchDoctype != null && searchRoute != null))
