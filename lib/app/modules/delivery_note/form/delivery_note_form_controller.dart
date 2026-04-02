@@ -715,7 +715,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {
-    final map = <String, List<DeliveryNoteItem>>();
+    final map = <String, List<DeliveryNoteItem>>{};
     for (final item in deliveryNote.value?.items ?? []) {
       final serial = item.customInvoiceSerialNumber ?? '0';
       map.putIfAbsent(serial, () => []).add(item);
