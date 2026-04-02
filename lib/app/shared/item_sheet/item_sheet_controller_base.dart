@@ -18,23 +18,15 @@ enum SaveButtonState { idle, loading, success, error }
 ///   without any duck-type or try/catch, eliminating the zero-subscription
 ///   Obx crash.
 ///
-/// Fix TEC-1 (stability): TECs are disposed synchronously in [onClose].
-///   The previous addPostFrameCallback deferral opened a one-frame race
-///   window: keyboard show => LayoutBuilder rebuild => _AnimatedState
-///   re-subscribed to an already-disposed TEC, producing the
-///   "TextEditingController used after being disposed" assertion.
-///   Synchronous disposal is safe because GetX only calls onClose() after
-///   the owning widget has left the tree.
-///
-/// Fix TEC-2 (IME-dispose): TEC dispose() calls are now wrapped in a
-///   try/catch.  The primary protection against premature disposal is
-///   registering DeliveryNoteItemFormController (and any sheet controller)
-///   with permanent: true in Get.put() so GetX cannot auto-delete it
-///   during the MediaQuery resize triggered by hiding the keyboard.
-///   This try/catch is defence-in-depth: if onClose() is somehow
-///   invoked twice (e.g. hot-restart race or future refactor), the second
-///   call silently no-ops rather than crashing with a secondary error
-///   that would mask the original stack trace.
+/// Fix TEC-3 (Option B): TEC / FocusNode / ScrollController teardown has
+///   been moved OUT of onClose() and into the explicit [disposeControllers]
+///   method.  The caller (_openItemSheet in DeliveryNoteFormController)
+///   invokes disposeControllers() only AFTER `await Get.bottomSheet()`
+///   returns and Get.delete<>(force:true) has run — i.e. after the sheet
+///   widget tree is fully unmounted.  This eliminates the race in which
+///   GetX called onClose() mid-rebuild (triggered by an IME MediaQuery
+///   resize), causing QuantityInputWidget.didUpdateWidget to call
+///   addListener() on an already-disposed qtyController.
 ///
 /// Commit Balance-Base:
 ///   [batchBalance]        — Batch-Wise Balance in resolved warehouse.
@@ -48,7 +40,7 @@ enum SaveButtonState { idle, loading, success, error }
 ///   validateBatch()  — resets rackBalance = 0.0 on success so rack must
 ///                      be re-confirmed after any batch change.
 ///
-/// Commit 4 (this commit):
+/// Commit 4:
 ///   [maxQty] — replaced mutable RxDouble with computed getter:
 ///              MIN(batchBalance, rackBalance) when both > 0,
 ///              else whichever is known, else 0.0 (no cap).
@@ -227,9 +219,30 @@ abstract class ItemSheetControllerBase extends GetxController {
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
+
+  /// Explicitly dispose all Flutter-owned resources (TECs, FocusNodes,
+  /// ScrollControllers).  Must be called by the sheet orchestrator
+  /// (e.g. DeliveryNoteFormController._openItemSheet) AFTER
+  /// `await Get.bottomSheet()` returns and Get.delete<>() has run —
+  /// i.e. only once the sheet widget tree is fully unmounted.
+  ///
+  /// This is intentionally NOT called from [onClose] because GetX may
+  /// invoke onClose() mid-rebuild (e.g. during an IME-triggered
+  /// MediaQuery resize), which would leave dangling listener
+  /// subscriptions in widgets that are still mounted.
+  void disposeControllers() {
+    try { qtyController.dispose(); } catch (_) {}
+    try { batchController.dispose(); } catch (_) {}
+    try { rackController.dispose(); } catch (_) {}
+    try { rackFocusNode.dispose(); } catch (_) {}
+    try { sheetScrollController.dispose(); } catch (_) {}
+  }
+
   @override
   void onClose() {
-    // Remove listeners first — safe to call even if controller is disposed.
+    // Remove listeners — safe to call even after dispose().
+    // Kept here (not in disposeControllers) so they fire on any
+    // early-close path too.
     try { qtyController.removeListener(validateSheet); } catch (_) {}
     try { qtyController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
     try { batchController.removeListener(validateSheet); } catch (_) {}
@@ -237,16 +250,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     try { rackController.removeListener(validateSheet); } catch (_) {}
     try { rackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
 
-    // fix(TEC-2): wrap each dispose() in try/catch as defence-in-depth.
-    // Primary protection is permanent: true in Get.put() (see
-    // delivery_note_form_controller._openItemSheet), which prevents GetX
-    // from calling onClose() prematurely during an IME-triggered rebuild.
-    // If onClose() is somehow called a second time, these no-op silently.
-    try { qtyController.dispose(); } catch (_) {}
-    try { batchController.dispose(); } catch (_) {}
-    try { rackController.dispose(); } catch (_) {}
-    try { rackFocusNode.dispose(); } catch (_) {}
-    try { sheetScrollController.dispose(); } catch (_) {}
+    // Worker holds only a GetX resource — safe to dispose here.
     _autoSubmitWorker?.dispose();
 
     super.onClose();

@@ -300,12 +300,12 @@ class DeliveryNoteFormController extends GetxController
       }
     }
 
-    // fix(IME-dispose): Register with permanent: true so GetX cannot
-    // auto-delete this controller during the MediaQuery resize that occurs
-    // when the keyboard is hidden while a field has focus.  The explicit
-    // Get.delete<>() call below (after await bottomSheet returns) remains
-    // the sole owner of teardown — it fires only after the sheet has
-    // fully closed and the widget tree no longer references the TECs.
+    // fix(TEC-3 / Option B): Register with permanent: true so GetX cannot
+    // auto-delete this controller during any route/overlay change while the
+    // sheet is open.  The explicit disposeControllers() + Get.delete<>()
+    // calls at the end of this method are the SOLE teardown path — they
+    // execute only after `await Get.bottomSheet()` returns, guaranteeing
+    // the sheet widget tree is fully unmounted before any TEC is touched.
     final child = Get.put(
       DeliveryNoteItemFormController(),
       permanent: true,
@@ -333,23 +333,18 @@ class DeliveryNoteFormController extends GetxController
     // Rack picker — unique tag per DN sheet open.
     const rackPickerTag = 'dn_rack_picker';
 
-    // fix(overflow): supply a ScrollController so GlobalItemFormSheet routes
-    // into its ListView-backed scrollable branch.  Without this the sheet used
-    // a plain Column that overflowed when the keyboard was open or the screen
-    // was small (3 custom fields + Qty + Save + Delete exceed viewport height).
-    final sheetScrollController = ScrollController();
-
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
       UniversalItemFormSheet(
         controller:       child,
-        scrollController: sheetScrollController,
+        // fix(TEC-3): pass child.sheetScrollController directly — no
+        // separate local ScrollController needed.  The base controller
+        // owns it and disposeControllers() will clean it up below.
+        scrollController: child.sheetScrollController,
         customFields: [
           // 1. Invoice Serial Number — POS Upload idx selector
           SharedSerialField(controller: child),
           // 2. Batch No
-          // fix(Q2): added editMode:true + onPickerTap to restore the batch
-          // picker icon on the DN item sheet.
           SharedBatchField(
             c:           child,
             accentColor: Colors.blueGrey,
@@ -368,8 +363,6 @@ class DeliveryNoteFormController extends GetxController
             },
           ),
           // 3. Source Rack
-          // fix(Q1): added editMode:true so the widget routes to _EditModeRack
-          // which honours onPickerTap (absent in _SimpleRack).
           SharedRackField(
             c:           child,
             accentColor: Colors.blueGrey,
@@ -408,10 +401,13 @@ class DeliveryNoteFormController extends GetxController
       isDismissible: false,
     );
     isItemSheetOpen.value = false;
-    sheetScrollController.dispose();
-    // fix(IME-dispose): sheet is now fully closed — safe to delete.
-    // permanent: true above means GetX will not have disposed this
-    // controller prematurely; we own the lifecycle from here.
+
+    // fix(TEC-3 / Option B): sheet is fully closed — widget tree is gone.
+    // Dispose Flutter resources first (TECs, FocusNode, ScrollController),
+    // then delete the GetX controller.  Order matters: disposeControllers()
+    // must run before Get.delete() so the controller is still reachable
+    // when dispose() calls are made.
+    child.disposeControllers();
     Get.delete<DeliveryNoteItemFormController>(force: true);
   }
 
@@ -719,7 +715,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {
-    final map = <String, List<DeliveryNoteItem>>{};
+    final map = <String, List<DeliveryNoteItem>>();
     for (final item in deliveryNote.value?.items ?? []) {
       final serial = item.customInvoiceSerialNumber ?? '0';
       map.putIfAbsent(serial, () => []).add(item);
