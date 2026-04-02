@@ -18,15 +18,20 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 ///   parent.addItemToSlipWithQty(qty), removing the direct dependency
 ///   on parent.bsQtyController.
 ///
+/// fix: removed `maxQty.value = parent.bsMaxQty.value` from initialise() —
+///   maxQty is a computed getter in the base class (Commit 4) and cannot be
+///   assigned. The cap is enforced in validateSheet() via _parent.bsMaxQty
+///   directly, so no data is lost.
+///
 /// PS-specific notes:
 ///   • resolvedWarehouse → null  (PS has no warehouse concept)
 ///   • requiresBatch     → false (batch is a read-only display field)
 ///   • requiresRack      → false
 class PackingSlipItemFormController extends ItemSheetControllerBase {
-  // ── Parent reference ──────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────
   late PackingSlipFormController _parent;
 
-  // ── ItemSheetControllerBase contract ───────────────────────────────────────
+  // ── ItemSheetControllerBase contract ──────────────────────────────────
 
   @override
   String? get resolvedWarehouse => null;
@@ -80,7 +85,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     await _parent.addItemToSlipWithQty(qty);
   }
 
-  // ── Initialisation ─────────────────────────────────────────────────────
+  // ── Initialisation ───────────────────────────────────────────────
 
   void initialise({
     required PackingSlipFormController parent,
@@ -95,9 +100,8 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
-
-    // maxQty cap from parent remaining-qty calculation.
-    maxQty.value = parent.bsMaxQty.value;
+    // fix: maxQty is a computed getter — no assignment needed.
+    // The cap is applied in validateSheet() via _parent.bsMaxQty directly.
 
     if (editingItem != null) {
       // Edit mode — restore existing qty and metadata.
