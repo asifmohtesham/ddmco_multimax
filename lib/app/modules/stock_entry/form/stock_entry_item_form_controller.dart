@@ -30,7 +30,7 @@ import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 ///     Returns null when no ceiling is active → no tap target rendered.
 ///
 /// Commit B:
-///   • [effectiveMaxQty] ceiling chain: serial → stock → batch → rack → MR.
+///   • [effectiveMaxQty] ceiling chain: serial → batch → rack → MR.
 ///
 /// Commit A:
 ///   • [liveRemaining]    — Rx written in validateSheet(); drives chip rebuild.
@@ -49,6 +49,14 @@ import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 ///   TEC-1 fix.  The previous addPostFrameCallback deferral produced the
 ///   same "TextEditingController used after being disposed" crash when the
 ///   keyboard triggered a LayoutBuilder rebuild on the next frame.
+///
+/// Commit 5 (fix):
+///   • Removed `maxQty.value = 0.0` from [initialise] — maxQty is now a
+///     computed getter in the base class and cannot be assigned.
+///   • Removed `maxQty.value = …` writes from [_updateAvailableStock] —
+///     the getter derives its ceiling from batchBalance + rackBalance directly.
+///   • Removed step-2 maxQty reference from [effectiveMaxQty] — the base
+///     getter already encapsulates the batch+rack MIN ceiling.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
   // ── Parent reference ───────────────────────────────────────
@@ -227,7 +235,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     itemCode.value      = code;
     this.itemName.value = itemName;
-    maxQty.value        = 0.0;
+    // Commit 5: maxQty is now a computed getter — no assignment needed.
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
@@ -515,6 +523,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── effectiveMaxQty ───────────────────────────────────────────────────────
+  //
+  // Commit 5: removed step-2 `maxQty` (total stock) check.
+  // The base-class getter already encapsulates MIN(batchBalance, rackBalance),
+  // so adding it as a separate ceiling here would double-count those balances.
+  // The four remaining layers are sufficient:
+  //   1. POS serial remaining  — invoice-level cap
+  //   2. Batch balance         — batch-level stock
+  //   3. Rack balance          — rack-level stock
+  //   4. MR cap                — Material Request authorised qty
   double get effectiveMaxQty {
     double limit = 999999.0;
 
@@ -532,19 +549,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       if (rem < limit) limit = rem;
     }
 
-    // 2. Total stock
-    if (maxQty.value > 0 && maxQty.value < limit) limit = maxQty.value;
-
-    // 3. Batch balance
+    // 2. Batch balance
     if (batchBalance.value > 0 && batchBalance.value < limit)
       limit = batchBalance.value;
 
-    // 4. Rack balance
+    // 3. Rack balance
     if (isSourceRackValid.value &&
         rackBalance.value > 0 &&
         rackBalance.value < limit) limit = rackBalance.value;
 
-    // 5. MR cap
+    // 4. MR cap
     if (validationMaxQty.value > 0 && validationMaxQty.value < limit)
       limit = validationMaxQty.value;
 
@@ -757,6 +771,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Stock / batch balance fetchers ────────────────────────────────────────────
+  //
+  // Commit 5: _updateAvailableStock no longer writes maxQty.value — maxQty is
+  // now a computed getter in the base class.  The total stock figure is still
+  // fetched here so that rackBalance (and the per-rack error message) remain
+  // accurate; it is logged for diagnostics but not stored separately.
   Future<void> _updateAvailableStock() async {
     final type = _parent.selectedStockEntryType.value;
     final isSourceOp = [
@@ -764,7 +783,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     ].contains(type);
 
     if (!isSourceOp) {
-      maxQty.value               = 999999.0;
       rackBalance.value          = 0.0;
       isLoadingRackBalance.value = false;
       return;
@@ -775,7 +793,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         _parent.selectedFromWarehouse.value;
 
     if (effectiveWh == null || effectiveWh.isEmpty) {
-      maxQty.value = rackBalance.value = 0.0;
+      rackBalance.value          = 0.0;
       isLoadingRackBalance.value = false;
       rackError.value = 'No Warehouse Selected';
       return;
@@ -803,7 +821,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           total += rowQty;
           if (rack.isNotEmpty && row['rack'] == rack) rackBal += rowQty;
         }
-        maxQty.value      = total;
+        // total is available for diagnostics; maxQty is computed from balances.
+        log('[SE:ItemSheet] _updateAvailableStock: total=$total rack=$rackBal wh=$effectiveWh',
+            name: 'SE:ItemSheet');
         rackBalance.value = rack.isNotEmpty ? rackBal : 0.0;
 
         if (rack.isNotEmpty && rackBal <= 0) {
