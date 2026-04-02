@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -43,7 +44,7 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [qtyInfoText]      — 'Max: N' / 'Max: -' via effectiveMaxQty.
 ///   • [qtyInfoTooltip]   — 'Serial: X  ·  Batch: Y  ·  Rack: Z' breakdown.
 ///
-/// Commit 7 (this commit):
+/// Commit 7:
 ///   • Removed `maxQty.value = initialMaxQty` from [initialise] — maxQty is
 ///     a computed getter in the base class (Commit 4) and cannot be assigned.
 ///   • [effectiveMaxQty] step 2 now reads [batchBalance].value instead of
@@ -55,6 +56,7 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   • [validateSheet] gains the Commit-6 zero-stock guard:
 ///     `effMax == 0.0 && isBatchValid` → immediately invalid.
 ///   • Explicit [batchBalance] + [rackBalance] resets added to [initialise].
+///   • Added `dart:async` import for [unawaited].
 ///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
@@ -66,10 +68,10 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ────────────────────────────────────────────────────
+  // ── Parent reference ────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // ── ItemSheetControllerBase contract ────────────────────────────────────
+  // ── ItemSheetControllerBase contract ──────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
@@ -83,7 +85,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
-  // ── DN-C: effectiveMaxQty ceiling chain ─────────────────────────────────
+  // ── DN-C: effectiveMaxQty ceiling chain ────────────────────────────────
   //
   // Commit 7: step 2 reads batchBalance.value (base field populated by
   // fetchBatchBalance) instead of the defunct maxQty.value RxDouble.
@@ -114,7 +116,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return limit;
   }
 
-  // ── DN-D: posSerialCapText — chip label (mirrors SE Commit A) ─────────────
+  // ── DN-D: posSerialCapText — chip label (mirrors SE Commit A) ────────────
   //
   // Consumed by SharedSerialField via duck-typed
   // (controller as dynamic).posSerialCapText — same mechanism as SE.
@@ -190,7 +192,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return parts.join('  \u00b7  ');
   }
 
-  // ── deleteCurrentItem ─────────────────────────────────────────────────────────
+  // ── deleteCurrentItem ──────────────────────────────────────────────────────────
   @override
   Future<void> deleteCurrentItem() async {
     final name = editingItemName.value;
