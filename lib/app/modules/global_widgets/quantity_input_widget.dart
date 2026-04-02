@@ -9,6 +9,15 @@ import 'package:multimax/app/modules/global_widgets/quantity_input_controller.da
 /// state lives in a [QuantityInputController] scoped per button via an
 /// explicit [Get.put] call keyed on [key.toString()].
 ///
+/// Commit C-2: boxShadow removed.
+///   The animated BoxShadow was the path through which Flutter's
+///   _AnimatedState registered a listener on the passed-in
+///   TextEditingController. When GetX rebuilt the parent list (addItem),
+///   the controller was momentarily detached, causing the
+///   "TextEditingController used after being disposed" assertion.
+///   Stability is prioritised over aesthetics; shadow can be restored
+///   once the root lifecycle issue is resolved end-to-end.
+///
 /// Commit C-3: tappable Max badge
 ///   When [onInfoTap] is provided the infoText badge becomes an [InkWell]
 ///   with a small info_outline icon appended to signal tappability.
@@ -65,12 +74,11 @@ class QuantityInputWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
-    final borderColor  = Colors.grey.shade300;
-
+    final borderColor = Colors.grey.shade300;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header Row: Label + Info Badge ─────────────────────────────────
+        // ── Header Row: Label + Info Badge ─────────────────────────────────────
         if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
@@ -94,23 +102,17 @@ class QuantityInputWidget extends StatelessWidget {
               ],
             ),
           ),
-
-        // ── Input row ─────────────────────────────────────────────────
+        // ── Input row ───────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
             color: isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: isReadOnly
-                ? []
-                : [
-                    BoxShadow(
-                      color: Colors.grey.withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+            // C-2: boxShadow removed — animated shadow was the path through
+            // which _AnimatedState registered a listener on the
+            // TextEditingController, causing the assertion crash on addItem.
+            boxShadow: const [],
           ),
           child: Row(
             children: [
@@ -180,9 +182,9 @@ class QuantityInputWidget extends StatelessWidget {
 // _InfoBadge
 //
 // Renders the infoText pill.
-//   • When [onTap] is null  → plain Container, identical to the old badge.
-//   • When [onTap] is given → InkWell wraps the pill; a small info_outline
-//     icon is appended to signal interactivity.
+// • When [onTap] is null → plain Container, identical to the old badge.
+// • When [onTap] is given → InkWell wraps the pill; a small info_outline
+//   icon is appended to signal interactivity.
 // ---------------------------------------------------------------------------
 class _InfoBadge extends StatelessWidget {
   final String text;
@@ -225,9 +227,7 @@ class _InfoBadge extends StatelessWidget {
         ],
       ),
     );
-
     if (onTap == null) return badge;
-
     return InkWell(
       borderRadius: BorderRadius.circular(6),
       onTap: onTap,
@@ -279,8 +279,8 @@ class _QtyActionButton extends StatelessWidget {
           HapticFeedback.lightImpact();
           ctrl.startRepeat(onPressed);
         },
-        onTapUp:     (_) => ctrl.stopRepeat(),
-        onTapCancel: ()  => ctrl.stopRepeat(),
+        onTapUp: (_) => ctrl.stopRepeat(),
+        onTapCancel: () => ctrl.stopRepeat(),
         child: SizedBox(
           width: 56,
           height: double.infinity,
