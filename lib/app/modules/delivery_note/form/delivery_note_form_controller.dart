@@ -328,11 +328,15 @@ class DeliveryNoteFormController extends GetxController
           // 1. Invoice Serial Number — POS Upload idx selector
           SharedSerialField(controller: child),
           // 2. Batch No
-          SharedBatchField(controller: child),
+          // fix: SharedBatchField uses `c:` + `accentColor:`, not `controller:`
+          SharedBatchField(c: child, accentColor: Colors.blueGrey),
           // 3. Source Rack
+          // fix: SharedRackField uses `c:` + `accentColor:` + `onPickerTap:`,
+          //      not `controller:` + `onRackScan:`
           SharedRackField(
-            controller: child,
-            onRackScan: child.applyRackScan,
+            c:           child,
+            accentColor: Colors.blueGrey,
+            onPickerTap: child.applyRackScan,
           ),
         ],
         onSubmit: () async {
