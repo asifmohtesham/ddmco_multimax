@@ -328,15 +328,29 @@ class DeliveryNoteFormController extends GetxController
           // 1. Invoice Serial Number — POS Upload idx selector
           SharedSerialField(controller: child),
           // 2. Batch No
-          // fix: SharedBatchField uses `c:` + `accentColor:`, not `controller:`
           SharedBatchField(c: child, accentColor: Colors.blueGrey),
           // 3. Source Rack
-          // fix: SharedRackField uses `c:` + `accentColor:` + `onPickerTap:`,
-          //      not `controller:` + `onRackScan:`
+          // fix: onPickerTap is VoidCallback? (no args); wrap applyRackScan
+          // in a lambda that opens RackPickerSheet and calls applyRackScan
+          // with the selected rack ID — matching the SE/PR pattern.
           SharedRackField(
             c:           child,
             accentColor: Colors.blueGrey,
-            onPickerTap: child.applyRackScan,
+            onPickerTap: () async {
+              final picker = Get.put(RackPickerController());
+              await picker.loadRacks(
+                warehouse: child.resolvedWarehouse,
+                itemCode:  child.itemCode.value,
+              );
+              final rackId = await Get.bottomSheet<String>(
+                RackPickerSheet(controller: picker),
+                isScrollControlled: true,
+              );
+              Get.delete<RackPickerController>();
+              if (rackId != null && rackId.isNotEmpty) {
+                child.applyRackScan(rackId);
+              }
+            },
           ),
         ],
         onSubmit: () async {
