@@ -474,52 +474,11 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Future<void> _handleScanResult(ScanResult result) async {
-    final posUploadLocal = posUpload.value;
-    if (posUploadLocal == null) {
-      isScanning.value = false;
-      await _openItemSheet(
-        itemCode: result.itemCode!,
-        itemName: result.itemData?.itemName ?? result.itemCode!,
-        batchNo:  result.batchNo,
-      );
-      return;
-    }
-
-    final matchingPosItem = posUploadLocal.items.firstWhereOrNull(
-      (pi) => result.itemData?.itemName != null
-          ? pi.itemName == result.itemData!.itemName
-          : false,
-    );
-
-    if (matchingPosItem == null) {
-      GlobalSnackbar.error(
-        message: 'Item "${result.itemCode}" is not part of this POS Upload.',
-      );
-      return;
-    }
-
-    final serial    = matchingPosItem.idx.toString();
-    final capQty    = posQtyCapForSerial(serial);
-    final usedQty   = scannedQtyForSerial(serial);
-    final remaining = (capQty - usedQty).clamp(0.0, capQty);
-
-    if (remaining <= 0) {
-      GlobalDialog.showQtyCapExceeded(
-        serialNo:   matchingPosItem.idx,
-        itemName:   matchingPosItem.itemName,
-        scannedQty: usedQty,
-        capQty:     capQty,
-      );
-      return;
-    }
-
     isScanning.value = false;
     await _openItemSheet(
-      itemCode:      result.itemCode!,
-      itemName:      result.itemData?.itemName ?? result.itemCode!,
-      batchNo:       result.batchNo,
-      initialMaxQty: remaining,
-      editingItem:   null,
+      itemCode: result.itemCode!,
+      itemName: result.itemData?.itemName ?? result.itemCode!,
+      batchNo:  result.batchNo,
     );
   }
 
