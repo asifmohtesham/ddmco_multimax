@@ -45,7 +45,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ──────────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -53,7 +53,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine ─────────────────────────────────────────────────────
+  // ── Save result state machine ────────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -78,26 +78,26 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ───────────────────────────────────────
+  // ── Sheet-open + item-edit loading flags ─────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ───────────────────────────────────────────────────────────────
+  // ── Warehouse ─────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
 
-  // ── Item warehouse (derived from rack) ─────────────────────────────────────────────
+  // ── Item warehouse (derived from rack) ───────────────────────────────────
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ──────────────────────────────────────────────────────
+  // ── Customer-level error ───────────────────────────────────────────────
   var customerError = RxnString();
 
-  // ── EAN scan context ───────────────────────────────────────────────────────────
+  // ── EAN scan context ───────────────────────────────────────────────────
   String currentScannedEan = '';
 
-  // ── Persistent scan worker ────────────────────────────────────────────────────────
+  // ── Persistent scan worker ───────────────────────────────────────────────
   Worker? _scanWorker;
 
   @override
@@ -127,7 +127,7 @@ class DeliveryNoteFormController extends GetxController
     super.onClose();
   }
 
-  // ── Raw scan entry point ─────────────────────────────────────────────────────
+  // ── Raw scan entry point ─────────────────────────────────────────────────
   void _onRawScan(String code) {
     if (code.isEmpty) return;
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
@@ -136,7 +136,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ────────────────────────────────────────────────────────────────
+  // ── PopScope ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -146,7 +146,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Dirty tracking ──────────────────────────────────────────────────────────────
+  // ── Dirty tracking ─────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -174,7 +174,7 @@ class DeliveryNoteFormController extends GetxController
     isDirty.value = false;
   }
 
-  // ── Data fetching ──────────────────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -240,7 +240,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── OptimisticLockingMixin contract ──────────────────────────────────────────────
+  // ── OptimisticLockingMixin contract ──────────────────────────────────────────
   @override
   Future<void> reloadDocument() async {
     await fetchDeliveryNote();
@@ -259,7 +259,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── POS qty-cap helpers ─────────────────────────────────────────────────────────
+  // ── POS qty-cap helpers ──────────────────────────────────────────────────
   double posQtyCapForSerial(String serial) {
     final idx = int.tryParse(serial);
     if (idx == null || posUpload.value == null) return double.infinity;
@@ -284,12 +284,15 @@ class DeliveryNoteFormController extends GetxController
     return (cap - used).clamp(0.0, cap);
   }
 
-  // ── Item sheet orchestration ─────────────────────────────────────────────────────
+  // ── Item sheet orchestration ───────────────────────────────────────────────
+  //
+  // fix: removed `initialMaxQty` parameter — DeliveryNoteItemFormController
+  // .initialise() no longer accepts it (maxQty is a computed getter in the
+  // base class since Commit 4 and cannot be assigned).
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
     String?  batchNo,
-    double   initialMaxQty = 0.0,
     DeliveryNoteItem? editingItem,
   }) async {
     if (editingItem != null) {
@@ -302,13 +305,12 @@ class DeliveryNoteFormController extends GetxController
 
     final child = Get.put(DeliveryNoteItemFormController());
     child.initialise(
-      parent:        this,
-      code:          itemCode,
-      name:          itemName,
-      batchNo:       batchNo,
-      initialMaxQty: initialMaxQty,
-      editingItem:   editingItem,
-      scannedEan8:   currentScannedEan,
+      parent:      this,
+      code:        itemCode,
+      name:        itemName,
+      batchNo:     batchNo,
+      editingItem: editingItem,
+      scannedEan8: currentScannedEan,
     );
 
     child.setupAutoSubmit(
@@ -340,13 +342,13 @@ class DeliveryNoteFormController extends GetxController
     Get.delete<DeliveryNoteItemFormController>();
   }
 
-  // ── Customer-not-found hard block ──────────────────────────────────────────────
+  // ── Customer-not-found hard block ────────────────────────────────────────────
   void _handleCustomerNotFound(String customer) {
     customerError.value = 'Customer not found in the system';
     GlobalDialog.showCustomerNotFound(customer: customer);
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     isSaving.value = true;
@@ -413,7 +415,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── Header validation (pre-scan guard) ────────────────────────────────────────────
+  // ── Header validation (pre-scan guard) ──────────────────────────────────────
   bool _validateHeaderBeforeScan() {
     final note = deliveryNote.value;
     if (note == null) {
@@ -430,7 +432,7 @@ class DeliveryNoteFormController extends GetxController
     return true;
   }
 
-  // ── Scanning ──────────────────────────────────────────────────────────────────────
+  // ── Scanning ─────────────────────────────────────────────────────────────────
   Future<void> scanBarcode(String barcode) async {
     if (!_validateHeaderBeforeScan()) return;
     if (isScanning.value || isAddingItem.value) return;
@@ -453,7 +455,6 @@ class DeliveryNoteFormController extends GetxController
           break;
         case ScanType.multiple:
           isScanning.value = false;
-          // candidates is List<Item>? — pass it typed correctly
           await _showMultipleMatchSheet(result.candidates ?? []);
           break;
         case ScanType.rack:
@@ -482,7 +483,6 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // candidates is List<Item> (from ScanResult.candidates)
   Future<void> _showMultipleMatchSheet(List<Item> candidates) async {
     await Get.bottomSheet(
       _MultipleMatchSheet(candidates: candidates, parent: this),
@@ -490,7 +490,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ──────────────────────────────────────────────────────────────────────
+  // ── Item CRUD ────────────────────────────────────────────────────────────────
 
   void addItem(DeliveryNoteItem newItem) {
     deliveryNote.value?.items.add(newItem);
@@ -573,7 +573,7 @@ class DeliveryNoteFormController extends GetxController
     updateItem(updated);
   }
 
-  // ── confirmAndDeleteItem ──────────────────────────────────────────────────────────
+  // ── confirmAndDeleteItem ────────────────────────────────────────────────────────
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
     final confirmed = await GlobalDialog.confirm(
       title:        'Remove Item',
@@ -589,24 +589,18 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'edit') saveDeliveryNote();
   }
 
+  // fix: removed stale `initialMaxQty` local variable and parameter —
+  // _openItemSheet no longer accepts it.
   Future<void> editItem(DeliveryNoteItem item) async {
     if (isLoadingItemEdit.value) return;
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
     try {
-      final serial = item.customInvoiceSerialNumber ?? '0';
-      final cap    = posQtyCapForSerial(serial);
-      final maxQty = cap == double.infinity
-          ? 0.0
-          : (cap - scannedQtyForSerial(serial, excludeItemName: item.name))
-              .clamp(0.0, cap);
-
       await _openItemSheet(
-        itemCode:      item.itemCode,
-        itemName:      item.itemName ?? item.itemCode,
-        batchNo:       item.batchNo,
-        initialMaxQty: maxQty,
-        editingItem:   item,
+        itemCode:    item.itemCode,
+        itemName:    item.itemName ?? item.itemCode,
+        batchNo:     item.batchNo,
+        editingItem: item,
       );
     } finally {
       isLoadingItemEdit.value  = false;
@@ -627,7 +621,7 @@ class DeliveryNoteFormController extends GetxController
     });
   }
 
-  // ── Filtering ─────────────────────────────────────────────────────────────────────
+  // ── Filtering ────────────────────────────────────────────────────────────────
   void setFilter(String filter) => itemFilter.value = filter;
 
   int get allCount => posUpload.value?.items.length ??
@@ -662,21 +656,19 @@ class DeliveryNoteFormController extends GetxController
     return map;
   }
 
-  // ── Item-card expansion ──────────────────────────────────────────────────────────
+  // ── Item-card expansion ─────────────────────────────────────────────────────────
   void toggleExpand(String itemCode) {
     expandedItemCode.value =
         expandedItemCode.value == itemCode ? '' : itemCode;
   }
 
-  // ── Invoice expansion ────────────────────────────────────────────────────────────
+  // ── Invoice expansion ──────────────────────────────────────────────────────────
   void toggleInvoiceExpand(String key) {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
 }
 
 // ── Multiple-match sheet (private widget) ────────────────────────────────────────────
-// candidates is List<Item> — each Item carries itemCode + itemName
-
 class _MultipleMatchSheet extends StatelessWidget {
   const _MultipleMatchSheet({
     required this.candidates,
