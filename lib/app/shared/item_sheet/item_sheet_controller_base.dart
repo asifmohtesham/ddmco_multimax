@@ -17,6 +17,14 @@ enum SaveButtonState { idle, loading, success, error }
 ///   can write to this field directly.  SharedSerialField subscribes to it
 ///   without any duck-type or try/catch, eliminating the zero-subscription
 ///   Obx crash.
+///
+/// Fix TEC-1 (stability): TECs are disposed synchronously in [onClose].
+///   The previous addPostFrameCallback deferral opened a one-frame race
+///   window: keyboard show → LayoutBuilder rebuild → _AnimatedState
+///   re-subscribed to an already-disposed TEC, producing the
+///   "TextEditingController used after being disposed" assertion.
+///   Synchronous disposal is safe because GetX only calls onClose() after
+///   the owning widget has left the tree.
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Dependencies ──────────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -133,6 +141,15 @@ abstract class ItemSheetControllerBase extends GetxController {
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
+  //
+  // Fix TEC-1: listeners are removed first, then TECs are disposed
+  // synchronously — no addPostFrameCallback deferral.
+  //
+  // Rationale: GetX invokes onClose() only after the widget that owns this
+  // controller has been unmounted.  At that point no mounted widget holds a
+  // reference to any of these TECs, so immediate disposal is safe and
+  // eliminates the one-frame race that caused _AnimatedState to
+  // re-subscribe to a disposed TEC when the keyboard appeared.
   @override
   void onClose() {
     qtyController.removeListener(validateSheet);
@@ -142,20 +159,12 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackController.removeListener(validateSheet);
     rackController.removeListener(_resetSaveStateOnEdit);
 
-    final qtc = qtyController;
-    final btc = batchController;
-    final rtc = rackController;
-    final rfn = rackFocusNode;
-    final ssc = sheetScrollController;
-    final asw = _autoSubmitWorker;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      qtc.dispose();
-      btc.dispose();
-      rtc.dispose();
-      rfn.dispose();
-      ssc.dispose();
-      asw?.dispose();
-    });
+    qtyController.dispose();
+    batchController.dispose();
+    rackController.dispose();
+    rackFocusNode.dispose();
+    sheetScrollController.dispose();
+    _autoSubmitWorker?.dispose();
 
     super.onClose();
   }
