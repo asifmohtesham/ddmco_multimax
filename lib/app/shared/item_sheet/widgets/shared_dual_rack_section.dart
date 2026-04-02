@@ -83,9 +83,15 @@ class SharedDualRackSection extends StatelessWidget {
       isScrollControlled: true,
     );
 
-    if (Get.isRegistered<RackPickerController>(tag: tag)) {
-      Get.delete<RackPickerController>(tag: tag);
-    }
+    // Defer deletion by one frame so any in-flight Obx rebuild notifications
+    // triggered by onSelected() / selectRack() can drain before the
+    // controller is removed from GetX's registry. Immediate deletion caused
+    // a "RackPickerController not found" crash on the final Obx rebuild.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.isRegistered<RackPickerController>(tag: tag)) {
+        Get.delete<RackPickerController>(tag: tag);
+      }
+    });
   }
 
   @override
