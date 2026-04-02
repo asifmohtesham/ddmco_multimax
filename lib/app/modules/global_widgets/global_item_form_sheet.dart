@@ -459,8 +459,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     final topPadding  = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
-    // Drag handle — sits on the same surface as the sheet body so the pill
-    // colour is the only visual element, not a contrasting band.
+    // Drag handle — sits on the same surface as the sheet body.
     final dragHandle = Container(
       color: colorScheme.surface,
       width: double.infinity,
@@ -479,8 +478,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     final scanBar = onScan != null
         ? Container(
             decoration: BoxDecoration(
-              // One elevation step above surface so the scan bar is visually
-              // distinct from the sheet body without a hard-coded colour.
               color: colorScheme.surfaceContainer,
               border: Border(
                   top: BorderSide(color: colorScheme.outlineVariant)),
@@ -503,16 +500,17 @@ class GlobalItemFormSheet extends StatelessWidget {
           )
         : null;
 
+    // Shared decoration — both branches use identical appearance.
+    final sheetDecoration = BoxDecoration(
+      color: colorScheme.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+    );
+    final sheetMargin = EdgeInsets.only(top: topPadding + 12);
+
     if (scrollController != null) {
       return Container(
-        margin: EdgeInsets.only(top: topPadding + 12),
-        decoration: BoxDecoration(
-          // colorScheme.surface = pure white (light) / correct dark surface
-          // (dark). Single source of truth — no call-site override needed.
-          color: colorScheme.surface,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(28.0)),
-        ),
+        margin: sheetMargin,
+        decoration: sheetDecoration,
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -534,23 +532,30 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       );
     } else {
-      return Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            dragHandle,
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _formChildren(context),
+      // Non-scrollable branch: wrap in the same Container so the sheet always
+      // owns its opaque background regardless of the call-site backgroundColor.
+      return Container(
+        margin: sheetMargin,
+        decoration: sheetDecoration,
+        clipBehavior: Clip.antiAlias,
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              dragHandle,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _formChildren(context),
+                ),
               ),
-            ),
-            // if (scanBar != null) scanBar,
-          ],
+              // if (scanBar != null) scanBar,
+            ],
+          ),
         ),
       );
     }
