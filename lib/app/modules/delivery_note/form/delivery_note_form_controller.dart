@@ -302,10 +302,8 @@ class DeliveryNoteFormController extends GetxController
 
     // fix(TEC-3 / Option B): Register with permanent: true so GetX cannot
     // auto-delete this controller during any route/overlay change while the
-    // sheet is open.  The explicit disposeControllers() + Get.delete<>()
-    // calls at the end of this method are the SOLE teardown path — they
-    // execute only after `await Get.bottomSheet()` returns, guaranteeing
-    // the sheet widget tree is fully unmounted before any TEC is touched.
+    // sheet is open.  Teardown is deferred to a post-frame callback below —
+    // see the teardown comment for the full rationale.
     final child = Get.put(
       DeliveryNoteItemFormController(),
       permanent: true,
@@ -339,7 +337,8 @@ class DeliveryNoteFormController extends GetxController
         controller:       child,
         // fix(TEC-3): pass child.sheetScrollController directly — no
         // separate local ScrollController needed.  The base controller
-        // owns it and disposeControllers() will clean it up below.
+        // owns it and disposeControllers() will clean it up in the
+        // post-frame callback below.
         scrollController: child.sheetScrollController,
         customFields: [
           // 1. Invoice Serial Number — POS Upload idx selector
@@ -402,13 +401,26 @@ class DeliveryNoteFormController extends GetxController
     );
     isItemSheetOpen.value = false;
 
-    // fix(TEC-3 / Option B): sheet is fully closed — widget tree is gone.
-    // Dispose Flutter resources first (TECs, FocusNode, ScrollController),
-    // then delete the GetX controller.  Order matters: disposeControllers()
-    // must run before Get.delete() so the controller is still reachable
-    // when dispose() calls are made.
-    child.disposeControllers();
-    Get.delete<DeliveryNoteItemFormController>(force: true);
+    // fix(TEC-3 / Option B — post-frame deferral):
+    //
+    // Problem: calling child.disposeControllers() + Get.delete() synchronously
+    // here causes GetX to remove the sheet's OverlayEntry synchronously, which
+    // queues a frame rebuild of the parent DN form screen.  That rebuild still
+    // holds a widget reference to child.qtyController (via QuantityInputWidget)
+    // even though it was just disposed — producing:
+    //
+    //   "A TextEditingController was used after being disposed"
+    //   "_dependents.isEmpty is not true" (InheritedElement deactivated mid-rebuild)
+    //
+    // Fix: defer both calls into addPostFrameCallback so they execute only
+    // AFTER the current frame is fully painted and the sheet widget tree is
+    // guaranteed to be unmounted.  The controller remains reachable
+    // (permanent: true) until that post-frame tick, so no dangling pointer.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      child.disposeControllers();
+      Get.delete<DeliveryNoteItemFormController>(force: true);
+      log('[DN:_openItemSheet] post-frame teardown complete', name: 'DN');
+    });
   }
 
   // ── Customer-not-found hard block ────────────────────────────────────────────
