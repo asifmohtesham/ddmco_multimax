@@ -1,4 +1,56 @@
-aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRhcnQnOwppbXBvcnQgJ3BhY2thZ2U6Z2V0L2dldC5kYXJ0JzsKaW1wb3J0ICdwYWNrYWdlOmludGwvaW50bC5kYXJ0JzsKCmltcG9ydCAncGFja2FnZTptdWx0aW1heC9hcHAvZGF0YS9wcm92aWRlcnMvYXBpX3Byb3ZpZGVyLmRhcnQnOwppbXBvcnQgJ3BhY2thZ2U6bXVsdGltYXgvYXBwL21vZHVsZXMvZ2xvYmFsX3dpZGdldHMvZ2xvYmFsX3NuYWNrYmFyLmRhcnQnOwoKLy8vIERyaXZlcyB0aGUgdmlzdWFsIHN0YXRlIG9mIHRoZSBhbmltYXRlZCBTYXZlIGJ1dHRvbiBpbiB0aGUgaXRlbSBzaGVldC4KZW51bSBTYXZlQnV0dG9uU3RhdGUgeyBpZGxlLCBsb2FkaW5nLCBzdWNjZXNzLCBlcnJvciB9CgovLy8gQWJzdHJhY3QgYmFzZSBjb250cm9sbGVyIGZvciBldmVyeSBEb2NUeXBlIGl0ZW0tc2hlZXQuCi8vLwovLy8gQy0xIDogW3F0eUluZm9Ub29sdGlwXSDigJQgZGVmYXVsdC1udWxsIGdldHRlci4KLy8vIEMtNSA6IFtsaXZlUmVtYWluaW5nXSDigJQgY29uY3JldGUgUnhEb3VibGUgKGRlZmF1bHQgMC4wKS4KLy8vICAgU3ViY2xhc3NlcyB0aGF0IGNvbXB1dGUgYSBjZWlsaW5nIChlLmcuIFN0b2NrRW50cnlJdGVtRm9ybUNvbnRyb2xsZXIpCi8vLyAgIGNhbiB3cml0ZSB0byB0aGlzIGZpZWxkIGRpcmVjdGx5LiAgU2hhcmVkU2VyaWFsRmllbGQgc3Vic2NyaWJlcyB0byBpdAovLy8gICB3aXRob3V0IGFueSBkdWNrLXR5cGUgb3IgdHJ5L2NhdGNoLCBlbGltaW5hdGluZyB0aGUgemVyby1zdWJzY3JpcHRpb24KLy8vICAgT2J4IGNyYXNoLgovLy8KLy8vIEZpeCBURUMtMSAoc3RhYmlsaXR5KTogVEVDcyBhcmUgZGlzcG9zZWQgc3luY2hyb25vdXNseSBpbiBbb25DbG9zZV0uCi8vLyAgIFRoZSBwcmV2aW91cyBhZGRQb3N0RnJhbWVDYWxsYmFjayBkZWZlcnJhbCBvcGVuZWQgYSBvbmUtZnJhbWUgcmFjZQovLy8gICB3aW5kb3c6IGtleWJvYXJkIHNob3cg4oSSIExheW91dEJ1aWxkZXIgcmVidWlsZCDihJIgX0FuaW1hdGVkU3RhdGUKLy8vICAgcmUtc3Vic2NyaWJlZCB0byBhbiBhbHJlYWR5LWRpc3Bvc2VkIFRFQywgcHJvZHVjaW5nIHRoZQovLy8gICAiVGV4dEVkaXRpbmdDb250cm9sbGVyIHVzZWQgYWZ0ZXIgYmVpbmcgZGlzcG9zZWQiIGFzc2VydGlvbi4KLy8vICAgU3luY2hyb25vdXMgZGlzcG9zYWwgaXMgc2FmZSBiZWNhdXNlIEdldFggb25seSBjYWxscyBvbkNsb3NlKCkgYWZ0ZXIKLy8vICAgdGhlIG93bmluZyB3aWRnZXQgaGFzIGxlZnQgdGhlIHRyZWUuCi8vLwovLy8gQ29tbWl0IEJhbGFuY2UtQmFzZToKLy8vICAgW2JhdGNoQmFsYW5jZV0gICAgICAgIOKUlCBCYXRjaC1XaXNlIEJhbGFuY2UgaW4gcmVzb2x2ZWQgd2FyZWhvdXNlLgovLy8gICBbcmFja0JhbGFuY2VdICAgICAgICDilJQgU3RvY2sgQmFsYW5jZSB3aXRoIEludmVudG9yeSBEaW1lbnNpb24gKHJhY2sgcm93KS4KLy8vICAgW2ZldGNoQmF0Y2hCYWxhbmNlXSDigJQgcHJvbW90ZWQgZnJvbSBTRSdzIF91cGRhdGVCYXRjaEJhbGFuY2UoKS4KLy8vICAgW2ZldGNoUmFja0JhbGFuY2VdICDigJQgZXh0cmFjdGVkIGZyb20gU0UncyBfdXBkYXRlQXZhaWxhYmxlU3RvY2soKS4KYWJzdHJhY3QgY2xhc3MgSXRlbVNoZWV0Q29udHJvbGxlckJhc2UgZXh0ZW5kcyBHZXRDb250cm9sbGVyIHsKICAvLyDilIwgRGVwZW5kZW5jaWVzIOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkAogIGZpbmFsIEFwaVByb3ZpZGVyIF9hcGkgPSBHZXQuZmluZDxBcGlQcm92aWRlcj4oKTsKCiAgLy8g4pSMIEZvcm0gaW5mcmFzdHJ1Y3R1cmUg4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQCiAgZmluYWwgR2xvYmFsS2V5PEZvcm1TdGF0ZT4gZm9ybUtleSAgICAgICAgICAgICAgID0gR2xvYmFsS2V5PEZvcm1TdGF0ZT4oKTsKICBmaW5hbCBTY3JvbGxDb250cm9sbGVyICAgICBzaGVldFNjcm9sbENvbnRyb2xsZXIgPSBTY3JvbGxDb250cm9sbGVyKCk7CgogIGZpbmFsIFRleHRFZGl0aW5nQ29udHJvbGxlciBxdHlDb250cm9sbGVyICAgPSBUZXh0RWRpdGluZ0NvbnRyb2xsZXIoKTsKICBmaW5hbCBUZXh0RWRpdGluZ0NvbnRyb2xsZXIgYmF0Y2hDb250cm9sbGVyID0gVGV4dEVkaXRpbmdDb250cm9sbGVyKCk7CiAgZmluYWwgVGV4dEVkaXRpbmdDb250cm9sbGVyIHJhY2tDb250cm9sbGVyICA9IFRleHRFZGl0aW5nQ29udHJvbGxlcigpOwogIGZpbmFsIEZvY3VzTm9kZSByYWNrRm9jdXNOb2RlID0gRm9jdXNOb2RlKCk7CgogIC8vIOKUjCBDb3JlIGl0ZW0gaWRlbnRpdHkg4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ
+import 'dart:developer';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+
+/// Drives the visual state of the animated Save button in the item sheet.
+enum SaveButtonState { idle, loading, success, error }
+
+/// Abstract base controller for every DocType item-sheet.
+///
+/// C-1 : [qtyInfoTooltip] — default-null getter.
+/// C-5 : [liveRemaining] — concrete RxDouble (default 0.0).
+///   Subclasses that compute a ceiling (e.g. StockEntryItemFormController)
+///   can write to this field directly.  SharedSerialField subscribes to it
+///   without any duck-type or try/catch, eliminating the zero-subscription
+///   Obx crash.
+///
+/// Fix TEC-1 (stability): TECs are disposed synchronously in [onClose].
+///   The previous addPostFrameCallback deferral opened a one-frame race
+///   window: keyboard show => LayoutBuilder rebuild => _AnimatedState
+///   re-subscribed to an already-disposed TEC, producing the
+///   "TextEditingController used after being disposed" assertion.
+///   Synchronous disposal is safe because GetX only calls onClose() after
+///   the owning widget has left the tree.
+///
+/// Commit Balance-Base:
+///   [batchBalance]        — Batch-Wise Balance in resolved warehouse.
+///   [rackBalance]         — Stock Balance with Inventory Dimension (rack row).
+///   [fetchBatchBalance]   — promoted from SE's _updateBatchBalance().
+///   [fetchRackBalance]    — extracted from SE's _updateAvailableStock().
+///
+/// Commit 3 (this commit):
+///   [qtyInfoText]    — concrete; shows batch/rack/MIN breakdown.
+///   [qtyInfoTooltip] — concrete; detailed balance lines via _fmtQty().
+///   validateBatch()  — resets rackBalance = 0.0 on success so rack must
+///                      be re-confirmed after any batch change.
+abstract class ItemSheetControllerBase extends GetxController {
+  // ── Dependencies ──────────────────────────────────────────────────────
+  final ApiProvider _api = Get.find<ApiProvider>();
+
+  // ── Form infrastructure ───────────────────────────────────────────────
+  final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
+  final ScrollController     sheetScrollController = ScrollController();
+
+  final TextEditingController qtyController   = TextEditingController();
+  final TextEditingController batchController = TextEditingController();
+  final TextEditingController rackController  = TextEditingController();
+  final FocusNode rackFocusNode = FocusNode();
+
+  // ── Core item identity ────────────────────────────────────────────────
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
@@ -16,7 +68,7 @@ aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRh
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── Balance state (universal — Commit Balance-Base) ───────────────────
+  // ── Balance state (universal) ─────────────────────────────────────────
   //
   // batchBalance : Batch-Wise Balance for the selected batch in resolvedWarehouse.
   //                Populated by fetchBatchBalance().
@@ -68,9 +120,42 @@ aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRh
   RxBool isScanning = false.obs;
   TextEditingController? sheetScanController;
 
-  // ── Qty label ─────────────────────────────────────────────────────────
-  String? get qtyInfoText;
-  String? get qtyInfoTooltip => null;
+  // ── Qty label (Commit 3: concrete in base) ────────────────────────────
+  //
+  // Returns a short pill label summarising the effective qty cap:
+  //   • Both known  → 'Max: N'  (MIN of batch and rack)
+  //   • Batch only  → 'Batch: N'
+  //   • Rack only   → 'Rack: N'
+  //   • Neither     → null (badge hidden)
+  //
+  // Subclasses that need extra lines (POS serial cap, MR cap) should
+  // override, call super, then append their own suffix.
+  String? get qtyInfoText {
+    final b = batchBalance.value;
+    final r = rackBalance.value;
+    if (b > 0 && r > 0) {
+      final min = b < r ? b : r;
+      return 'Max: ${_fmtQty(min)}';
+    }
+    if (b > 0) return 'Batch: ${_fmtQty(b)}';
+    if (r > 0) return 'Rack: ${_fmtQty(r)}';
+    return null;
+  }
+
+  // Returns a multi-line breakdown shown in the tap dialog.
+  // Subclasses may override and call super to prepend base lines.
+  String? get qtyInfoTooltip {
+    final b = batchBalance.value;
+    final r = rackBalance.value;
+    final parts = <String>[];
+    if (b > 0) parts.add('Batch balance : ${_fmtQty(b)}');
+    if (r > 0) parts.add('Rack balance  : ${_fmtQty(r)}');
+    if (b > 0 && r > 0) {
+      final min = b < r ? b : r;
+      parts.add('Effective max : ${_fmtQty(min)}');
+    }
+    return parts.isEmpty ? null : parts.join('\n');
+  }
 
   // ── Abstract delete dispatch ──────────────────────────────────────────
   Future<void> deleteCurrentItem();
@@ -189,11 +274,11 @@ aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRh
     validateSheet();
   }
 
-  // ── Formatting helper (Commit Balance-Base) ───────────────────────────
+  // ── Formatting helper ─────────────────────────────────────────────────
   String _fmtQty(double v) =>
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
 
-  // ── fetchBatchBalance (Commit Balance-Base) ───────────────────────────
+  // ── fetchBatchBalance ─────────────────────────────────────────────────
   //
   // Fetches the Batch-Wise Balance for [batchController.text] in
   // [resolvedWarehouse] and writes the total to [batchBalance].
@@ -243,7 +328,7 @@ aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRh
     }
   }
 
-  // ── fetchRackBalance (Commit Balance-Base) ────────────────────────────
+  // ── fetchRackBalance ──────────────────────────────────────────────────
   //
   // Fetches the Stock Balance with Inventory Dimension for [itemCode]
   // in [resolvedWarehouse], then isolates the row whose rack matches
@@ -333,15 +418,15 @@ aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRh
 
       maxQty.value          = fetchedQty;
       batchBalance.value    = fetchedQty;
+      // Reset rackBalance so the rack must be re-confirmed after a batch
+      // change — maxQty (Commit 4) will stay 0 until both are known.
+      rackBalance.value     = 0.0;
       isBatchValid.value    = true;
       isBatchReadOnly.value = true;
 
       final sb = StringBuffer('Batch Stock: $fetchedQty');
       if (rackStockTooltip.value != null) {
-        sb.write('
-
-Rack Availability:
-${rackStockTooltip.value}');
+        sb.write('\n\nRack Availability:\n${rackStockTooltip.value}');
       }
       batchInfoTooltip.value = sb.toString().trim();
 
@@ -362,6 +447,7 @@ ${rackStockTooltip.value}');
       batchError.value       = 'Invalid Batch';
       maxQty.value           = 0.0;
       batchBalance.value     = 0.0;
+      rackBalance.value      = 0.0;
       batchInfoTooltip.value = null;
       GlobalSnackbar.error(message: 'Batch validation failed');
       log('[ItemSheet] validateBatch error: $e', name: 'ItemSheet');
@@ -382,6 +468,7 @@ ${rackStockTooltip.value}');
     isBatchReadOnly.value = false;
     batchError.value      = null;
     batchBalance.value    = 0.0;
+    rackBalance.value     = 0.0;
     validateSheet();
   }
 
@@ -455,8 +542,7 @@ ${rackStockTooltip.value}');
 
           rackStockMap.assignAll(tempMap);
           rackStockTooltip.value = tooltipLines.isNotEmpty
-              ? tooltipLines.join('
-')
+              ? tooltipLines.join('\n')
               : 'No stock in racks';
         }
       }
