@@ -320,7 +320,7 @@ class DeliveryNoteFormController extends GetxController
       },
     );
 
-    // Rack picker tag — unique per sheet open to avoid tag collisions.
+    // Rack picker — unique tag per DN sheet open.
     const rackPickerTag = 'dn_rack_picker';
 
     isItemSheetOpen.value = true;
@@ -333,10 +333,8 @@ class DeliveryNoteFormController extends GetxController
           // 2. Batch No
           SharedBatchField(c: child, accentColor: Colors.blueGrey),
           // 3. Source Rack
-          // fix: RackPickerSheet uses pickerTag + onSelected, not controller:.
-          // onPickerTap is VoidCallback? — wrap in lambda that registers the
-          // RackPickerController under rackPickerTag, opens the sheet, and
-          // calls child.applyRackScan via onSelected.
+          // fix: RackPickerController.load() requires six named params;
+          // use child accessors to supply them all.
           SharedRackField(
             c:           child,
             accentColor: Colors.blueGrey,
@@ -345,9 +343,13 @@ class DeliveryNoteFormController extends GetxController
                 RackPickerController(),
                 tag: rackPickerTag,
               );
-              await picker.loadRacks(
-                warehouse: child.resolvedWarehouse,
-                itemCode:  child.itemCode.value,
+              await picker.load(
+                itemCode:     child.itemCode.value,
+                batchNo:      child.batchController.text,
+                warehouse:    child.resolvedWarehouse ?? '',
+                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
+                currentRack:  child.rackController.text,
+                fallbackMap:  Map<String, double>.from(child.rackStockMap),
               );
               await Get.bottomSheet<void>(
                 RackPickerSheet(
