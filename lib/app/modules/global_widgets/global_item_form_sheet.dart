@@ -381,11 +381,6 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
 
       // ── Quantity input ─────────────────────────────────────────────────────
-      // widgetTag: itemCode scopes the internal _QtyActionButton ValueKeys
-      // to this specific item (qty_dec_<itemCode> / qty_inc_<itemCode>).
-      // Without this, both keys fall back to 'qty_dec_Quantity', which is
-      // identical across all sheets and causes GetX to find the wrong
-      // QuantityInputController instance on concurrent or rapid rebuilds.
       QuantityInputWidget(
         controller: qtyController,
         onIncrement: onIncrement,
@@ -464,8 +459,10 @@ class GlobalItemFormSheet extends StatelessWidget {
     final topPadding  = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
+    // Drag handle — sits on the same surface as the sheet body so the pill
+    // colour is the only visual element, not a contrasting band.
     final dragHandle = Container(
-      color: colorScheme.surfaceContainerLow,
+      color: colorScheme.surface,
       width: double.infinity,
       padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
       alignment: Alignment.center,
@@ -482,7 +479,9 @@ class GlobalItemFormSheet extends StatelessWidget {
     final scanBar = onScan != null
         ? Container(
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerLow,
+              // One elevation step above surface so the scan bar is visually
+              // distinct from the sheet body without a hard-coded colour.
+              color: colorScheme.surfaceContainer,
               border: Border(
                   top: BorderSide(color: colorScheme.outlineVariant)),
               boxShadow: [
@@ -508,7 +507,9 @@ class GlobalItemFormSheet extends StatelessWidget {
       return Container(
         margin: EdgeInsets.only(top: topPadding + 12),
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
+          // colorScheme.surface = pure white (light) / correct dark surface
+          // (dark). Single source of truth — no call-site override needed.
+          color: colorScheme.surface,
           borderRadius:
               const BorderRadius.vertical(top: Radius.circular(28.0)),
         ),
