@@ -320,6 +320,9 @@ class DeliveryNoteFormController extends GetxController
       },
     );
 
+    // Rack picker tag — unique per sheet open to avoid tag collisions.
+    const rackPickerTag = 'dn_rack_picker';
+
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
       UniversalItemFormSheet(
@@ -330,26 +333,30 @@ class DeliveryNoteFormController extends GetxController
           // 2. Batch No
           SharedBatchField(c: child, accentColor: Colors.blueGrey),
           // 3. Source Rack
-          // fix: onPickerTap is VoidCallback? (no args); wrap applyRackScan
-          // in a lambda that opens RackPickerSheet and calls applyRackScan
-          // with the selected rack ID — matching the SE/PR pattern.
+          // fix: RackPickerSheet uses pickerTag + onSelected, not controller:.
+          // onPickerTap is VoidCallback? — wrap in lambda that registers the
+          // RackPickerController under rackPickerTag, opens the sheet, and
+          // calls child.applyRackScan via onSelected.
           SharedRackField(
             c:           child,
             accentColor: Colors.blueGrey,
             onPickerTap: () async {
-              final picker = Get.put(RackPickerController());
+              final picker = Get.put(
+                RackPickerController(),
+                tag: rackPickerTag,
+              );
               await picker.loadRacks(
                 warehouse: child.resolvedWarehouse,
                 itemCode:  child.itemCode.value,
               );
-              final rackId = await Get.bottomSheet<String>(
-                RackPickerSheet(controller: picker),
+              await Get.bottomSheet<void>(
+                RackPickerSheet(
+                  pickerTag:  rackPickerTag,
+                  onSelected: (rackId) => child.applyRackScan(rackId),
+                ),
                 isScrollControlled: true,
               );
-              Get.delete<RackPickerController>();
-              if (rackId != null && rackId.isNotEmpty) {
-                child.applyRackScan(rackId);
-              }
+              Get.delete<RackPickerController>(tag: rackPickerTag);
             },
           ),
         ],
