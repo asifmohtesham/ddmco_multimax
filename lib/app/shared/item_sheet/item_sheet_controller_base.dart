@@ -26,6 +26,16 @@ enum SaveButtonState { idle, loading, success, error }
 ///   Synchronous disposal is safe because GetX only calls onClose() after
 ///   the owning widget has left the tree.
 ///
+/// Fix TEC-2 (IME-dispose): TEC dispose() calls are now wrapped in a
+///   try/catch.  The primary protection against premature disposal is
+///   registering DeliveryNoteItemFormController (and any sheet controller)
+///   with permanent: true in Get.put() so GetX cannot auto-delete it
+///   during the MediaQuery resize triggered by hiding the keyboard.
+///   This try/catch is defence-in-depth: if onClose() is somehow
+///   invoked twice (e.g. hot-restart race or future refactor), the second
+///   call silently no-ops rather than crashing with a secondary error
+///   that would mask the original stack trace.
+///
 /// Commit Balance-Base:
 ///   [batchBalance]        — Batch-Wise Balance in resolved warehouse.
 ///   [rackBalance]         — Stock Balance with Inventory Dimension (rack row).
@@ -219,18 +229,24 @@ abstract class ItemSheetControllerBase extends GetxController {
   // ── Lifecycle ─────────────────────────────────────────────────────────
   @override
   void onClose() {
-    qtyController.removeListener(validateSheet);
-    qtyController.removeListener(_resetSaveStateOnEdit);
-    batchController.removeListener(validateSheet);
-    batchController.removeListener(_resetSaveStateOnEdit);
-    rackController.removeListener(validateSheet);
-    rackController.removeListener(_resetSaveStateOnEdit);
+    // Remove listeners first — safe to call even if controller is disposed.
+    try { qtyController.removeListener(validateSheet); } catch (_) {}
+    try { qtyController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
+    try { batchController.removeListener(validateSheet); } catch (_) {}
+    try { batchController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
+    try { rackController.removeListener(validateSheet); } catch (_) {}
+    try { rackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
 
-    qtyController.dispose();
-    batchController.dispose();
-    rackController.dispose();
-    rackFocusNode.dispose();
-    sheetScrollController.dispose();
+    // fix(TEC-2): wrap each dispose() in try/catch as defence-in-depth.
+    // Primary protection is permanent: true in Get.put() (see
+    // delivery_note_form_controller._openItemSheet), which prevents GetX
+    // from calling onClose() prematurely during an IME-triggered rebuild.
+    // If onClose() is somehow called a second time, these no-op silently.
+    try { qtyController.dispose(); } catch (_) {}
+    try { batchController.dispose(); } catch (_) {}
+    try { rackController.dispose(); } catch (_) {}
+    try { rackFocusNode.dispose(); } catch (_) {}
+    try { sheetScrollController.dispose(); } catch (_) {}
     _autoSubmitWorker?.dispose();
 
     super.onClose();

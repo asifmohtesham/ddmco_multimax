@@ -300,7 +300,16 @@ class DeliveryNoteFormController extends GetxController
       }
     }
 
-    final child = Get.put(DeliveryNoteItemFormController());
+    // fix(IME-dispose): Register with permanent: true so GetX cannot
+    // auto-delete this controller during the MediaQuery resize that occurs
+    // when the keyboard is hidden while a field has focus.  The explicit
+    // Get.delete<>() call below (after await bottomSheet returns) remains
+    // the sole owner of teardown — it fires only after the sheet has
+    // fully closed and the widget tree no longer references the TECs.
+    final child = Get.put(
+      DeliveryNoteItemFormController(),
+      permanent: true,
+    );
     child.initialise(
       parent:      this,
       code:        itemCode,
@@ -400,7 +409,10 @@ class DeliveryNoteFormController extends GetxController
     );
     isItemSheetOpen.value = false;
     sheetScrollController.dispose();
-    Get.delete<DeliveryNoteItemFormController>();
+    // fix(IME-dispose): sheet is now fully closed — safe to delete.
+    // permanent: true above means GetX will not have disposed this
+    // controller prematurely; we own the lifecycle from here.
+    Get.delete<DeliveryNoteItemFormController>(force: true);
   }
 
   // ── Customer-not-found hard block ────────────────────────────────────────────
@@ -707,7 +719,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Map<String, List<DeliveryNoteItem>> get groupedItems {
-    final map = <String, List<DeliveryNoteItem>>{};
+    final map = <String, List<DeliveryNoteItem>>();
     for (final item in deliveryNote.value?.items ?? []) {
       final serial = item.customInvoiceSerialNumber ?? '0';
       map.putIfAbsent(serial, () => []).add(item);
