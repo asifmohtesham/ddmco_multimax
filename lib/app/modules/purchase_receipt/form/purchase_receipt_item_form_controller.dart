@@ -41,14 +41,19 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - Sheet dismissal is owned exclusively by the parent coordinator
 ///    (_openItemSheet onSubmit lambda), matching the SRP boundary
 ///    established in Phase-1 (commit f2aeb9a).
+///
+/// fix: removed `maxQty.value = 0.0` from initialise() — maxQty is a
+///   computed getter in the base class (Commit 4) and cannot be assigned.
+///   PR does not use a batch-balance cap (it receives stock, not consumes
+///   it), so no replacement is needed.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
-  // ── Step 2.1: typed ApiProvider ────────────────────────────────────────
+  // ── Step 2.1: typed ApiProvider ───────────────────────────────────────
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Parent reference ──────────────────────────────────────────────
+  // ── Parent reference ────────────────────────────────────────────
   late PurchaseReceiptFormController _parent;
 
-  // ── PR-specific state ───────────────────────────────────────────────
+  // ── PR-specific state ──────────────────────────────────────────────
 
   // PO linking
   var poItemId  = ''.obs;
@@ -63,7 +68,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   // Warehouse derived from rack (overrides setWarehouse when present)
   var itemWarehouse = RxnString();
 
-  // ── ItemSheetControllerBase contract ───────────────────────────────────────
+  // ── ItemSheetControllerBase contract ──────────────────────────────────
 
   @override
   String? get resolvedWarehouse =>
@@ -75,7 +80,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => true;   // Target rack is mandatory for PR
 
-  // ── ItemSheetControllerBase abstract stubs ─────────────────────────────
+  // ── ItemSheetControllerBase abstract stubs ────────────────────────────
 
   @override
   String? get qtyInfoText {
@@ -98,7 +103,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── Initialisation ─────────────────────────────────────────────────────
+  // ── Initialisation ──────────────────────────────────────────────────
 
   void initialise({
     required PurchaseReceiptFormController parent,
@@ -127,7 +132,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isAddMode = editingItem == null;
 
     // Reset base state
-    maxQty.value           = 0.0;
+    // fix: maxQty is a computed getter — no assignment needed.
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
@@ -204,7 +209,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         name: 'PR:ItemSheet');
   }
 
-  // ── validateSheet ─────────────────────────────────────────────────────────
+  // ── validateSheet ────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
