@@ -1,44 +1,4 @@
-import 'dart:developer';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-
-/// Drives the visual state of the animated Save button in the item sheet.
-enum SaveButtonState { idle, loading, success, error }
-
-/// Abstract base controller for every DocType item-sheet.
-///
-/// C-1 : [qtyInfoTooltip] — default-null getter.
-/// C-5 : [liveRemaining] — concrete RxDouble (default 0.0).
-///   Subclasses that compute a ceiling (e.g. StockEntryItemFormController)
-///   can write to this field directly.  SharedSerialField subscribes to it
-///   without any duck-type or try/catch, eliminating the zero-subscription
-///   Obx crash.
-///
-/// Fix TEC-1 (stability): TECs are disposed synchronously in [onClose].
-///   The previous addPostFrameCallback deferral opened a one-frame race
-///   window: keyboard show → LayoutBuilder rebuild → _AnimatedState
-///   re-subscribed to an already-disposed TEC, producing the
-///   "TextEditingController used after being disposed" assertion.
-///   Synchronous disposal is safe because GetX only calls onClose() after
-///   the owning widget has left the tree.
-abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ──────────────────────────────────────────────────────
-  final ApiProvider _api = Get.find<ApiProvider>();
-
-  // ── Form infrastructure ───────────────────────────────────────────────
-  final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
-  final ScrollController     sheetScrollController = ScrollController();
-
-  final TextEditingController qtyController   = TextEditingController();
-  final TextEditingController batchController = TextEditingController();
-  final TextEditingController rackController  = TextEditingController();
-  final FocusNode rackFocusNode = FocusNode();
-
-  // ── Core item identity ────────────────────────────────────────────────
+aW1wb3J0ICdkYXJ0OmRldmVsb3Blcic7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyL21hdGVyaWFsLmRhcnQnOwppbXBvcnQgJ3BhY2thZ2U6Z2V0L2dldC5kYXJ0JzsKaW1wb3J0ICdwYWNrYWdlOmludGwvaW50bC5kYXJ0JzsKCmltcG9ydCAncGFja2FnZTptdWx0aW1heC9hcHAvZGF0YS9wcm92aWRlcnMvYXBpX3Byb3ZpZGVyLmRhcnQnOwppbXBvcnQgJ3BhY2thZ2U6bXVsdGltYXgvYXBwL21vZHVsZXMvZ2xvYmFsX3dpZGdldHMvZ2xvYmFsX3NuYWNrYmFyLmRhcnQnOwoKLy8vIERyaXZlcyB0aGUgdmlzdWFsIHN0YXRlIG9mIHRoZSBhbmltYXRlZCBTYXZlIGJ1dHRvbiBpbiB0aGUgaXRlbSBzaGVldC4KZW51bSBTYXZlQnV0dG9uU3RhdGUgeyBpZGxlLCBsb2FkaW5nLCBzdWNjZXNzLCBlcnJvciB9CgovLy8gQWJzdHJhY3QgYmFzZSBjb250cm9sbGVyIGZvciBldmVyeSBEb2NUeXBlIGl0ZW0tc2hlZXQuCi8vLwovLy8gQy0xIDogW3F0eUluZm9Ub29sdGlwXSDigJQgZGVmYXVsdC1udWxsIGdldHRlci4KLy8vIEMtNSA6IFtsaXZlUmVtYWluaW5nXSDigJQgY29uY3JldGUgUnhEb3VibGUgKGRlZmF1bHQgMC4wKS4KLy8vICAgU3ViY2xhc3NlcyB0aGF0IGNvbXB1dGUgYSBjZWlsaW5nIChlLmcuIFN0b2NrRW50cnlJdGVtRm9ybUNvbnRyb2xsZXIpCi8vLyAgIGNhbiB3cml0ZSB0byB0aGlzIGZpZWxkIGRpcmVjdGx5LiAgU2hhcmVkU2VyaWFsRmllbGQgc3Vic2NyaWJlcyB0byBpdAovLy8gICB3aXRob3V0IGFueSBkdWNrLXR5cGUgb3IgdHJ5L2NhdGNoLCBlbGltaW5hdGluZyB0aGUgemVyby1zdWJzY3JpcHRpb24KLy8vICAgT2J4IGNyYXNoLgovLy8KLy8vIEZpeCBURUMtMSAoc3RhYmlsaXR5KTogVEVDcyBhcmUgZGlzcG9zZWQgc3luY2hyb25vdXNseSBpbiBbb25DbG9zZV0uCi8vLyAgIFRoZSBwcmV2aW91cyBhZGRQb3N0RnJhbWVDYWxsYmFjayBkZWZlcnJhbCBvcGVuZWQgYSBvbmUtZnJhbWUgcmFjZQovLy8gICB3aW5kb3c6IGtleWJvYXJkIHNob3cg4oSSIExheW91dEJ1aWxkZXIgcmVidWlsZCDihJIgX0FuaW1hdGVkU3RhdGUKLy8vICAgcmUtc3Vic2NyaWJlZCB0byBhbiBhbHJlYWR5LWRpc3Bvc2VkIFRFQywgcHJvZHVjaW5nIHRoZQovLy8gICAiVGV4dEVkaXRpbmdDb250cm9sbGVyIHVzZWQgYWZ0ZXIgYmVpbmcgZGlzcG9zZWQiIGFzc2VydGlvbi4KLy8vICAgU3luY2hyb25vdXMgZGlzcG9zYWwgaXMgc2FmZSBiZWNhdXNlIEdldFggb25seSBjYWxscyBvbkNsb3NlKCkgYWZ0ZXIKLy8vICAgdGhlIG93bmluZyB3aWRnZXQgaGFzIGxlZnQgdGhlIHRyZWUuCi8vLwovLy8gQ29tbWl0IEJhbGFuY2UtQmFzZToKLy8vICAgW2JhdGNoQmFsYW5jZV0gICAgICAgIOKUlCBCYXRjaC1XaXNlIEJhbGFuY2UgaW4gcmVzb2x2ZWQgd2FyZWhvdXNlLgovLy8gICBbcmFja0JhbGFuY2VdICAgICAgICDilJQgU3RvY2sgQmFsYW5jZSB3aXRoIEludmVudG9yeSBEaW1lbnNpb24gKHJhY2sgcm93KS4KLy8vICAgW2ZldGNoQmF0Y2hCYWxhbmNlXSDigJQgcHJvbW90ZWQgZnJvbSBTRSdzIF91cGRhdGVCYXRjaEJhbGFuY2UoKS4KLy8vICAgW2ZldGNoUmFja0JhbGFuY2VdICDigJQgZXh0cmFjdGVkIGZyb20gU0UncyBfdXBkYXRlQXZhaWxhYmxlU3RvY2soKS4KYWJzdHJhY3QgY2xhc3MgSXRlbVNoZWV0Q29udHJvbGxlckJhc2UgZXh0ZW5kcyBHZXRDb250cm9sbGVyIHsKICAvLyDilIwgRGVwZW5kZW5jaWVzIOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkOKUkAogIGZpbmFsIEFwaVByb3ZpZGVyIF9hcGkgPSBHZXQuZmluZDxBcGlQcm92aWRlcj4oKTsKCiAgLy8g4pSMIEZvcm0gaW5mcmFzdHJ1Y3R1cmUg4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQCiAgZmluYWwgR2xvYmFsS2V5PEZvcm1TdGF0ZT4gZm9ybUtleSAgICAgICAgICAgICAgID0gR2xvYmFsS2V5PEZvcm1TdGF0ZT4oKTsKICBmaW5hbCBTY3JvbGxDb250cm9sbGVyICAgICBzaGVldFNjcm9sbENvbnRyb2xsZXIgPSBTY3JvbGxDb250cm9sbGVyKCk7CgogIGZpbmFsIFRleHRFZGl0aW5nQ29udHJvbGxlciBxdHlDb250cm9sbGVyICAgPSBUZXh0RWRpdGluZ0NvbnRyb2xsZXIoKTsKICBmaW5hbCBUZXh0RWRpdGluZ0NvbnRyb2xsZXIgYmF0Y2hDb250cm9sbGVyID0gVGV4dEVkaXRpbmdDb250cm9sbGVyKCk7CiAgZmluYWwgVGV4dEVkaXRpbmdDb250cm9sbGVyIHJhY2tDb250cm9sbGVyICA9IFRleHRFZGl0aW5nQ29udHJvbGxlcigpOwogIGZpbmFsIEZvY3VzTm9kZSByYWNrRm9jdXNOb2RlID0gRm9jdXNOb2RlKCk7CgogIC8vIOKUjCBDb3JlIGl0ZW0gaWRlbnRpdHkg4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ4pSQ
   var itemCode = ''.obs;
   var itemName = ''.obs;
 
@@ -56,12 +16,22 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackStockTooltip  = RxnString();
   var rackStockMap      = <String, double>{}.obs;
 
-  // ── Ceiling for POS / serial-cap display (C-5) ───────────────────────
+  // ── Balance state (universal — Commit Balance-Base) ───────────────────
   //
-  // Concrete RxDouble so any Obx in the widget tree can subscribe to it
-  // without duck-typing.  Default 0.0 (no ceiling known).
-  // StockEntryItemFormController writes to this whenever its ceiling
-  // recomputes; all other DocType controllers leave it at 0.0.
+  // batchBalance : Batch-Wise Balance for the selected batch in resolvedWarehouse.
+  //                Populated by fetchBatchBalance().
+  // rackBalance  : Stock Balance with Inventory Dimension isolated to the
+  //                selected rack row. Populated by fetchRackBalance(rack).
+  //
+  // These fields are declared here so every DocType item-sheet
+  // (Stock Entry, Delivery Note, etc.) shares the same balance model
+  // without duplicating fetcher logic in each subclass.
+  var batchBalance          = 0.0.obs;
+  var rackBalance           = 0.0.obs;
+  var isLoadingBatchBalance = false.obs;
+  var isLoadingRackBalance  = false.obs;
+
+  // ── Ceiling for POS / serial-cap display (C-5) ───────────────────────
   var liveRemaining = 0.0.obs;
 
   // ── S1: Batch read-only toggle ────────────────────────────────────────
@@ -98,10 +68,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   RxBool isScanning = false.obs;
   TextEditingController? sheetScanController;
 
-  // ── Qty label (abstract — DocType provides the string) ────────────────
-  //
-  // qtyInfoText   : short badge label, e.g. 'Max: 3'.
-  // qtyInfoTooltip: breakdown shown on badge tap; null → no tap target.
+  // ── Qty label ─────────────────────────────────────────────────────────
   String? get qtyInfoText;
   String? get qtyInfoTooltip => null;
 
@@ -141,15 +108,6 @@ abstract class ItemSheetControllerBase extends GetxController {
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
-  //
-  // Fix TEC-1: listeners are removed first, then TECs are disposed
-  // synchronously — no addPostFrameCallback deferral.
-  //
-  // Rationale: GetX invokes onClose() only after the widget that owns this
-  // controller has been unmounted.  At that point no mounted widget holds a
-  // reference to any of these TECs, so immediate disposal is safe and
-  // eliminates the one-frame race that caused _AnimatedState to
-  // re-subscribe to a disposed TEC when the keyboard appeared.
   @override
   void onClose() {
     qtyController.removeListener(validateSheet);
@@ -231,6 +189,108 @@ abstract class ItemSheetControllerBase extends GetxController {
     validateSheet();
   }
 
+  // ── Formatting helper (Commit Balance-Base) ───────────────────────────
+  String _fmtQty(double v) =>
+      v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+
+  // ── fetchBatchBalance (Commit Balance-Base) ───────────────────────────
+  //
+  // Fetches the Batch-Wise Balance for [batchController.text] in
+  // [resolvedWarehouse] and writes the total to [batchBalance].
+  //
+  // Promoted from SE's _updateBatchBalance() so every DocType item-sheet
+  // (Stock Entry, Delivery Note, etc.) can use the same logic without
+  // duplicating it in each subclass.
+  Future<void> fetchBatchBalance() async {
+    final batch = batchController.text.trim();
+    if (batch.isEmpty || itemCode.value.isEmpty) {
+      batchBalance.value = 0.0;
+      return;
+    }
+    final wh = resolvedWarehouse;
+    if (wh == null || wh.isEmpty) {
+      batchBalance.value = 0.0;
+      return;
+    }
+
+    isLoadingBatchBalance.value = true;
+    try {
+      final res = await _api.getBatchWiseBalance(
+        itemCode.value,
+        batch,
+        warehouse: wh,
+      );
+      if (res.statusCode == 200 &&
+          res.data['message']?['result'] != null) {
+        double total = 0.0;
+        for (final row in res.data['message']['result'] as List) {
+          if (row is! Map) continue;
+          final val = row['balance_qty'] ??
+              row['bal_qty'] ??
+              row['qty_after_transaction'] ??
+              row['qty'];
+          total += (val as num?)?.toDouble() ?? 0.0;
+        }
+        batchBalance.value = total;
+      } else {
+        batchBalance.value = 0.0;
+      }
+    } catch (e) {
+      batchBalance.value = 0.0;
+      log('[ItemSheet] fetchBatchBalance error: $e', name: 'ItemSheet');
+    } finally {
+      isLoadingBatchBalance.value = false;
+    }
+  }
+
+  // ── fetchRackBalance (Commit Balance-Base) ────────────────────────────
+  //
+  // Fetches the Stock Balance with Inventory Dimension for [itemCode]
+  // in [resolvedWarehouse], then isolates the row whose rack matches
+  // [rack] and writes that qty to [rackBalance].
+  //
+  // Extracted from SE's _updateAvailableStock() rack-row logic so that
+  // all DocType item-sheets share a single, tested implementation.
+  Future<void> fetchRackBalance(String rack) async {
+    if (rack.isEmpty || itemCode.value.isEmpty) {
+      rackBalance.value = 0.0;
+      return;
+    }
+    final wh = resolvedWarehouse;
+    if (wh == null || wh.isEmpty) {
+      rackBalance.value = 0.0;
+      return;
+    }
+
+    isLoadingRackBalance.value = true;
+    final batch = batchController.text.trim();
+    try {
+      final res = await _api.getStockBalance(
+        itemCode:  itemCode.value,
+        warehouse: wh,
+        batchNo:   batch.isNotEmpty ? batch : null,
+      );
+      if (res.statusCode == 200 &&
+          res.data['message']?['result'] != null) {
+        double rackBal = 0.0;
+        for (final row in res.data['message']['result'] as List) {
+          if (row is! Map) continue;
+          if (row['rack'] == rack) {
+            rackBal += (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+        rackBalance.value = rackBal;
+      } else {
+        rackBalance.value = 0.0;
+      }
+    } catch (e) {
+      rackBalance.value = 0.0;
+      log('[ItemSheet] fetchRackBalance error: $e', name: 'ItemSheet');
+    } finally {
+      isLoadingRackBalance.value = false;
+    }
+  }
+
   // ── P2-A: Batch validation ────────────────────────────────────────────
   Future<void> validateBatch(String batch) async {
     if (batch.isEmpty) return;
@@ -272,12 +332,16 @@ abstract class ItemSheetControllerBase extends GetxController {
       }
 
       maxQty.value          = fetchedQty;
+      batchBalance.value    = fetchedQty;
       isBatchValid.value    = true;
       isBatchReadOnly.value = true;
 
       final sb = StringBuffer('Batch Stock: $fetchedQty');
       if (rackStockTooltip.value != null) {
-        sb.write('\n\nRack Availability:\n${rackStockTooltip.value}');
+        sb.write('
+
+Rack Availability:
+${rackStockTooltip.value}');
       }
       batchInfoTooltip.value = sb.toString().trim();
 
@@ -297,6 +361,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       isBatchReadOnly.value  = false;
       batchError.value       = 'Invalid Batch';
       maxQty.value           = 0.0;
+      batchBalance.value     = 0.0;
       batchInfoTooltip.value = null;
       GlobalSnackbar.error(message: 'Batch validation failed');
       log('[ItemSheet] validateBatch error: $e', name: 'ItemSheet');
@@ -316,6 +381,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     isBatchValid.value    = false;
     isBatchReadOnly.value = false;
     batchError.value      = null;
+    batchBalance.value    = 0.0;
     validateSheet();
   }
 
@@ -323,6 +389,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
       isRackValid.value = false;
+      rackBalance.value = 0.0;
       validateSheet();
       return;
     }
@@ -334,12 +401,15 @@ abstract class ItemSheetControllerBase extends GetxController {
         isRackValid.value = true;
         validateSheet();
         await fetchAllRackStocks();
+        await fetchRackBalance(rack);
       } else {
         isRackValid.value = false;
+        rackBalance.value = 0.0;
         GlobalSnackbar.error(message: 'Rack not found');
       }
     } catch (e) {
       isRackValid.value = false;
+      rackBalance.value = 0.0;
       GlobalSnackbar.error(message: 'Rack validation failed: $e');
     } finally {
       isValidatingRack.value = false;
@@ -350,6 +420,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   void resetRack() {
     isRackValid.value = false;
     rackError.value   = null;
+    rackBalance.value = 0.0;
     validateSheet();
   }
 
@@ -384,7 +455,8 @@ abstract class ItemSheetControllerBase extends GetxController {
 
           rackStockMap.assignAll(tempMap);
           rackStockTooltip.value = tooltipLines.isNotEmpty
-              ? tooltipLines.join('\n')
+              ? tooltipLines.join('
+')
               : 'No stock in racks';
         }
       }
