@@ -324,10 +324,17 @@ class DeliveryNoteFormController extends GetxController
     // Rack picker — unique tag per DN sheet open.
     const rackPickerTag = 'dn_rack_picker';
 
+    // fix(overflow): supply a ScrollController so GlobalItemFormSheet routes
+    // into its ListView-backed scrollable branch.  Without this the sheet used
+    // a plain Column that overflowed when the keyboard was open or the screen
+    // was small (3 custom fields + Qty + Save + Delete exceed viewport height).
+    final sheetScrollController = ScrollController();
+
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
       UniversalItemFormSheet(
-        controller: child,
+        controller:       child,
+        scrollController: sheetScrollController,
         customFields: [
           // 1. Invoice Serial Number — POS Upload idx selector
           SharedSerialField(controller: child),
@@ -392,6 +399,7 @@ class DeliveryNoteFormController extends GetxController
       isDismissible: false,
     );
     isItemSheetOpen.value = false;
+    sheetScrollController.dispose();
     Get.delete<DeliveryNoteItemFormController>();
   }
 
