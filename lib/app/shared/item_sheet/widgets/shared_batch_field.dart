@@ -18,11 +18,9 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// explicit **Edit** button. [BalanceChip] shown below the field.
 ///
 /// ## Balance source
-/// By default the [BalanceChip] sources `c.maxQty.value` (set by
-/// `validateBatch` in the base controller).
-///
-/// Pass [balanceOverride] to supply an alternative balance getter -- for
-/// example Stock Entry, which maintains a separate per-warehouse
+/// By default the [BalanceChip] sources `c.maxQty` (computed getter on base;
+/// see Commit 4). Pass [balanceOverride] to supply an alternative balance
+/// getter -- for example Stock Entry, which maintains a separate per-warehouse
 /// `batchBalance` distinct from the base `maxQty` field:
 ///
 /// ```dart
@@ -38,12 +36,14 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// P3-A : helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
 /// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
-/// C    : Added [showBrowseBatches] flag — renders a ‘Browse Batches →’ text
+/// C    : Added [showBrowseBatches] flag — renders a 'Browse Batches →' text
 ///        button that opens [BatchPickerSheet] when the batch is not yet
 ///        validated.  Passing warehouse + accentColor is optional; the field
 ///        falls back to controller values automatically.
 /// P3-2 : Added [onPickerTap] — when provided, a list-picker icon button is
 ///        injected into the suffixIcon Row in the idle state for both modes.
+/// fix  : Removed stale `.value` calls on `c.maxQty` — maxQty is a plain
+///        `double` computed getter since Commit 4, not an RxDouble.
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -197,7 +197,8 @@ class _SimpleField extends StatelessWidget {
       final chipColor = isWarning ? Colors.orange : w.accentColor;
 
       // P2-1: use balanceOverride when provided, else fall back to maxQty.
-      final chipBalance = w.balanceOverride?.call() ?? c.maxQty.value;
+      // fix: maxQty is a plain double getter (not RxDouble) since Commit 4.
+      final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +324,8 @@ class _EditModeField extends StatelessWidget {
       final chipColor = isWarning ? Colors.orange : w.accentColor;
 
       // P2-1: use balanceOverride when provided, else fall back to maxQty.
-      final chipBalance = w.balanceOverride?.call() ?? c.maxQty.value;
+      // fix: maxQty is a plain double getter (not RxDouble) since Commit 4.
+      final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
