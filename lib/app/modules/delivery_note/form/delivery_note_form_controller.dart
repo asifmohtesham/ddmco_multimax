@@ -285,10 +285,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Item sheet orchestration ───────────────────────────────────────────────
-  //
-  // fix: removed `initialMaxQty` parameter — DeliveryNoteItemFormController
-  // .initialise() no longer accepts it (maxQty is a computed getter in the
-  // base class since Commit 4 and cannot be assigned).
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -327,8 +323,18 @@ class DeliveryNoteFormController extends GetxController
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
       UniversalItemFormSheet(
-        controller:   child,
-        customFields: const [],
+        controller: child,
+        customFields: [
+          // 1. Invoice Serial Number — POS Upload idx selector
+          SharedSerialField(controller: child),
+          // 2. Batch No
+          SharedBatchField(controller: child),
+          // 3. Source Rack
+          SharedRackField(
+            controller: child,
+            onRackScan: child.applyRackScan,
+          ),
+        ],
         onSubmit: () async {
           final ok = await child.submitWithFeedback();
           if (ok) Get.back();
@@ -589,8 +595,6 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'edit') saveDeliveryNote();
   }
 
-  // fix: removed stale `initialMaxQty` local variable and parameter —
-  // _openItemSheet no longer accepts it.
   Future<void> editItem(DeliveryNoteItem item) async {
     if (isLoadingItemEdit.value) return;
     isLoadingItemEdit.value  = true;
