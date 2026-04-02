@@ -26,6 +26,7 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
@@ -331,13 +332,32 @@ class DeliveryNoteFormController extends GetxController
           // 1. Invoice Serial Number — POS Upload idx selector
           SharedSerialField(controller: child),
           // 2. Batch No
-          SharedBatchField(c: child, accentColor: Colors.blueGrey),
+          // fix(Q2): added editMode:true + onPickerTap to restore the batch
+          // picker icon on the DN item sheet.
+          SharedBatchField(
+            c:           child,
+            accentColor: Colors.blueGrey,
+            editMode:    true,
+            onPickerTap: () async {
+              final selected = await showBatchPickerSheet(
+                Get.context!,
+                itemCode:    child.itemCode.value,
+                warehouse:   child.resolvedWarehouse,
+                accentColor: Colors.blueGrey,
+              );
+              if (selected != null && selected.isNotEmpty) {
+                child.batchController.text = selected;
+                await child.validateBatch(selected);
+              }
+            },
+          ),
           // 3. Source Rack
-          // fix: RackPickerController.load() requires six named params;
-          // use child accessors to supply them all.
+          // fix(Q1): added editMode:true so the widget routes to _EditModeRack
+          // which honours onPickerTap (absent in _SimpleRack).
           SharedRackField(
             c:           child,
             accentColor: Colors.blueGrey,
+            editMode:    true,
             onPickerTap: () async {
               final picker = Get.put(
                 RackPickerController(),
