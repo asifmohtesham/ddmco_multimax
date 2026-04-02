@@ -32,16 +32,29 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 /// DN-C:
 ///   • [effectiveMaxQty] — ceiling chain:
 ///       1. POS serial remaining
-///       2. Batch balance (maxQty)
-///       3. Rack balance (rackBalance)
+///       2. Batch balance (batchBalance)
+///       3. Rack balance  (rackBalance)
 ///     Returns 999999.0 sentinel when no ceiling active.
 ///
-/// DN-D (this commit):
+/// DN-D:
 ///   • [liveRemaining]    — RxDouble on base; written in validateSheet();
 ///                          drives SharedSerialField chip rebuild.
 ///   • [posSerialCapText] — chip label 'Invoice #N — Remaining: X / Y pcs'.
 ///   • [qtyInfoText]      — 'Max: N' / 'Max: -' via effectiveMaxQty.
 ///   • [qtyInfoTooltip]   — 'Serial: X  ·  Batch: Y  ·  Rack: Z' breakdown.
+///
+/// Commit 7 (this commit):
+///   • Removed `maxQty.value = initialMaxQty` from [initialise] — maxQty is
+///     a computed getter in the base class (Commit 4) and cannot be assigned.
+///   • [effectiveMaxQty] step 2 now reads [batchBalance].value instead of
+///     the defunct maxQty.value RxDouble.
+///   • [qtyInfoTooltip] batch line reads [batchBalance].value.
+///   • [validateBatch] override calls base [fetchBatchBalance] +
+///     [fetchRackBalance] after a successful batch confirmation, mirroring
+///     the SE controller’s _updateBatchBalance flow.
+///   • [validateSheet] gains the Commit-6 zero-stock guard:
+///     `effMax == 0.0 && isBatchValid` → immediately invalid.
+///   • Explicit [batchBalance] + [rackBalance] resets added to [initialise].
 ///
 /// Sheet-close responsibility:
 ///   • submit() does NOT call Get.back().
@@ -53,14 +66,10 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   sheet closes  →  Get.delete<DeliveryNoteItemFormController>()
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ──────────────────────────────────────────────────────
+  // ── Parent reference ────────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
-  // ── DN-B: rack balance (mirrors SE rackBalance) ───────────────────────────
-  var rackBalance = 0.0.obs;
-
-  // ── ItemSheetControllerBase contract ─────────────────────────────────────
-
+  // ── ItemSheetControllerBase contract ────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
@@ -74,8 +83,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
-  // ── DN-C: effectiveMaxQty ceiling chain ───────────────────────────────────
-
+  // ── DN-C: effectiveMaxQty ceiling chain ─────────────────────────────────
+  //
+  // Commit 7: step 2 reads batchBalance.value (base field populated by
+  // fetchBatchBalance) instead of the defunct maxQty.value RxDouble.
   double get effectiveMaxQty {
     double limit = 999999.0;
 
@@ -92,8 +103,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       if (rem < limit) limit = rem;
     }
 
-    // 2. Batch balance
-    if (maxQty.value > 0 && maxQty.value < limit) limit = maxQty.value;
+    // 2. Batch balance (Commit 7: was maxQty.value)
+    if (batchBalance.value > 0 && batchBalance.value < limit)
+      limit = batchBalance.value;
 
     // 3. Rack balance
     if (isRackValid.value && rackBalance.value > 0 && rackBalance.value < limit)
@@ -107,7 +119,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // Consumed by SharedSerialField via duck-typed
   // (controller as dynamic).posSerialCapText — same mechanism as SE.
   // Returns null when no serial is active → chip hidden.
-
   String? get posSerialCapText {
     final serial = selectedSerial.value;
     if (serial == null || serial == '0' || serial.isEmpty) return null;
@@ -125,11 +136,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return 'Invoice #$serialNo \u2014 Remaining: ${fmt(remaining)} / ${fmt(cap)} pcs';
   }
 
-  // ── DN-D: qtyInfoText — 'Max: N' / 'Max: -' (mirrors SE Commit C-2) ──────
+  // ── DN-D: qtyInfoText — 'Max: N' / 'Max: -' (mirrors SE Commit C-2) ───────
   //
   // Always returns a non-null string so the Qty badge is always present.
   // 'Max: -' signals no ceiling yet computed.
-
   @override
   String? get qtyInfoText {
     final eff = effectiveMaxQty;
@@ -142,7 +152,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   //
   // Builds a ·-separated list of every active ceiling with its value.
   // Returns null when no ceiling is active → widget hides tap target.
-
+  //
+  // Commit 7: batch line reads batchBalance.value instead of maxQty.value.
   @override
   String? get qtyInfoTooltip {
     final parts = <String>[];
@@ -163,9 +174,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       parts.add('Serial: $remStr');
     }
 
-    // Batch balance
-    if (maxQty.value > 0) {
-      final b = maxQty.value;
+    // Batch balance (Commit 7: was maxQty.value)
+    if (batchBalance.value > 0) {
+      final b = batchBalance.value;
       parts.add('Batch: ${b % 1 == 0 ? b.toInt() : b.toStringAsFixed(2)}');
     }
 
@@ -179,8 +190,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return parts.join('  \u00b7  ');
   }
 
-  // ── Step-2: deleteCurrentItem ───────────────────────────────────────────────
-
+  // ── deleteCurrentItem ─────────────────────────────────────────────────────────
   @override
   Future<void> deleteCurrentItem() async {
     final name = editingItemName.value;
@@ -190,8 +200,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── PosSerialMixin contract ──────────────────────────────────────────────────
-
+  // ── PosSerialMixin contract ────────────────────────────────────────────────
   @override
   List<String> get availableSerialNos =>
       _parent.posUpload.value?.items
@@ -199,14 +208,17 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
           .toList() ??
       [];
 
-  // ── Initialisation ─────────────────────────────────────────────────────────────
-
+  // ── Initialisation ───────────────────────────────────────────────────────
+  //
+  // Commit 7: removed `maxQty.value = initialMaxQty` — maxQty is a computed
+  // getter in the base class and cannot be assigned. initialMaxQty parameter
+  // also removed from the signature as it is no longer needed.
+  // Explicit batchBalance + rackBalance resets added for clarity.
   void initialise({
     required DeliveryNoteFormController parent,
     required String code,
     required String name,
     String? batchNo,
-    double initialMaxQty = 0.0,
     DeliveryNoteItem? editingItem,
     String scannedEan8 = '',
   }) {
@@ -217,16 +229,20 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isScanning          = _parent.isScanning;
     sheetScanController = _parent.barcodeController;
 
-    itemCode.value    = code;
-    itemName.value    = name;
-    maxQty.value      = initialMaxQty;
-    rackBalance.value = 0.0;   // DN-B
-    liveRemaining.value = 0.0; // DN-D
+    itemCode.value      = code;
+    itemName.value      = name;
+    // Commit 7: maxQty is a computed getter — no assignment needed.
+    batchBalance.value  = 0.0;
+    rackBalance.value   = 0.0;
+    liveRemaining.value = 0.0;
     rackStockMap.clear();
     rackStockTooltip.value = null;
     rackError.value        = null;
     batchError.value       = null;
     batchInfoTooltip.value = null;
+    isBatchValid.value     = false;
+    isRackValid.value      = false;
+    isBatchReadOnly.value  = false;
 
     if (editingItem != null) {
       _loadExistingItem(editingItem);
@@ -242,6 +258,25 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     captureSnapshot();
     captureSerialSnapshot();
+
+    if (editingItem != null) {
+      // Pre-fetch balances for editing so the badge shows correct values.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await fetchBatchBalance(
+          itemCode:  itemCode.value,
+          batchNo:   batchController.text,
+          warehouse: resolvedWarehouse,
+        );
+        if (isRackValid.value) {
+          await fetchRackBalance(
+            itemCode:  itemCode.value,
+            batchNo:   batchController.text,
+            rack:      rackController.text,
+            warehouse: resolvedWarehouse,
+          );
+        }
+      });
+    }
 
     validateSheet();
     fetchAllRackStocks();
@@ -299,22 +334,108 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         name: 'DN:ItemSheet');
   }
 
-  // ── S7: applyRackScan ────────────────────────────────────────────────────────
-
+  // ── applyRackScan ──────────────────────────────────────────────────────────
   void applyRackScan(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
   }
 
-  // ── S7: resetRack override ────────────────────────────────────────────────────
-
+  // ── resetRack override ──────────────────────────────────────────────────────
   @override
   void resetRack() {
     super.resetRack();
   }
 
-  // ── DN-B: _updateRackBalance ───────────────────────────────────────────────────
+  // ── validateBatch (DN-specific override) ─────────────────────────────────
+  //
+  // Commit 7: after a successful batch confirmation, calls base
+  // fetchBatchBalance() to populate batchBalance so effectiveMaxQty and
+  // the qty badge reflect real stock immediately — mirroring SE’s
+  // _updateBatchBalance flow.
+  @override
+  Future<void> validateBatch(String batch) async {
+    batchError.value = null;
+    if (batch.isEmpty) return;
 
+    if (batch.contains('-')) {
+      final parts = batch.split('-');
+      if (parts.length >= 2 && parts[0] == parts[1]) {
+        isBatchValid.value    = false;
+        isBatchReadOnly.value = false;
+        batchError.value      = 'Invalid Batch: Batch ID cannot match EAN';
+        validateSheet();
+        return;
+      }
+    }
+
+    isValidatingBatch.value = true;
+    try {
+      final response = await apiProvider.getDocumentList(
+        'Batch',
+        filters: {'item': itemCode.value, 'name': batch},
+        fields: ['name', 'custom_packaging_qty'],
+      );
+      if (response.statusCode == 200 &&
+          response.data['data'] != null &&
+          (response.data['data'] as List).isNotEmpty) {
+        final batchData = response.data['data'][0];
+        isBatchValid.value    = true;
+        isBatchReadOnly.value = true;
+
+        final double pkgQty =
+            (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
+        if (pkgQty > 0) {
+          qtyController.text = pkgQty % 1 == 0
+              ? pkgQty.toInt().toString()
+              : pkgQty.toString();
+        }
+
+        // Commit 7: fetch real batch balance so effectiveMaxQty is accurate.
+        await fetchBatchBalance(
+          itemCode:  itemCode.value,
+          batchNo:   batch,
+          warehouse: resolvedWarehouse,
+        );
+
+        // Refresh rack balance if a rack is already confirmed.
+        if (isRackValid.value && rackController.text.isNotEmpty) {
+          await fetchRackBalance(
+            itemCode:  itemCode.value,
+            batchNo:   batch,
+            rack:      rackController.text,
+            warehouse: resolvedWarehouse,
+          );
+        }
+
+        unawaited(fetchAllRackStocks());
+
+        final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
+        if (batchBalance.value > 0 && enteredQty > batchBalance.value) {
+          batchError.value =
+              'Qty ($enteredQty) exceeds Batch balance '
+              '(${batchBalance.value.toStringAsFixed(0)}) in warehouse';
+        }
+      } else {
+        isBatchValid.value    = false;
+        isBatchReadOnly.value = false;
+        batchBalance.value    = 0.0;
+        batchError.value      = 'Batch not found for this item';
+      }
+    } catch (e) {
+      isBatchValid.value    = false;
+      isBatchReadOnly.value = false;
+      batchBalance.value    = 0.0;
+      log('[DN:ItemSheet] validateBatch error: $e', name: 'DN:ItemSheet');
+    } finally {
+      isValidatingBatch.value = false;
+      validateSheet();
+    }
+  }
+
+  // ── DN-B: _updateRackBalance ────────────────────────────────────────────────
+  //
+  // Derives rackBalance from the already-fetched rackStockMap (no extra
+  // network call). Called at the top of every validateSheet().
   void _updateRackBalance() {
     final rack = rackController.text.trim();
     if (rack.isEmpty || !isRackValid.value) {
@@ -324,8 +445,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     rackBalance.value = rackStockMap[rack] ?? 0.0;
   }
 
-  // ── validateSheet ─────────────────────────────────────────────────────────────
-
+  // ── validateSheet ──────────────────────────────────────────────────────────
+  //
+  // Commit 7: added Commit-6 zero-stock guard — when batch is confirmed
+  // valid but effectiveMaxQty resolves to 0.0, no qty is acceptable.
   @override
   void validateSheet() {
     _updateRackBalance(); // DN-B
@@ -333,9 +456,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     bool valid = true;
 
     final qty    = double.tryParse(qtyController.text) ?? 0;
-    final effMax = effectiveMaxQty; // DN-C
+    final effMax = effectiveMaxQty;
     if (qty <= 0) valid = false;
-    if (effMax < 999999.0 && qty > effMax) valid = false;
+    if (effMax == 0.0 && isBatchValid.value) {
+      valid = false;
+    } else if (effMax < 999999.0 && qty > effMax) {
+      valid = false;
+    }
 
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
 
@@ -362,8 +489,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = valid;
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────────
-
+  // ── submit ─────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty    = double.tryParse(qtyController.text) ?? 0;
@@ -378,8 +504,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────
-
+  // ── Lifecycle ────────────────────────────────────────────────────────────
   @override
   void onClose() {
     disposeAutoFillListener();
