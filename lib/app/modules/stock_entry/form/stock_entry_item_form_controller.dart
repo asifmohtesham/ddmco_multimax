@@ -43,29 +43,35 @@ import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 ///   • [isLoadingBatchHistory] — loading flag for the picker shimmer.
 ///   • [fetchBatchWiseHistory] — public method so the sheet/picker can
 ///     trigger a manual refresh (pull-to-refresh).
+///
+/// Fix TEC-2 (stability): [sourceRackController] and [targetRackController]
+///   are disposed synchronously in [onClose], mirroring the base-class
+///   TEC-1 fix.  The previous addPostFrameCallback deferral produced the
+///   same "TextEditingController used after being disposed" crash when the
+///   keyboard triggered a LayoutBuilder rebuild on the next frame.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  // ── Parent reference ─────────────────────────────────────────────
+  // ── Parent reference ───────────────────────────────────────
   late StockEntryFormController _parent;
   StockEntryFormController get parent => _parent;
 
-  // ── SE-specific extra TECs ────────────────────────────────────────────
+  // ── SE-specific extra TECs ──────────────────────────────────────────────
   final TextEditingController sourceRackController = TextEditingController();
   final TextEditingController targetRackController = TextEditingController();
 
-  // ── SE-specific validation state ─────────────────────────────────────────
+  // ── SE-specific validation state ────────────────────────────────────────────
   var isSourceRackValid      = false.obs;
   var isTargetRackValid      = false.obs;
   var isValidatingSourceRack = false.obs;
   var isValidatingTargetRack = false.obs;
 
-  // ── Warehouse derivation ──────────────────────────────────────────────
+  // ── Warehouse derivation ────────────────────────────────────────────────
   var derivedSourceWarehouse = RxnString();
   var derivedTargetWarehouse = RxnString();
   var itemSourceWarehouse    = RxnString();
   var itemTargetWarehouse    = RxnString();
 
-  // ── Balance state ──────────────────────────────────────────────────
+  // ── Balance state ──────────────────────────────────────────────────────
   var batchBalance          = 0.0.obs;
   var rackBalance           = 0.0.obs;
   var validationMaxQty      = 0.0.obs;
@@ -86,18 +92,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   final batchWiseHistory      = <BatchWiseBalanceRow>[].obs;
   var   isLoadingBatchHistory = false.obs;
 
-  // ── Dirty-check snapshots ─────────────────────────────────────────────
+  // ── Dirty-check snapshots ─────────────────────────────────────────────────
   String _snapshotSourceRack = '';
   String _snapshotTargetRack = '';
 
-  // ── AutoFillRackMixin hooks ─────────────────────────────────────────────
+  // ── AutoFillRackMixin hooks ─────────────────────────────────────────────────
   @override
   TextEditingController get autoFillRackController => sourceRackController;
 
   @override
   void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
 
-  // ── ItemSheetControllerBase contract ────────────────────────────────────
+  // ── ItemSheetControllerBase contract ───────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       itemSourceWarehouse.value ??
@@ -110,14 +116,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   bool get requiresRack => false;
 
-  // ── P1-C: isSheetLoading override ──────────────────────────────────────
+  // ── P1-C: isSheetLoading override ───────────────────────────────────────
   @override
   bool get isSheetLoading =>
       super.isSheetLoading ||
       isValidatingSourceRack.value ||
       isValidatingTargetRack.value;
 
-  // ── posSerialCapText: dedicated chip label (Commit A) ───────────────────
+  // ── posSerialCapText: dedicated chip label (Commit A) ─────────────────────
   String? get posSerialCapText {
     final serial = selectedSerial.value;
     if (serial == null || serial == '0' || serial.isEmpty) return null;
@@ -136,7 +142,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return 'Invoice #$serialNo \u2014 Remaining: ${fmt(remaining)} / ${fmt(cap)} pcs';
   }
 
-  // ── qtyInfoText: 'Max: N' or 'Max: -' (Commit C-2) ─────────────────────
+  // ── qtyInfoText: 'Max: N' or 'Max: -' (Commit C-2) ───────────────────────
   @override
   String? get qtyInfoText {
     final eff = effectiveMaxQty;
@@ -145,7 +151,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return 'Max: $n';
   }
 
-  // ── qtyInfoTooltip: breakdown shown on badge tap (Commit C-2) ───────────
+  // ── qtyInfoTooltip: breakdown shown on badge tap (Commit C-2) ───────────────
   @override
   String? get qtyInfoTooltip {
     final parts = <String>[];
@@ -189,7 +195,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return parts.join('  \u00b7  ');
   }
 
-  // ── deleteCurrentItem ───────────────────────────────────────────────────
+  // ── deleteCurrentItem ───────────────────────────────────────────────────────
   @override
   Future<void> deleteCurrentItem() async {
     final name = editingItemName.value;
@@ -199,11 +205,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (item != null) _parent.confirmAndDeleteItem(item);
   }
 
-  // ── PosSerialMixin contract ───────────────────────────────────────────────
+  // ── PosSerialMixin contract ──────────────────────────────────────────────────
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
-  // ── Initialisation ─────────────────────────────────────────────────────
+  // ── Initialisation ────────────────────────────────────────────────────────
   void initialise({
     required StockEntryFormController parent,
     required String code,
@@ -303,7 +309,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     fetchAllRackStocks();
   }
 
-  // ── Commit 1: fetchBatchWiseHistory ────────────────────────────────────
+  // ── Commit 1: fetchBatchWiseHistory ───────────────────────────────────────
   //
   // Fetches all in-stock batches for [itemCode] in [resolvedWarehouse] from
   // the Batch-Wise Balance History report and writes them to [batchWiseHistory].
@@ -332,7 +338,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── P3-3: openBatchPicker ──────────────────────────────────────────────
+  // ── P3-3: openBatchPicker ──────────────────────────────────────────────────
   //
   // Opens [BatchPickerSheet] via [showBatchPickerSheet] as a modal bottom
   // sheet.
@@ -437,7 +443,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         name: 'SE:ItemSheet');
   }
 
-  // ── validateSheet ───────────────────────────────────────────────────────
+  // ── validateSheet ──────────────────────────────────────────────────────────
   @override
   void validateSheet() {
     bool valid = true;
@@ -508,7 +514,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── effectiveMaxQty ─────────────────────────────────────────────────────
+  // ── effectiveMaxQty ───────────────────────────────────────────────────────
   double get effectiveMaxQty {
     double limit = 999999.0;
 
@@ -545,7 +551,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return limit;
   }
 
-  // ── Rack rule helper ───────────────────────────────────────────────────
+  // ── Rack rule helper ─────────────────────────────────────────────────────
   bool isValidRacks() {
     final type = _parent.selectedStockEntryType.value;
     final needsSource = [
@@ -575,7 +581,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return true;
   }
 
-  // ── MR / POS constraint helpers ─────────────────────────────────────────
+  // ── MR / POS constraint helpers ─────────────────────────────────────────────
   bool _checkMrConstraints() {
     if (_parent.mrReferenceItems.isEmpty) return true;
     final code = itemCode.value.trim().toLowerCase();
@@ -598,7 +604,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return true;
   }
 
-  // ── validateBatch (SE-specific override) ────────────────────────────────
+  // ── validateBatch (SE-specific override) ──────────────────────────────────
   @override
   Future<void> validateBatch(String batch) async {
     batchError.value = null;
@@ -671,7 +677,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── validateDualRack ─────────────────────────────────────────────────────
+  // ── validateDualRack ────────────────────────────────────────────────────────
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) {
@@ -750,7 +756,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── Stock / batch balance fetchers ──────────────────────────────────────
+  // ── Stock / batch balance fetchers ────────────────────────────────────────────
   Future<void> _updateAvailableStock() async {
     final type = _parent.selectedStockEntryType.value;
     final isSourceOp = [
@@ -854,7 +860,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Sheet scan helpers ──────────────────────────────────────────────────
+  // ── Sheet scan helpers ───────────────────────────────────────────────────────
   void applyRackScan(String code) {
     final type = _parent.selectedStockEntryType.value;
     if (type == 'Material Transfer' ||
@@ -891,22 +897,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return false;
   }
 
-  // ── Lifecycle ────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────
+  //
+  // Fix TEC-2: listeners removed first, then TECs disposed synchronously.
+  // No addPostFrameCallback deferral — see class-level doc for rationale.
   @override
   void onClose() {
     disposeAutoFillListener();
     sourceRackController.removeListener(validateSheet);
     targetRackController.removeListener(validateSheet);
-    final src = sourceRackController;
-    final tgt = targetRackController;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      src.dispose();
-      tgt.dispose();
-    });
+    sourceRackController.dispose();
+    targetRackController.dispose();
     super.onClose();
   }
 
-  // ── Test-support helpers ────────────────────────────────────────────────
+  // ── Test-support helpers ──────────────────────────────────────────────────────
   // ignore: use_setters_to_change_properties
   void testInjectParent(StockEntryFormController parent) {
     _parent = parent;
