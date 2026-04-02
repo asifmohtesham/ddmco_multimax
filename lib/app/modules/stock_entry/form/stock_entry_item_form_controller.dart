@@ -57,6 +57,15 @@ import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 ///     the getter derives its ceiling from batchBalance + rackBalance directly.
 ///   • Removed step-2 maxQty reference from [effectiveMaxQty] — the base
 ///     getter already encapsulates the batch+rack MIN ceiling.
+///
+/// Commit 6 (fix):
+///   • [validateSheet]   — explicit `effMax == 0.0 && isBatchValid` guard
+///     added before the generic ceiling check so that a confirmed-valid batch
+///     with zero stock immediately invalidates the sheet, regardless of the
+///     qty field value.
+///   • [isValidQty]      — same guard applied for consistency.
+///   • [adjustSheetQty]  — same guard applied so the stepper silently refuses
+///     to increment when stock is confirmed zero.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
   // ── Parent reference ───────────────────────────────────────
@@ -452,6 +461,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── validateSheet ──────────────────────────────────────────────────────────
+  //
+  // Commit 6: explicit zero-stock guard added.
+  // When the batch is confirmed valid (isBatchValid) but effectiveMaxQty
+  // resolves to 0.0, no qty is acceptable — block immediately before the
+  // generic ceiling check.
   @override
   void validateSheet() {
     bool valid = true;
@@ -459,7 +473,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final qty    = double.tryParse(qtyController.text) ?? 0;
     final effMax = effectiveMaxQty;
     if (qty <= 0) valid = false;
-    if (effMax < 999999.0 && qty > effMax) valid = false;
+    if (effMax == 0.0 && isBatchValid.value) {
+      valid = false;
+    } else if (effMax < 999999.0 && qty > effMax) {
+      valid = false;
+    }
 
     if (batchController.text.isEmpty || !isBatchValid.value) valid = false;
     if (!isValidRacks()) valid = false;
@@ -937,14 +955,23 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     _parent = parent;
   }
 
+  // ── isValidQty ────────────────────────────────────────────────────────────
+  //
+  // Commit 6: mirrors the validateSheet zero-stock guard so that
+  // programmatic callers get the same blocking behaviour as the sheet UI.
   bool isValidQty() {
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return false;
     final effMax = effectiveMaxQty;
+    if (effMax == 0.0 && isBatchValid.value) return false;
     if (effMax < 999999.0 && qty > effMax) return false;
     return true;
   }
 
+  // ── adjustSheetQty ────────────────────────────────────────────────────────
+  //
+  // Commit 6: stepper silently refuses to increment when stock is confirmed
+  // zero, consistent with the validateSheet and isValidQty guards.
   void adjustSheetQty(double delta) {
     final current = double.tryParse(qtyController.text) ?? 0;
     final next    = current + delta;
@@ -954,6 +981,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       return;
     }
     final effMax = effectiveMaxQty;
+    if (effMax == 0.0 && isBatchValid.value) return;
     if (effMax < 999999.0 && next > effMax) return;
     qtyController.text =
         next % 1 == 0 ? next.toInt().toString() : next.toString();
