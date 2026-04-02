@@ -465,7 +465,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
     final dragHandle = Container(
-      color: colorScheme.surface,
+      color: colorScheme.surfaceContainerLow,
       width: double.infinity,
       padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
       alignment: Alignment.center,
@@ -482,7 +482,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     final scanBar = onScan != null
         ? Container(
             decoration: BoxDecoration(
-              color: colorScheme.surface,
+              color: colorScheme.surfaceContainerLow,
               border: Border(
                   top: BorderSide(color: colorScheme.outlineVariant)),
               boxShadow: [
@@ -508,7 +508,7 @@ class GlobalItemFormSheet extends StatelessWidget {
       return Container(
         margin: EdgeInsets.only(top: topPadding + 12),
         decoration: BoxDecoration(
-          color: colorScheme.surface,
+          color: colorScheme.surfaceContainerLow,
           borderRadius:
               const BorderRadius.vertical(top: Radius.circular(28.0)),
         ),
