@@ -32,11 +32,17 @@ enum SaveButtonState { idle, loading, success, error }
 ///   [fetchBatchBalance]   — promoted from SE's _updateBatchBalance().
 ///   [fetchRackBalance]    — extracted from SE's _updateAvailableStock().
 ///
-/// Commit 3 (this commit):
+/// Commit 3:
 ///   [qtyInfoText]    — concrete; shows batch/rack/MIN breakdown.
 ///   [qtyInfoTooltip] — concrete; detailed balance lines via _fmtQty().
 ///   validateBatch()  — resets rackBalance = 0.0 on success so rack must
 ///                      be re-confirmed after any batch change.
+///
+/// Commit 4 (this commit):
+///   [maxQty] — replaced mutable RxDouble with computed getter:
+///              MIN(batchBalance, rackBalance) when both > 0,
+///              else whichever is known, else 0.0 (no cap).
+///              validateBatch() no longer writes maxQty directly.
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Dependencies ──────────────────────────────────────────────────────
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -61,7 +67,6 @@ abstract class ItemSheetControllerBase extends GetxController {
   var isValidatingRack  = false.obs;
   var isSheetValid      = false.obs;
   var isFormDirty       = false.obs;
-  var maxQty            = 0.0.obs;
   var batchError        = RxnString();
   var rackError         = RxnString();
   var batchInfoTooltip  = RxnString();
@@ -71,7 +76,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   // ── Balance state (universal) ─────────────────────────────────────────
   //
   // batchBalance : Batch-Wise Balance for the selected batch in resolvedWarehouse.
-  //                Populated by fetchBatchBalance().
+  //                Populated by fetchBatchBalance() / validateBatch().
   // rackBalance  : Stock Balance with Inventory Dimension isolated to the
   //                selected rack row. Populated by fetchRackBalance(rack).
   //
@@ -82,6 +87,25 @@ abstract class ItemSheetControllerBase extends GetxController {
   var rackBalance           = 0.0.obs;
   var isLoadingBatchBalance = false.obs;
   var isLoadingRackBalance  = false.obs;
+
+  // ── Computed qty ceiling (Commit 4) ───────────────────────────────────
+  //
+  // maxQty is derived — never stored — so it is always consistent with
+  // the live balance values:
+  //   • Both balances known (> 0) → MIN(batchBalance, rackBalance)
+  //   • Only batch known           → batchBalance
+  //   • Only rack  known           → rackBalance
+  //   • Neither known              → 0.0  (no cap enforced)
+  //
+  // Widgets and validators read this as a plain double — no .value needed.
+  double get maxQty {
+    final b = batchBalance.value;
+    final r = rackBalance.value;
+    if (b > 0 && r > 0) return b < r ? b : r;
+    if (b > 0) return b;
+    if (r > 0) return r;
+    return 0.0;
+  }
 
   // ── Ceiling for POS / serial-cap display (C-5) ───────────────────────
   var liveRemaining = 0.0.obs;
@@ -268,7 +292,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     double current = double.tryParse(qtyController.text) ?? 0;
     double next    = current + delta;
     if (next < 0) next = 0;
-    if (maxQty.value > 0 && next > maxQty.value) next = maxQty.value;
+    final cap = maxQty;
+    if (cap > 0 && next > cap) next = cap;
     qtyController.text =
         next % 1 == 0 ? next.toInt().toString() : next.toString();
     validateSheet();
@@ -416,10 +441,10 @@ abstract class ItemSheetControllerBase extends GetxController {
         }
       }
 
-      maxQty.value          = fetchedQty;
+      // Write batchBalance — maxQty is now computed from this + rackBalance.
       batchBalance.value    = fetchedQty;
       // Reset rackBalance so the rack must be re-confirmed after a batch
-      // change — maxQty (Commit 4) will stay 0 until both are known.
+      // change — maxQty stays 0 (no cap) until rack is re-validated.
       rackBalance.value     = 0.0;
       isBatchValid.value    = true;
       isBatchReadOnly.value = true;
@@ -445,7 +470,6 @@ abstract class ItemSheetControllerBase extends GetxController {
       isBatchValid.value     = false;
       isBatchReadOnly.value  = false;
       batchError.value       = 'Invalid Batch';
-      maxQty.value           = 0.0;
       batchBalance.value     = 0.0;
       rackBalance.value      = 0.0;
       batchInfoTooltip.value = null;
@@ -558,7 +582,8 @@ abstract class ItemSheetControllerBase extends GetxController {
     final qty = double.tryParse(qtyController.text) ?? 0;
     if (qty <= 0) return false;
 
-    if (isAddMode && maxQty.value > 0 && qty > maxQty.value) return false;
+    final cap = maxQty;
+    if (isAddMode && cap > 0 && qty > cap) return false;
 
     if (requiresBatch) {
       if (batchController.text.isEmpty || !isBatchValid.value) return false;
