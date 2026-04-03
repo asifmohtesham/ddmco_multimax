@@ -24,6 +24,8 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 /// P2-2: extracted from SE module into shared/item_sheet/widgets.
 /// fix: pass rackStockMap as fallbackMap so the Available Rack Balance
 ///      bottom sheet is populated (was always empty due to `const {}`).
+/// Commit 7: rack-error banner now checks `err.isEmpty` instead of
+///      `err == null` — rackError is RxString (never null).
 class SharedDualRackSection extends StatelessWidget {
   final StockEntryItemFormController controller;
 
@@ -175,9 +177,10 @@ class SharedDualRackSection extends StatelessWidget {
         ],
 
         // -- Rack error banner ----------------------------------------------------
+        // Commit 7: rackError is RxString (never null); use isEmpty, not == null.
         Obx(() {
           final err = controller.rackError.value;
-          if (err == null) return const SizedBox.shrink();
+          if (err.isEmpty) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(top: 8.0, left: 4.0),
             child: Text(

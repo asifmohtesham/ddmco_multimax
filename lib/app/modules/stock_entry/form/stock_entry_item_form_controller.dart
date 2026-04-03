@@ -26,6 +26,11 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///     with the correct signatures.
 ///   • autoFillRackController / onAutoFillRackSelected wired to the
 ///     dual-rack sourceRackController / validateDualRack per mixin docs.
+///
+/// Commit 7:
+///   • validateSheet() now gates on isSourceRackValid for SE types that
+///     require a source rack (Material Issue / Transfer / Transfer for Mfg).
+///   • validateDualRack() clears rackError on success for both sides.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -165,6 +170,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       } else {
         isTargetRackValid.value = true;
       }
+      // Commit 7: clear any stale rack error on success.
+      rackError.value = '';
     } catch (e) {
       rackError.value = 'Rack validation error: $e';
       log('[SE-Item] validateDualRack error: $e', name: 'SE-Item');
@@ -242,15 +249,31 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   String? _mrUom;
   String? _mrBatch;
 
+  // ── Whether this SE type requires a source rack ───────────────────────────
+  ///
+  /// Commit 7: used by validateSheet() to gate Save on source-rack validity
+  /// for outbound and transfer SE types.
+  bool get _requiresSourceRack {
+    final t = _parent.selectedStockEntryType.value;
+    return t == 'Material Issue' ||
+        t == 'Material Transfer' ||
+        t == 'Material Transfer for Manufacture';
+  }
+
   // ── Sheet-valid gate ───────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
     final qty  = double.tryParse(qtyController.text);
     final ceil = effectiveMaxQty;
+
+    // Commit 7: require a valid source rack for outbound / transfer types.
+    final rackOk = !_requiresSourceRack || isSourceRackValid.value;
+
     final valid = isBatchValid.value &&
         qty != null && qty > 0 &&
-        (ceil == null || qty <= ceil);
+        (ceil == null || qty <= ceil) &&
+        rackOk;
     isSheetValid.value = valid;
 
     final qtyVal = qty ?? 0.0;
