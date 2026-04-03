@@ -50,6 +50,8 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// fix(BATCH-ICON-VALID): render picker btn in valid state; compute SizedBox
 ///        width dynamically based on which slots (tooltip, picker, edit) are
 ///        visible, so the icon is never clipped.
+/// fix(SE-BATCH-ICON): _SimpleField now also renders picker btn in valid state,
+///        matching _EditModeField parity (was idle-only, broke SE edit flow).
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -231,8 +233,15 @@ class _SimpleField extends StatelessWidget {
                       color: w.accentColor, size: 20),
                 ),
               ),
+            // Idle state: show picker when batch not yet validated
             if (!validating && !isValid && w.onPickerTap != null)
               _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
+            // fix(SE-BATCH-ICON): also show picker in valid state, parity with _EditModeField
+            if (!validating && isValid && w.onPickerTap != null)
+              _pickerSuffixBtn(
+                isWarning ? Colors.orange : w.accentColor,
+                w.onPickerTap!,
+              ),
             if (c.batchController.text.isNotEmpty && !isReadOnly)
               IconButton(
                 icon: const Icon(Icons.clear, size: 18),
