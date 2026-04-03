@@ -38,7 +38,7 @@ class PurchaseReceiptFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // ── Document-level state ────────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────
   var isLoading       = true.obs;
   var isSaving        = false.obs;
   var isDirty         = false.obs;
@@ -49,7 +49,7 @@ class PurchaseReceiptFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Save result state machine ─────────────────────────────────────────────
+  // ── Save result state machine ───────────────────────────────────────────
   var saveResult      = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -63,7 +63,7 @@ class PurchaseReceiptFormController extends GetxController
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
-  // ── Header form controllers ───────────────────────────────────────────────
+  // ── Header form controllers ──────────────────────────────────────────────
   final supplierController    = TextEditingController();
   final postingDateController = TextEditingController();
   final postingTimeController = TextEditingController();
@@ -76,23 +76,22 @@ class PurchaseReceiptFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── PO linking cache ──────────────────────────────────────────────────────
+  // ── PO linking cache ────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
-  // ── EAN context for doc-level scan routing ──────────────────────────────
+  // ── EAN context for doc-level scan routing ────────────────────────────
   String currentScannedEan = '';
 
   // ── UI feedback ─────────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
 
-  // ── Persistent scan worker ───────────────────────────────────────────────────
+  // ── Persistent scan worker ────────────────────────────────────────────────────
   Worker? _scanWorker;
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
-
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
@@ -156,7 +155,7 @@ class PurchaseReceiptFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── Data fetching ───────────────────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -262,7 +261,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── PO linking ──────────────────────────────────────────────────────────────
+  // ── PO linking ─────────────────────────────────────────────────────────────
 
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
@@ -295,7 +294,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── addItemLocally / updateItemLocally ──────────────────────────────────────
+  // ── addItemLocally / updateItemLocally ────────────────────────────────────
 
   void addItemLocally(
     String itemCode,
@@ -399,7 +398,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Item sheet orchestration ──────────────────────────────────────────────────
+  // ── Item sheet orchestration ────────────────────────────────────────────────
 
   Future<void> _openItemSheet({
     required String itemCode,
@@ -431,12 +430,9 @@ class PurchaseReceiptFormController extends GetxController
       await savePurchaseReceipt();
     }
 
+    // Commit 6: setupAutoSubmit uses the canonical one-param base signature.
     child.setupAutoSubmit(
-      enabled:       _storageService.getAutoSubmitEnabled(),
-      delaySeconds:  _storageService.getAutoSubmitDelay(),
-      isSheetOpen:   isItemSheetOpen,
-      isSubmittable: () => purchaseReceipt.value?.docstatus == 0,
-      onAutoSubmit: () async {
+      onValid: () async {
         isAddingItem.value = true;
         await onSubmit();
         isAddingItem.value = false;
@@ -489,7 +485,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── Public entry points ───────────────────────────────────────────────────────
+  // ── Public entry points ───────────────────────────────────────────────────
 
   void openSheetForNewItem({
     required String itemCode,
@@ -548,7 +544,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────────────
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -624,7 +620,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── UX helpers ──────────────────────────────────────────────────────────────────
+  // ── UX helpers ────────────────────────────────────────────────────────────────────
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
