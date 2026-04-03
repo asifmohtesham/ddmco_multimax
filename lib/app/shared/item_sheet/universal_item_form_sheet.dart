@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'item_sheet_controller_base.dart';
-import 'widgets/qty_cap_badge.dart';
 
 /// Universal wrapper around [GlobalItemFormSheet] for all DocType item sheets.
 ///
-/// Commit C-4:
-///   Passes [controller.qtyInfoTooltip] as [qtyInfoTooltip] to
-///   [GlobalItemFormSheet], which wires it to [QuantityInputWidget.onInfoTap].
-///   Sheets whose controller returns null (the base default) are unaffected.
+/// Fix (compiler): GlobalItemFormSheet expects plain Dart types, not GetX Rx
+/// wrappers.  Unwrap inside the Obx builder:
+///   • qtyInfoTooltip  → controller.qtyInfoTooltip.value  (RxnString → String?)
+///   • isLoading       → controller.isSheetLoading.value  (RxBool    → bool)
+///   • scanController  → null (MobileScannerController ≠ TextEditingController;
+///                        sheets that embed a scan bar do so in customFields)
 class UniversalItemFormSheet extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final List<Widget> customFields;
@@ -57,12 +58,14 @@ class UniversalItemFormSheet extends StatelessWidget {
         onIncrement:    () => controller.adjustQty(1),
         onDecrement:    () => controller.adjustQty(-1),
         qtyInfoText:    controller.qtyInfoText,
-        qtyInfoTooltip: controller.qtyInfoTooltip,
+        // Unwrap RxnString → String? so GlobalItemFormSheet receives the right type.
+        qtyInfoTooltip: controller.qtyInfoTooltip.value,
 
         // ── Save / delete ──────────────────────────────────────────────
         isSaveEnabledRx: controller.isSheetValid,
         isSaveEnabled:   isSaveEnabled,
-        isLoading:       controller.isSheetLoading,
+        // Unwrap RxBool → bool.
+        isLoading:       controller.isSheetLoading.value,
         onSubmit:        onSubmit,
         onDelete: isEditing
             ? () => controller.deleteCurrentItem()
@@ -70,7 +73,9 @@ class UniversalItemFormSheet extends StatelessWidget {
 
         // ── Scan footer ────────────────────────────────────────────────
         onScan:         onScan,
-        scanController: controller.sheetScanController,
+        // MobileScannerController is not a TextEditingController; pass null.
+        // Sheets that embed a live camera scanner wire it inside customFields.
+        scanController: null,
         isScanning:     controller.isScanning.value,
 
         // ── DocType-specific fields ─────────────────────────────────────
