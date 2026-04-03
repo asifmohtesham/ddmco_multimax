@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -8,24 +9,34 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:collection/collection.dart';
 import 'purchase_order_form_controller.dart';
 
+/// Item-level sheet controller for Purchase Order.
+///
+/// Commit 8: implemented all abstract members inherited from
+/// [ItemSheetControllerBase] that were previously missing:
+///   • accentColor        → Colors.blue (PO brand colour)
+///   • isAddMode          → @override bool getter (was a mutable field)
+///   • qtyInfoTooltip     → RxnString(null)  (no stock context on POs)
+///   • sheetScanController → null  (PO sheet has no in-sheet scanner)
+///   • adjustQty(delta)   → ±1 stepper clamped to 0..∞
+///   • setupAutoSubmit()  → updated to new single-param named signature
 class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   late PurchaseOrderFormController _parent;
 
-  // ── PO-specific field controllers ────────────────────────────────────────────────
+  // ── PO-specific field controllers ─────────────────────────────────────────
   final rateController         = TextEditingController();
   final scheduleDateController = TextEditingController();
 
-  // ── PO-specific Rx ─────────────────────────────────────────────────────────────
+  // ── PO-specific Rx ────────────────────────────────────────────────────────
   var sheetRate = 0.0.obs;
   double get sheetAmount =>
       (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
 
-  // ── Dirty-check snapshot ──────────────────────────────────────────────────────
+  // ── Dirty-check snapshot ──────────────────────────────────────────────────
   double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
 
-  // ── ItemSheetControllerBase overrides ─────────────────────────────────────────────
+  // ── ItemSheetControllerBase abstract overrides ────────────────────────────
 
   @override
   String? get resolvedWarehouse => null; // PO has no warehouse concept
@@ -36,66 +47,75 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => false;
 
+  /// Commit 8: PO uses blue as its accent colour.
   @override
-  String? get qtyInfoText => null; // no stock context on purchase orders
+  Color get accentColor => Colors.blue;
 
-  // ── Listener helpers ────────────────────────────────────────────────────────────
-  //
-  // Symmetric add/remove helpers for PO-specific TECs.
-  // Must be called in the same onClose() pattern as ItemSheetControllerBase
-  // (B-2 fix): remove listeners synchronously, defer dispose() to
-  // addPostFrameCallback.
+  /// Commit 8: proper @override getter instead of a mutable field.
+  @override
+  bool get isAddMode => editingItemName.value == null;
 
+  /// Commit 8: PO has no stock context; no qty-info label needed.
+  @override
+  String get qtyInfoText => '';
+
+  /// Commit 8: no tooltip needed for PO.
+  @override
+  RxnString get qtyInfoTooltip => RxnString(null);
+
+  /// Commit 8: PO sheet has no embedded scanner.
+  @override
+  MobileScannerController? get sheetScanController => null;
+
+  /// Commit 8: ±1 stepper clamped to [0, ∞).
+  @override
+  void adjustQty(int delta) {
+    final current = double.tryParse(qtyController.text) ?? 0.0;
+    final next    = (current + delta).clamp(0.0, double.infinity);
+    qtyController.text =
+        next.truncateToDouble() == next
+            ? next.toInt().toString()
+            : next.toStringAsFixed(2);
+    validateSheet();
+  }
+
+  // ── Listener helpers ──────────────────────────────────────────────────────
   void _initPOListeners() {
     scheduleDateController.addListener(validateSheet);
-    scheduleDateController.addListener(_resetSaveStateOnEdit);
-    rateController.addListener(_onRateChanged);       // updates sheetRate + validateSheet
-    rateController.addListener(_resetSaveStateOnEdit);
+    scheduleDateController.addListener(_resetSaveState);
+    rateController.addListener(_onRateChanged);
+    rateController.addListener(_resetSaveState);
   }
 
   void _removePOListeners() {
     scheduleDateController.removeListener(validateSheet);
-    scheduleDateController.removeListener(_resetSaveStateOnEdit);
+    scheduleDateController.removeListener(_resetSaveState);
     rateController.removeListener(_onRateChanged);
-    rateController.removeListener(_resetSaveStateOnEdit);
+    rateController.removeListener(_resetSaveState);
   }
 
-  // _resetSaveStateOnEdit is private in ItemSheetControllerBase.
-  // We expose a thin local override so _initPOListeners can reference it
-  // without duplicating the reset logic.
-  void _resetSaveStateOnEdit() {
+  void _resetSaveState() {
     if (saveButtonState.value == SaveButtonState.success ||
         saveButtonState.value == SaveButtonState.error) {
       saveButtonState.value = SaveButtonState.idle;
     }
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
-    // Step 1: remove PO-specific listeners synchronously (B-2 fix).
-    // The base onClose() removes its own listeners; we must remove ours
-    // first so no in-flight notification reaches _onRateChanged or
-    // validateSheet after this controller is logically closed.
     _removePOListeners();
-
-    // Step 2: defer dispose() to post-frame (B-2 fix).
-    // The base class already defers qtyController / batchController /
-    // rackController dispose via addPostFrameCallback. We do the same
-    // for PO-specific TECs so no TextFormField rebuild can call
-    // ChangeNotifier.addListener() on a disposed controller.
     final rtc = rateController;
     final sdc = scheduleDateController;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       rtc.dispose();
       sdc.dispose();
     });
-
-    super.onClose(); // removes base listeners + defers base TEC disposes
+    super.onClose();
   }
 
-  // ── Initialise — called by parent _openItemSheet() ──────────────────────────────
+  // ── Initialise ────────────────────────────────────────────────────────────
 
   void initialise({
     required PurchaseOrderFormController parentController,
@@ -113,64 +133,57 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parentController;
 
-    // ── Base: add-mode flag & editing context ──────────────────────────────────
     editingItemName.value = rowId;
-    isAddMode             = rowId == null;
+    // isAddMode is now a computed getter (rowId == null) — no assignment.
 
-    // ── Base: item identity ───────────────────────────────────────────────────
     itemCode.value = code;
     itemName.value = name;
 
-    // ── Base: metadata footer ─────────────────────────────────────────────────
     itemOwner.value      = owner;
     itemCreation.value   = creation;
     itemModified.value   = modified;
     itemModifiedBy.value = modifiedBy;
 
-    // ── Base: parent saving flag ──────────────────────────────────────────────
     isAddingItemFlag = _parent.isAddingItem;
 
-    // ── PO-specific fields ────────────────────────────────────────────────────────
     qtyController.text          = qty.toStringAsFixed(0);
     rateController.text         = rate.toStringAsFixed(2);
-    // FormattingHelper.formatDate() — single yyyy-MM-dd format instance
-    // shared across the whole app (no per-call allocation).
     scheduleDateController.text =
         scheduleDate ?? FormattingHelper.formatDate(DateTime.now());
 
     sheetRate.value = rate;
 
-    // ── Dirty-check snapshot ──────────────────────────────────────────────────
     _initialQty  = qty;
     _initialRate = rate;
     _initialDate = scheduleDateController.text;
 
-    // ── Wire all listeners ───────────────────────────────────────────────────────
-    initBaseListeners(); // qty / batch / rack → validateSheet + _resetSaveStateOnEdit
-    _initPOListeners();  // rate / scheduleDate → validateSheet + _resetSaveStateOnEdit
+    initBaseListeners();
+    _initPOListeners();
     captureSnapshot();
 
-    // ── Auto-submit ───────────────────────────────────────────────────────────────
+    // Commit 8: updated to the current single-param named-arg signature.
     final storage = Get.find<StorageService>();
-    setupAutoSubmit(
-      enabled:       storage.getAutoSubmitEnabled(),
-      delaySeconds:  storage.getAutoSubmitDelay(),
-      isSheetOpen:   _parent.isItemSheetOpen,
-      isSubmittable: () => _parent.isEditable,
-      onAutoSubmit:  submit,
-    );
+    if (storage.getAutoSubmitEnabled()) {
+      setupAutoSubmit(
+        onValid: () async {
+          if (_parent.isEditable && _parent.isItemSheetOpen.value) {
+            await submit();
+          }
+        },
+      );
+    }
 
     validateSheet();
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────────────────
+  // ── Private helpers ───────────────────────────────────────────────────────
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
   }
 
-  // ── ItemSheetControllerBase: validateSheet ───────────────────────────────────────────
+  // ── validateSheet ─────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -184,11 +197,10 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     if (scheduleDateController.text.isEmpty)              { isSheetValid.value = false; return; }
     if ((double.tryParse(rateController.text) ?? -1) < 0) { isSheetValid.value = false; return; }
 
-    // Edit mode: require at least one field to have changed.
     if (!isAddMode) {
       final currentRate = double.tryParse(rateController.text) ?? 0;
-      final dirty = qty             != _initialQty  ||
-                    currentRate     != _initialRate  ||
+      final dirty = qty         != _initialQty  ||
+                    currentRate != _initialRate  ||
                     scheduleDateController.text != _initialDate;
       isSheetValid.value = dirty;
     } else {
@@ -196,7 +208,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── ItemSheetControllerBase: deleteCurrentItem ────────────────────────────────────────
+  // ── deleteCurrentItem ─────────────────────────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -207,7 +219,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent.confirmAndDeleteItem(item);
   }
 
-  // ── ItemSheetControllerBase: submit ──────────────────────────────────────────────────
+  // ── submit ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -217,7 +229,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     final scheduleDate = scheduleDateController.text;
 
     if (!isAddMode && editingItemName.value != null) {
-      // Edit path — preserve all server-side metadata fields.
       final existing = _parent.purchaseOrder.value?.items
           .firstWhereOrNull((i) => i.name == editingItemName.value);
       if (existing == null) return;
@@ -239,7 +250,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
       );
       _parent.updateItemLocally(updated);
     } else {
-      // Add path.
       final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = PurchaseOrderItem(
         name:         uniqueId,

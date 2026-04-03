@@ -1,37 +1,32 @@
+import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
 /// Item-level sheet controller for Packing Slip.
 ///
-/// Extends [ItemSheetControllerBase] to gain:
-///   • formKey, qtyController (base TEC — single source of truth for qty)
-///   • isSheetValid, saveButtonState, isSheetLoading
-///   • metadata observables (itemOwner/Creation/Modified/ModifiedBy)
-///   • deferred TEC/FocusNode disposal via onClose()
-///   • setupAutoSubmit() worker
-///   • submitWithFeedback() animated save-button flow
-///   • adjustQty(delta) with maxQty capping (base implementation)
+/// Extends [ItemSheetControllerBase] to gain the full animated item-sheet
+/// infrastructure (save-button state, auto-submit worker, dirty tracking, etc.).
 ///
-/// Step-3: qtyController (base) is now the single source of truth for qty.
-///   submit() reads qtyController.text and passes parsed qty to
-///   parent.addItemToSlipWithQty(qty), removing the direct dependency
-///   on parent.bsQtyController.
-///
-/// fix: removed `maxQty.value = parent.bsMaxQty.value` from initialise() —
-///   maxQty is a computed getter in the base class (Commit 4) and cannot be
-///   assigned. The cap is enforced in validateSheet() via _parent.bsMaxQty
-///   directly, so no data is lost.
+/// Commit 8: implemented all abstract members inherited from
+/// [ItemSheetControllerBase] that were previously missing:
+///   • accentColor         → Colors.teal (PS brand colour)
+///   • isAddMode           → @override bool getter (was a mutable field)
+///   • qtyInfoTooltip      → RxnString(null)  (no extra tooltip for PS)
+///   • sheetScanController → null  (PS sheet has no in-sheet scanner)
+///   • adjustQty(delta)    → ±1 stepper clamped to 0..bsMaxQty
 ///
 /// PS-specific notes:
 ///   • resolvedWarehouse → null  (PS has no warehouse concept)
 ///   • requiresBatch     → false (batch is a read-only display field)
 ///   • requiresRack      → false
+///   • validateSheet() dirty-check uses base [isDirty] getter
 class PackingSlipItemFormController extends ItemSheetControllerBase {
-  // ── Parent reference ──────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────────────────
   late PackingSlipFormController _parent;
 
-  // ── ItemSheetControllerBase contract ──────────────────────────────────
+  // ── ItemSheetControllerBase abstract overrides ────────────────────────────
 
   @override
   String? get resolvedWarehouse => null;
@@ -42,6 +37,14 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => false;
 
+  /// Commit 8: PS uses teal as its accent colour.
+  @override
+  Color get accentColor => Colors.teal;
+
+  /// Commit 8: proper @override getter — editingItemName.value == null = add.
+  @override
+  bool get isAddMode => editingItemName.value == null;
+
   @override
   String? get qtyInfoText {
     final max = _parent.bsMaxQty.value;
@@ -49,12 +52,34 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     return null;
   }
 
+  /// Commit 8: no extra tooltip for PS.
+  @override
+  RxnString get qtyInfoTooltip => RxnString(null);
+
+  /// Commit 8: PS sheet has no embedded scanner.
+  @override
+  MobileScannerController? get sheetScanController => null;
+
+  /// Commit 8: ±1 stepper clamped to [0, bsMaxQty] when a ceiling exists.
+  @override
+  void adjustQty(int delta) {
+    final current = double.tryParse(qtyController.text) ?? 0.0;
+    final ceiling = _parent.bsMaxQty.value > 0
+        ? _parent.bsMaxQty.value
+        : double.infinity;
+    final next = (current + delta).clamp(0.0, ceiling);
+    qtyController.text =
+        next.truncateToDouble() == next
+            ? next.toInt().toString()
+            : next.toStringAsFixed(2);
+    validateSheet();
+  }
+
   @override
   Future<void> deleteCurrentItem() => _parent.deleteCurrentItem();
 
   @override
   void validateSheet() {
-    // Read from base qtyController (single source of truth after step-3).
     final qty = double.tryParse(qtyController.text);
 
     if (qty == null || qty <= 0) {
@@ -66,10 +91,9 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       return;
     }
 
-    isFormDirty.value = isFieldsDirty;
-
-    // In edit mode the Save button stays disabled until qty actually changes.
-    if (editingItemName.value != null && !isFormDirty.value) {
+    // Commit 8: use the base isDirty getter (replaces isFormDirty/isFieldsDirty
+    // which do not exist on the base class).
+    if (editingItemName.value != null && !isDirty) {
       isSheetValid.value = false;
       return;
     }
@@ -79,13 +103,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   Future<void> submit() async {
-    // Step-3: read directly from base TEC — no bsQtyController sync shim.
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
     await _parent.addItemToSlipWithQty(qty);
   }
 
-  // ── Initialisation ───────────────────────────────────────────────
+  // ── Initialisation ────────────────────────────────────────────────────────
 
   void initialise({
     required PackingSlipFormController parent,
@@ -95,16 +118,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parent;
 
-    // Wire loading flag so isSheetLoading covers in-progress saves.
     isAddingItemFlag = parent.isAddingItem;
 
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
-    // fix: maxQty is a computed getter — no assignment needed.
-    // The cap is applied in validateSheet() via _parent.bsMaxQty directly.
 
     if (editingItem != null) {
-      // Edit mode — restore existing qty and metadata.
       editingItemName.value = editingItem.name;
       itemOwner.value       = editingItem.owner;
       itemCreation.value    = editingItem.creation;
@@ -115,14 +134,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       qtyController.text =
           qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
     } else {
-      // Add mode — pre-fill qty with remaining qty from parent.
       editingItemName.value = null;
       itemOwner.value       = null;
       itemCreation.value    = null;
       itemModified.value    = null;
       itemModifiedBy.value  = null;
 
-      // Step-3: pre-fill from bsMaxQty directly, not bsQtyController.
       final remaining = parent.bsMaxQty.value;
       qtyController.text = remaining > 0
           ? (remaining % 1 == 0
@@ -131,7 +148,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
           : '0';
     }
 
-    isAddMode = editingItem == null;
+    // isAddMode is now a computed getter — no assignment.
 
     initBaseListeners();
     captureSnapshot();
