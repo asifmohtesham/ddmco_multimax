@@ -471,7 +471,7 @@ class ApiProvider {
       response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name'           : 'Stock Balance with Dimension',
+          'report_name'           : 'Stock Balance',
           'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
           'are_default_filters'   : 'false',
@@ -498,11 +498,11 @@ class ApiProvider {
         return rawRows
             .whereType<Map>()
             .map((r) {
-              final rack = (r['custom_rack'] ?? r['rack'] ?? '').toString().trim();
+              final rack = (r['rack'] ?? r['rack'] ?? '').toString().trim();
               final qty  = _toDouble(r['qty'] ?? r['balance_qty'] ?? r['bal_qty']);
-              return <String, dynamic>{'custom_rack': rack, 'qty': qty};
+              return <String, dynamic>{'rack': rack, 'qty': qty};
             })
-            .where((r) => (r['custom_rack'] as String).isNotEmpty)
+            .where((r) => (r['rack'] as String).isNotEmpty)
             .toList();
       }
 
@@ -529,10 +529,10 @@ class ApiProvider {
           .whereType<List>()
           .where((r) => r.length > rackIdx && r.length > qtyIdx)
           .map((r) => <String, dynamic>{
-                'custom_rack': (r[rackIdx] ?? '').toString().trim(),
+                'rack': (r[rackIdx] ?? '').toString().trim(),
                 'qty'        : _toDouble(r[qtyIdx]),
               })
-          .where((r) => (r['custom_rack'] as String).isNotEmpty)
+          .where((r) => (r['rack'] as String).isNotEmpty)
           .toList();
     } catch (_) {
       return [];
