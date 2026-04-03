@@ -54,7 +54,12 @@ class BatchResult {
 ///   editingItemName  — RxnString; null = add-mode, non-null = edit rowId.
 ///   formKey          — shared GlobalKey<FormState>.
 ///   itemName/Owner/Creation/Modified/ModifiedBy — shared metadata Rx fields.
-///   qtyInfoText/Tooltip — abstract; each controller supplies its own.
+///   qtyInfoText      — abstract; each controller supplies its own label.
+///   qtyInfoTooltip   — CONCRETE RxnString field (promoted from abstract).
+///                      SE writes it directly inside validateSheet() (Commit 5
+///                      intent: single backing store, no shadowing override).
+///                      PS and other subclasses may override the getter to
+///                      return their own RxnString instance if needed.
 ///   adjustQty        — abstract; concrete controllers implement stepper.
 ///   deleteCurrentItem — abstract; concrete controllers implement deletion.
 ///   sheetScanController/isScanning — scan-bar integration.
@@ -158,7 +163,15 @@ abstract class ItemSheetControllerBase extends GetxController {
   String get qtyInfoText;
 
   /// Tooltip backing the qty-info label; null = no tap target rendered.
-  RxnString get qtyInfoTooltip;
+  ///
+  /// Concrete field — NOT abstract.  SE writes this directly inside
+  /// validateSheet() so that SharedBatchField observes the same [RxnString]
+  /// reference without any shadowing override (Commit 5 intent).  Subclasses
+  /// that need their own RxnString instance (e.g. PS) may override the getter
+  /// to return a different [RxnString], but must NOT declare a new field with
+  /// the same name — override the getter only.
+  // ignore: prefer_final_fields
+  RxnString qtyInfoTooltip = RxnString(null);
 
   /// Mobile scanner controller backing the scan footer.
   MobileScannerController? get sheetScanController;
