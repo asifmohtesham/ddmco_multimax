@@ -882,6 +882,10 @@ class StockEntryFormController extends GetxController
   /// Made async (Commit 5) so that [child.initialise()] — which fetches
   /// item metadata from ERPNext and pre-loads the rack-stock map — fully
   /// completes before the bottom sheet is presented.
+  ///
+  /// Commit 6: setupAutoSubmit() call updated to match the base-class
+  /// single-param signature. Auto-submit guard logic (enabled flag, delay,
+  /// sheet-open check) is inlined into the [onValid] lambda.
   Future<void> _openNewItemSheet({String? scannedBatch}) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
@@ -901,14 +905,20 @@ class StockEntryFormController extends GetxController
 
     // Auto-submit wiring goes AFTER initialise() so the timer is not
     // started on an uninitialised controller.
+    //
+    // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
+    // The enabled-flag, delay, and sheet-open guard are inlined here so
+    // the base Worker fires only when the sheet is still open and the
+    // document is editable.
+    final autoEnabled    = _storageService.getAutoSubmitEnabled();
+    final autoDelaySecs  = _storageService.getAutoSubmitDelay();
     child.setupAutoSubmit(
-      enabled:       _storageService.getAutoSubmitEnabled(),
-      delaySeconds:  _storageService.getAutoSubmitDelay(),
-      isSheetOpen:   isItemSheetOpen,
-      isSubmittable: () => isEditable,
-      onAutoSubmit:  () async {
+      onValid: () async {
+        if (!autoEnabled) return;
+        if (!isItemSheetOpen.value) return;
+        if (!isEditable) return;
         isAddingItem.value = true;
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(Duration(seconds: autoDelaySecs));
         await addItem();
         isAddingItem.value = false;
       },
@@ -921,6 +931,9 @@ class StockEntryFormController extends GetxController
   ///
   /// Made async-await on initialise() (Commit 5) so _loadExistingItem
   /// and validateBatchOnInit run before the sheet is presented.
+  ///
+  /// Commit 6: setupAutoSubmit() call updated to match the base-class
+  /// single-param signature.
   Future<void> editItem(StockEntryItem item) async {
     if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
 
@@ -946,14 +959,16 @@ class StockEntryFormController extends GetxController
         scannedEan8:      currentScannedEan,
       );
 
+      // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
+      final autoEnabled   = _storageService.getAutoSubmitEnabled();
+      final autoDelaySecs = _storageService.getAutoSubmitDelay();
       child.setupAutoSubmit(
-        enabled:      _storageService.getAutoSubmitEnabled(),
-        delaySeconds: _storageService.getAutoSubmitDelay(),
-        isSheetOpen:  isItemSheetOpen,
-        isSubmittable: () => isEditable,
-        onAutoSubmit: () async {
+        onValid: () async {
+          if (!autoEnabled) return;
+          if (!isItemSheetOpen.value) return;
+          if (!isEditable) return;
           isAddingItem.value = true;
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(Duration(seconds: autoDelaySecs));
           await addItem();
           isAddingItem.value = false;
         },
