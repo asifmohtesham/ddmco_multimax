@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:collection/collection.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 // Shared base + mixins
@@ -21,53 +19,67 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 
 /// Item-level sheet controller for Delivery Note.
 ///
-/// Commit 2 (compiler fix):
-///   • Removed 'bool get isSheetLoading' override (type mismatch with base RxBool).
-///   • isSheetValid is now written via isSheetValid.value in validateSheet().
-///   • Implemented abstract members: isAddMode, qtyInfoText, qtyInfoTooltip,
-///     sheetScanController, adjustQty, deleteCurrentItem, availableSerialNos.
+/// Commit 7 fixes:
+///   • No-arg constructor; parent wired via initialise() so
+///     Get.put(DeliveryNoteItemFormController(), permanent: true) compiles.
+///   • qtyInfoTooltip: super.qtyInfoTooltip is illegal on an abstract getter;
+///     replaced with a final RxnString field override.
+///   • clearPosSerialSelection() does not exist in PosSerialMixin;
+///     replaced with selectedSerial.value = null.
+///   • selectedPosSerial → selectedSerial (actual mixin field name).
+///   • posSerialQtyCap → _posQtyCap() (local helper from _parent).
+///   • posItems / posUpload abstract getter overrides removed;
+///     availableSerialNos reads _parent.posUpload directly.
+///   • submit() variantOf: uses customVariantOf field on DeliveryNoteItem.
+///   • variantOf threaded through initialise() → initForNewItem/initForEdit.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
-  final DeliveryNoteFormController _parent;
 
-  DeliveryNoteItemFormController(this._parent);
+  // ── Parent back-reference ──────────────────────────────────────────────
+  // No-arg constructor; _parent is late-wired in initialise().
+  late DeliveryNoteFormController _parent;
 
-  // ── Local reactive state ──────────────────────────────────────────────────
-  final RxString itemCodeRx      = ''.obs;
-  final RxString itemNameRx      = ''.obs;
-  final RxString itemUomRx       = ''.obs;
-  final RxString itemGroupRx     = ''.obs;
+  DeliveryNoteFormController get parent => _parent;
+
+  // ── Local reactive state ───────────────────────────────────────────────
+  final RxString itemCodeRx       = ''.obs;
+  final RxString itemNameRx       = ''.obs;
+  final RxString itemUomRx        = ''.obs;
+  final RxString itemGroupRx      = ''.obs;
   final RxString currentVariantOf = ''.obs;
 
-  final RxBool   isExistingItem  = false.obs;
-  final RxInt    editingIndex    = (-1).obs;
+  final RxBool isExistingItem = false.obs;
+  final RxInt  editingIndex   = (-1).obs;
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
-  // ── Base overrides ──────────────────────────────────────────────────────
+  // ── Base abstract overrides ────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
 
-  @override bool get requiresBatch => true;
-  @override bool get requiresRack  => false;
-  @override Color get accentColor  => Colors.blueGrey;
+  @override bool  get requiresBatch => true;
+  @override bool  get requiresRack  => false;
+  @override Color get accentColor   => Colors.blueGrey;
 
-  // isSheetLoading override REMOVED — base field is already RxBool.
-
-  /// true when adding a new item; false when editing an existing one.
+  /// True when adding a new item; false when editing an existing one.
   @override
   bool get isAddMode => !isExistingItem.value;
 
-  /// DN does not use an inline scanner; return null.
+  /// DN does not use an inline camera scanner.
   @override
   MobileScannerController? get sheetScanController => null;
 
-  // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
-  @override String    get qtyInfoText    => '';
-  @override RxnString get qtyInfoTooltip => super.qtyInfoTooltip;
+  // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────
+  @override
+  String get qtyInfoText => '';
 
-  // ── adjustQty ──────────────────────────────────────────────────────────────
+  /// Commit 7: super.qtyInfoTooltip is abstract and cannot be called via super.
+  /// Override with a concrete final RxnString field.
+  @override
+  final RxnString qtyInfoTooltip = RxnString(null);
+
+  // ── adjustQty ──────────────────────────────────────────────────────────
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -77,7 +89,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── deleteCurrentItem ─────────────────────────────────────────────────────
+  // ── deleteCurrentItem ──────────────────────────────────────────────────
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
@@ -86,25 +98,34 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     Get.back();
   }
 
-  // ── PosSerialMixin wiring ────────────────────────────────────────────────
-  @override List<dynamic> get posItems  => _parent.posItems;
-  @override dynamic       get posUpload => _parent.posUpload.value;
-
+  // ── PosSerialMixin wiring ──────────────────────────────────────────────
+  // Commit 7: posItems / posUpload abstract getters removed — they are not
+  // part of PosSerialMixin's contract.  availableSerialNos reads _parent
+  // directly.
   @override
   List<String> get availableSerialNos {
-    if (posUpload == null) return const [];
-    return posItems
-        .map((e) => (e['serial_no'] ?? '').toString())
+    final upload = _parent.posUpload.value;
+    if (upload == null) return const [];
+    return upload.items
+        .map((e) => e.idx.toString())
         .where((s) => s.isNotEmpty)
         .toList();
   }
 
-  // ── Legacy name aliases ──────────────────────────────────────────────────────
+  /// Qty cap for the currently selected POS serial (invoice line qty).
+  double get _posQtyCap {
+    final serial = selectedSerial.value;
+    if (serial == null || serial.isEmpty) return double.infinity;
+    return _parent.posQtyCapForSerial(serial);
+  }
+
+  // ── Legacy name aliases ────────────────────────────────────────────────
   RxString get itemCodeValue  => itemCodeRx;
   RxString get itemNameValue  => itemNameRx;
   RxString get itemUomValue   => itemUomRx;
   RxString get itemGroupValue => itemGroupRx;
 
+  // ── AutoFillRackMixin wiring ───────────────────────────────────────────
   @override String  get mixinItemCode  => itemCode.value;
   @override String? get mixinWarehouse => resolvedWarehouse;
   @override String  get mixinBatch     => batchController.text;
@@ -117,7 +138,42 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateRack(rackId);
   }
 
-  // ── Lifecycle / init ──────────────────────────────────────────────────────
+  // ── initialise() entry point ───────────────────────────────────────────
+  /// Called by DeliveryNoteFormController._openItemSheet immediately after
+  /// Get.put; wires the parent reference then delegates to
+  /// initForNewItem / initForEdit.
+  void initialise({
+    required DeliveryNoteFormController parent,
+    required String code,
+    required String name,
+    String?  batchNo,
+    String?  scannedEan8,
+    String?  variantOf,
+    DeliveryNoteItem? editingItem,
+  }) {
+    _parent = parent;
+
+    if (editingItem != null) {
+      final items = parent.deliveryNote.value?.items ?? [];
+      final idx   = items.indexWhere((i) => i.name == editingItem.name);
+      initForEdit(
+        index:    idx >= 0 ? idx : 0,
+        item:     editingItem,
+        variantOf: variantOf ?? editingItem.customVariantOf ?? '',
+      );
+    } else {
+      initForNewItem(
+        itemCode:  code,
+        itemName:  name,
+        uom:       'Nos',
+        itemGroup: '',
+        variantOf: variantOf ?? '',
+        batchNo:   batchNo,
+      );
+    }
+  }
+
+  // ── Lifecycle / init ───────────────────────────────────────────────────
   void initForNewItem({
     required String itemCode,
     required String itemName,
@@ -126,24 +182,26 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String variantOf = '',
     String? batchNo,
   }) {
-    isExistingItem.value = false;
-    editingIndex.value   = -1;
+    isExistingItem.value  = false;
+    editingIndex.value    = -1;
     editingItemName.value = null;
 
-    this.itemCode.value       = itemCode;
-    itemCodeRx.value          = itemCode;
-    itemNameRx.value          = itemName;
-    itemUomRx.value           = uom;
-    itemGroupRx.value         = itemGroup;
-    currentVariantOf.value    = variantOf;
+    this.itemCode.value    = itemCode;
+    itemCodeRx.value       = itemCode;
+    itemNameRx.value       = itemName;
+    itemUomRx.value        = uom;
+    itemGroupRx.value      = itemGroup;
+    currentVariantOf.value = variantOf;
 
-    batchController.text      = batchNo ?? '';
+    batchController.text = batchNo ?? '';
     rackController.clear();
     qtyController.clear();
 
     resetBatch();
     resetRack();
-    clearPosSerialSelection();
+    // Commit 7: clearPosSerialSelection() does not exist in PosSerialMixin;
+    //           reset the mixin's field directly.
+    selectedSerial.value = null;
     rackStockMapRx.clear();
     isSheetValid.value = false;
 
@@ -161,24 +219,25 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required DeliveryNoteItem item,
     String variantOf = '',
   }) {
-    isExistingItem.value = true;
-    editingIndex.value   = index;
+    isExistingItem.value  = true;
+    editingIndex.value    = index;
     editingItemName.value = item.name;
 
     this.itemCode.value    = item.itemCode;
     itemCodeRx.value       = item.itemCode;
-    itemNameRx.value       = item.itemName;
-    itemUomRx.value        = item.uom;
+    itemNameRx.value       = item.itemName ?? '';
+    itemUomRx.value        = item.uom ?? '';
     itemGroupRx.value      = item.itemGroup ?? '';
     currentVariantOf.value = variantOf;
 
-    batchController.text   = item.batchNo ?? '';
-    rackController.text    = item.rack ?? '';
-    qtyController.text     = item.qty.toString();
+    batchController.text = item.batchNo ?? '';
+    rackController.text  = item.rack    ?? '';
+    qtyController.text   = item.qty.toString();
 
     resetBatch();
     resetRack();
-    clearPosSerialSelection();
+    // Commit 7: clearPosSerialSelection() → selectedSerial.value = null
+    selectedSerial.value = null;
     rackStockMapRx.clear();
     isSheetValid.value = false;
 
@@ -196,33 +255,34 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Sheet validity ──────────────────────────────────────────────────────
-  // isSheetValid getter REMOVED — written via isSheetValid.value below.
-
+  // ── Sheet validity ─────────────────────────────────────────────────────
   @override
   void validateSheet() {
     final qty = double.tryParse(qtyController.text) ?? 0;
     isSheetValid.value = isBatchValid.value && qty > 0;
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────
+  // ── submit ─────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
 
+    // Commit 7: selectedPosSerial → selectedSerial (PosSerialMixin field name).
+    //           posSerialQtyCap  → _posQtyCap (local computed getter).
+    //           variantOf        → customVariantOf (DeliveryNoteItem field name).
     final item = DeliveryNoteItem(
-      itemCode:    itemCode.value,
-      itemName:    itemNameRx.value,
-      uom:         itemUomRx.value,
-      qty:         qty,
-      batchNo:     batchController.text.trim(),
-      rack:        rackController.text.trim().isEmpty ? null : rackController.text.trim(),
-      itemGroup:   itemGroupRx.value,
-      variantOf:   currentVariantOf.value.isEmpty ? null : currentVariantOf.value,
-      serialNo:    selectedPosSerial.value,
-      posQtyCap:   posSerialQtyCap,
+      itemCode:                  itemCode.value,
+      itemName:                  itemNameRx.value,
+      uom:                       itemUomRx.value,
+      qty:                       qty,
+      batchNo:                   batchController.text.trim(),
+      rack:  rackController.text.trim().isEmpty ? null : rackController.text.trim(),
+      itemGroup:                 itemGroupRx.value,
+      customVariantOf:           currentVariantOf.value.isEmpty ? null : currentVariantOf.value,
+      customInvoiceSerialNumber: selectedSerial.value,
+      posQtyCap:                 _posQtyCap,
     );
 
     if (isExistingItem.value && editingIndex.value >= 0) {
@@ -233,7 +293,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Rack-map preload for AutoFillRack / RackPicker ───────────────────────
+  // ── Rack-map preload for AutoFillRack / RackPicker ─────────────────────
   Future<void> preloadRackStockMap() async {
     final wh    = resolvedWarehouse;
     final batch = batchController.text.trim();
@@ -307,12 +367,15 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     qtyController.clear();
     resetBatch();
     resetRack();
-    clearPosSerialSelection();
+    // Commit 7: clearPosSerialSelection() → selectedSerial.value = null
+    selectedSerial.value = null;
     rackStockMapRx.clear();
   }
 
   String get currentItemDisplay =>
-      [itemCode.value, itemNameRx.value].where((e) => e.trim().isNotEmpty).join(' - ');
+      [itemCode.value, itemNameRx.value]
+          .where((e) => e.trim().isNotEmpty)
+          .join(' - ');
 
   bool get hasExistingRackMap => rackStockMapRx.isNotEmpty;
 
