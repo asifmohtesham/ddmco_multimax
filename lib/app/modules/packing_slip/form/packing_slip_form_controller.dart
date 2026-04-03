@@ -500,9 +500,6 @@ class PackingSlipFormController extends GetxController
       itemCode: item.itemCode,
       itemName: item.itemName ?? '',
     );
-    // Commit 8: canonical {required onValid:} signature — old positional
-    // params (enabled:, delaySeconds:, isSheetOpen:, isSubmittable:,
-    // onAutoSubmit:) removed.
     child.setupAutoSubmit(
       onValid: () async {
         isAddingItem.value = true;
@@ -568,7 +565,6 @@ class PackingSlipFormController extends GetxController
         itemName:    dnItem.itemName ?? '',
         editingItem: item,
       );
-      // Commit 8: canonical {required onValid:} signature.
       child.setupAutoSubmit(
         onValid: () async {
           isAddingItem.value = true;
@@ -619,13 +615,12 @@ class PackingSlipFormController extends GetxController
     currentItemVariantOf = item.customVariantOf;
   }
 
-  /// Commit 8: adjustQty delegates to child.adjustQty(delta) where child
-  /// now accepts double. The double→int cast is removed from the call site;
-  /// the child clamps internally.
+  /// E1 fix: PackingSlipItemFormController.adjustQty takes int, but delta
+  /// arrives here as double from the stepper.  Cast at the call site.
   void adjustQty(double delta) {
     if (isItemSheetOpen.value) {
       try {
-        Get.find<PackingSlipItemFormController>().adjustQty(delta);
+        Get.find<PackingSlipItemFormController>().adjustQty(delta.toInt());
         return;
       } catch (_) { /* fall through to legacy shim path */ }
     }
@@ -640,8 +635,6 @@ class PackingSlipFormController extends GetxController
   // Commit item
   // ---------------------------------------------------------------------------
 
-  /// Primary entry point called by child.submit().
-  /// Receives the already-parsed qty — no dependency on bsQtyController.
   Future<void> addItemToSlipWithQty(double qtyToAdd) async {
     if (qtyToAdd <= 0) { Get.back(); return; }
 
@@ -719,7 +712,6 @@ class PackingSlipFormController extends GetxController
     if (isDirty.value) await savePackingSlip();
   }
 
-  /// Forwarding shim — kept so auto-submit lambda and old call sites compile.
   Future<void> addItemToSlip() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0.0;
     await addItemToSlipWithQty(qty);

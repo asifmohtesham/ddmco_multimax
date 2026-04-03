@@ -26,11 +26,20 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///        replaced with _parent.deliveryNote.refresh() (the Rx wrapper).
 ///   B4 — submit() passed posQtyCap: _posQtyCap to the DeliveryNoteItem
 ///        constructor.  DeliveryNoteItem has no such field; argument removed.
+///
+/// Error E2 fix:
+///   maybeAutoFillRack() overrides the AutoFillRackMixin method to inject
+///   a preloadRackStockMap() step before autofill runs.  The original code
+///   called `await super.maybeAutoFillRack()` but `super.` resolves only
+///   through the class hierarchy — it cannot dispatch into a mixin method
+///   when the mixin does not declare maybeAutoFillRack on the base class.
+///   Fix: after preloading, call `autoFillRackForQty(qty)` directly —
+///   this is the public mixin entry-point that contains the core selection
+///   logic, and it is always available on `this`.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
   // ── Parent back-reference ──────────────────────────────────────────────
-  // No-arg constructor; _parent is late-wired in initialise().
   late DeliveryNoteFormController _parent;
 
   DeliveryNoteFormController get parent => _parent;
@@ -56,11 +65,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override bool  get requiresRack  => false;
   @override Color get accentColor   => Colors.blueGrey;
 
-  /// True when adding a new item; false when editing an existing one.
   @override
   bool get isAddMode => !isExistingItem.value;
 
-  /// DN does not use an inline camera scanner.
   @override
   MobileScannerController? get sheetScanController => null;
 
@@ -68,8 +75,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   String get qtyInfoText => '';
 
-  /// Commit 7: super.qtyInfoTooltip is abstract and cannot be called via super.
-  /// Override with a concrete final RxnString field.
   @override
   final RxnString qtyInfoTooltip = RxnString(null);
 
@@ -87,19 +92,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
-    // B3 fix: _parent.items is a plain List<DeliveryNoteItem> getter, not an
-    // RxList.  removeAt() mutates the underlying list in-place; call
-    // _parent.deliveryNote.refresh() (the Rx<DeliveryNote?> wrapper) so the
-    // UI rebuilds correctly.
     _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
     _parent.deliveryNote.refresh();
     Get.back();
   }
 
   // ── PosSerialMixin wiring ──────────────────────────────────────────────
-  // Commit 7: posItems / posUpload abstract getters removed — they are not
-  // part of PosSerialMixin's contract.  availableSerialNos reads _parent
-  // directly.
   @override
   List<String> get availableSerialNos {
     final upload = _parent.posUpload.value;
@@ -110,7 +108,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         .toList();
   }
 
-  /// Qty cap for the currently selected POS serial (invoice line qty).
   double get _posQtyCap {
     final serial = selectedSerial.value;
     if (serial == null || serial.isEmpty) return double.infinity;
@@ -137,9 +134,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── initialise() entry point ───────────────────────────────────────────
-  /// Called by DeliveryNoteFormController._openItemSheet immediately after
-  /// Get.put; wires the parent reference then delegates to
-  /// initForNewItem / initForEdit.
   void initialise({
     required DeliveryNoteFormController parent,
     required String code,
@@ -197,8 +191,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     resetBatch();
     resetRack();
-    // Commit 7: clearPosSerialSelection() does not exist in PosSerialMixin;
-    //           reset the mixin's field directly.
     selectedSerial.value = null;
     rackStockMapRx.clear();
     isSheetValid.value = false;
@@ -234,7 +226,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     resetBatch();
     resetRack();
-    // Commit 7: clearPosSerialSelection() → selectedSerial.value = null
     selectedSerial.value = null;
     rackStockMapRx.clear();
     isSheetValid.value = false;
@@ -267,10 +258,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
 
-    // B4 fix: DeliveryNoteItem has no posQtyCap field — argument removed.
-    //         _posQtyCap is local UI logic only; it is not persisted on the
-    //         model.  selectedSerial and customVariantOf are the only
-    //         custom fields written through to the model.
     final item = DeliveryNoteItem(
       itemCode:                  itemCode.value,
       itemName:                  itemNameRx.value,
@@ -319,10 +306,19 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// E2 fix: maybeAutoFillRack() is declared on AutoFillRackMixin, not on
+  /// ItemSheetControllerBase.  `super.maybeAutoFillRack()` fails at compile
+  /// time because `super` cannot dispatch to a mixin method — it resolves
+  /// only through the class chain.  The correct pattern is:
+  ///   1. Run any pre-autofill work (preloadRackStockMap).
+  ///   2. Call the mixin's public entry-point autoFillRackForQty(qty)
+  ///      directly on `this`, which applies the warehouse-aware rack
+  ///      selection logic defined in AutoFillRackMixin.
   @override
   Future<void> maybeAutoFillRack() async {
     await preloadRackStockMap();
-    await super.maybeAutoFillRack();
+    final qty = double.tryParse(qtyController.text) ?? 0.0;
+    if (qty > 0) autoFillRackForQty(qty);
   }
 
   @override
@@ -367,7 +363,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     qtyController.clear();
     resetBatch();
     resetRack();
-    // Commit 7: clearPosSerialSelection() → selectedSerial.value = null
     selectedSerial.value = null;
     rackStockMapRx.clear();
   }
