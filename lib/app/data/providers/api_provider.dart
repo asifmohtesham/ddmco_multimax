@@ -202,11 +202,19 @@ class ApiProvider {
   /// Returns a [List<Map<String, dynamic>>] of matching document rows so
   /// callers can read individual field values (e.g. expiry_date).
   ///
-  /// The first positional parameter [_positional] is kept for backwards
-  /// compat with any call-site that still passes the doctype positionally;
-  /// new call-sites should use the named [doctype] parameter instead.
+  /// [_positional] is an OPTIONAL positional kept for backwards compat with
+  /// any legacy call-site that still passes the doctype positionally.
+  /// New call-sites should use the named [doctype] parameter instead:
+  ///
+  ///   ApiProvider().getList(doctype: 'Batch', filters: {...}, fields: [...])
+  ///
+  /// Group D fix: the param was previously declared as a required positional
+  /// (String? _positional) with no default — callers that omitted it (i.e.
+  /// all named-only call-sites) produced a compile error.  Wrapping in
+  /// square brackets makes it an optional positional with an implicit null
+  /// default, so both calling styles compile correctly.
   Future<List<Map<String, dynamic>>> getList(
-    String? _positional, {
+    [String? _positional], {
     String? doctype,
     Map<String, dynamic>? filters,
     List<String>? fields,
@@ -320,14 +328,12 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // getBatchWiseBalance — SIGNATURE CHANGED (Commit 3)
+  // getBatchWiseBalance
   //
-  //   Old: getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse})
-  //   New: getBatchWiseBalance({required String itemCode, String? batchNo, String? warehouse})
-  //
-  // Callers in ItemSheetControllerBase.fetchBatchBalance and
-  // StockEntryItemFormController.fetchBatchWiseHistory use all-named params
-  // with optional batchNo (omit = fetch all batches for item+wh).
+  // All-named params, optional batchNo (omit = fetch all batches for item+wh).
+  // Used by ItemSheetControllerBase.fetchBatchBalance and
+  // StockEntryItemFormController.fetchBatchWiseHistory.
+  // Signature was already correct on this branch — no changes needed.
   // ---------------------------------------------------------------------------
 
   /// Fetch Batch-Wise Balance History rows for [itemCode].
@@ -430,14 +436,12 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // getStockBalanceWithDimension — NEW (Commit 3)
+  // getStockBalanceWithDimension
   //
   // Used by:
   //   • DeliveryNoteItemFormController.preloadRackStockMap
   //   • StockEntryItemFormController.validateRack fallback
-  //
-  // Hits the custom 'Stock Balance with Dimension' script report and returns
-  // rows as List<Map<String,dynamic>> with at least {custom_rack, qty}.
+  //   • ItemSheetControllerBase.fetchRackBalance
   // ---------------------------------------------------------------------------
 
   /// Fetch per-rack stock balance rows for [itemCode] + [warehouse],
