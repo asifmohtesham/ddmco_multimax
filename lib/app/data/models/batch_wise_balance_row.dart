@@ -10,6 +10,11 @@
 /// by [BatchWiseBalanceRow.fromReportRow] via the caller-supplied
 /// [packagingIdx]; absent columns default to 0.0 (no change to callers
 /// that pass -1).
+///
+/// Commit 5: added [fromMap] factory so that callers receiving
+/// Map<String,dynamic> rows from [ApiProvider.getBatchWiseBalance] (the
+/// key-based path) can construct a [BatchWiseBalanceRow] without going
+/// through [fromReportRow] (which expects index-based List rows).
 class BatchWiseBalanceRow {
   final String batchNo;
   final double balanceQty;
@@ -41,6 +46,53 @@ class BatchWiseBalanceRow {
     return expiryDate!.isBefore(DateTime.now());
   }
 
+  // ── fromMap ───────────────────────────────────────────────────────────────
+  /// Construct from a key-based [Map<String, dynamic>] row as returned by
+  /// [ApiProvider.getBatchWiseBalance] (the Map path — when the report returns
+  /// keyed objects rather than raw List rows).
+  ///
+  /// Recognised keys:
+  ///   batch_no | batch | batch_id  → [batchNo]
+  ///   qty | balance_qty | bal_qty  → [balanceQty]
+  ///   warehouse                    → [warehouse]
+  ///   expiry_date | expiration_date → [expiryDate]
+  ///   custom_packaging_qty | packaging_qty → [packagingQty]
+  factory BatchWiseBalanceRow.fromMap(Map<String, dynamic> map) {
+    final batchNo = (map['batch_no'] ?? map['batch'] ?? map['batch_id'] ?? '')
+        .toString()
+        .trim();
+
+    double toDouble(dynamic v) => switch (v) {
+          final num n    => n.toDouble(),
+          final String s => double.tryParse(s) ?? 0.0,
+          _              => 0.0,
+        };
+
+    final balanceQty = toDouble(
+        map['qty'] ?? map['balance_qty'] ?? map['bal_qty'] ?? map['balance']);
+
+    final warehouse =
+        (map['warehouse'] ?? '').toString().trim();
+
+    DateTime? expiryDate;
+    final rawExpiry = map['expiry_date'] ?? map['expiration_date'];
+    if (rawExpiry != null && rawExpiry.toString().isNotEmpty) {
+      expiryDate = DateTime.tryParse(rawExpiry.toString());
+    }
+
+    final packagingQty = toDouble(
+        map['custom_packaging_qty'] ?? map['packaging_qty']);
+
+    return BatchWiseBalanceRow(
+      batchNo:      batchNo,
+      balanceQty:   balanceQty,
+      warehouse:    warehouse,
+      expiryDate:   expiryDate,
+      packagingQty: packagingQty,
+    );
+  }
+
+  // ── fromReportRow ─────────────────────────────────────────────────────────
   /// Parse a row from the Batch-Wise Balance History report result.
   ///
   /// Column indices are resolved dynamically by the caller (see
