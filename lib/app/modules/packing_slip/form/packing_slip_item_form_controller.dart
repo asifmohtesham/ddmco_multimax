@@ -7,20 +7,13 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 
 /// Item-level sheet controller for Packing Slip.
 ///
-/// Extends [ItemSheetControllerBase] to gain the full animated item-sheet
+/// Extends [ItemSheetControllerBase] for the full animated item-sheet
 /// infrastructure (save-button state, auto-submit worker, dirty tracking, etc.).
-///
-/// Commit 8 fixes:
-///   • import 'package:get/get.dart' added — resolves RxnString without
-///     relying on transitive re-export through the base class file.
-///   • adjustQty signature changed int → double to match base abstract and
-///     the double passed by PackingSlipFormController.adjustQty(delta).
-///   • qtyInfoTooltip remains RxnString (get.dart now explicitly imported).
 class PackingSlipItemFormController extends ItemSheetControllerBase {
-  // ── Parent reference ──────────────────────────────────────────────────────
+  // ── Parent reference ──────────────────────────────────────────
   late PackingSlipFormController _parent;
 
-  // ── ItemSheetControllerBase abstract overrides ────────────────────────────
+  // ── ItemSheetControllerBase abstract overrides ──────────────────────
 
   @override
   String? get resolvedWarehouse => null;
@@ -31,34 +24,31 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => false;
 
-  /// PS uses teal as its accent colour.
   @override
   Color get accentColor => Colors.teal;
 
-  /// Computed getter — add mode when no editing item is set.
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// Remaining qty tooltip shown below the qty field.
+  /// Fix 1: base abstract declares `String get qtyInfoText` (non-nullable).
+  /// Return '' instead of null when there is no ceiling.
   @override
-  String? get qtyInfoText {
+  String get qtyInfoText {
     final max = _parent.bsMaxQty.value;
     if (max > 0) return 'Remaining: ${max.toStringAsFixed(2)}';
-    return null;
+    return '';
   }
 
-  /// Commit 8: RxnString now resolves — get/get.dart imported explicitly above.
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
 
-  /// PS sheet has no embedded scanner.
   @override
   MobileScannerController? get sheetScanController => null;
 
-  /// Commit 8: signature is double (matches base abstract + parent call site).
-  /// ±1.0 stepper clamped to [0, bsMaxQty] when a ceiling exists.
+  /// Fix 2: base abstract declares `void adjustQty(int delta)`.
+  /// The stepper always passes +1 / -1, so int is correct.
   @override
-  void adjustQty(double delta) {
+  void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
     final ceiling = _parent.bsMaxQty.value > 0
         ? _parent.bsMaxQty.value
@@ -86,8 +76,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       isSheetValid.value = false;
       return;
     }
-
-    // Use the base isDirty getter (isFormDirty / isFieldsDirty do not exist).
     if (editingItemName.value != null && !isDirty) {
       isSheetValid.value = false;
       return;
@@ -103,7 +91,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     await _parent.addItemToSlipWithQty(qty);
   }
 
-  // ── Initialisation ────────────────────────────────────────────────────────
+  // ── Initialisation ────────────────────────────────────────────
 
   void initialise({
     required PackingSlipFormController parent,
@@ -113,9 +101,9 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parent;
 
-    // Commit 8: isAddingItemFlag is RxBool? on base; parent.isAddingItem is
-    // RxBool (false.obs) — types match, assignment is safe.
-    isAddingItemFlag = parent.isAddingItem;
+    // Fix 3: isAddingItemFlag is a plain bool field on the base;
+    // parent.isAddingItem is RxBool — unwrap with .value.
+    isAddingItemFlag = parent.isAddingItem.value;
 
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
@@ -144,8 +132,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
               : remaining.toString())
           : '0';
     }
-
-    // isAddMode is a computed getter — no assignment needed.
 
     initBaseListeners();
     captureSnapshot();
