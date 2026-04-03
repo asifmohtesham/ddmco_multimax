@@ -26,7 +26,6 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
@@ -348,18 +347,7 @@ class DeliveryNoteFormController extends GetxController
             c:           child,
             accentColor: Colors.blueGrey,
             editMode:    true,
-            onPickerTap: () async {
-              final selected = await showBatchPickerSheet(
-                Get.context!,
-                itemCode:    child.itemCode.value,
-                warehouse:   child.resolvedWarehouse,
-                accentColor: Colors.blueGrey,
-              );
-              if (selected != null && selected.isNotEmpty) {
-                child.batchController.text = selected;
-                await child.validateBatch(selected);
-              }
-            },
+            onPickerTap: child.openBatchPicker,
           ),
           // 3. Source Rack
           SharedRackField(
