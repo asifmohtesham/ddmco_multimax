@@ -41,14 +41,33 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • [fetchBatchWiseHistory] — public method so the sheet/picker can
 ///     trigger a manual refresh (pull-to-refresh).
 ///
+/// Dual-rack additions (SharedDualRackSection):
+///   • [parent]                   — public getter for _parent.
+///   • [sourceRackController]     — TEC for the source rack field.
+///   • [targetRackController]     — TEC for the target rack field.
+///   • [isSourceRackValid]        — RxBool validation state for source rack.
+///   • [isValidatingSourceRack]   — RxBool spinner state for source rack.
+///   • [isTargetRackValid]        — RxBool validation state for target rack.
+///   • [isValidatingTargetRack]   — RxBool spinner state for target rack.
+///   • [isLoadingRackBalance]     — RxBool balance-chip loading indicator.
+///   • [itemSourceWarehouse]      — RxnString item-level source WH override.
+///   • [derivedSourceWarehouse]   — RxnString computed source warehouse.
+///   • [itemTargetWarehouse]      — RxnString item-level target WH override.
+///   • [derivedTargetWarehouse]   — RxnString computed target warehouse.
+///   • [resetSourceRackValidation]— clears source-rack validation state.
+///   • [resetTargetRackValidation]— clears target-rack validation state.
+///   • [validateDualRack]         — validates source or target rack.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
-  // ── Parent back-reference ─────────────────────────────────────────────────
+  // ── Parent back-reference ──────────────────────────────────────────────────
   final StockEntryFormController _parent;
   StockEntryItemFormController(this._parent);
 
-  // ── Abstract overrides ─────────────────────────────────────────────────
+  /// Public accessor used by [SharedDualRackSection] and other widgets.
+  StockEntryFormController get parent => _parent;
+
+  // ── Abstract overrides ──────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
@@ -62,7 +81,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   Color get accentColor => Colors.purple;
 
-  // ── Batch-wise history (for BatchPickerSheet) ───────────────────────────
+  // ── Batch-wise history (for BatchPickerSheet) ─────────────────────────────
   final RxList<BatchWiseBalanceRow> _batchWiseHistory = <BatchWiseBalanceRow>[].obs;
   @override List<BatchWiseBalanceRow> get batchWiseHistory => _batchWiseHistory;
 
@@ -88,7 +107,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── P3-3: openBatchPicker override ────────────────────────────────────────
+  // ── P3-3: openBatchPicker override ────────────────────────────────────────────
   //
   // Pre-fetches [batchWiseHistory] in the background before the picker opens
   // so the sheet can show live data as soon as it arrives (shimmer meanwhile).
@@ -101,11 +120,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     await super.openBatchPicker();
   }
 
-  // ── POS serial mixin wiring ──────────────────────────────────────────────
+  // ── POS serial mixin wiring ───────────────────────────────────────────────
   @override PosUploadModel? get posUpload => _parent.posUpload.value;
   @override List<dynamic>   get posItems  => _parent.posItems;
 
-  // ── Derived / computed ──────────────────────────────────────────────────
+  // ── Derived / computed ───────────────────────────────────────────────────
   final RxDouble liveRemaining = 0.0.obs;
   final RxnString qtyInfoTooltip = RxnString(null);
 
@@ -160,7 +179,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   String? _mrUom;
   String? _mrBatch;
 
-  // ── AutoFillRackMixin wiring ────────────────────────────────────────────
+  // ── AutoFillRackMixin wiring ───────────────────────────────────────────────
   @override String  get mixinItemCode  => itemCode.value;
   @override String? get mixinWarehouse => resolvedWarehouse;
   @override String  get mixinBatch     => batchController.text;
@@ -175,7 +194,99 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateRack(rackId);
   }
 
-  // ── Sheet-valid gate ────────────────────────────────────────────────────
+  // ── Dual-rack state (used by SharedDualRackSection) ──────────────────────────
+
+  // Source rack
+  final TextEditingController sourceRackController = TextEditingController();
+  final RxBool isSourceRackValid       = false.obs;
+  final RxBool isValidatingSourceRack  = false.obs;
+
+  // Target rack
+  final TextEditingController targetRackController = TextEditingController();
+  final RxBool isTargetRackValid       = false.obs;
+  final RxBool isValidatingTargetRack  = false.obs;
+
+  // Balance loading indicator for the source rack BalanceChip.
+  final RxBool isLoadingRackBalance    = false.obs;
+
+  // Per-item warehouse overrides (set when the item row has its own
+  // source / target warehouse that differs from the header warehouse).
+  final RxnString itemSourceWarehouse    = RxnString(null);
+  final RxnString derivedSourceWarehouse = RxnString(null);
+  final RxnString itemTargetWarehouse    = RxnString(null);
+  final RxnString derivedTargetWarehouse = RxnString(null);
+
+  // ── Dual-rack reset helpers ──────────────────────────────────────────────────
+
+  void resetSourceRackValidation() {
+    sourceRackController.clear();
+    isSourceRackValid.value      = false;
+    isValidatingSourceRack.value = false;
+  }
+
+  void resetTargetRackValidation() {
+    targetRackController.clear();
+    isTargetRackValid.value      = false;
+    isValidatingTargetRack.value = false;
+  }
+
+  // ── validateDualRack ──────────────────────────────────────────────────────────
+  //
+  // Validates either the source rack ([isSource] == true) or the target
+  // rack ([isSource] == false) against [_rackStockMap] / API.
+  Future<void> validateDualRack(String rack, bool isSource) async {
+    if (rack.isEmpty) {
+      if (isSource) {
+        resetSourceRackValidation();
+      } else {
+        resetTargetRackValidation();
+      }
+      return;
+    }
+
+    if (isSource) {
+      isValidatingSourceRack.value = true;
+      isSourceRackValid.value      = false;
+    } else {
+      isValidatingTargetRack.value = true;
+      isTargetRackValid.value      = false;
+    }
+
+    try {
+      if (isSource) {
+        isLoadingRackBalance.value = true;
+        if (_rackStockMap.containsKey(rack)) {
+          rackBalance.value = _rackStockMap[rack]!;
+        } else {
+          await fetchRackBalance(rack);
+        }
+        isLoadingRackBalance.value = false;
+        isSourceRackValid.value    = true;
+      } else {
+        isTargetRackValid.value = true;
+      }
+    } catch (e) {
+      rackError.value = 'Rack validation error: $e';
+      log('[SE-Item] validateDualRack error: $e', name: 'SE-Item');
+      isLoadingRackBalance.value = false;
+    } finally {
+      if (isSource) {
+        isValidatingSourceRack.value = false;
+      } else {
+        isValidatingTargetRack.value = false;
+      }
+    }
+  }
+
+  // ── Lifecycle: dispose dual-rack TECs ───────────────────────────────────────────
+  @override
+  void onClose() {
+    try { sourceRackController.dispose(); } catch (_) {}
+    try { targetRackController.dispose(); } catch (_) {}
+    super.onClose();
+  }
+
+  // ── Sheet-valid gate ─────────────────────────────────────────────────────────
   @override
   bool get isSheetLoading => super.isSheetLoading;
 
@@ -207,7 +318,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  ·  ');
   }
 
-  // ── MR link ────────────────────────────────────────────────────────────
+  // ── MR link ──────────────────────────────────────────────────────────────
   void linkMrItem({
     required String mrName,
     required String itemName,
@@ -233,7 +344,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   String? get mrUom      => _mrUom;
   String? get mrBatch    => _mrBatch;
 
-  // ── Init helpers ────────────────────────────────────────────────────────
+  // ── Init helpers ────────────────────────────────────────────────────────────
   void initForItem({
     required String code,
     required String name,
@@ -257,6 +368,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     batchController.clear();
     rackController.clear();
     qtyController.clear();
+    sourceRackController.clear();
+    targetRackController.clear();
     isBatchValid.value    = false;
     isBatchReadOnly.value = false;
     batchError.value      = '';
@@ -266,6 +379,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     batchBalance.value    = 0.0;
     rackBalance.value     = 0.0;
     liveRemaining.value   = 0.0;
+    isSourceRackValid.value      = false;
+    isValidatingSourceRack.value = false;
+    isTargetRackValid.value      = false;
+    isValidatingTargetRack.value = false;
+    isLoadingRackBalance.value   = false;
     _batchWiseHistory.clear();
   }
 
@@ -304,7 +422,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Public entry point (called by SE form controller) ──────────────────
+  // ── Public entry point (called by SE form controller) ──────────────────────
   Future<void> prepareForItem({
     required String itemCode,
     required String itemName,
@@ -358,7 +476,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     );
   }
 
-  // ── Rack validation override (SE-specific: reads rackStockMap) ──────────
+  // ── Rack validation override (SE-specific: reads rackStockMap) ────────────
   @override
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) { resetRack(); return; }
@@ -387,13 +505,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       ..addAll(map);
   }
 
-  // ── applyRackScan (called by RackPickerSheet) ──────────────────────────
+  // ── applyRackScan (called by RackPickerSheet) ──────────────────────────────
   void applyRackScan(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
   }
 
-  // ── Snackbar helpers ──────────────────────────────────────────────────
+  // ── Snackbar helpers ──────────────────────────────────────────────────────
   void showError(String msg)   => GlobalSnackbar.error(msg);
   void showSuccess(String msg) => GlobalSnackbar.success(msg);
 }
