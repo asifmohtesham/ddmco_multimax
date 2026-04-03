@@ -28,7 +28,6 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
-import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 
 // ── SE-module-local widgets ───────────────────────────────────────────────────────────────────────────────────
 
@@ -1019,25 +1018,11 @@ class StockEntryFormController extends GetxController
           itemSubtext:      currentVariantOf,
           isSaveEnabled:    isEditable,
           customFields: [
-            // P3-4: wire onPickerTap so the list-picker icon opens BatchPickerSheet
-            // in the idle (not-yet-validated) state, matching the DN pattern.
             SharedBatchField(
               c:               child,
               accentColor:     Colors.purple,
               balanceOverride: () => child.batchBalance.value,
-              onPickerTap: () async {
-                final warehouse = child.resolvedWarehouse;
-                final selected  = await showBatchPickerSheet(
-                  context,
-                  itemCode:    child.itemCode.value,
-                  warehouse:   warehouse,
-                  accentColor: Colors.purple,
-                );
-                if (selected != null && selected.isNotEmpty) {
-                  child.batchController.text = selected;
-                  await child.validateBatch(selected);
-                }
-              },
+              onPickerTap:     child.openBatchPicker,
             ),
             SharedSerialField(
               controller:  child,
