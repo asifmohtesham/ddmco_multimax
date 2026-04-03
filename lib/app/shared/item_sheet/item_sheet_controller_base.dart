@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -11,8 +12,6 @@ import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 enum SaveButtonState { idle, loading, success, error }
 
 /// Base return type for batch-lookup results.
-///
-/// A batch that exists in the system and can be selected by the user.
 class BatchResult {
   final String batchNo;
   final double availableQty;
@@ -39,26 +38,32 @@ class BatchResult {
 ///   • Rack validation lifecycle   — [validateRack],  [resetRack]
 ///   • Balance computation         — [maxQty], [batchBalance], [fetchBatchBalance]
 ///   • Save-button state           — [SaveButtonState], [saveButtonState]
-///   • Sheet-valid gate            — [isSheetValid], [validateSheet]
+///   • Sheet-valid gate            — [isSheetValid] (RxBool), [validateSheet]
 ///   • Dirty-check helpers         — [isDirty], snapshot tracking
 ///   • [openBatchPicker]           — canonical picker lifecycle shared by all
 ///     concrete controllers.  SE overrides to pre-fetch [batchWiseHistory].
 ///
 /// ## Changelog
 ///
-///   validateBatch()  — resets rackBalance = 0.0 on success so rack must
-///                      be re-validated when the batch changes.
-///   maxQty           — computed getter (double), not RxDouble.
-///                      validateBatch() no longer writes maxQty directly.
-///   rackStockMap     — abstract getter; concrete controllers supply the
-///                      populated rack→qty map used by SharedRackField.
-///   rackFocusNode    — concrete FocusNode, disposed in onClose.
-///   rackStockTooltip — concrete RxnString, cleared by resetRack().
+///   isSheetValid     — promoted from computed bool getter to RxBool so
+///                      UniversalItemFormSheet can pass it as isSaveEnabledRx.
+///                      Concrete controllers write this inside validateSheet().
 ///   liveRemaining    — concrete RxDouble(0.0); SE writes it in
 ///                      validateSheet(); SharedSerialField reads it on
 ///                      the base type.
+///   editingItemName  — RxnString; null = add-mode, non-null = edit rowId.
+///   formKey          — shared GlobalKey<FormState>.
+///   itemName/Owner/Creation/Modified/ModifiedBy — shared metadata Rx fields.
+///   qtyInfoText/Tooltip — abstract; each controller supplies its own.
+///   adjustQty        — abstract; concrete controllers implement stepper.
+///   deleteCurrentItem — abstract; concrete controllers implement deletion.
+///   sheetScanController/isScanning — scan-bar integration.
+///   isAddMode        — abstract bool (satisfies AutoFillRackMixin contract).
+///   setupAutoSubmit  — wires the auto-close worker; available to all.
+///   initBaseListeners/captureSnapshot — aliases for addSheetListeners /
+///                      snapshotState used by PO and PS controllers.
 abstract class ItemSheetControllerBase extends GetxController {
-  // ── Reactive state ──────────────────────────────────────────────────
+  // ── Reactive state ──────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
   final RxBool   isValidatingBatch     = false.obs;
   final RxBool   isBatchReadOnly       = false.obs;
@@ -73,67 +78,98 @@ abstract class ItemSheetControllerBase extends GetxController {
   final Rx<SaveButtonState> saveButtonState = SaveButtonState.idle.obs;
   final RxBool   isSheetLoading        = false.obs;
 
+  /// Whether the sheet scanner is active.
+  final RxBool   isScanning            = false.obs;
+
   /// Remaining quantity after the entered qty is subtracted from the
   /// effective ceiling.  Written by [validateSheet] in concrete controllers
-  /// that track a qty ceiling (e.g. SE).  Defaults to 0.0; shared widgets
-  /// such as [SharedSerialField] read it on this base type.
+  /// that track a qty ceiling (e.g. SE).  Defaults to 0.0.
   final RxDouble liveRemaining         = 0.0.obs;
 
+  /// Whether the sheet is valid and the Save button should be enabled.
+  /// Concrete controllers write this inside [validateSheet].
+  final RxBool   isSheetValid          = false.obs;
+
   /// Tooltip shown in the rack suffix when a rack is selected.
-  /// Concrete controllers populate this (e.g. "Available: 12 units").
-  /// Cleared by [resetRack].
   final RxnString rackStockTooltip     = RxnString(null);
 
+  // ── Edit-mode identity ───────────────────────────────────────────────────
+  /// null = add-mode; non-null = the rowId / docName being edited.
+  final RxnString editingItemName      = RxnString(null);
+
+  // ── Item metadata (shown in sheet footer) ────────────────────────────────
+  final RxString  itemName             = ''.obs;
+  final RxnString itemOwner            = RxnString(null);
+  final RxnString itemCreation         = RxnString(null);
+  final RxnString itemModified         = RxnString(null);
+  final RxnString itemModifiedBy       = RxnString(null);
+
+  // ── Form key ────────────────────────────────────────────────────────────
+  final GlobalKey<FormState> formKey   = GlobalKey<FormState>();
+
+  // ── isAddingItemFlag (used by PO/PS controllers) ─────────────────────────
+  bool isAddingItemFlag = false;
+
+  // ── Text controllers ────────────────────────────────────────────────────
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
   final TextEditingController qtyController   = TextEditingController();
 
   /// FocusNode for the rack text field.
-  /// Disposed in [onClose] alongside the other TECs.
   final FocusNode rackFocusNode = FocusNode();
 
   var itemCode = ''.obs;
 
-  // batchWiseHistory : Subclasses that support the batch-history picker
-  // (e.g. SE) maintain this list.  Base provides an empty default so
-  // widgets that read it compile without a cast.
+  // ── batchWiseHistory defaults ─────────────────────────────────────────────
   List<dynamic> get batchWiseHistory       => const [];
   RxBool        get isLoadingBatchHistory  => false.obs;
   Future<void>  fetchBatchWiseHistory()    async {}
 
-  // batchBalance : Batch-Wise Balance for the selected batch in resolvedWarehouse.
-  //                Populated by fetchBatchBalance() / validateBatch().
-  //
-  // maxQty  : The effective per-item quantity ceiling; computed from the
-  //           narrowest of serial / batch / rack / MR ceilings.
-  //           Concrete controllers override this getter.
+  // ── maxQty default ────────────────────────────────────────────────────────
   double get maxQty => 0.0;
 
-  /// Rack-name → available-qty map used by [SharedRackField] for the
-  /// balance chip and by [AutoFillRackMixin] for rack selection.
-  /// Concrete controllers populate this via [fetchAllRackStocks] in
-  /// their [initialise] method.
+  /// Rack-name → available-qty map.
   Map<String, double> get rackStockMap => const {};
 
-  // Dirty-tracking snapshots (written by [snapshotState]).
+  // Dirty-tracking snapshots
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ──────────────────────────────────────────────────
+  // ── Auto-submit worker ───────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ──────────────────────────────────────────────────
+  // ── Abstract interface ───────────────────────────────────────────────────
   String? get resolvedWarehouse;
   bool get requiresBatch;
   bool get requiresRack;
+
   /// The accent colour used by this sheet's UI elements.
-  /// Each concrete controller returns its own brand colour.
   Color get accentColor;
+
   void validateSheet();
   Future<void> submit();
 
-  // ── Option-3: submitWithFeedback ─────────────────────────────────────────────
+  /// Whether the sheet is in add-mode (true) or edit-mode (false).
+  /// Satisfies [AutoFillRackMixin.isAddMode].
+  bool get isAddMode;
+
+  /// Qty-info label shown next to the qty field (e.g. 'Max: 12').
+  String get qtyInfoText;
+
+  /// Tooltip backing the qty-info label; null = no tap target rendered.
+  RxnString get qtyInfoTooltip;
+
+  /// Mobile scanner controller backing the scan footer.
+  MobileScannerController? get sheetScanController;
+
+  /// Increment (+1) or decrement (-1) the qty field.
+  void adjustQty(int delta);
+
+  /// Delete the item currently being edited.
+  void deleteCurrentItem();
+
+  // ── submitWithFeedback ──────────────────────────────────────────────────
   Future<bool> submitWithFeedback() async {
     saveButtonState.value = SaveButtonState.loading;
     try {
@@ -150,7 +186,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────────
   @override
   void onClose() {
     _autoSubmitWorker?.dispose();
@@ -161,7 +197,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     super.onClose();
   }
 
-  // ── Listener wiring ──────────────────────────────────────────────────────────
+  // ── Listener wiring ──────────────────────────────────────────────────────
   void removeSheetListeners() {
     try { batchController.removeListener(validateSheet); } catch (_) {}
     try { batchController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
@@ -181,13 +217,36 @@ abstract class ItemSheetControllerBase extends GetxController {
     qtyController.addListener(_resetSaveStateOnEdit);
   }
 
+  /// Alias used by PO / PS controllers.
+  void initBaseListeners() => addSheetListeners();
+
+  /// Alias used by PO / PS controllers.
+  void captureSnapshot() => snapshotState();
+
   void _resetSaveStateOnEdit() {
     if (saveButtonState.value != SaveButtonState.idle) {
       saveButtonState.value = SaveButtonState.idle;
     }
   }
 
-  // ── Dirty-tracking ──────────────────────────────────────────────────────────
+  // ── setupAutoSubmit ──────────────────────────────────────────────────────
+  void setupAutoSubmit({required Future<void> Function() onValid}) {
+    _autoSubmitWorker?.dispose();
+    _autoSubmitWorker = ever(
+      saveButtonState,
+      (state) async {
+        if (state == SaveButtonState.success) {
+          await onValid();
+        }
+      },
+    );
+  }
+
+  /// Backwards-compat alias.
+  void setupAutoSubmitOnValid({required Future<void> Function() onValid}) =>
+      setupAutoSubmit(onValid: onValid);
+
+  // ── Dirty-tracking ───────────────────────────────────────────────────────
   void snapshotState() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
@@ -199,16 +258,7 @@ abstract class ItemSheetControllerBase extends GetxController {
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Sheet-valid gate ─────────────────────────────────────────────────────────
-  bool get isSheetValid {
-    if (requiresBatch && !isBatchValid.value) return false;
-    if (requiresRack  && !isRackValid.value)  return false;
-    final qty = double.tryParse(qtyController.text);
-    if (qty == null || qty <= 0)              return false;
-    return true;
-  }
-
-  // ── Rack reset ─────────────────────────────────────────────────────────────
+  // ── Rack reset ──────────────────────────────────────────────────────────
   void resetRack() {
     rackController.clear();
     isRackValid.value      = false;
@@ -217,7 +267,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackStockTooltip.value = null;
   }
 
-  // ── Batch reset ────────────────────────────────────────────────────────────
+  // ── Batch reset ─────────────────────────────────────────────────────────
   void resetBatch() {
     isBatchValid.value    = false;
     isBatchReadOnly.value = false;
@@ -227,10 +277,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     resetRack();
   }
 
-  // ── Fetch helpers ────────────────────────────────────────────────────────────
-
-  // Fetches the Batch-Wise Balance for [batchController.text] in
-  // [resolvedWarehouse] and writes the total to [batchBalance].
+  // ── Fetch helpers ────────────────────────────────────────────────────────
   Future<void> fetchBatchBalance() async {
     final batch = batchController.text.trim();
     if (batch.isEmpty || itemCode.value.isEmpty) {
@@ -250,9 +297,6 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // Fetches the Stock Balance with Inventory Dimension for [itemCode]
-  // in [resolvedWarehouse], then isolates the row whose rack matches
-  // [rackController.text] and writes the result to [rackBalance].
   Future<void> fetchRackBalance(String rack) async {
     if (rack.isEmpty || itemCode.value.isEmpty) {
       rackBalance.value = 0.0;
@@ -276,11 +320,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── openBatchPicker (base) ───────────────────────────────────────────────────
-  //
-  // Opens [BatchPickerSheet], writes the selected batch to [batchController],
-  // and calls [validateBatch].  Subclasses may override to add pre-fetch
-  // behaviour before delegating to super (e.g. SE pre-fetches batchWiseHistory).
+  // ── openBatchPicker (base) ──────────────────────────────────────────────
   Future<void> openBatchPicker() async {
     final ctx = Get.context;
     if (ctx == null) return;
@@ -319,7 +359,6 @@ abstract class ItemSheetControllerBase extends GetxController {
       final expiryRaw  = row['expiry_date'] as String?;
       final mfgRaw     = row['manufacturing_date'] as String?;
 
-      // ── Expiry check ─────────────────────────────────────────────────────
       if (expiryRaw != null && expiryRaw.isNotEmpty) {
         final expiry = DateTime.tryParse(expiryRaw);
         if (expiry != null) {
@@ -332,12 +371,10 @@ abstract class ItemSheetControllerBase extends GetxController {
           if (expiry.isBefore(today.add(const Duration(days: 30)))) {
             batchError.value =
                 'Batch expires soon: ${DateFormat('dd MMM yyyy').format(expiry)}';
-            // fall-through → mark valid but keep the warning
           }
         }
       }
 
-      // ── Tooltip (mfg + expiry info) ─────────────────────────────────────────
       final parts = <String>[];
       if (mfgRaw    != null && mfgRaw.isNotEmpty)    parts.add('Mfg: $mfgRaw');
       if (expiryRaw != null && expiryRaw.isNotEmpty) parts.add('Exp: $expiryRaw');
@@ -356,7 +393,6 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── S1: validateBatchOnInit ───────────────────────────────────────────────────
   void validateBatchOnInit(String batch) {
     if (batch.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -364,20 +400,7 @@ abstract class ItemSheetControllerBase extends GetxController {
     });
   }
 
-  // ── Auto-submit on valid ────────────────────────────────────────────────────
-  void setupAutoSubmitOnValid({required Future<void> Function() onValid}) {
-    _autoSubmitWorker?.dispose();
-    _autoSubmitWorker = ever(
-      saveButtonState,
-      (state) async {
-        if (state == SaveButtonState.success) {
-          await onValid();
-        }
-      },
-    );
-  }
-
-  // ── Rack validation (base implementation) ─────────────────────────────────────
+  // ── Rack validation (base) ──────────────────────────────────────────────
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) {
       resetRack();
@@ -398,17 +421,13 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Sheet-valid helper used by validateSheet implementations ──────────────
+  // ── Sheet-valid helpers ──────────────────────────────────────────────────
   bool get isBatchRequiredAndInvalid =>
       requiresBatch && !isBatchValid.value;
 
   bool get isRackRequiredAndInvalid =>
       requiresRack && !isRackValid.value;
 
-  // ── isSheetValid override hook ──────────────────────────────────────────────
-  //
-  // Concrete controllers may override [isSheetValid] and then call
-  // super.isSheetValid to include the base checks.
   bool get baseSheetValid {
     if (requiresBatch && !isBatchValid.value) return false;
     if (requiresRack  && !isRackValid.value)  return false;
