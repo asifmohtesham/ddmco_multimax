@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import '../item_sheet_controller_base.dart';
 
 /// Tappable pill badge that shows the active qty cap from [ItemSheetControllerBase.qtyInfoText].
-/// Tapping it shows a breakdown dialog from [ItemSheetControllerBase.qtyInfoTooltip].
+/// Tapping it shows a breakdown dialog built from [ItemSheetControllerBase.qtyInfoTooltip].
 /// Renders nothing when [qtyInfoText] returns null.
 class QtyCapBadge extends StatelessWidget {
   final ItemSheetControllerBase controller;
@@ -16,7 +16,9 @@ class QtyCapBadge extends StatelessWidget {
       final label = controller.qtyInfoText;
       if (label == null) return const SizedBox.shrink();
 
-      final canTap = controller.qtyInfoTooltip != null;
+      // qtyInfoTooltip is an RxnString — the Rx object is never null;
+      // inspect .value to decide whether the badge is tappable.
+      final canTap = controller.qtyInfoTooltip.value != null;
 
       return GestureDetector(
         onTap: canTap ? () => _showBreakdown(context) : null,
@@ -36,8 +38,6 @@ class QtyCapBadge extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
               ),
-              const SizedBox(width: 8),
-              QtyCapBadge(controller: controller),
               if (canTap) ...[
                 const SizedBox(width: 4),
                 Icon(
@@ -54,7 +54,8 @@ class QtyCapBadge extends StatelessWidget {
   }
 
   void _showBreakdown(BuildContext context) {
-    final tooltip = controller.qtyInfoTooltip;
+    // Read the unwrapped String? value from the RxnString.
+    final tooltip = controller.qtyInfoTooltip.value;
     if (tooltip == null) return;
     Get.dialog(
       AlertDialog(
