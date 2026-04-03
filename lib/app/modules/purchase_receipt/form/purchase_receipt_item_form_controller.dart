@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -10,115 +11,215 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 
 /// Item-level sheet controller for Purchase Receipt.
 ///
-/// PR differences from DN:
+/// PR differences from SE / DN:
 ///  - No PosSerialMixin (no invoice serial number)
 ///  - No AutoFillRackMixin (incoming goods — operator specifies target rack)
 ///  - Rack is REQUIRED (isSheetValid stays false until rack validated)
 ///  - Batch validation accepts both existing AND new batches ("New Batch" flow)
-///  - PO-linking state lives here (poItem, poName, poQty, poRate)
+///  - PO-linking state lives here (poItemId, poDocName, poQty, poRate)
 ///  - EAN-equals-batch guard (custom PR rule)
 ///
+/// Commit 6:
+///  • No-arg constructor; parent wired via initialise().
+///  • Abstract members implemented: isAddMode, sheetScanController,
+///    qtyInfoTooltip (RxnString), adjustQty(), deleteCurrentItem().
+///  • PO field names: poItemId / poDocName to match
+///    PurchaseReceiptFormController.linkToPurchaseOrder().
+///  • currentScannedEan field added (parent reads child.currentScannedEan).
+///  • lastScannedBarcode → _parent.currentScannedEan.
+///  • setupAutoSubmit call uses base signature {required onValid:}.
+///  • GlobalSnackbar.error positional → named message:.
+///  • validateSheet writes both isSheetValid and saveButtonVisible.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
-  final PurchaseReceiptFormController _parent;
-  PurchaseReceiptItemFormController(this._parent);
 
-  // ── Parent-backed warehouse ─────────────────────────────────────────────
-  // Warehouse derived from rack (overrides setWarehouse when present)
+  // ── Parent back-reference ───────────────────────────────────────────────
+  // No-arg constructor so Get.put(PurchaseReceiptItemFormController()) compiles.
+  // Parent is wired lazily via initialise().
+  late PurchaseReceiptFormController _parent;
+
+  PurchaseReceiptFormController get parent => _parent;
+
+  // ── In-sheet scan context ──────────────────────────────────────────────
+  /// EAN-8 / barcode that triggered this sheet open.
+  /// Forwarded from [PurchaseReceiptFormController.currentScannedEan].
+  String currentScannedEan = '';
+
+  // ── Parent-backed warehouse ───────────────────────────────────────────
   final RxnString itemWarehouse = RxnString();
 
   @override
   String? get resolvedWarehouse =>
       itemWarehouse.value ?? _parent.setWarehouse.value;
 
-  @override
-  bool get requiresBatch => false; // PR allows new batches (not in system yet)
+  // ── Abstract overrides ───────────────────────────────────────────────
+  @override bool get requiresBatch => false; // PR allows new batches
+  @override bool get requiresRack  => true;  // Target rack mandatory
+  @override Color get accentColor  => Colors.purple;
 
+  /// True when the sheet was opened for a new item (not editing).
   @override
-  bool get requiresRack => true;   // Target rack is mandatory for PR
+  bool get isAddMode => editingItemName.value == null;
 
+  /// PR does not embed an in-sheet camera scanner; returns null.
   @override
-  Color get accentColor => Colors.purple;
+  MobileScannerController? get sheetScanController => null;
 
-  // ── ItemSheetControllerBase abstract stubs ────────────────────────────
-
+  /// Qty-info label: shows max from PO ordered qty when available.
   @override
-  void validateSheet() {
-    // Recompute button visibility / state from shared fields.
-    // PR-specific validity: qty > 0 and rack valid; batch can be existing OR new.
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    final okQty = qty > 0;
-    final okRack = isRackValid.value;
-    saveButtonVisible.value = okQty && okRack;
+  String get qtyInfoText {
+    final po = poQty.value;
+    if (po != null && po > 0) {
+      return 'PO Qty: ${po.toStringAsFixed(po.truncateToDouble() == po ? 0 : 2)}';
+    }
+    return '';
   }
 
+  /// Backing RxnString for the qty-info tooltip (ceiling breakdown).
+  @override
+  final RxnString qtyInfoTooltip = RxnString(null);
+
+  // ── PO link metadata ─────────────────────────────────────────────────────
+  // Commit 6: renamed from poItem/poName → poItemId/poDocName to match
+  // PurchaseReceiptFormController.linkToPurchaseOrder() write path.
+  final RxString  poItemId  = ''.obs;
+  final RxString  poDocName = ''.obs;
+  final RxnDouble poQty     = RxnDouble();
+  final RxnDouble poRate    = RxnDouble();
+
+  // ── Additional reactive fields ───────────────────────────────────────────
+  final RxString itemUom = ''.obs;
+
+  // ── initialise() entry point ───────────────────────────────────────────
+  /// Called by [PurchaseReceiptFormController._openItemSheet] immediately after
+  /// [Get.put]; wires the parent reference and delegates to initForCreate /
+  /// initForEdit.
+  void initialise({
+    required PurchaseReceiptFormController parent,
+    required String code,
+    required String name,
+    String?  batchNo,
+    String?  scannedEan,
+    String?  variantOfValue,
+    String?  uomValue,
+    PurchaseReceiptItem? editingItem,
+  }) {
+    _parent = parent;
+    currentScannedEan = scannedEan ?? '';
+
+    if (editingItem != null) {
+      // Find index of this item in the parent list.
+      final items  = parent.purchaseReceipt.value?.items ?? [];
+      final idx    = items.indexWhere((i) => i.name == editingItem.name);
+      initForEdit(index: idx >= 0 ? idx : 0, item: editingItem);
+    } else {
+      initForCreate(
+        code:   code,
+        name:   name,
+        uom:    uomValue ?? 'Nos',
+        batchNo: batchNo,
+      );
+    }
+
+    // Wire PO link if available.
+    _parent.linkToPurchaseOrder(code, this);
+  }
+
+  // ── validateSheet ───────────────────────────────────────────────────────────
+  @override
+  void validateSheet() {
+    final qty  = double.tryParse(qtyController.text) ?? 0;
+    final ok   = qty > 0 && isRackValid.value;
+    isSheetValid.value    = ok;
+    saveButtonVisible.value = ok;
+
+    // Update qty-info tooltip with PO qty ceiling.
+    final po = poQty.value;
+    qtyInfoTooltip.value = (po != null && po > 0)
+        ? 'Ordered: ${po.toStringAsFixed(0)}'  
+        : null;
+  }
+
+  // ── adjustQty (abstract impl) ───────────────────────────────────────────────
+  @override
+  void adjustQty(int delta) {
+    final current = double.tryParse(qtyController.text) ?? 0.0;
+    final next    = (current + delta).clamp(0.0, double.infinity);
+    qtyController.text = next.toStringAsFixed(
+        next.truncateToDouble() == next ? 0 : 2);
+    validateSheet();
+  }
+
+  // ── deleteCurrentItem (abstract impl) ─────────────────────────────────────────
+  @override
+  void deleteCurrentItem() {
+    final rowId = editingItemName.value;
+    if (rowId == null) return;
+    final items = _parent.purchaseReceipt.value?.items ?? [];
+    final item  = items.cast<PurchaseReceiptItem?>().firstWhere(
+      (i) => i?.name == rowId, orElse: () => null,
+    );
+    if (item == null) return;
+    _parent.confirmAndDeleteItem(item);
+  }
+
+  // ── submit ────────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) {
-      throw Exception('Enter a valid quantity');
-    }
-    if (!isRackValid.value) {
-      throw Exception('Target rack is required');
-    }
+    if (qty <= 0) throw Exception('Enter a valid quantity');
+    if (!isRackValid.value) throw Exception('Target rack is required');
 
-    final item = PurchaseReceiptItem(
-      itemCode: itemCode.value,
-      itemName: itemName.value,
-      uom: itemUom.value,
-      qty: qty,
-      batchNo: batchController.text.trim().isEmpty ? null : batchController.text.trim(),
-      rack: rackController.text.trim(),
-      poName: poName.value,
-      poItem: poItem.value,
-      poQty: poQty.value,
-      poRate: poRate.value,
-    );
+    final batch     = batchController.text.trim();
+    final rack      = rackController.text.trim();
+    final warehouse = itemWarehouse.value ?? _parent.setWarehouse.value ?? '';
 
-    if (editingIndex.value >= 0) {
-      _parent.items[editingIndex.value] = item;
-      _parent.items.refresh();
+    final rowId = editingItemName.value;
+    if (rowId != null) {
+      _parent.updateItemLocally(
+        rowId,
+        qty,
+        batch,
+        rack,
+        warehouse,
+      );
     } else {
-      _parent.items.add(item);
+      _parent.addItemLocally(
+        itemCode.value,
+        itemName.value,
+        qty,
+        batch,
+        rack,
+        warehouse,
+        uom:       itemUom.value,
+        poItemId:  poItemId.value,
+        poDocName: poDocName.value,
+        poQty:     poQty.value   ?? 0.0,
+        poRate:    poRate.value  ?? 0.0,
+      );
     }
   }
 
-  // ── Public reactive fields expected by shared widgets ──────────────────
-  final RxString itemName = ''.obs;
-  final RxString itemUom  = ''.obs;
-  final RxInt    editingIndex = (-1).obs;
-
-  // PO link metadata
-  final RxnString poName = RxnString();
-  final RxnString poItem = RxnString();
-  final RxnDouble poQty  = RxnDouble();
-  final RxnDouble poRate = RxnDouble();
-
-  // Display helpers used by GlobalItemFormSheet
-  String get currentVariantOf => '';
-  String get qtyInfoText => '';
-  String? get qtyInfoTooltip => null;
-
-  // ── Init helpers ───────────────────────────────────────────────────────
+  // ── Init helpers ──────────────────────────────────────────────────────────────
   void initForCreate({
     required String code,
     required String name,
     required String uom,
     String? batchNo,
   }) {
-    editingIndex.value = -1;
-    itemCode.value = code;
-    itemName.value = name;
-    itemUom.value  = uom;
+    editingItemName.value = null;
+    itemCode.value        = code;
+    itemName.value        = name;
+    itemUom.value         = uom;
 
     batchController.text = batchNo ?? '';
     rackController.clear();
     qtyController.clear();
-    itemWarehouse.value = null;
+    itemWarehouse.value  = null;
 
-    poName.value = null;
-    poItem.value = null;
-    poQty.value  = null;
-    poRate.value = null;
+    poItemId.value  = '';
+    poDocName.value = '';
+    poQty.value     = null;
+    poRate.value    = null;
 
     resetBatch();
     resetRack();
@@ -132,20 +233,20 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     required int index,
     required PurchaseReceiptItem item,
   }) {
-    editingIndex.value = index;
-    itemCode.value = item.itemCode;
-    itemName.value = item.itemName;
-    itemUom.value  = item.uom;
+    editingItemName.value = item.name;
+    itemCode.value        = item.itemCode;
+    itemName.value        = item.itemName ?? '';
+    itemUom.value         = item.uom ?? '';
 
     batchController.text = item.batchNo ?? '';
-    rackController.text  = item.rack ?? '';
+    rackController.text  = item.rack    ?? '';
     qtyController.text   = item.qty.toString();
     itemWarehouse.value  = item.warehouse;
 
-    poName.value = item.poName;
-    poItem.value = item.poItem;
-    poQty.value  = item.poQty;
-    poRate.value = item.poRate;
+    poItemId.value  = item.purchaseOrderItem ?? '';
+    poDocName.value = item.purchaseOrder     ?? '';
+    poQty.value     = item.purchaseOrderQty;
+    poRate.value    = item.rate != null && item.rate! > 0 ? item.rate : null;
 
     resetBatch();
     removeSheetListeners();
@@ -164,7 +265,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     snapshotState();
   }
 
-  // ── PR-specific batch validation override ──────────────────────────────
+  // ── PR-specific batch validation override ───────────────────────────────────
   // Existing system batches remain valid via base lookup.
   // If not found, PR allows a new batch EXCEPT when batch == scanned EAN.
   @override
@@ -177,12 +278,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
 
     isValidatingBatch.value = true;
-    batchError.value = '';
-    batchInfoTooltip.value = null;
-    isBatchValid.value = false;
+    batchError.value        = '';
+    batchInfoTooltip.value  = null;
+    isBatchValid.value      = false;
 
     try {
-      // Try base/system validation first.
       final existing = await ApiProvider().getList(
         doctype: 'Batch',
         filters: {
@@ -193,36 +293,38 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       );
 
       if (existing.isNotEmpty) {
-        // Existing batch → use the shared happy path semantics.
         final row       = existing.first;
         final expiryRaw = row['expiry_date'] as String?;
         final mfgRaw    = row['manufacturing_date'] as String?;
 
         final parts = <String>[];
-        if (mfgRaw != null && mfgRaw.isNotEmpty) parts.add('Mfg: $mfgRaw');
+        if (mfgRaw    != null && mfgRaw.isNotEmpty)    parts.add('Mfg: $mfgRaw');
         if (expiryRaw != null && expiryRaw.isNotEmpty) parts.add('Exp: $expiryRaw');
         batchInfoTooltip.value = parts.isEmpty ? null : parts.join('  ·  ');
 
-        isBatchValid.value = true;
+        isBatchValid.value    = true;
         isBatchReadOnly.value = true;
         await fetchBatchBalance();
         validateSheet();
         return;
       }
 
-      // New-batch branch allowed in PR.
-      final scanned = _parent.lastScannedBarcode.value.trim();
+      // New-batch branch: disallow when batch text == the scanned EAN.
+      // Commit 6: fixed from _parent.lastScannedBarcode.value
+      //           to     _parent.currentScannedEan.
+      final scanned = _parent.currentScannedEan.trim();
       if (scanned.isNotEmpty && scanned == trimmed) {
         batchError.value = 'Batch cannot be identical to scanned EAN/barcode.';
         validateSheet();
         return;
       }
 
-      isBatchValid.value = true;
-      isBatchReadOnly.value = true;
-      batchError.value = 'New Batch';
-      batchInfoTooltip.value = 'This batch does not exist yet and will be created on submit.';
-      batchBalance.value = 0.0;
+      isBatchValid.value     = true;
+      isBatchReadOnly.value  = true;
+      batchError.value       = 'New Batch';
+      batchInfoTooltip.value =
+          'This batch does not exist yet and will be created on submit.';
+      batchBalance.value     = 0.0;
       validateSheet();
     } catch (e) {
       log('[PR-Item] validateBatch error: $e', name: 'PR-Item');
@@ -233,7 +335,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Rack validation override ────────────────────────────────────────────
+  // ── Rack validation override ──────────────────────────────────────────────────
   @override
   Future<void> validateRack(String rack) async {
     final trimmed = rack.trim();
@@ -244,15 +346,15 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
 
     isValidatingRack.value = true;
-    rackError.value = '';
-    isRackValid.value = false;
+    rackError.value        = '';
+    isRackValid.value      = false;
 
     try {
-      // PR target rack must exist in selected warehouse, but stock qty is not required.
+      // PR target rack must exist in selected warehouse; stock qty not required.
       final rows = await ApiProvider().getStockBalanceWithDimension(
-        itemCode: itemCode.value,
+        itemCode:  itemCode.value,
         warehouse: resolvedWarehouse,
-        batchNo: null,
+        batchNo:   null,
       );
 
       final exists = rows.any((r) =>
@@ -277,7 +379,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Helpers used by form controller / widgets ──────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────────
   void applyRackScan(String rackId) {
     final id = rackId.trim();
     if (id.isEmpty) return;
@@ -290,14 +392,15 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     rackController.clear();
     qtyController.clear();
     itemWarehouse.value = null;
-    poName.value = null;
-    poItem.value = null;
-    poQty.value  = null;
-    poRate.value = null;
+    poItemId.value  = '';
+    poDocName.value = '';
+    poQty.value     = null;
+    poRate.value    = null;
     resetBatch();
     resetRack();
     validateSheet();
   }
 
-  void showError(String msg) => GlobalSnackbar.error(msg);
+  // Commit 6: named message: param.
+  void showError(String msg) => GlobalSnackbar.error(message: msg);
 }
