@@ -214,7 +214,7 @@ class ApiProvider {
   /// square brackets makes it an optional positional with an implicit null
   /// default, so both calling styles compile correctly.
   Future<List<Map<String, dynamic>>> getList(
-    [String? _positional], {
+    String? _positional, {
     String? doctype,
     Map<String, dynamic>? filters,
     List<String>? fields,

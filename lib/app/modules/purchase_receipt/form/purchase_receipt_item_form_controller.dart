@@ -284,7 +284,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
     try {
       final existing = await ApiProvider().getList(
-        doctype: 'Batch',
+        'Batch',
         filters: {
           'name': trimmed,
           'item': itemCode.value,

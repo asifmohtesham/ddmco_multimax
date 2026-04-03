@@ -386,7 +386,7 @@ abstract class ItemSheetControllerBase extends GetxController {
 
     try {
       final results = await ApiProvider().getList(
-        doctype: 'Batch',
+        'Batch',
         filters: {'name': batch, 'item': itemCode.value},
         fields:  ['name', 'expiry_date', 'manufacturing_date'],
       );
