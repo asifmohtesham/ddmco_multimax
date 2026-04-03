@@ -84,13 +84,9 @@ class PackingSlipFormController extends GetxController
   var bsItemModified   = RxnString();
   var bsItemModifiedBy = RxnString();
 
-  // DataWedge hardware-scan worker — subscribed in onInit, disposed in onClose.
+  // DataWedge hardware-scan worker.
   Worker? _scanWorker;
 
-  /// True once the DataWedge ever() worker has been successfully subscribed
-  /// in [onInit]. Read by [PackingSlipFormScreen] for the smoke-test log trace:
-  ///   log('DataWedge worker active: ${controller.scanWorkerActive}',
-  ///       name: 'PackingSlipScreen');
   bool get scanWorkerActive => _scanWorker != null;
 
   // ---------------------------------------------------------------------------
@@ -102,15 +98,6 @@ class PackingSlipFormController extends GetxController
     super.onInit();
     bsQtyController.addListener(_validateSheetShim);
 
-    // Wire DataWedge hardware-scan events directly to scanBarcode().
-    // BarcodeInputWidget handles manual keyboard input only; hardware scans
-    // from the DataWedge EventChannel must be subscribed here, mirroring the
-    // pattern used in StockEntryFormController._initDependencies().
-    //
-    // Guard: `code.isNotEmpty` is the first line of defence against the
-    // deliberate scannedCode = '' reset that DataWedgeService._processQueue()
-    // emits between queued items (see data_wedge_service.dart). scanBarcode()
-    // also contains a belt-and-braces `barcode.isEmpty` check for safety.
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
         log('[PackingSlipForm] DataWedge scan received: $code', name: 'Scan');
@@ -161,9 +148,9 @@ class PackingSlipFormController extends GetxController
 
   void _initNewPackingSlip() {
     isLoading.value = true;
-    final String dnName     = Get.arguments['deliveryNote'] ?? '';
+    final String dnName      = Get.arguments['deliveryNote'] ?? '';
     final String? customPoNo = Get.arguments['customPoNo'];
-    final int nextCaseNo    = Get.arguments['nextCaseNo'] ?? 1;
+    final int nextCaseNo     = Get.arguments['nextCaseNo'] ?? 1;
     packingSlip.value = PackingSlip(
       name:         'New Packing Slip',
       deliveryNote: dnName,
@@ -397,22 +384,9 @@ class PackingSlipFormController extends GetxController
   // Scan
   // ---------------------------------------------------------------------------
 
-  /// Processes a barcode from either the DataWedge hardware trigger or manual
-  /// keyboard entry via [BarcodeInputWidget.onFieldSubmitted].
-  ///
-  /// Guard behaviour:
-  ///   • [isItemSheetOpen] — suppresses scans while the item bottom-sheet is
-  ///     open, preventing a second sheet from being pushed on top during
-  ///     auto-submit delays.
-  ///   • [barcode.isEmpty] — belt-and-braces fallback against the deliberate
-  ///     `scannedCode = ''` reset that [DataWedgeService._processQueue] emits
-  ///     between queued items. The `ever()` worker in [onInit] already filters
-  ///     empty strings as its first line of defence.
   Future<void> scanBarcode(String barcode) async {
-    // Guard 1: suppress new scans while item sheet is open.
     if (isItemSheetOpen.value) return;
     if (checkStaleAndBlock()) return;
-    // Guard 2: ignore the empty-string inter-scan reset from DataWedgeService.
     if (barcode.isEmpty) return;
     if (linkedDeliveryNote.value == null) {
       GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
@@ -526,16 +500,16 @@ class PackingSlipFormController extends GetxController
       itemCode: item.itemCode,
       itemName: item.itemName ?? '',
     );
+    // Commit 8: canonical {required onValid:} signature — old positional
+    // params (enabled:, delaySeconds:, isSheetOpen:, isSubmittable:,
+    // onAutoSubmit:) removed.
     child.setupAutoSubmit(
-      enabled:       _storageService.getAutoSubmitEnabled(),
-      delaySeconds:  _storageService.getAutoSubmitDelay(),
-      isSheetOpen:   isItemSheetOpen,
-      isSubmittable: () => packingSlip.value?.docstatus == 0,
-      onAutoSubmit:  () async {
+      onValid: () async {
         isAddingItem.value = true;
         await Future.delayed(const Duration(milliseconds: 500));
         await addItemToSlip();
         isAddingItem.value = false;
+        if (Get.isBottomSheetOpen == true) Get.back();
       },
     );
     _openItemSheet(child);
@@ -594,16 +568,14 @@ class PackingSlipFormController extends GetxController
         itemName:    dnItem.itemName ?? '',
         editingItem: item,
       );
+      // Commit 8: canonical {required onValid:} signature.
       child.setupAutoSubmit(
-        enabled:       _storageService.getAutoSubmitEnabled(),
-        delaySeconds:  _storageService.getAutoSubmitDelay(),
-        isSheetOpen:   isItemSheetOpen,
-        isSubmittable: () => packingSlip.value?.docstatus == 0,
-        onAutoSubmit:  () async {
+        onValid: () async {
           isAddingItem.value = true;
           await Future.delayed(const Duration(milliseconds: 500));
           await addItemToSlip();
           isAddingItem.value = false;
+          if (Get.isBottomSheetOpen == true) Get.back();
         },
       );
       _openItemSheet(child);
@@ -644,18 +616,18 @@ class PackingSlipFormController extends GetxController
     currentSerial        = item.customInvoiceSerialNumber;
     currentNetWeight     = 0.0;
     currentWeightUom     = 0.0;
-    // Step-5: use typed accessor — DeliveryNoteItem.customVariantOf is a
-    // proper String? field; the previous (item as dynamic) cast is removed.
     currentItemVariantOf = item.customVariantOf;
   }
 
-  // Step-3: adjustQty delegates to child if sheet is open.
+  /// Commit 8: adjustQty delegates to child.adjustQty(delta) where child
+  /// now accepts double. The double→int cast is removed from the call site;
+  /// the child clamps internally.
   void adjustQty(double delta) {
     if (isItemSheetOpen.value) {
       try {
         Get.find<PackingSlipItemFormController>().adjustQty(delta);
         return;
-      } catch (_) { /* fall through to legacy path */ }
+      } catch (_) { /* fall through to legacy shim path */ }
     }
     double current = double.tryParse(bsQtyController.text) ?? 0;
     double newVal  = current + delta;
@@ -668,7 +640,7 @@ class PackingSlipFormController extends GetxController
   // Commit item
   // ---------------------------------------------------------------------------
 
-  /// Step-3: primary entry point called by child.submit().
+  /// Primary entry point called by child.submit().
   /// Receives the already-parsed qty — no dependency on bsQtyController.
   Future<void> addItemToSlipWithQty(double qtyToAdd) async {
     if (qtyToAdd <= 0) { Get.back(); return; }
@@ -748,7 +720,6 @@ class PackingSlipFormController extends GetxController
   }
 
   /// Forwarding shim — kept so auto-submit lambda and old call sites compile.
-  /// Removed in step-6.
   Future<void> addItemToSlip() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0.0;
     await addItemToSlipWithQty(qty);
