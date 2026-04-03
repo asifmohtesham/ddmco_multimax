@@ -11,14 +11,11 @@ import 'purchase_order_form_controller.dart';
 
 /// Item-level sheet controller for Purchase Order.
 ///
-/// Commit 8: implemented all abstract members inherited from
-/// [ItemSheetControllerBase] that were previously missing:
-///   • accentColor        → Colors.blue (PO brand colour)
-///   • isAddMode          → @override bool getter (was a mutable field)
-///   • qtyInfoTooltip     → RxnString(null)  (no stock context on POs)
-///   • sheetScanController → null  (PO sheet has no in-sheet scanner)
-///   • adjustQty(delta)   → ±1 stepper clamped to 0..∞
-///   • setupAutoSubmit()  → updated to new single-param named signature
+/// Commit 9 fix:
+///   • isAddingItemFlag = _parent.isAddingItem  →  .value appended.
+///     ItemSheetControllerBase declares `bool isAddingItemFlag` (plain bool);
+///     assigning the RxBool directly caused a type mismatch at compile time.
+///   • adjustQty kept as `int` — the base abstract is `void adjustQty(int delta)`.
 class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   late PurchaseOrderFormController _parent;
 
@@ -26,12 +23,12 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   final rateController         = TextEditingController();
   final scheduleDateController = TextEditingController();
 
-  // ── PO-specific Rx ────────────────────────────────────────────────────────
+  // ── PO-specific Rx ───────────────────────────────────────────────────────
   var sheetRate = 0.0.obs;
   double get sheetAmount =>
       (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
 
-  // ── Dirty-check snapshot ──────────────────────────────────────────────────
+  // ── Dirty-check snapshot ────────────────────────────────────────────────
   double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
@@ -47,27 +44,25 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   @override
   bool get requiresRack => false;
 
-  /// Commit 8: PO uses blue as its accent colour.
   @override
   Color get accentColor => Colors.blue;
 
-  /// Commit 8: proper @override getter instead of a mutable field.
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// Commit 8: PO has no stock context; no qty-info label needed.
+  /// PO has no stock context; no qty-info label needed.
   @override
   String get qtyInfoText => '';
 
-  /// Commit 8: no tooltip needed for PO.
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
 
-  /// Commit 8: PO sheet has no embedded scanner.
+  /// PO sheet has no embedded scanner.
   @override
   MobileScannerController? get sheetScanController => null;
 
-  /// Commit 8: ±1 stepper clamped to [0, ∞).
+  /// ±1 stepper, unbounded ceiling (PO has no stock cap).
+  /// Commit 9: signature kept as `int` — base abstract is `void adjustQty(int delta)`.
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -79,7 +74,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── Listener helpers ──────────────────────────────────────────────────────
+  // ── Listener helpers ────────────────────────────────────────────────────────
   void _initPOListeners() {
     scheduleDateController.addListener(validateSheet);
     scheduleDateController.addListener(_resetSaveState);
@@ -101,7 +96,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
@@ -115,7 +110,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     super.onClose();
   }
 
-  // ── Initialise ────────────────────────────────────────────────────────────
+  // ── Initialise ─────────────────────────────────────────────────────────────
 
   void initialise({
     required PurchaseOrderFormController parentController,
@@ -134,7 +129,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent = parentController;
 
     editingItemName.value = rowId;
-    // isAddMode is now a computed getter (rowId == null) — no assignment.
+    // isAddMode is a computed getter (rowId == null) — no assignment.
 
     itemCode.value = code;
     itemName.value = name;
@@ -144,7 +139,9 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     itemModified.value   = modified;
     itemModifiedBy.value = modifiedBy;
 
-    isAddingItemFlag = _parent.isAddingItem;
+    // Commit 9: base declares `bool isAddingItemFlag` (plain bool).
+    // Extract .value from the RxBool to satisfy the type.
+    isAddingItemFlag = _parent.isAddingItem.value;
 
     qtyController.text          = qty.toStringAsFixed(0);
     rateController.text         = rate.toStringAsFixed(2);
@@ -161,7 +158,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _initPOListeners();
     captureSnapshot();
 
-    // Commit 8: updated to the current single-param named-arg signature.
     final storage = Get.find<StorageService>();
     if (storage.getAutoSubmitEnabled()) {
       setupAutoSubmit(
@@ -176,14 +172,14 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
+  // ── Private helpers ────────────────────────────────────────────────────────
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
   }
 
-  // ── validateSheet ─────────────────────────────────────────────────────────
+  // ── validateSheet ──────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -208,7 +204,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── deleteCurrentItem ─────────────────────────────────────────────────────
+  // ── deleteCurrentItem ────────────────────────────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -219,7 +215,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent.confirmAndDeleteItem(item);
   }
 
-  // ── submit ────────────────────────────────────────────────────────────────
+  // ── submit ────────────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
