@@ -467,7 +467,7 @@ class _EditModeField extends StatelessWidget {
           if (hasPicker)
             _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
           IconButton(
-            icon:      const Icon(Icons.arrow_forward),
+            icon:      const Icon(Icons.check),
             onPressed: () => c.validateBatch(c.batchController.text),
             tooltip:   'Validate',
             color:     Colors.grey,
