@@ -54,6 +54,9 @@ class BatchResult {
 ///                      populated rack→qty map used by SharedRackField.
 ///   rackFocusNode    — concrete FocusNode, disposed in onClose.
 ///   rackStockTooltip — concrete RxnString, cleared by resetRack().
+///   liveRemaining    — concrete RxDouble(0.0); SE writes it in
+///                      validateSheet(); SharedSerialField reads it on
+///                      the base type.
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Reactive state ──────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
@@ -69,6 +72,12 @@ abstract class ItemSheetControllerBase extends GetxController {
   final RxBool   saveButtonVisible     = true.obs;
   final Rx<SaveButtonState> saveButtonState = SaveButtonState.idle.obs;
   final RxBool   isSheetLoading        = false.obs;
+
+  /// Remaining quantity after the entered qty is subtracted from the
+  /// effective ceiling.  Written by [validateSheet] in concrete controllers
+  /// that track a qty ceiling (e.g. SE).  Defaults to 0.0; shared widgets
+  /// such as [SharedSerialField] read it on this base type.
+  final RxDouble liveRemaining         = 0.0.obs;
 
   /// Tooltip shown in the rack suffix when a rack is selected.
   /// Concrete controllers populate this (e.g. "Available: 12 units").
