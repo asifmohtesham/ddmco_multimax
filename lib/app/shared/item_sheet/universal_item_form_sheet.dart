@@ -11,6 +11,11 @@ import 'item_sheet_controller_base.dart';
 ///   • isLoading       → controller.isSheetLoading.value  (RxBool    → bool)
 ///   • scanController  → null (MobileScannerController ≠ TextEditingController;
 ///                        sheets that embed a scan bar do so in customFields)
+///
+/// Group C fix: saveButtonState was never forwarded to GlobalItemFormSheet.
+/// The animated Save button is driven by Rx<SaveButtonState> inside an Obx;
+/// without the real controller field the button was wired to a dead idle.obs
+/// and never transitioned through loading/success/error states.
 class UniversalItemFormSheet extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final List<Widget> customFields;
@@ -39,7 +44,7 @@ class UniversalItemFormSheet extends StatelessWidget {
       return GlobalItemFormSheet(
         key: const ValueKey('universal_item_sheet'),
 
-        // ── Identity ────────────────────────────────────────────────────────
+        // ── Identity ────────────────────────────────────────────────────────────
         formKey:          controller.formKey,
         scrollController: scrollController,
         title:            isEditing ? 'Update Item' : 'Add Item',
@@ -47,13 +52,13 @@ class UniversalItemFormSheet extends StatelessWidget {
         itemName:         controller.itemName.value,
         itemSubtext:      itemSubtext,
 
-        // ── Metadata footer ─────────────────────────────────────────────
+        // ── Metadata footer ───────────────────────────────────────────────
         owner:      controller.itemOwner.value,
         creation:   controller.itemCreation.value,
         modified:   controller.itemModified.value,
         modifiedBy: controller.itemModifiedBy.value,
 
-        // ── Qty ──────────────────────────────────────────────────────────────
+        // ── Qty ──────────────────────────────────────────────────────────────────
         qtyController:  controller.qtyController,
         onIncrement:    () => controller.adjustQty(1),
         onDecrement:    () => controller.adjustQty(-1),
@@ -61,24 +66,28 @@ class UniversalItemFormSheet extends StatelessWidget {
         // Unwrap RxnString → String? so GlobalItemFormSheet receives the right type.
         qtyInfoTooltip: controller.qtyInfoTooltip.value,
 
-        // ── Save / delete ──────────────────────────────────────────────
-        isSaveEnabledRx: controller.isSheetValid,
-        isSaveEnabled:   isSaveEnabled,
+        // ── Save / delete ────────────────────────────────────────────────
+        isSaveEnabledRx:  controller.isSheetValid,
+        isSaveEnabled:    isSaveEnabled,
         // Unwrap RxBool → bool.
-        isLoading:       controller.isSheetLoading.value,
-        onSubmit:        onSubmit,
+        isLoading:        controller.isSheetLoading.value,
+        // Group C fix: forward the controller's live save-button state machine
+        // so _AnimatedSaveButton transitions correctly through loading / success
+        // / error states.  Without this the button observed a dead idle.obs.
+        saveButtonState:  controller.saveButtonState,
+        onSubmit:         onSubmit,
         onDelete: isEditing
             ? () => controller.deleteCurrentItem()
             : null,
 
-        // ── Scan footer ────────────────────────────────────────────────
+        // ── Scan footer ─────────────────────────────────────────────────
         onScan:         onScan,
         // MobileScannerController is not a TextEditingController; pass null.
         // Sheets that embed a live camera scanner wire it inside customFields.
         scanController: null,
         isScanning:     controller.isScanning.value,
 
-        // ── DocType-specific fields ─────────────────────────────────────
+        // ── DocType-specific fields ───────────────────────────────────────
         customFields: customFields,
       );
     });
