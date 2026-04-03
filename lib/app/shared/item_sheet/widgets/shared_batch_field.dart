@@ -1,124 +1,381 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 
-/// A reusable batch-number input field driven by [ItemSheetControllerBase].
+/// A reusable Batch No input field backed by any [ItemSheetControllerBase].
 ///
-/// Renders identically for Delivery Note, Purchase Receipt, and Stock Entry.
-/// DocType-specific behaviour (validation, focus-next) is delegated to
-/// [controller.validateBatch] and [controller.requestRackFocus], both
-/// defined on the base class.
+/// ## Modes
 ///
-/// Usage:
-/// ```dart
-/// SharedBatchField(controller: c)
-/// ```
+/// ### `editMode: false` (default — SE style)
+/// Plain [TextField] with borderless card container. A [BalanceChip] is
+/// rendered below the field showing the base [maxQty] batch balance.
+///
+/// ### `editMode: true` (DN / PR style)
+/// [TextFormField] with [OutlineInputBorder], readOnly-when-valid-and-clean,
+/// explicit **Edit** button. [BalanceChip] shown below the field.
+///
+/// ## Picker integration
+/// Pass [onPickerTap] to show a batch-picker icon button (barcode_reader)
+/// in the suffix area when `editMode: true`.  The button is rendered:
+///   • **idle state** — beside the validate (→) arrow, so the operator can
+///     browse before typing.
+///   • **valid state** — before the edit (✏) button, so the operator can
+///     change the batch without clearing manually.
+/// When [onPickerTap] is null no picker button is shown (backward-compat).
+///
+/// P3-A: readOnly requires isValid AND batchError==null.
+/// P3-A: helperText / border colour is 3-tier (red / orange / grey).
+/// P3-B: errorText only for hard-invalid; warning rendered as orange helperText.
+/// Balance chip: sources controller.maxQty (set by validateBatch in base).
 class SharedBatchField extends StatelessWidget {
-  const SharedBatchField({super.key, required this.controller});
+  final ItemSheetControllerBase c;
+  final Color  accentColor;
+  final bool   editMode;
+  final bool   readOnly;
+  final String? fieldKey;
 
-  final ItemSheetControllerBase controller;
+  /// Optional callback fired when the picker icon button is tapped.
+  /// Only active when [editMode] is true.  When null, no picker button
+  /// is shown (backward-compatible with all existing call sites).
+  final VoidCallback? onPickerTap;
+
+  const SharedBatchField({
+    super.key,
+    required this.c,
+    required this.accentColor,
+    this.editMode   = false,
+    this.readOnly   = false,
+    this.fieldKey,
+    this.onPickerTap,
+  });
+
+  Color get _validFill {
+    if (accentColor is MaterialColor) {
+      return (accentColor as MaterialColor).shade50;
+    }
+    return accentColor.withOpacity(0.08);
+  }
+
+  Color get _validBorder {
+    if (accentColor is MaterialColor) {
+      return (accentColor as MaterialColor).shade200;
+    }
+    return accentColor.withOpacity(0.5);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme       = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final fieldColor  = colorScheme.secondary;
+    return editMode ? _EditModeField(this) : _SimpleField(this);
+  }
+}
+
+// ── Simple (borderless) mode ─────────────────────────────────────────────────
+class _SimpleField extends StatelessWidget {
+  final SharedBatchField w;
+  const _SimpleField(this.w);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c     = w.c;
 
     return Obx(() {
-      final isValid      = controller.isBatchValid.value;
-      final isValidating = controller.isValidatingBatch.value;
-      final errorText    = controller.batchError.value;
-      final tooltipText  = controller.batchInfoTooltip.value;
+      final isValid    = c.isBatchValid.value;
+      final validating = c.isValidatingBatch.value;
+      final errorMsg   = c.batchError.value;
 
-      return GlobalItemFormSheet.buildInputGroup(
-        label: 'Batch No.',
-        color: fieldColor,
-        child: Column(
-          children: [
-            TextFormField(
-              controller: controller.batchController,
-              style: theme.textTheme.bodyMedium,
+      final isHardError = !isValid && errorMsg != null;
+      final isWarning   =  isValid && errorMsg != null;
+
+      final borderColor = isHardError
+          ? theme.colorScheme.error
+          : isValid
+              ? Colors.green
+              : w.accentColor;
+
+      final chipColor = isWarning ? Colors.orange : w.accentColor;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GlobalItemFormSheet.buildInputGroup(
+            label: 'Batch No',
+            color: borderColor,
+            child: TextField(
+              controller: c.batchController,
+              readOnly:   w.readOnly,
+              style:      theme.textTheme.bodyMedium,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (v) {
+                if (v.isNotEmpty) c.validateBatch(v);
+              },
               decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
-                suffixIcon: _BatchSuffix(
-                  isValid:      isValid,
-                  isValidating: isValidating,
-                  tooltipText:  tooltipText,
-                  onClear: controller.batchController.text.isNotEmpty
-                      ? () {
-                          controller.batchController.clear();
-                          controller.resetBatch();
-                        }
-                      : null,
+                hintText:    'Enter or scan batch number',
+                border:      InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                errorText:     isHardError ? errorMsg : null,
+                errorMaxLines: 2,
+                helperText:    isWarning ? errorMsg : null,
+                helperMaxLines: 2,
+                helperStyle: isWarning
+                    ? const TextStyle(
+                        color:      Colors.orange,
+                        fontWeight: FontWeight.w600,
+                        fontSize:   11,
+                      )
+                    : null,
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (validating)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (isValid)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(
+                          isWarning
+                              ? Icons.warning_amber_rounded
+                              : Icons.check_circle,
+                          color: isWarning ? Colors.orange : Colors.green,
+                          size: 20,
+                        ),
+                      ),
+                    if (c.batchInfoTooltip.value != null)
+                      Tooltip(
+                        message: c.batchInfoTooltip.value!,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(Icons.info_outline,
+                              color: w.accentColor, size: 20),
+                        ),
+                      ),
+                    if (c.batchController.text.isNotEmpty && !w.readOnly)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          c.batchController.clear();
+                          c.resetBatch();
+                        },
+                      ),
+                  ],
                 ),
               ),
-              onFieldSubmitted: (v) => controller.validateBatch(v.trim()),
             ),
-            if (errorText != null)
-              Padding(
-                padding: const EdgeInsets.only(
-                    left: 16, right: 16, bottom: 10),
-                child: Text(
-                  errorText,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: colorScheme.error),
-                ),
-              ),
-          ],
-        ),
+          ),
+          // Balance chip — shown once batch validation completes and maxQty > 0.
+          BalanceChip(
+            balance:   c.maxQty.value,
+            isLoading: validating,
+            color:     chipColor,
+            prefix:    'Batch Balance:',
+          ),
+        ],
       );
     });
   }
 }
 
-class _BatchSuffix extends StatelessWidget {
-  const _BatchSuffix({
-    required this.isValid,
-    required this.isValidating,
-    this.tooltipText,
-    this.onClear,
-  });
-
-  final bool          isValid;
-  final bool          isValidating;
-  final String?       tooltipText;
-  final VoidCallback? onClear;
+// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
+class _EditModeField extends StatelessWidget {
+  final SharedBatchField w;
+  const _EditModeField(this.w);
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final c = w.c;
 
-    if (isValidating) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
+    return Obx(() {
+      final isValid    = c.isBatchValid.value;
+      final validating = c.isValidatingBatch.value;
+      final errorMsg   = c.batchError.value;
+
+      final isHardError = !isValid && errorMsg != null;
+      final isWarning   =  isValid && errorMsg != null;
+
+      final effectiveReadOnly = w.readOnly || (isValid && !isWarning);
+
+      final helperColor = isHardError
+          ? Colors.red
+          : isWarning
+              ? Colors.orange
+              : Colors.grey;
+
+      final enabledBorderColor = isHardError
+          ? Colors.red
+          : isWarning
+              ? Colors.orange
+              : w._validBorder;
+
+      final chipColor = isWarning ? Colors.orange : w.accentColor;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GlobalItemFormSheet.buildInputGroup(
+            label:   'Batch No',
+            color:   w.accentColor,
+            bgColor: isValid ? w._validFill : null,
+            child: TextFormField(
+              key:        ValueKey(w.fieldKey ?? 'shared_batch_edit'),
+              controller: c.batchController,
+              readOnly:   effectiveReadOnly,
+              autofocus:  false,
+              style: const TextStyle(fontFamily: 'ShureTechMono'),
+              decoration: InputDecoration(
+                hintText: 'Enter or scan batch',
+                helperText: errorMsg,
+                helperMaxLines: 2,
+                helperStyle: TextStyle(
+                  color:      helperColor,
+                  fontWeight: (isHardError || isWarning)
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: enabledBorderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: isHardError
+                        ? Colors.red
+                        : isWarning
+                            ? Colors.orange
+                            : w.accentColor,
+                    width: 2,
+                  ),
+                ),
+                filled:    true,
+                fillColor: isValid ? w._validFill : Colors.white,
+                suffixIcon: _suffixIcon(c, isValid, validating, isWarning),
+              ),
+              onChanged: (_) => c.validateSheet(),
+              onFieldSubmitted: (val) {
+                if (!c.isBatchValid.value) c.validateBatch(val);
+              },
+            ),
+          ),
+          // Balance chip — shown once batch validation completes and maxQty > 0.
+          BalanceChip(
+            balance:   c.maxQty.value,
+            isLoading: validating,
+            color:     chipColor,
+            prefix:    'Batch Balance:',
+          ),
+        ],
+      );
+    });
+  }
+
+  // ── Picker icon button ────────────────────────────────────────────────────
+  // Shown in both idle and valid states when onPickerTap is provided.
+  Widget _pickerBtn(Color color) => IconButton(
+        icon:      Icon(Icons.barcode_reader, color: color, size: 20),
+        onPressed: w.onPickerTap,
+        tooltip:   'Browse batches',
+        padding:   EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      );
+
+  Widget _suffixIcon(
+    ItemSheetControllerBase c,
+    bool isValid,
+    bool validating,
+    bool isWarning,
+  ) {
+    if (validating) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
         child: SizedBox(
-          width: 18, height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          width: 20, height: 20,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: w.accentColor),
         ),
       );
     }
 
+    // ── Valid state ───────────────────────────────────────────────────────
+    // Row: [tooltip?] [picker?] [edit button]
+    // SizedBox width prevents tight-constraints Row collapse.
     if (isValid) {
-      final icon = Icon(Icons.check_circle_outline,
-          color: colorScheme.primary, size: 20);
-      return tooltipText != null
-          ? Tooltip(message: tooltipText!, child: icon)
-          : icon;
-    }
-
-    if (onClear != null) {
-      return IconButton(
-        icon:     const Icon(Icons.clear, size: 20),
-        onPressed: onClear,
-        color:    colorScheme.onSurfaceVariant,
-        tooltip:  'Clear batch',
+      final hasPicker  = w.onPickerTap != null;
+      final hasTooltip = c.batchInfoTooltip.value != null;
+      final width = 40.0
+          + (hasPicker  ? 40.0 : 0.0)
+          + (hasTooltip ? 40.0 : 0.0);
+      return SizedBox(
+        width: width,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (hasTooltip)
+              Tooltip(
+                message:     c.batchInfoTooltip.value!,
+                triggerMode: TooltipTriggerMode.tap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(
+                    isWarning
+                        ? Icons.warning_amber_rounded
+                        : Icons.info_outline,
+                    color: isWarning ? Colors.orange : w.accentColor,
+                    size: 20,
+                  ),
+                ),
+              ),
+            if (hasPicker)
+              _pickerBtn(
+                isWarning ? Colors.orange : w.accentColor,
+              ),
+            IconButton(
+              icon:     Icon(Icons.edit,
+                  color: isWarning ? Colors.orange : w.accentColor,
+                  size: 20),
+              onPressed: c.resetBatch,
+              tooltip:  'Edit Batch',
+              padding:  EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            ),
+          ],
+        ),
       );
     }
 
-    return const SizedBox.shrink();
+    // ── Idle state ────────────────────────────────────────────────────────
+    // Row: [picker?] [validate arrow]
+    // SizedBox width prevents tight-constraints Row collapse.
+    final hasPicker = w.onPickerTap != null;
+    return SizedBox(
+      width: hasPicker ? 88.0 : 44.0,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (hasPicker)
+            _pickerBtn(w.accentColor),
+          IconButton(
+            icon:        const Icon(Icons.arrow_forward),
+            onPressed:   () => c.validateBatch(c.batchController.text),
+            tooltip:     'Validate',
+            color:       Colors.grey,
+            padding:     EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+        ],
+      ),
+    );
   }
 }
