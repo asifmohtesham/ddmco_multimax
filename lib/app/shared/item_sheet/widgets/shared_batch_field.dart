@@ -114,7 +114,7 @@ class SharedBatchField extends StatelessWidget {
 
 // ── Picker suffix icon button (shared helper) ────────────────────────────────────
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
-      icon:      Icon(Icons.format_list_bulleted_rounded, color: color, size: 20),
+      icon:      Icon(Icons.shelves, color: color, size: 20),
       onPressed: onTap,
       tooltip:   'Browse batches',
       padding:   EdgeInsets.zero,
