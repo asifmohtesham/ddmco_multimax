@@ -44,6 +44,9 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///        injected into the suffixIcon Row in the idle state for both modes.
 /// fix  : Removed stale `.value` calls on `c.maxQty` — maxQty is a plain
 ///        `double` computed getter since Commit 4, not an RxDouble.
+/// fix(BATCH-ICON): wrap every multi-icon suffixIcon Row in a SizedBox with
+///        explicit width so Flutter's tight suffixIcon constraints do not
+///        collapse the Row to zero width (hiding the picker icon).
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -105,12 +108,14 @@ class SharedBatchField extends StatelessWidget {
 }
 
 // ── Picker suffix icon button (shared helper) ──────────────────────────────────
+//
+// fix(BATCH-ICON): removed BoxConstraints() override — the button now respects
+// its parent SizedBox bounds so it is never squeezed to zero width.
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
-      icon:     Icon(Icons.format_list_bulleted_rounded, color: color, size: 20),
+      icon:      Icon(Icons.format_list_bulleted_rounded, color: color, size: 20),
       onPressed: onTap,
-      tooltip:  'Browse batches',
-      padding:  EdgeInsets.zero,
-      constraints: const BoxConstraints(),
+      tooltip:   'Browse batches',
+      padding:   EdgeInsets.zero,
     );
 
 // ── Browse-batch button (shared by both modes, below the field) ─────────────
@@ -200,6 +205,57 @@ class _SimpleField extends StatelessWidget {
       // fix: maxQty is a plain double getter (not RxDouble) since Commit 4.
       final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
 
+      // fix(BATCH-ICON): the suffixIcon slot imposes tight BoxConstraints on
+      // its child. A bare Row with mainAxisSize.min collapses to zero width
+      // under tight constraints, hiding the first child (picker icon).
+      // Wrap the Row in an IntrinsicWidth so Flutter measures children first.
+      Widget buildSuffixRow() => IntrinsicWidth(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (validating)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (isValid)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(
+                  isWarning
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle,
+                  color: isWarning ? Colors.orange : Colors.green,
+                  size: 20,
+                ),
+              ),
+            if (c.batchInfoTooltip.value != null)
+              Tooltip(
+                message: c.batchInfoTooltip.value!,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Icon(Icons.info_outline,
+                      color: w.accentColor, size: 20),
+                ),
+              ),
+            // P3-2: picker icon in idle state only.
+            if (!validating && !isValid && w.onPickerTap != null)
+              _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
+            if (c.batchController.text.isNotEmpty && !isReadOnly)
+              IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () {
+                  c.batchController.clear();
+                  c.resetBatch();
+                },
+              ),
+          ],
+        ),
+      );
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -230,50 +286,7 @@ class _SimpleField extends StatelessWidget {
                         fontSize:   11,
                       )
                     : null,
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (validating)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else if (isValid)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(
-                          isWarning
-                              ? Icons.warning_amber_rounded
-                              : Icons.check_circle,
-                          color: isWarning ? Colors.orange : Colors.green,
-                          size: 20,
-                        ),
-                      ),
-                    if (c.batchInfoTooltip.value != null)
-                      Tooltip(
-                        message: c.batchInfoTooltip.value!,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Icon(Icons.info_outline,
-                              color: w.accentColor, size: 20),
-                        ),
-                      ),
-                    // P3-2: picker icon in idle state only.
-                    if (!validating && !isValid && w.onPickerTap != null)
-                      _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
-                    if (c.batchController.text.isNotEmpty && !isReadOnly)
-                      IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          c.batchController.clear();
-                          c.resetBatch();
-                        },
-                      ),
-                  ],
-                ),
+                suffixIcon: buildSuffixRow(),
               ),
             ),
           ),
@@ -406,49 +419,67 @@ class _EditModeField extends StatelessWidget {
         ),
       );
     }
+
+    // fix(BATCH-ICON): wrap multi-icon Rows in a SizedBox with explicit width.
+    // Flutter's suffixIcon slot forces tight BoxConstraints on its child —
+    // a bare Row with mainAxisSize.min is assigned zero width, collapsing all
+    // children. An explicit SizedBox width gives the Row room to lay out.
+
     if (isValid) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (c.batchInfoTooltip.value != null)
-            Tooltip(
-              message:     c.batchInfoTooltip.value!,
-              triggerMode: TooltipTriggerMode.tap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(
-                  isWarning
-                      ? Icons.warning_amber_rounded
-                      : Icons.info_outline,
-                  color: isWarning ? Colors.orange : w.accentColor,
-                  size: 20,
+      // Tooltip present → two icons (96px); otherwise single edit btn (48px).
+      final hasTooltip = c.batchInfoTooltip.value != null;
+      return SizedBox(
+        width: hasTooltip ? 96 : 48,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (hasTooltip)
+              Tooltip(
+                message:     c.batchInfoTooltip.value!,
+                triggerMode: TooltipTriggerMode.tap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(
+                    isWarning
+                        ? Icons.warning_amber_rounded
+                        : Icons.info_outline,
+                    color: isWarning ? Colors.orange : w.accentColor,
+                    size: 20,
+                  ),
                 ),
               ),
+            IconButton(
+              icon:  Icon(Icons.edit,
+                  color: isWarning ? Colors.orange : w.accentColor,
+                  size: 20),
+              onPressed: c.resetBatch,
+              tooltip: 'Edit Batch',
             ),
-          IconButton(
-            icon:  Icon(Icons.edit,
-                color: isWarning ? Colors.orange : w.accentColor,
-                size: 20),
-            onPressed: c.resetBatch,
-            tooltip: 'Edit Batch',
-          ),
-        ],
+          ],
+        ),
       );
     }
-    // Idle state: validate arrow + optional picker icon.
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // P3-2: picker icon before the validate arrow in idle state.
-        if (w.onPickerTap != null)
-          _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
-        IconButton(
-          icon:      const Icon(Icons.arrow_forward),
-          onPressed: () => c.validateBatch(c.batchController.text),
-          tooltip:   'Validate',
-          color:     Colors.grey,
-        ),
-      ],
+
+    // Idle state: picker icon (optional) + validate arrow.
+    final hasPicker = w.onPickerTap != null;
+    return SizedBox(
+      width: hasPicker ? 96 : 48,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // P3-2: picker icon before the validate arrow in idle state.
+          if (hasPicker)
+            _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
+          IconButton(
+            icon:      const Icon(Icons.arrow_forward),
+            onPressed: () => c.validateBatch(c.batchController.text),
+            tooltip:   'Validate',
+            color:     Colors.grey,
+          ),
+        ],
+      ),
     );
   }
 }
