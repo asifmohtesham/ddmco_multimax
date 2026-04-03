@@ -36,17 +36,20 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// P3-A : helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
 /// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
-/// C    : Added [showBrowseBatches] flag — renders a 'Browse Batches →' text
+/// C    : Added [showBrowseBatches] flag -- renders a 'Browse Batches ->' text
 ///        button that opens [BatchPickerSheet] when the batch is not yet
 ///        validated.  Passing warehouse + accentColor is optional; the field
 ///        falls back to controller values automatically.
-/// P3-2 : Added [onPickerTap] — when provided, a list-picker icon button is
-///        injected into the suffixIcon Row in the idle state for both modes.
-/// fix  : Removed stale `.value` calls on `c.maxQty` — maxQty is a plain
+/// P3-2 : Added [onPickerTap] -- when provided, a list-picker icon button is
+///        injected into the suffixIcon Row in both idle and valid states.
+/// fix  : Removed stale `.value` calls on `c.maxQty` -- maxQty is a plain
 ///        `double` computed getter since Commit 4, not an RxDouble.
 /// fix(BATCH-ICON): wrap every multi-icon suffixIcon Row in a SizedBox with
 ///        explicit width so Flutter's tight suffixIcon constraints do not
 ///        collapse the Row to zero width (hiding the picker icon).
+/// fix(BATCH-ICON-VALID): render picker btn in valid state; compute SizedBox
+///        width dynamically based on which slots (tooltip, picker, edit) are
+///        visible, so the icon is never clipped.
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -54,7 +57,7 @@ class SharedBatchField extends StatelessWidget {
   final bool   readOnly;
   final String? fieldKey;
 
-  /// Whether to show the "Browse Batches →" shortcut button below the field.
+  /// Whether to show the "Browse Batches ->" shortcut button below the field.
   /// Defaults to false to preserve backward compatibility.
   final bool showBrowseBatches;
 
@@ -67,9 +70,9 @@ class SharedBatchField extends StatelessWidget {
   final double? Function()? balanceOverride;
 
   /// Optional callback fired when the list-picker icon button inside the
-  /// suffixIcon is tapped.  When provided, the button is shown in the idle
-  /// (not-yet-valid) state only.  The full picker lifecycle is owned by the
-  /// caller — this widget only renders the button and fires the callback.
+  /// suffixIcon is tapped.  When provided, the button is shown in both the
+  /// idle (not-yet-valid) and valid states.  The full picker lifecycle is owned
+  /// by the caller -- this widget only renders the button and fires the callback.
   ///
   /// When null (default) no picker button is added to the suffix row.
   final VoidCallback? onPickerTap;
@@ -107,10 +110,7 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// ── Picker suffix icon button (shared helper) ──────────────────────────────────
-//
-// fix(BATCH-ICON): removed BoxConstraints() override — the button now respects
-// its parent SizedBox bounds so it is never squeezed to zero width.
+// ── Picker suffix icon button (shared helper) ────────────────────────────────────
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       icon:      Icon(Icons.format_list_bulleted_rounded, color: color, size: 20),
       onPressed: onTap,
@@ -118,7 +118,7 @@ Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       padding:   EdgeInsets.zero,
     );
 
-// ── Browse-batch button (shared by both modes, below the field) ─────────────
+// ── Browse-batch button (shared by both modes, below the field) ────────────
 class _BrowseBatchButton extends StatelessWidget {
   final SharedBatchField w;
   const _BrowseBatchButton(this.w);
@@ -128,12 +128,11 @@ class _BrowseBatchButton extends StatelessWidget {
     if (!w.showBrowseBatches) return const SizedBox.shrink();
 
     return Obx(() {
-      final c         = w.c;
-      final isValid   = c.isBatchValid.value;
-      final isRO      = w.readOnly || c.isBatchReadOnly.value;
-      final validating= c.isValidatingBatch.value;
+      final c          = w.c;
+      final isValid    = c.isBatchValid.value;
+      final isRO       = w.readOnly || c.isBatchReadOnly.value;
+      final validating = c.isValidatingBatch.value;
 
-      // Hide once a batch is selected/validated or while spinner is active.
       if (isValid || isRO || validating) return const SizedBox.shrink();
 
       return Align(
@@ -143,8 +142,8 @@ class _BrowseBatchButton extends StatelessWidget {
             final warehouse = w.browseWarehouse ?? c.resolvedWarehouse;
             final selected  = await showBatchPickerSheet(
               context,
-              itemCode:   c.itemCode.value,
-              warehouse:  warehouse,
+              itemCode:    c.itemCode.value,
+              warehouse:   warehouse,
               accentColor: w.accentColor,
             );
             if (selected != null && selected.isNotEmpty) {
@@ -156,15 +155,15 @@ class _BrowseBatchButton extends StatelessWidget {
           label: Text(
             'Browse Batches',
             style: TextStyle(
-              color:    w.accentColor,
-              fontSize: 12,
+              color:      w.accentColor,
+              fontSize:   12,
               fontWeight: FontWeight.w600,
             ),
           ),
           style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            minimumSize: Size.zero,
+            padding:         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            tapTargetSize:   MaterialTapTargetSize.shrinkWrap,
+            minimumSize:     Size.zero,
           ),
         ),
       );
@@ -172,7 +171,7 @@ class _BrowseBatchButton extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode ────────────────────────────────────────────
+// ── Simple (borderless) mode ─────────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -187,9 +186,7 @@ class _SimpleField extends StatelessWidget {
       final validating = c.isValidatingBatch.value;
       final errorMsg   = c.batchError.value;
 
-      // P4-1: also honour controller-driven readOnly (e.g. SE isBatchReadOnly).
-      final isReadOnly = w.readOnly || c.isBatchReadOnly.value;
-
+      final isReadOnly  = w.readOnly || c.isBatchReadOnly.value;
       final isHardError = !isValid && errorMsg != null;
       final isWarning   =  isValid && errorMsg != null;
 
@@ -199,16 +196,9 @@ class _SimpleField extends StatelessWidget {
               ? Colors.green
               : w.accentColor;
 
-      final chipColor = isWarning ? Colors.orange : w.accentColor;
-
-      // P2-1: use balanceOverride when provided, else fall back to maxQty.
-      // fix: maxQty is a plain double getter (not RxDouble) since Commit 4.
+      final chipColor   = isWarning ? Colors.orange : w.accentColor;
       final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
 
-      // fix(BATCH-ICON): the suffixIcon slot imposes tight BoxConstraints on
-      // its child. A bare Row with mainAxisSize.min collapses to zero width
-      // under tight constraints, hiding the first child (picker icon).
-      // Wrap the Row in an IntrinsicWidth so Flutter measures children first.
       Widget buildSuffixRow() => IntrinsicWidth(
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -241,7 +231,6 @@ class _SimpleField extends StatelessWidget {
                       color: w.accentColor, size: 20),
                 ),
               ),
-            // P3-2: picker icon in idle state only.
             if (!validating && !isValid && w.onPickerTap != null)
               _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
             if (c.batchController.text.isNotEmpty && !isReadOnly)
@@ -303,7 +292,7 @@ class _SimpleField extends StatelessWidget {
   }
 }
 
-// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ────────────
+// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
@@ -320,24 +309,14 @@ class _EditModeField extends StatelessWidget {
       final isHardError = !isValid && errorMsg != null;
       final isWarning   =  isValid && errorMsg != null;
 
-      final effectiveReadOnly = w.readOnly || (isValid && !isWarning);
-
-      final helperColor = isHardError
+      final effectiveReadOnly  = w.readOnly || (isValid && !isWarning);
+      final helperColor        = isHardError
           ? Colors.red
-          : isWarning
-              ? Colors.orange
-              : Colors.grey;
-
+          : isWarning ? Colors.orange : Colors.grey;
       final enabledBorderColor = isHardError
           ? Colors.red
-          : isWarning
-              ? Colors.orange
-              : w._validBorder;
-
-      final chipColor = isWarning ? Colors.orange : w.accentColor;
-
-      // P2-1: use balanceOverride when provided, else fall back to maxQty.
-      // fix: maxQty is a plain double getter (not RxDouble) since Commit 4.
+          : isWarning ? Colors.orange : w._validBorder;
+      final chipColor   = isWarning ? Colors.orange : w.accentColor;
       final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
 
       return Column(
@@ -354,8 +333,8 @@ class _EditModeField extends StatelessWidget {
               autofocus:  false,
               style: const TextStyle(fontFamily: 'ShureTechMono'),
               decoration: InputDecoration(
-                hintText: 'Enter or scan batch',
-                helperText: errorMsg,
+                hintText:       'Enter or scan batch',
+                helperText:     errorMsg,
                 helperMaxLines: 2,
                 helperStyle: TextStyle(
                   color:      helperColor,
@@ -367,25 +346,22 @@ class _EditModeField extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: enabledBorderColor),
+                  borderSide:   BorderSide(color: enabledBorderColor),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(
                     color: isHardError
                         ? Colors.red
-                        : isWarning
-                            ? Colors.orange
-                            : w.accentColor,
+                        : isWarning ? Colors.orange : w.accentColor,
                     width: 2,
                   ),
                 ),
                 filled:    true,
                 fillColor: isValid ? w._validFill : Colors.white,
-                suffixIcon: _suffixIcon(
-                    c, isValid, validating, isWarning),
+                suffixIcon: _suffixIcon(c, isValid, validating, isWarning),
               ),
-              onChanged: (_) => c.validateSheet(),
+              onChanged:        (_) => c.validateSheet(),
               onFieldSubmitted: (val) {
                 if (!c.isBatchValid.value) c.validateBatch(val);
               },
@@ -420,18 +396,22 @@ class _EditModeField extends StatelessWidget {
       );
     }
 
-    // fix(BATCH-ICON): wrap multi-icon Rows in a SizedBox with explicit width.
-    // Flutter's suffixIcon slot forces tight BoxConstraints on its child —
-    // a bare Row with mainAxisSize.min is assigned zero width, collapsing all
-    // children. An explicit SizedBox width gives the Row room to lay out.
+    // fix(BATCH-ICON): SizedBox with explicit width prevents tight-constraints
+    // collapse of the inner Row (Flutter's suffixIcon slot forces tight
+    // BoxConstraints, making a bare mainAxisSize.min Row collapse to 0 width).
+    // Width is computed dynamically: 48px per visible action slot.
 
     if (isValid) {
-      // Tooltip present → two icons (96px); otherwise single edit btn (48px).
+      // Slots: [tooltip?] [picker?] [edit]
+      final hasPicker  = w.onPickerTap != null;
       final hasTooltip = c.batchInfoTooltip.value != null;
+      final width = 48.0
+          + (hasPicker  ? 48.0 : 0.0)
+          + (hasTooltip ? 48.0 : 0.0);
       return SizedBox(
-        width: hasTooltip ? 96 : 48,
+        width: width,
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:      MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             if (hasTooltip)
@@ -449,27 +429,32 @@ class _EditModeField extends StatelessWidget {
                   ),
                 ),
               ),
+            // fix(BATCH-ICON-VALID): picker also shown in valid state.
+            if (hasPicker)
+              _pickerSuffixBtn(
+                isWarning ? Colors.orange : w.accentColor,
+                w.onPickerTap!,
+              ),
             IconButton(
-              icon:  Icon(Icons.edit,
+              icon:     Icon(Icons.edit,
                   color: isWarning ? Colors.orange : w.accentColor,
                   size: 20),
               onPressed: c.resetBatch,
-              tooltip: 'Edit Batch',
+              tooltip:   'Edit Batch',
             ),
           ],
         ),
       );
     }
 
-    // Idle state: picker icon (optional) + validate arrow.
+    // Idle state: [picker?] [validate arrow]
     final hasPicker = w.onPickerTap != null;
     return SizedBox(
-      width: hasPicker ? 96 : 48,
+      width: hasPicker ? 96.0 : 48.0,
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize:      MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // P3-2: picker icon before the validate arrow in idle state.
           if (hasPicker)
             _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
           IconButton(
