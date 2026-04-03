@@ -23,7 +23,11 @@ class _SessionDefaultsBottomSheetState
   final StorageService _storageService = Get.find<StorageService>();
 
   bool _isLoading = true;
-  List<String> _companies = [];
+
+  /// Commit 10: ApiProvider.getList() returns List<Map<String,dynamic>>.
+  /// Each map contains at least {'name': '<company-name>'} from Frappe REST.
+  List<Map<String, dynamic>> _companies = [];
+
   String? _selectedCompany;
   bool _autoSubmitEnabled = true;
   double _autoSubmitDelay = 2.0;
@@ -43,14 +47,17 @@ class _SessionDefaultsBottomSheetState
 
       if (mounted) {
         setState(() {
+          // Commit 10: direct assignment now type-safe.
           _companies = companies;
           _selectedCompany = savedCompany;
           _autoSubmitEnabled = autoSubmit;
           _autoSubmitDelay = delay.toDouble();
           _isLoading = false;
         });
+        // Commit 10: extract 'name' key for the auto-select logic.
         if (_companies.length == 1 && _selectedCompany == null) {
-          setState(() => _selectedCompany = _companies.first);
+          setState(() =>
+              _selectedCompany = _companies.first['name'] as String);
         }
       }
     } catch (e) {
@@ -136,10 +143,12 @@ class _SessionDefaultsBottomSheetState
                           labelText: 'Company',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.business)),
-                      items: _companies
-                          .map((c) => DropdownMenuItem(
-                              value: c, child: Text(c)))
-                          .toList(),
+                      // Commit 10: extract 'name' from each map row.
+                      items: _companies.map((c) {
+                        final name = c['name'] as String;
+                        return DropdownMenuItem(
+                            value: name, child: Text(name));
+                      }).toList(),
                       onChanged: (val) =>
                           setState(() => _selectedCompany = val),
                     ),
