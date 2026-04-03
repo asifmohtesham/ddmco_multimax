@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BatchWiseBalanceController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Filter field controllers ──────────────────────────────────────────────
+  // ── Filter field controllers ────────────────────────────────────────
 
   final fromDateController  = TextEditingController();
   final toDateController    = TextEditingController();
@@ -17,7 +17,7 @@ class BatchWiseBalanceController extends GetxController {
 
   late final Map<String, TextEditingController> filterControllers;
 
-  // ── State ────────────────────────────────────────────────────────────────────
+  // ── State ────────────────────────────────────────────────────────
 
   final isLoading  = false.obs;
   final reportData = <Map<String, dynamic>>[].obs;
@@ -25,7 +25,7 @@ class BatchWiseBalanceController extends GetxController {
   /// Reactive map driving active filter chips in the screen.
   final activeFilters = <String, String>{}.obs;
 
-  // ── Filter field descriptors (passed to ReportFilterSheet) ──────────────
+  // ── Filter field descriptors (passed to ReportFilterSheet) ────────────
 
   static const filterFields = [
     ReportFilterField(
@@ -59,7 +59,7 @@ class BatchWiseBalanceController extends GetxController {
     ),
   ];
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -87,7 +87,7 @@ class BatchWiseBalanceController extends GetxController {
     super.onClose();
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  // ── Public API ───────────────────────────────────────────────────
 
   int get activeFilterCount =>
       filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
@@ -113,6 +113,9 @@ class BatchWiseBalanceController extends GetxController {
   }
 
   /// Runs the Batch-Wise Balance History report with current filter values.
+  ///
+  /// Fix: [ApiProvider.getBatchWiseBalance] signature changed to all-named params
+  /// and now returns [List<Map<String,dynamic>>] directly (not a [Response]).
   Future<void> runReport() async {
     final itemCode = itemCodeController.text.trim();
     final batchNo  = batchNoController.text.trim();
@@ -131,44 +134,15 @@ class BatchWiseBalanceController extends GetxController {
 
     try {
       final warehouse = warehouseController.text.trim();
-      final response  = await _apiProvider.getBatchWiseBalance(
-        itemCode,
-        batchNo,
+
+      // ✓ All-named params; return type is List<Map<String,dynamic>>.
+      final rows = await _apiProvider.getBatchWiseBalance(
+        itemCode:  itemCode,
+        batchNo:   batchNo.isEmpty ? null : batchNo,
         warehouse: warehouse.isEmpty ? null : warehouse,
       );
 
-      if (response.statusCode == 200) {
-        final message = response.data['message'] as Map<String, dynamic>?;
-        if (message != null) {
-          final rawColumns = message['columns'] as List<dynamic>? ?? [];
-          final rawRows    = message['result']  as List<dynamic>? ?? [];
-
-          String fieldname(dynamic col) {
-            if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
-            return col.toString().toLowerCase();
-          }
-
-          String label(dynamic col) {
-            if (col is Map) return (col['label'] as String? ?? col['fieldname'] as String? ?? '');
-            return col.toString();
-          }
-
-          final colKeys   = rawColumns.map(fieldname).toList();
-          final colLabels = rawColumns.map(label).toList();
-
-          final rows = <Map<String, dynamic>>[];
-          for (final row in rawRows) {
-            if (row is! List) continue;
-            final map = <String, dynamic>{};
-            for (int i = 0; i < colKeys.length && i < row.length; i++) {
-              map[colKeys[i]] = row[i];
-            }
-            map['_labels'] = colLabels;
-            rows.add(map);
-          }
-          reportData.assignAll(rows);
-        }
-      }
+      reportData.assignAll(rows);
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
@@ -179,7 +153,7 @@ class BatchWiseBalanceController extends GetxController {
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────
 
   static const _filterLabels = {
     'from_date' : 'From',
