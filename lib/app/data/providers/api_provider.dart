@@ -162,50 +162,24 @@ class ApiProvider {
     return await _dio.put('/api/resource/$doctype/$name', data: data);
   }
 
-  Future<Response> deleteDocument
-    (String doctype, String name) async {
+  Future<Response> deleteDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.delete('/api/resource/$doctype/$name');
   }
 
-    /// Submit a document (change docstatus from 0 to 1) in ERPNext.
-  ///
-  /// In ERPNext, submission finalizes a document and prevents further edits.
-  /// This is typically the last step after all data entry and validations are complete.
-  ///
-  /// Calls: `POST /api/resource/{doctype}/{name}` with `{"docstatus": 1}`
+  /// Submit a document (change docstatus from 0 to 1) in ERPNext.
   Future<Response> submitDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
   }
 
   /// Call a Frappe whitelisted method via GET with query parameters.
-  ///
-  /// Suitable for simple methods that accept flat scalar parameters.
-  /// For methods that require a complex `args` object (e.g. `make_time_log`)
-  /// use [callMethodPost] instead — Frappe deserialises nested params only
-  /// when they are sent as a JSON-encoded string in a form-urlencoded POST body.
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
   }
 
   /// Call a Frappe whitelisted method via POST with a form-urlencoded body.
-  ///
-  /// Use this whenever the server method expects its arguments via `frappe.form_dict`
-  /// and one of those arguments is a JSON-serialised object (e.g. `args`).
-  ///
-  /// Example — ERPNext `make_time_log`:
-  /// ```dart
-  /// callMethodPost(
-  ///   'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
-  ///   params: {'args': json.encode({...})},
-  /// );
-  /// ```
-  /// Sending a nested Map via [callMethod] (GET) results in Dio serialising it
-  /// as `args[key]=value` pairs, which Frappe does **not** unpack into the
-  /// positional `args` parameter — causing:
-  ///   `TypeError: make_time_log() missing 1 required positional argument: 'args'`
   Future<Response> callMethodPost(
     String method, {
     Map<String, dynamic>? params,
@@ -222,7 +196,57 @@ class ApiProvider {
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
 
-  Future<List<String>> getList(String doctype) async {
+  /// Named-param version used by [ItemSheetControllerBase.validateBatch] and
+  /// any other caller that needs to filter by fields.
+  ///
+  /// Returns a [List<Map<String, dynamic>>] of matching document rows so
+  /// callers can read individual field values (e.g. expiry_date).
+  ///
+  /// The first positional parameter [_positional] is kept for backwards
+  /// compat with any call-site that still passes the doctype positionally;
+  /// new call-sites should use the named [doctype] parameter instead.
+  Future<List<Map<String, dynamic>>> getList(
+    String? _positional, {
+    String? doctype,
+    Map<String, dynamic>? filters,
+    List<String>? fields,
+    int limit = 20,
+    String orderBy = 'modified desc',
+  }) async {
+    final dt = _positional ?? doctype;
+    if (dt == null) return [];
+
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/resource/$dt', queryParameters: {
+        if (fields != null) 'fields': json.encode(fields)
+        else 'fields': json.encode(['name']),
+        'limit_page_length': limit,
+        'order_by': orderBy,
+        if (filters != null && filters.isNotEmpty)
+          'filters': json.encode(
+            filters.entries.map((e) {
+              if (e.value is List && (e.value as List).length == 2) {
+                return [dt, e.key, e.value[0], e.value[1]];
+              }
+              return [dt, e.key, '=', e.value];
+            }).toList(),
+          ),
+      });
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return (response.data['data'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+    } catch (e) {
+      print('Error fetching list for $dt: $e');
+    }
+    return [];
+  }
+
+  /// Legacy positional convenience; returns names only.
+  /// Prefer [getList] with named params for any new call-sites.
+  Future<List<String>> getListSimple(String doctype) async {
     try {
       if (!_dioInitialised) await _initDio();
       final response = await _dio.get('/api/resource/$doctype', queryParameters: {
@@ -295,7 +319,26 @@ class ApiProvider {
     );
   }
 
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
+  // ---------------------------------------------------------------------------
+  // getBatchWiseBalance — SIGNATURE CHANGED (Commit 3)
+  //
+  //   Old: getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse})
+  //   New: getBatchWiseBalance({required String itemCode, String? batchNo, String? warehouse})
+  //
+  // Callers in ItemSheetControllerBase.fetchBatchBalance and
+  // StockEntryItemFormController.fetchBatchWiseHistory use all-named params
+  // with optional batchNo (omit = fetch all batches for item+wh).
+  // ---------------------------------------------------------------------------
+
+  /// Fetch Batch-Wise Balance History rows for [itemCode].
+  ///
+  /// [batchNo] is optional — omit to fetch all in-stock batches for the item
+  /// (used by BatchPickerSheet pre-fetch / fetchBatchWiseHistory).
+  Future<List<Map<String, dynamic>>> getBatchWiseBalance({
+    required String itemCode,
+    String? batchNo,
+    String? warehouse,
+  }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
@@ -303,39 +346,197 @@ class ApiProvider {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final Map<String, dynamic> filters = {
-      "company": company,
-      "from_date": today,
-      "to_date": today,
-      "item_code": itemCode,
-      "batch_no": batchNo,
+      "company"   : company,
+      "from_date" : today,
+      "to_date"   : today,
+      "item_code" : itemCode,
     };
 
-    if (warehouse != null && warehouse.isNotEmpty) {
-      filters["warehouse"] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters["batch_no"]  = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
     }
 
-    return await _dio.get('/api/method/frappe.desk.query_report.run',
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null) return [];
+
+      final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
+
+      if (firstRow is Map) {
+        // Key-based rows — return as-is
+        return rawRows
+            .whereType<Map>()
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList();
+      }
+
+      // List rows — resolve column indices
+      final rawColumns = message['columns'] as List<dynamic>?;
+      if (rawColumns == null) return [];
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      final cols      = rawColumns.map(fn).toList();
+      final batchIdx  = cols.indexWhere((c) => c.contains('batch'));
+      final balIdx    = cols.indexWhere((c) => c.contains('balance'));
+      final whIdx     = cols.indexWhere((c) => c.contains('warehouse'));
+      final expiryIdx = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+
+      if (batchIdx == -1 || balIdx == -1) return [];
+
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.isNotEmpty)
+          .map((r) {
+            final row = <String, dynamic>{};
+            if (batchIdx < r.length) row['batch_no']   = r[batchIdx]?.toString() ?? '';
+            if (balIdx   < r.length) row['qty']        = _toDouble(r[balIdx]);
+            if (whIdx >= 0 && whIdx < r.length) row['warehouse'] = r[whIdx]?.toString() ?? '';
+            if (expiryIdx >= 0 && expiryIdx < r.length) row['expiry_date'] = r[expiryIdx]?.toString();
+            return row;
+          })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // getStockBalanceWithDimension — NEW (Commit 3)
+  //
+  // Used by:
+  //   • DeliveryNoteItemFormController.preloadRackStockMap
+  //   • StockEntryItemFormController.validateRack fallback
+  //
+  // Hits the custom 'Stock Balance with Dimension' script report and returns
+  // rows as List<Map<String,dynamic>> with at least {custom_rack, qty}.
+  // ---------------------------------------------------------------------------
+
+  /// Fetch per-rack stock balance rows for [itemCode] + [warehouse],
+  /// optionally filtered by [batchNo].
+  Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
+    required String itemCode,
+    String? warehouse,
+    String? batchNo,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+    final company = storage.getCompany();
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = <String, dynamic>{
+      'company'   : company,
+      'from_date' : today,
+      'to_date'   : today,
+      'item_code' : itemCode,
+    };
+    if (warehouse != null && warehouse.isNotEmpty) filters['warehouse'] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters['batch_no']  = batchNo;
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Batch-Wise Balance History',
-          'filters': json.encode(filters),
+          'report_name'           : 'Stock Balance with Dimension',
+          'filters'               : json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch
-        }
-    );
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
+    }
+
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null || rawRows.isEmpty) return [];
+
+      final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
+
+      if (firstRow is Map) {
+        return rawRows
+            .whereType<Map>()
+            .map((r) {
+              final rack = (r['custom_rack'] ?? r['rack'] ?? '').toString().trim();
+              final qty  = _toDouble(r['qty'] ?? r['balance_qty'] ?? r['bal_qty']);
+              return <String, dynamic>{'custom_rack': rack, 'qty': qty};
+            })
+            .where((r) => (r['custom_rack'] as String).isNotEmpty)
+            .toList();
+      }
+
+      // List rows — resolve column indices
+      final rawColumns = message['columns'] as List<dynamic>?;
+      if (rawColumns == null) return [];
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      final cols    = rawColumns.map(fn).toList();
+      final rackIdx = cols.indexWhere((c) => c.contains('rack'));
+      final qtyIdx  = cols.indexWhere((c) => c == 'qty' || c.contains('balance'));
+
+      if (rackIdx == -1 || qtyIdx == -1) return [];
+
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.length > rackIdx && r.length > qtyIdx)
+          .map((r) => <String, dynamic>{
+                'custom_rack': (r[rackIdx] ?? '').toString().trim(),
+                'qty'        : _toDouble(r[qtyIdx]),
+              })
+          .where((r) => (r['custom_rack'] as String).isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetch all available batches for [itemCode] in [warehouse] from the
   /// Batch-Wise Balance History report, returning only rows where balance > 0.
-  ///
-  /// Results are sorted by balanceQty DESC so the highest-stock batch appears
-  /// first in the picker.
-  ///
-  /// The Batch-Wise Balance History report returns rows as **Maps** with named
-  /// keys (e.g. `{"batch": "20014643-7M6", "balance_qty": 2884.0, ...}`). A
-  /// fallback List/column-index path is also kept for any report variant that
-  /// returns array rows. The trailing `["Total", ...]` array row is skipped by
-  /// the Map path guard and handled gracefully by the List path guard.
   Future<List<BatchWiseBalanceRow>> fetchBatchesForItem(
     String itemCode, {
     String? warehouse,
@@ -385,25 +586,14 @@ class ApiProvider {
 
       final rows = <BatchWiseBalanceRow>[];
 
-      // ── Detect row format on first non-null element ──────────────────────
-      // The report can return either:
-      //   (a) Map rows  : {"batch":"...", "balance_qty": 2884.0, ...}
-      //       → read keys directly; no column index lookup needed.
-      //   (b) List rows : ["batch_id", expiry, warehouse, openQty, ...]
-      //       → resolve column indices from the `columns` array.
-      // The trailing ["Total", "", ...] summary row is always a List; the
-      // Map path skips it via `if (row is! Map)`, the List path skips it
-      // because the first element is the string "Total" (batchNo.isEmpty).
-
       final firstDataRow = rawRows.firstWhere(
         (r) => r != null,
         orElse: () => null,
       );
 
       if (firstDataRow is Map) {
-        // ── (a) Map rows — key-based parsing ────────────────────────────
         for (final row in rawRows) {
-          if (row is! Map) continue; // skip the trailing ["Total", ...] List
+          if (row is! Map) continue;
 
           final batchNo    = (row['batch'] ?? row['batch_no'] ?? row['batch_id'] ?? '').toString().trim();
           final balanceQty = _toDouble(row['balance_qty'] ?? row['bal_qty'] ?? row['balance']);
@@ -412,7 +602,6 @@ class ApiProvider {
 
           final warehouseVal = (row['warehouse'] ?? '').toString().trim();
 
-          // Expiry: may be a String ("2026-12-31") or null
           DateTime? expiryDate;
           final expiryRaw = row['expiry_date'] ?? row['expiration_date'];
           if (expiryRaw != null && expiryRaw.toString().isNotEmpty) {
@@ -432,11 +621,10 @@ class ApiProvider {
           ));
         }
       } else {
-        // ── (b) List rows — column-index-based parsing (fallback) ────────
         final rawColumns = message['columns'] as List<dynamic>?;
         if (rawColumns == null) return [];
 
-        String _fn(dynamic col) {
+        String innerFn(dynamic col) {
           if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
           final s = col.toString().toLowerCase();
           final lastDot = s.lastIndexOf('.');
@@ -445,7 +633,7 @@ class ApiProvider {
               : s;
         }
 
-        final cols         = rawColumns.map(_fn).toList();
+        final cols         = rawColumns.map(innerFn).toList();
         final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
         final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
         final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
@@ -488,14 +676,6 @@ class ApiProvider {
   // BOM SEARCH
   // ---------------------------------------------------------------------------
 
-  /// Runs the ERPNext **BOM Search** script report.
-  ///
-  /// Matches the web filter pane:
-  ///   - [item]  : finished-good Item Code (BOM 'Item' filter)
-  ///   - [bom]   : BOM No filter
-  ///   - [item1]–[item5] : sub-assembly Item Code search fields
-  ///
-  /// All parameters are optional; pass empty string or null to omit.
   Future<Response> searchBom({
     String? item,
     String? bom,
@@ -578,12 +758,12 @@ class ApiProvider {
       final rawRows    = message['result']  as List<dynamic>?;
       if (rawColumns == null || rawRows == null || rawRows.isEmpty) return {};
 
-      String _fieldname(dynamic col) {
+      String fieldname(dynamic col) {
         if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
         return col.toString().toLowerCase();
       }
 
-      final colNames = rawColumns.map(_fieldname).toList();
+      final colNames = rawColumns.map(fieldname).toList();
       final rackIdx  = colNames.indexOf('rack');
       final qtyIdx   = colNames.indexOf('qty_after_transaction');
 
