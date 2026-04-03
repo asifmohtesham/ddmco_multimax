@@ -670,21 +670,33 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'edit') saveDeliveryNote();
   }
 
+  // fix(DN-editItem): The previous try/finally reset isLoadingItemEdit and
+  // loadingForItemName synchronously after Get.back() — in the same frame
+  // that _openItemSheet() queues addPostFrameCallback for disposeControllers()
+  // + Get.delete(). This caused two Obx rebuilds before the sheet widget tree
+  // was unmounted, resulting in QuantityInputWidget calling addListener() on
+  // an already-disposed qtyController.
+  //
+  // Fix: defer the flag resets into addPostFrameCallback, consistent with the
+  // TEC-3 Option B teardown pattern already established in _openItemSheet().
   Future<void> editItem(DeliveryNoteItem item) async {
     if (isLoadingItemEdit.value) return;
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
-    try {
-      await _openItemSheet(
-        itemCode:    item.itemCode,
-        itemName:    item.itemName ?? item.itemCode,
-        batchNo:     item.batchNo,
-        editingItem: item,
-      );
-    } finally {
+
+    await _openItemSheet(
+      itemCode:    item.itemCode,
+      itemName:    item.itemName ?? item.itemCode,
+      batchNo:     item.batchNo,
+      editingItem: item,
+    );
+
+    // Defer flag resets to the same post-frame tick as disposeControllers()
+    // so both execute after the sheet widget tree is fully unmounted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       isLoadingItemEdit.value  = false;
       loadingForItemName.value = null;
-    }
+    });
   }
 
   void _scrollToItem(String key) {
