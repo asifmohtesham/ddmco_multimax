@@ -19,19 +19,12 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 
 /// Item-level sheet controller for Delivery Note.
 ///
-/// Commit 7 fixes:
-///   • No-arg constructor; parent wired via initialise() so
-///     Get.put(DeliveryNoteItemFormController(), permanent: true) compiles.
-///   • qtyInfoTooltip: super.qtyInfoTooltip is illegal on an abstract getter;
-///     replaced with a final RxnString field override.
-///   • clearPosSerialSelection() does not exist in PosSerialMixin;
-///     replaced with selectedSerial.value = null.
-///   • selectedPosSerial → selectedSerial (actual mixin field name).
-///   • posSerialQtyCap → _posQtyCap() (local helper from _parent).
-///   • posItems / posUpload abstract getter overrides removed;
-///     availableSerialNos reads _parent.posUpload directly.
-///   • submit() variantOf: uses customVariantOf field on DeliveryNoteItem.
-///   • variantOf threaded through initialise() → initForNewItem/initForEdit.
+/// Group B fixes (on top of Commit 7):
+///   B3 — deleteCurrentItem() called _parent.items.refresh() on a plain
+///        List<DeliveryNoteItem>.  .refresh() does not exist on List;
+///        replaced with _parent.deliveryNote.refresh() (the Rx wrapper).
+///   B4 — submit() passed posQtyCap: _posQtyCap to the DeliveryNoteItem
+///        constructor.  DeliveryNoteItem has no such field; argument removed.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -93,8 +86,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
-    _parent.items.removeAt(editingIndex.value);
-    _parent.items.refresh();
+    // B3 fix: _parent.items is a plain List<DeliveryNoteItem> getter, not an
+    // RxList.  removeAt() mutates the underlying list in-place; call
+    // _parent.deliveryNote.refresh() (the Rx<DeliveryNote?> wrapper) so the
+    // UI rebuilds correctly.
+    _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
+    _parent.deliveryNote.refresh();
     Get.back();
   }
 
@@ -269,27 +266,29 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
 
-    // Commit 7: selectedPosSerial → selectedSerial (PosSerialMixin field name).
-    //           posSerialQtyCap  → _posQtyCap (local computed getter).
-    //           variantOf        → customVariantOf (DeliveryNoteItem field name).
+    // B4 fix: DeliveryNoteItem has no posQtyCap field — argument removed.
+    //         _posQtyCap is local UI logic only; it is not persisted on the
+    //         model.  selectedSerial and customVariantOf are the only
+    //         custom fields written through to the model.
     final item = DeliveryNoteItem(
       itemCode:                  itemCode.value,
       itemName:                  itemNameRx.value,
       uom:                       itemUomRx.value,
       qty:                       qty,
+      rate:                      0.0,
       batchNo:                   batchController.text.trim(),
       rack:  rackController.text.trim().isEmpty ? null : rackController.text.trim(),
       itemGroup:                 itemGroupRx.value,
       customVariantOf:           currentVariantOf.value.isEmpty ? null : currentVariantOf.value,
       customInvoiceSerialNumber: selectedSerial.value,
-      posQtyCap:                 _posQtyCap,
     );
 
     if (isExistingItem.value && editingIndex.value >= 0) {
-      _parent.items[editingIndex.value] = item;
-      _parent.items.refresh();
+      _parent.deliveryNote.value?.items[editingIndex.value] = item;
+      _parent.deliveryNote.refresh();
     } else {
-      _parent.items.add(item);
+      _parent.deliveryNote.value?.items.add(item);
+      _parent.deliveryNote.refresh();
     }
   }
 

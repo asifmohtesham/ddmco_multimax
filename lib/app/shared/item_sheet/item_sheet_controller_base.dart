@@ -67,6 +67,11 @@ class BatchResult {
 ///   setupAutoSubmit  — wires the auto-close worker; available to all.
 ///   initBaseListeners/captureSnapshot — aliases for addSheetListeners /
 ///                      snapshotState used by PO and PS controllers.
+///   sheetScrollController — concrete ScrollController exposed so parent
+///                      orchestrators can pass it to UniversalItemFormSheet
+///                      without needing a subclass override (Group B fix).
+///   disposeControllers — public teardown helper called by parent
+///                      orchestrators post-sheet-close (Group B fix).
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Reactive state ──────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
@@ -122,6 +127,13 @@ abstract class ItemSheetControllerBase extends GetxController {
 
   /// FocusNode for the rack text field.
   final FocusNode rackFocusNode = FocusNode();
+
+  /// ScrollController for the sheet's scrollable body.
+  ///
+  /// Exposed so parent orchestrators (e.g. DeliveryNoteFormController) can
+  /// pass it directly to UniversalItemFormSheet without requiring each
+  /// concrete subclass to declare its own field (Group B — B1 fix).
+  final ScrollController sheetScrollController = ScrollController();
 
   var itemCode = ''.obs;
 
@@ -199,10 +211,26 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
+  // ── disposeControllers ──────────────────────────────────────────────────
+  /// Explicit teardown called by parent orchestrators immediately after the
+  /// sheet closes (e.g. in a post-frame callback) before Get.delete().
+  ///
+  /// Disposes [sheetScrollController] and the three text controllers.  Safe
+  /// to call multiple times — each disposal is wrapped in a try/catch.
+  /// (Group B — B2 fix)
+  void disposeControllers() {
+    try { sheetScrollController.dispose(); } catch (_) {}
+    try { batchController.dispose(); } catch (_) {}
+    try { rackController.dispose();  } catch (_) {}
+    try { qtyController.dispose();   } catch (_) {}
+    try { rackFocusNode.dispose();   } catch (_) {}
+  }
+
   // ── Lifecycle ───────────────────────────────────────────────────────────
   @override
   void onClose() {
     _autoSubmitWorker?.dispose();
+    try { sheetScrollController.dispose(); } catch (_) {}
     try { batchController.dispose(); } catch (_) {}
     try { rackController.dispose();  } catch (_) {}
     try { qtyController.dispose();   } catch (_) {}
