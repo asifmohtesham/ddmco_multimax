@@ -34,6 +34,7 @@ dependencies:
   # Scales the collapsed toolbar title font down before wrapping so
   # the full DocType name always fits without ellipsis.
   auto_size_text: ^3.0.0
+  mobile_scanner: any
 
 dev_dependencies:
   flutter_test:
