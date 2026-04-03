@@ -12,53 +12,51 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
-import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///
-/// Commit P3-3:
-///   • [openBatchPicker]  → overrides base; pre-fetches [batchWiseHistory]
-///     before delegating to [ItemSheetControllerBase.openBatchPicker].
-///
-/// Commit C-2:
-///   • [qtyInfoText]    → 'Max: N' (binding ceiling) or 'Max: -' (no ceiling).
-///   • [qtyInfoTooltip] → '·'-separated breakdown of active ceilings.
-///
-/// Commit 2 (compiler fix):
-///   • Removed duplicate liveRemaining / qtyInfoTooltip field declarations
-///     (both now live in ItemSheetControllerBase).
-///   • Removed broken 'bool get isSheetLoading' override.
-///   • isSheetValid is now written via isSheetValid.value in validateSheet().
-///   • Implemented abstract members: isAddMode, sheetScanController,
-///     adjustQty, deleteCurrentItem.
+/// Commit 4 (compiler fix):
+///   • resolvedWarehouse now reads selectedFromWarehouse.value.
+///   • POS wiring re-done: availableSerialNos derives from
+///     _parent.posUploadSerialOptions; serial ceiling reads
+///     _parent.remainingQtyForSerial(selectedSerial.value).
+///   • deleteCurrentItem delegates to _parent.confirmAndDeleteItem().
+///   • submit() delegates to _parent.updateItemLocally() / addItemLocally()
+///     with the correct signatures.
+///   • autoFillRackController / onAutoFillRackSelected wired to the
+///     dual-rack sourceRackController / validateDualRack per mixin docs.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
   // ── Parent back-reference ──────────────────────────────────────────────────
-  final StockEntryFormController _parent;
-  StockEntryItemFormController(this._parent);
+  late StockEntryFormController _parent;
 
   StockEntryFormController get parent => _parent;
 
-  // ── Abstract overrides ──────────────────────────────────────────────────
+  // ── Abstract overrides ────────────────────────────────────────────────────
+
+  /// Source warehouse for this item — drives batch-balance and rack-autofill.
+  ///
+  /// Uses the header-level selectedFromWarehouse; individual item rows may
+  /// carry their own sWarehouse but the sheet always operates against the
+  /// header for consistency.
   @override
-  String? get resolvedWarehouse =>
-      _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
+  String? get resolvedWarehouse => _parent.selectedFromWarehouse.value;
 
   @override bool get requiresBatch => true;
   @override bool get requiresRack  => false;
   @override Color get accentColor  => Colors.purple;
 
-  /// true when opening the sheet to add a new item (not editing an existing one).
+  /// true when the sheet was opened for a new item (not editing).
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// Scanner controller for the sheet scan footer; SE supports scanning.
+  /// SE does not embed an in-sheet camera scanner; returns null.
   @override
-  MobileScannerController? get sheetScanController => null; // wired per-sheet if needed
+  MobileScannerController? get sheetScanController => null;
 
-  // ── Batch-wise history (for BatchPickerSheet) ──────────────────────────
+  // ── Batch-wise history (for BatchPickerSheet) ──────────────────────────────
   final RxList<BatchWiseBalanceRow> _batchWiseHistory = <BatchWiseBalanceRow>[].obs;
   @override List<BatchWiseBalanceRow> get batchWiseHistory => _batchWiseHistory;
 
@@ -84,7 +82,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── P3-3: openBatchPicker override ───────────────────────────────────────────
+  // ── openBatchPicker override ───────────────────────────────────────────────
   @override
   Future<void> openBatchPicker() async {
     if (batchWiseHistory.isEmpty && !isLoadingBatchHistory.value) {
@@ -93,96 +91,26 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     await super.openBatchPicker();
   }
 
-  // ── POS serial mixin wiring ──────────────────────────────────────────────
-  @override PosUploadModel? get posUpload => _parent.posUpload.value;
-  @override List<dynamic>   get posItems  => _parent.posItems;
-
-  // ── PosSerialMixin: availableSerialNos ──────────────────────────────────────
+  // ── PosSerialMixin: availableSerialNos ─────────────────────────────────────
+  /// Derives from the parent's posUploadSerialOptions RxList<String> which is
+  /// populated by StockEntryFormController.fetchPosUpload().
   @override
-  List<String> get availableSerialNos {
-    // Derive from posItems if available; fallback to empty list.
-    if (posUpload == null) return const [];
-    return posItems
-        .map((e) => (e['serial_no'] ?? '').toString())
-        .where((s) => s.isNotEmpty)
-        .toList();
-  }
+  List<String> get availableSerialNos => _parent.posUploadSerialOptions;
 
-  // ── Derived / computed ────────────────────────────────────────────────────
-  // NOTE: liveRemaining and qtyInfoTooltip are declared in
-  // ItemSheetControllerBase — do NOT re-declare them here.
+  // ── AutoFillRackMixin hooks ────────────────────────────────────────────────
 
-  String get posSerialCapText {
-    final cap = posSerialQtyCap;
-    if (cap == null) return '';
-    return 'Serial: $cap';
-  }
+  /// Autofill writes the source rack, not the generic rackController.
+  @override
+  TextEditingController get autoFillRackController => sourceRackController;
+
+  /// After autofill, validate as source rack (isSource = true).
+  @override
+  void onAutoFillRackSelected(String rack) => validateDualRack(rack, true);
 
   @override
-  String get qtyInfoText {
-    final eff = effectiveMaxQty;
-    if (eff == null) return 'Max: -';
-    return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
-  }
+  Map<String, double> get rackStockMap => _rackStockMap;
 
-  /// Returns the base field declared in ItemSheetControllerBase.
-  @override
-  RxnString get qtyInfoTooltip => super.qtyInfoTooltip;
-
-  // Narrowest ceiling: POS serial → batch balance → rack balance → MR qty.
-  double? get effectiveMaxQty {
-    double? ceil;
-    final serial = posSerialQtyCap?.toDouble();
-    if (serial != null) ceil = serial;
-    final batch = batchBalance.value;
-    if (batch > 0) {
-      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
-    }
-    final rack = rackBalance.value;
-    if (rack > 0) {
-      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
-    }
-    final mr = _mrQty;
-    if (mr != null && mr > 0) {
-      ceil = (ceil == null) ? mr : (mr < ceil ? mr : ceil);
-    }
-    return ceil;
-  }
-
-  @override
-  double get maxQty => effectiveMaxQty ?? 0.0;
-
-  // ── State ──────────────────────────────────────────────────────────────
-  var uom              = ''.obs;
-  var itemGroup        = ''.obs;
-  var isBatchedItem    = false.obs;
-  var isSerialisedItem = false.obs;
-  var isEditingExisting = false.obs;
-  String? editingOriginalBatch;
-
-  // MR-link state
-  String? _mrName;
-  String? _mrItemName;
-  double? _mrQty;
-  String? _mrUom;
-  String? _mrBatch;
-
-  // ── AutoFillRackMixin wiring ──────────────────────────────────────────────
-  @override String  get mixinItemCode  => itemCode.value;
-  @override String? get mixinWarehouse => resolvedWarehouse;
-  @override String  get mixinBatch     => batchController.text;
-  @override double  get mixinQty       => double.tryParse(qtyController.text) ?? 0.0;
-  @override Map<String, double> get rackStockMap => _rackStockMap;
-
-  final Map<String, double> _rackStockMap = {};
-
-  @override
-  void onRackAutoFilled(String rackId) {
-    rackController.text = rackId;
-    validateRack(rackId);
-  }
-
-  // ── Dual-rack state ──────────────────────────────────────────────────────────
+  // ── Dual-rack state ────────────────────────────────────────────────────────
   final TextEditingController sourceRackController = TextEditingController();
   final RxBool isSourceRackValid       = false.obs;
   final RxBool isValidatingSourceRack  = false.obs;
@@ -197,6 +125,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   final RxnString derivedSourceWarehouse = RxnString(null);
   final RxnString itemTargetWarehouse    = RxnString(null);
   final RxnString derivedTargetWarehouse = RxnString(null);
+
+  final Map<String, double> _rackStockMap = {};
 
   void resetSourceRackValidation() {
     sourceRackController.clear();
@@ -252,13 +182,70 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     super.onClose();
   }
 
-  // ── Sheet-valid gate (writes RxBool in validateSheet) ────────────────────────
-  // isSheetLoading override REMOVED — base field is already RxBool.
-  // isSheetValid getter REMOVED — written via isSheetValid.value in validateSheet().
+  // ── Derived / computed ─────────────────────────────────────────────────────
+
+  /// POS serial qty ceiling: remaining capacity under the selected serial,
+  /// or null when no POS context or no serial is selected.
+  double? get _posSerialCeiling {
+    final serial = selectedSerial.value;
+    if (serial == null || serial.isEmpty) return null;
+    if (_parent.posUpload.value == null) return null;
+    final remaining = _parent.remainingQtyForSerial(serial);
+    return remaining == double.infinity ? null : remaining;
+  }
+
+  @override
+  String get qtyInfoText {
+    final eff = effectiveMaxQty;
+    if (eff == null) return 'Max: -';
+    return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
+  }
+
+  @override
+  RxnString get qtyInfoTooltip => super.qtyInfoTooltip;
+
+  /// Narrowest ceiling: POS serial → batch balance → rack balance → MR qty.
+  double? get effectiveMaxQty {
+    double? ceil;
+    final serial = _posSerialCeiling;
+    if (serial != null) ceil = serial;
+    final batch = batchBalance.value;
+    if (batch > 0) {
+      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
+    }
+    final rack = rackBalance.value;
+    if (rack > 0) {
+      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
+    }
+    final mr = _mrQty;
+    if (mr != null && mr > 0) {
+      ceil = (ceil == null) ? mr : (mr < ceil ? mr : ceil);
+    }
+    return ceil;
+  }
+
+  @override
+  double get maxQty => effectiveMaxQty ?? 0.0;
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  var uom              = ''.obs;
+  var itemGroup        = ''.obs;
+  var isBatchedItem    = false.obs;
+  var isSerialisedItem = false.obs;
+  var isEditingExisting = false.obs;
+  String? editingOriginalBatch;
+
+  // MR-link state
+  String? _mrName;
+  String? _mrItemName;
+  double? _mrQty;
+  String? _mrUom;
+  String? _mrBatch;
+
+  // ── Sheet-valid gate ───────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
-    // ─ validity ───────────────────────────────────────────────────────────
     final qty  = double.tryParse(qtyController.text);
     final ceil = effectiveMaxQty;
     final valid = isBatchValid.value &&
@@ -266,14 +253,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         (ceil == null || qty <= ceil);
     isSheetValid.value = valid;
 
-    // ─ liveRemaining ─────────────────────────────────────────────────────
     final qtyVal = qty ?? 0.0;
     liveRemaining.value = (ceil != null) ? (ceil - qtyVal).clamp(0.0, ceil) : 0.0;
 
-    // ─ tooltip breakdown ───────────────────────────────────────────────────
     final parts = <String>[];
-    final serial = posSerialQtyCap;
-    if (serial != null) parts.add('Serial: $serial');
+    final serial = _posSerialCeiling;
+    if (serial != null) parts.add('Serial: ${serial.toStringAsFixed(0)}');
     final batchBal = batchBalance.value;
     if (batchBal > 0) parts.add('Batch: ${batchBal.toStringAsFixed(0)}');
     final rackBal = rackBalance.value;
@@ -293,13 +278,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── deleteCurrentItem (abstract impl) ──────────────────────────────────────
+  // ── deleteCurrentItem (abstract impl) ─────────────────────────────────────
   @override
   void deleteCurrentItem() {
     final rowId = editingItemName.value;
     if (rowId == null) return;
-    _parent.removeItemByRowId(rowId);
-    Get.back();
+    final item = _parent.stockEntry.value?.items
+        .firstWhereOrNull((i) => i.name == rowId);
+    if (item == null) return;
+    _parent.confirmAndDeleteItem(item);
   }
 
   // ── MR link ───────────────────────────────────────────────────────────────
@@ -328,7 +315,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   String? get mrUom      => _mrUom;
   String? get mrBatch    => _mrBatch;
 
-  // ── Init helpers ──────────────────────────────────────────────────────────────
+  // ── Init helpers ───────────────────────────────────────────────────────────
   void initForItem({
     required String code,
     required String name,
@@ -381,16 +368,24 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
 
-    batchController.text = item.batchNo ?? '';
-    rackController.text  = item.rack    ?? '';
-    qtyController.text   = item.qty.toString();
+    batchController.text        = item.batchNo ?? '';
+    rackController.text         = item.rack    ?? '';
+    sourceRackController.text   = item.rack    ?? '';
+    targetRackController.text   = item.toRack  ?? '';
+    qtyController.text          = item.qty.toString();
+
+    // Restore selected POS serial if present.
+    if (item.customInvoiceSerialNumber != null &&
+        item.customInvoiceSerialNumber != '0') {
+      selectedSerial.value = item.customInvoiceSerialNumber;
+    }
 
     final mrMatch = mrReferenceItems.firstWhereOrNull(
       (r) => r['item_code'] == item.itemCode,
     );
     if (mrMatch != null) {
       linkMrItem(
-        mrName:   mrMatch['parent']   as String? ?? '',
+        mrName:   mrMatch['parent']    as String? ?? '',
         itemName: mrMatch['item_name'] as String? ?? '',
         qty:      (mrMatch['qty'] as num?)?.toDouble() ?? 0.0,
         uom:      mrMatch['uom']       as String? ?? '',
@@ -403,7 +398,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
     if (item.rack != null && item.rack!.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!isClosed) validateRack(item.rack!);
+        if (!isClosed) validateDualRack(item.rack!, true);
+      });
+    }
+    if (item.toRack != null && item.toRack!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!isClosed) validateDualRack(item.toRack!, false);
       });
     }
   }
@@ -442,24 +442,109 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     snapshotState();
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────
+  /// Public entry point called by StockEntryFormController to wire the parent
+  /// reference and start item initialisation in one step.
+  ///
+  /// This replaces the constructor-injection pattern so that GetX can
+  /// instantiate the controller with [Get.put(StockEntryItemFormController())]
+  /// and the parent wiring happens lazily.
+  Future<void> initialise({
+    required StockEntryFormController parent,
+    required String code,
+    required String name,
+    String variantOf          = '',
+    String itemName           = '',
+    String? batchNo,
+    StockEntryItem? editingItem,
+    List<Map<String, dynamic>> mrReferenceItems = const [],
+    String scannedEan8        = '',
+  }) async {
+    _parent = parent;
+
+    // Fetch item metadata from the ERPNext Item doctype.
+    String uomValue   = 'Nos';
+    String group      = '';
+    bool   hasBatch   = false;
+    bool   hasSerial  = false;
+
+    try {
+      final meta = await ApiProvider().getDocument('Item', code);
+      if (meta.statusCode == 200 && meta.data['data'] != null) {
+        final d  = meta.data['data'] as Map<String, dynamic>;
+        uomValue  = d['stock_uom']       as String? ?? 'Nos';
+        group     = d['item_group']      as String? ?? '';
+        hasBatch  = (d['has_batch_no']   as int?)    == 1;
+        hasSerial = (d['has_serial_no']  as int?)    == 1;
+      }
+    } catch (e) {
+      log('[SE-Item] initialise: failed to fetch item meta: $e', name: 'SE-Item');
+    }
+
+    await prepareForItem(
+      itemCode:         code,
+      itemName:         itemName,
+      uom:              uomValue,
+      itemGroup:        group,
+      hasBatch:         hasBatch,
+      hasSerial:        hasSerial,
+      existingItem:     editingItem,
+      mrReferenceItems: mrReferenceItems,
+      scannedBatch:     batchNo,
+    );
+
+    // Store scanned EAN8 for in-sheet scan context.
+    if (scannedEan8.isNotEmpty) currentScannedEan = scannedEan8;
+
+    // Kick off rack-stock pre-load for autofill (non-blocking).
+    unawaited(_preloadRackStockMap());
+  }
+
+  Future<void> _preloadRackStockMap() async {
+    try {
+      final rows = await ApiProvider().getStockBalanceWithDimension(
+        itemCode:  itemCode.value,
+        warehouse: resolvedWarehouse,
+      );
+      final map = <String, double>{};
+      for (final r in rows) {
+        final rack = r['custom_rack'] as String?;
+        final qty  = (r['qty'] as num?)?.toDouble() ?? 0.0;
+        if (rack != null && rack.isNotEmpty) map[rack] = qty;
+      }
+      seedRackStockMap(map);
+    } catch (e) {
+      log('[SE-Item] _preloadRackStockMap error: $e', name: 'SE-Item');
+    }
+  }
+
+  // ── submit ─────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Invalid quantity');
-    _parent.addOrUpdateItem(
-      itemCode:  itemCode.value,
-      itemName:  itemName.value,
-      uom:       uom.value,
-      qty:       qty,
-      batchNo:   isBatchValid.value ? batchController.text : null,
-      rack:      isRackValid.value  ? rackController.text  : null,
-      mrName:    _mrName,
-      mrItemName: _mrItemName,
-    );
+
+    final batch      = isBatchValid.value ? batchController.text : null;
+    final srcRack    = isSourceRackValid.value ? sourceRackController.text : null;
+    final tgtRack    = isTargetRackValid.value ? targetRackController.text : null;
+    final serial     = selectedSerial.value;
+
+    // Resolve warehouses: prefer item-level if known, else header.
+    final sWh = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value;
+    final tWh = itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value;
+
+    final rowId = editingItemName.value;
+    if (rowId != null) {
+      _parent.updateItemLocally(
+        rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+      );
+    } else {
+      _parent.addItemLocally(
+        qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+      );
+    }
   }
 
-  // ── Rack validation override (uses rackStockMap) ─────────────────────────
+  // ── Rack validation override (uses rackStockMap cache) ────────────────────
   @override
   Future<void> validateRack(String rack) async {
     if (rack.isEmpty) { resetRack(); return; }
@@ -487,11 +572,20 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   void applyRackScan(String rackId) {
-    rackController.text = rackId;
-    validateRack(rackId);
+    // Determine target: if source rack not yet set, fill source; else target.
+    if (sourceRackController.text.isEmpty) {
+      sourceRackController.text = rackId;
+      validateDualRack(rackId, true);
+    } else {
+      targetRackController.text = rackId;
+      validateDualRack(rackId, false);
+    }
   }
 
-  // ── Snackbar helpers ────────────────────────────────────────────────────────
+  /// True when the sheet is awaiting a rack scan (no source rack set yet).
+  bool get needsRackScanFallback => sourceRackController.text.isEmpty;
+
+  // ── Snackbar helpers ───────────────────────────────────────────────────────
   void showError(String msg)   => GlobalSnackbar.error(msg);
   void showSuccess(String msg) => GlobalSnackbar.success(msg);
 }
