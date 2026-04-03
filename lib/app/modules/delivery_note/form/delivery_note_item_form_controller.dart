@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 // Shared base + mixins
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
@@ -20,29 +21,11 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 
 /// Item-level sheet controller for Delivery Note.
 ///
-/// Commit D (Rack-Picker extraction):
-///   • Moved rack-picker bottom sheet UI into shared [RackPickerSheet].
-///   • [applyRackScan] is the only public mutation API used by the picker.
-///
-/// Commit C:
-///   • Added [editMode] support via [SharedBatchField] / [SharedRackField].
-///   • Batch field is readOnly only when valid and warning-free.
-///   • Warning states (soon-expiry) stay editable and show orange helper text.
-///
-/// Commit B:
-///   • Added AutoFillRackMixin integration.
-///   • [validateBatch] override calls base [fetchBatchBalance] +
-///     [maybeAutoFillRack] once batch becomes valid.
-///
-/// Commit A:
-///   • Extracted shared batch / rack logic into [ItemSheetControllerBase].
-///   • This controller now only carries DN-specific rules and submission.
-///
-/// Notes:
-///   • Rack is optional for DN; therefore [requiresRack] == false.
-///   • Batch is mandatory for batched items; DN item sheet always uses a
-///     batched item in current flow.
-///   • `dart:async` import retained for [unawaited].
+/// Commit 2 (compiler fix):
+///   • Removed 'bool get isSheetLoading' override (type mismatch with base RxBool).
+///   • isSheetValid is now written via isSheetValid.value in validateSheet().
+///   • Implemented abstract members: isAddMode, qtyInfoText, qtyInfoTooltip,
+///     sheetScanController, adjustQty, deleteCurrentItem, availableSerialNos.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
   final DeliveryNoteFormController _parent;
@@ -59,50 +42,74 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxBool   isExistingItem  = false.obs;
   final RxInt    editingIndex    = (-1).obs;
 
-  // Rack-side pre-fetched map used by AutoFillRackMixin / rack picker
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
-  // POS serial cap is maintained in mixin state (serial no + qty cap)
-
-  // ── Base overrides ────────────────────────────────────────────────────────
+  // ── Base overrides ──────────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
 
+  @override bool get requiresBatch => true;
+  @override bool get requiresRack  => false;
+  @override Color get accentColor  => Colors.blueGrey;
+
+  // isSheetLoading override REMOVED — base field is already RxBool.
+
+  /// true when adding a new item; false when editing an existing one.
   @override
-  bool get requiresBatch => true;
+  bool get isAddMode => !isExistingItem.value;
+
+  /// DN does not use an inline scanner; return null.
+  @override
+  MobileScannerController? get sheetScanController => null;
+
+  // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
+  @override String    get qtyInfoText    => '';
+  @override RxnString get qtyInfoTooltip => super.qtyInfoTooltip;
+
+  // ── adjustQty ──────────────────────────────────────────────────────────────
+  @override
+  void adjustQty(int delta) {
+    final current = double.tryParse(qtyController.text) ?? 0.0;
+    final next    = (current + delta).clamp(0.0, double.infinity);
+    qtyController.text = next.toStringAsFixed(
+        next.truncateToDouble() == next ? 0 : 2);
+    validateSheet();
+  }
+
+  // ── deleteCurrentItem ─────────────────────────────────────────────────────
+  @override
+  void deleteCurrentItem() {
+    if (!isExistingItem.value || editingIndex.value < 0) return;
+    _parent.items.removeAt(editingIndex.value);
+    _parent.items.refresh();
+    Get.back();
+  }
+
+  // ── PosSerialMixin wiring ────────────────────────────────────────────────
+  @override List<dynamic> get posItems  => _parent.posItems;
+  @override dynamic       get posUpload => _parent.posUpload.value;
 
   @override
-  bool get requiresRack => false;
+  List<String> get availableSerialNos {
+    if (posUpload == null) return const [];
+    return posItems
+        .map((e) => (e['serial_no'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
 
-  @override
-  Color get accentColor => Colors.blueGrey;
-
-  @override
-  bool get isSheetLoading => super.isSheetLoading;
-
-  // The shared widgets expect these reactive fields directly on the controller.
-  // Mirror the legacy names for zero-diff call-sites.
+  // ── Legacy name aliases ──────────────────────────────────────────────────────
   RxString get itemCodeValue  => itemCodeRx;
   RxString get itemNameValue  => itemNameRx;
   RxString get itemUomValue   => itemUomRx;
   RxString get itemGroupValue => itemGroupRx;
 
-  // Expose base [itemCode] through legacy slot expected by mixins/widgets.
-  @override
-  String get mixinItemCode => itemCode.value;
-
-  @override
-  String? get mixinWarehouse => resolvedWarehouse;
-
-  @override
-  String get mixinBatch => batchController.text;
-
-  @override
-  double get mixinQty => double.tryParse(qtyController.text) ?? 0.0;
-
-  @override
-  Map<String, double> get rackStockMap => Map<String, double>.from(rackStockMapRx);
+  @override String  get mixinItemCode  => itemCode.value;
+  @override String? get mixinWarehouse => resolvedWarehouse;
+  @override String  get mixinBatch     => batchController.text;
+  @override double  get mixinQty       => double.tryParse(qtyController.text) ?? 0.0;
+  @override Map<String, double> get rackStockMap => Map<String, double>.from(rackStockMapRx);
 
   @override
   void onRackAutoFilled(String rackId) {
@@ -110,18 +117,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateRack(rackId);
   }
 
-  // ── PosSerialMixin wiring ────────────────────────────────────────────────
-  @override
-  List<dynamic> get posItems => _parent.posItems;
-
-  @override
-  dynamic get posUpload => _parent.posUpload.value;
-
-  // ── Derived UI helpers ───────────────────────────────────────────────────
-  String get qtyInfoText => '';
-  String? get qtyInfoTooltip => null;
-
-  // ── Lifecycle / init ─────────────────────────────────────────────────────
+  // ── Lifecycle / init ──────────────────────────────────────────────────────
   void initForNewItem({
     required String itemCode,
     required String itemName,
@@ -132,6 +128,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }) {
     isExistingItem.value = false;
     editingIndex.value   = -1;
+    editingItemName.value = null;
 
     this.itemCode.value       = itemCode;
     itemCodeRx.value          = itemCode;
@@ -148,6 +145,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     resetRack();
     clearPosSerialSelection();
     rackStockMapRx.clear();
+    isSheetValid.value = false;
 
     removeSheetListeners();
     addSheetListeners();
@@ -165,6 +163,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }) {
     isExistingItem.value = true;
     editingIndex.value   = index;
+    editingItemName.value = item.name;
 
     this.itemCode.value    = item.itemCode;
     itemCodeRx.value       = item.itemCode;
@@ -177,11 +176,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     rackController.text    = item.rack ?? '';
     qtyController.text     = item.qty.toString();
 
-    // Reset shared validation state before re-validating from pre-filled values.
     resetBatch();
     resetRack();
     clearPosSerialSelection();
     rackStockMapRx.clear();
+    isSheetValid.value = false;
 
     removeSheetListeners();
     addSheetListeners();
@@ -197,29 +196,21 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Sheet validity ───────────────────────────────────────────────────────
-  @override
-  bool get isSheetValid {
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    return isBatchValid.value && qty > 0;
-  }
+  // ── Sheet validity ──────────────────────────────────────────────────────
+  // isSheetValid getter REMOVED — written via isSheetValid.value below.
 
   @override
   void validateSheet() {
-    // DN has no extra derived validation beyond the shared observable state.
-    // setState-equivalent rebuilds are driven by Obx in the widgets.
+    final qty = double.tryParse(qtyController.text) ?? 0;
+    isSheetValid.value = isBatchValid.value && qty > 0;
   }
 
-  // ── submit ────────────────────────────────────────────────────────────────
+  // ── submit ───────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text);
-    if (qty == null || qty <= 0) {
-      throw Exception('Enter a valid quantity');
-    }
-    if (!isBatchValid.value) {
-      throw Exception('Batch validation required');
-    }
+    if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
+    if (!isBatchValid.value)     throw Exception('Batch validation required');
 
     final item = DeliveryNoteItem(
       itemCode:    itemCode.value,
@@ -244,7 +235,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── Rack-map preload for AutoFillRack / RackPicker ───────────────────────
   Future<void> preloadRackStockMap() async {
-    final wh = resolvedWarehouse;
+    final wh    = resolvedWarehouse;
     final batch = batchController.text.trim();
     if (itemCode.value.isEmpty || wh == null || wh.isEmpty || batch.isEmpty) return;
 
@@ -254,7 +245,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         warehouse: wh,
         batchNo:   batch,
       );
-
       final map = <String, double>{};
       for (final raw in rows) {
         final rack = (raw['custom_rack'] ?? '').toString().trim();
@@ -269,56 +259,41 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── AutoFillRack integration hooks ───────────────────────────────────────
   @override
   Future<void> maybeAutoFillRack() async {
-    // Keep the mixin behaviour, but ensure the latest map is ready first.
     await preloadRackStockMap();
     await super.maybeAutoFillRack();
   }
 
-  // ── Batch validation override (DN-specific) ──────────────────────────────
   @override
   Future<void> validateBatch(String batch) async {
     await super.validateBatch(batch);
-
     if (!isBatchValid.value) return;
-
-    // Once batch becomes valid, refresh the rack map and attempt auto-fill.
-    // Fire-and-forget to avoid blocking UI on slow inventory-dimension query.
     unawaited(maybeAutoFillRack());
   }
 
-  // ── Rack validation override ──────────────────────────────────────────────
   @override
   Future<void> validateRack(String rack) async {
     final trimmed = rack.trim();
-    if (trimmed.isEmpty) {
-      resetRack();
-      return;
-    }
+    if (trimmed.isEmpty) { resetRack(); return; }
 
     isValidatingRack.value = true;
     rackError.value        = '';
     isRackValid.value      = false;
 
     try {
-      // Prefer cached rack stock map (already scoped by item + batch + wh).
       final qty = rackStockMapRx[trimmed];
       if (qty != null) {
         rackBalance.value = qty;
         isRackValid.value = true;
         return;
       }
-
-      // Fallback to shared API-backed validation path.
       await super.validateRack(trimmed);
     } finally {
       isValidatingRack.value = false;
     }
   }
 
-  // ── Public API used by RackPickerSheet / scanner routes ──────────────────
   void applyRackScan(String rackId) {
     final id = rackId.trim();
     if (id.isEmpty) return;
@@ -326,7 +301,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateRack(id);
   }
 
-  // ── Optional helpers used by form controller ─────────────────────────────
   void clearAll() {
     batchController.clear();
     rackController.clear();
@@ -337,17 +311,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     rackStockMapRx.clear();
   }
 
-  // Convenience label for UI chips/tooltips if needed later.
   String get currentItemDisplay =>
       [itemCode.value, itemNameRx.value].where((e) => e.trim().isNotEmpty).join(' - ');
 
-  // Helper used by future duplicate detection / UX.
   bool get hasExistingRackMap => rackStockMapRx.isNotEmpty;
 
-  // Placeholder hook kept for parity with legacy controller shape.
-  Future<void> ensureReadyForOpen() async {
-    // No-op for now.
-  }
+  Future<void> ensureReadyForOpen() async {}
 
   @override
   void onClose() {
