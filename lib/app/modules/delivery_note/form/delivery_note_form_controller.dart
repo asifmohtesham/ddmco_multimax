@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
@@ -349,11 +350,19 @@ class DeliveryNoteFormController extends GetxController
             accentColor: Colors.blueGrey,
             editMode:    true,
             onPickerTap: () async {
+              // Immediate tactile acknowledgement before async work begins.
+              HapticFeedback.lightImpact();
+
               final picker = Get.put(
                 RackPickerController(),
                 tag: rackPickerTag,
               );
-              await picker.load(
+
+              // Kick off the Stock Ledger fetch without awaiting it here.
+              // The sheet opens immediately and its built-in
+              // CircularProgressIndicator (isLoading.obs) plays while the
+              // network call is in-flight, then resolves to the rack list.
+              picker.load(
                 itemCode:     child.itemCode.value,
                 batchNo:      child.batchController.text,
                 warehouse:    child.resolvedWarehouse ?? '',
@@ -361,6 +370,7 @@ class DeliveryNoteFormController extends GetxController
                 currentRack:  child.rackController.text,
                 fallbackMap:  Map<String, double>.from(child.rackStockMap),
               );
+
               await Get.bottomSheet<void>(
                 RackPickerSheet(
                   pickerTag:  rackPickerTag,
@@ -368,7 +378,13 @@ class DeliveryNoteFormController extends GetxController
                 ),
                 isScrollControlled: true,
               );
-              Get.delete<RackPickerController>(tag: rackPickerTag);
+
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (Get.isRegistered<RackPickerController>(
+                    tag: rackPickerTag)) {
+                  Get.delete<RackPickerController>(tag: rackPickerTag);
+                }
+              });
             },
           ),
         ],
