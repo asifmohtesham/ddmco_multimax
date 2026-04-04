@@ -8,7 +8,7 @@
 
 ### ♻️ Refactors
 
-#### `SharedRackField` — Universal DocType Support (Commits 1–6)
+#### `SharedRackField` — Universal DocType Support (Commits 1–7)
 
 **Commit 1 — `RackFieldDelegate` interface extracted**
 
@@ -61,13 +61,38 @@
 - All existing call sites compile without any changes; the concrete controllers
   satisfy the interface via the base-class adoption in Commit 5.
 
+**Commit 7 — Delivery Note wires concrete `browseRacks()` override**
+
+- `DeliveryNoteItemFormController` now overrides `canBrowseRacks` and
+  `browseRacks()` in `delivery_note_item_form_controller.dart`.
+- `canBrowseRacks` returns `true` when `itemCode` is non-empty. The
+  warehouse filter toggle in `RackPickerSheet` handles warehouse scoping at
+  the UI level — no controller-side warehouse gate needed.
+- `browseRacks()` implements the full `RackPickerController` lifecycle:
+  1. `Get.put(RackPickerController(), tag: 'dn_rack_picker')`
+  2. `ctrl.load(itemCode, batchNo, warehouse, requestedQty, currentRack,
+     fallbackMap: rackStockMapRx)` — non-blocking, sheet opens immediately
+     with spinner while data loads.
+  3. `showModalBottomSheet(…, builder: (_) => RackPickerSheet(…))`
+  4. Map `onSelected` String → `RackPickerResult` (reads `availableQty`
+     from the controller entry list so the snapshot matches what the user saw).
+  5. `Get.delete<RackPickerController>(tag: 'dn_rack_picker')` in a
+     `finally` block — no leak on dismiss or error.
+- Re-entrant call guard: `browseRacks()` returns `null` immediately if
+  `isValidatingRack.value` is already `true`.
+- `handleRackPicked()` is **inherited** from `ItemSheetControllerBase`
+  (write `rackId` → `rackController`, call `validateRack`) — no override
+  needed for DN's single rack field.
+- New imports added: `rack_picker_controller.dart`, `rack_picker_result.dart`,
+  `rack_picker_sheet.dart`.
+
 #### Next steps (planned)
 
-- **Commit 7** — Delivery Note wires concrete `browseRacks()` override and
-  `onPickerTap` callback in `DeliveryNoteItemFormController`.
-- **Commit 8** — QC pass on DN rack picker end-to-end.
+- **Commit 8** — QC pass on DN rack picker end-to-end (call `handleRackPicked`
+  from the DN item sheet orchestrator; verify picker button enabled/disabled
+  state; test dismiss-without-selection path).
 - **Commit 9** — Stock Entry follows with SE-specific source/target rack
-  picker wiring.
+  picker wiring (`sourceRackController` override).
 
 ---
 

@@ -9,6 +9,11 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 
+// Picker
+import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+
 // Data layer
 import 'package:multimax/app/data/providers/api_provider.dart';
 
@@ -63,6 +68,12 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///     the dirty-check baseline matches the opened state (prevents false
 ///     isDirty = true immediately on open).
 ///   - initForNewItem() also calls captureSerialSnapshot() for symmetry.
+///
+/// Commit 7 (SharedRackField universal refactor):
+///   - canBrowseRacks overridden: returns true when itemCode is non-empty.
+///   - browseRacks() overridden with the full RackPickerController lifecycle.
+///   - handleRackPicked() is inherited from ItemSheetControllerBase (default
+///     write + validate behaviour is correct for DN's single rack field).
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -169,6 +180,101 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void onRackAutoFilled(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
+  }
+
+  // ── RackBrowseDelegate — Commit 7 ─────────────────────────────────────
+
+  /// Returns true as soon as an item code is known.
+  ///
+  /// The RackPickerSheet itself provides a warehouse-filter toggle, so we
+  /// do not gate on resolvedWarehouse here — the picker is still useful
+  /// when the header warehouse is not yet set (shows all racks unfiltered).
+  @override
+  bool get canBrowseRacks => itemCode.value.isNotEmpty;
+
+  /// Opens the Browse Racks picker and returns the selected [RackPickerResult],
+  /// or null if the user dismissed without selecting.
+  ///
+  /// Lifecycle:
+  ///   1. Register a [RackPickerController] with a DN-specific tag.
+  ///   2. Call load() immediately (non-blocking — sheet opens during fetch).
+  ///   3. Open [RackPickerSheet] via showModalBottomSheet.
+  ///   4. Map the selected rack name → [RackPickerResult] using the
+  ///      controller's entry list for the availableQty snapshot.
+  ///   5. Delete the controller in a finally block (no leak on dismiss).
+  ///
+  /// Post-selection field writes are NOT performed here.  The inherited
+  /// [handleRackPicked] from [ItemSheetControllerBase] handles:
+  ///   - Writing result.rackId into rackController.
+  ///   - Calling validateRack(result.rackId).
+  static const _kPickerTag = 'dn_rack_picker';
+
+  @override
+  Future<RackPickerResult?> browseRacks() async {
+    if (!canBrowseRacks) return null;
+    // Guard against re-entrant calls (e.g. double-tap on picker button).
+    if (isValidatingRack.value) return null;
+
+    final ctx = Get.context;
+    if (ctx == null) return null;
+
+    final pickerCtrl = Get.put(RackPickerController(), tag: _kPickerTag);
+
+    try {
+      // Start the async data fetch — sheet opens immediately with a spinner.
+      unawaited(pickerCtrl.load(
+        itemCode:     itemCode.value,
+        batchNo:      batchController.text.trim(),
+        warehouse:    resolvedWarehouse ?? '',
+        requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+        currentRack:  rackController.text.trim(),
+        fallbackMap:  Map<String, double>.from(rackStockMapRx),
+      ));
+
+      String? selectedRackId;
+
+      await showModalBottomSheet<void>(
+        context: ctx,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => RackPickerSheet(
+          pickerTag: _kPickerTag,
+          onSelected: (rack) {
+            selectedRackId = rack;
+          },
+        ),
+      );
+
+      if (selectedRackId == null || selectedRackId!.isEmpty) return null;
+
+      // Build RackPickerResult — read availableQty from the controller
+      // entry list so we return the same snapshot the user saw in the picker.
+      final entry = pickerCtrl.entries.firstWhere(
+        (e) => e.rackName == selectedRackId,
+        orElse: () => RackPickerEntry(
+          rackName:     selectedRackId!,
+          location:     null,
+          availableQty: 0.0,
+          requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+        ),
+      );
+
+      return RackPickerResult(
+        rackId:       entry.rackName,
+        availableQty: entry.availableQty,
+        warehouse:    entry.warehouseName,
+        raw:          const {},
+      );
+    } catch (e) {
+      log('[DN-Item] browseRacks error: $e', name: 'DN-Item');
+      return null;
+    } finally {
+      // Always clean up — whether user selected, dismissed, or an error
+      // was thrown.  isRegistered guard prevents a double-delete crash.
+      if (Get.isRegistered<RackPickerController>(tag: _kPickerTag)) {
+        Get.delete<RackPickerController>(tag: _kPickerTag);
+      }
+    }
   }
 
   // ── initialise() entry point ────────────────────────────────────────
