@@ -7,12 +7,10 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 /// Shared Invoice Serial No dropdown for any DocType that mixes in
 /// [PosSerialMixin].
 ///
-/// C-5 fix: the POS-cap Obx no longer uses dynamic duck-typing + try/catch
-/// to subscribe to liveRemaining.  [liveRemaining] is now a concrete
-/// RxDouble on [ItemSheetControllerBase], so the Obx always has at least one
-/// Rx subscription — eliminating the GetX "improper use" crash that fired
-/// when the try/catch swallowed the exception on non-SE controllers and left
-/// the Obx with zero tracked observables.
+/// DN-1: the POS-cap Obx now uses [PosSerialMixin.posSerialCapText] directly
+/// instead of the previous duck-typed `(controller as dynamic).posSerialCapText`
+/// try/catch pattern.  posSerialCapText is a concrete getter on the mixin
+/// (added in DN-1) so the call is fully type-safe at compile time.
 class SharedSerialField extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final Color accentColor;
@@ -36,7 +34,7 @@ class SharedSerialField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Serial dropdown ──────────────────────────────────────────
+          // ── Serial dropdown ─────────────────────────────────────────────
           Obx(() => DropdownButtonFormField<String>(
                 value: serial.selectedSerial.value,
                 decoration: InputDecoration(
@@ -55,22 +53,18 @@ class SharedSerialField extends StatelessWidget {
                 onChanged: (value) => serial.selectedSerial.value = value,
               )),
 
-          // ── POS cap chip ─────────────────────────────────────────────
+          // ── POS cap chip ───────────────────────────────────────────────
           //
-          // C-5: subscribe to controller.liveRemaining directly — it is a
-          // concrete RxDouble on the base so the Obx always has a tracked
-          // observable.  posSerialCapText is still duck-typed via PosSerialMixin
-          // (all PosSerialMixin implementors have it), but liveRemaining is no
-          // longer duck-typed — no more try/catch, no more zero-subscription Obx.
+          // DN-1: subscribe to controller.liveRemaining so the chip rebuilds
+          // reactively on every qty change.  posSerialCapText is now a
+          // concrete getter on PosSerialMixin — no dynamic cast required.
           Obx(() {
-            // Explicit subscription so the chip rebuilds on every qty keystroke.
-            final _ = controller.liveRemaining.value;
+            // Explicit subscription — chip rebuilds whenever liveRemaining
+            // or selectedSerial changes.
+            controller.liveRemaining.value;
+            serial.selectedSerial.value;
 
-            String? capText;
-            try {
-              capText = (controller as dynamic).posSerialCapText as String?;
-            } catch (_) {}
-
+            final capText = serial.posSerialCapText;
             if (capText == null || capText.isEmpty) {
               return const SizedBox.shrink();
             }
@@ -84,6 +78,8 @@ class SharedSerialField extends StatelessWidget {
 
 /// Teal pill chip shown below the Invoice Serial No dropdown when a POS
 /// Upload is loaded and a serial is selected.
+///
+/// Displays: "$liveRemaining / $posItemQty"
 class _PosCapChip extends StatelessWidget {
   final String text;
   const _PosCapChip({required this.text});
