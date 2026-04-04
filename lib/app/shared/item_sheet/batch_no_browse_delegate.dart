@@ -1,5 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
+import 'package:get/get.dart';
+
 /// Browse-batch capability contract.
 ///
 /// A controller that implements this interface can open the shared
@@ -10,6 +12,8 @@
 ///
 /// This interface owns **only the browse flow**:
 /// - Checking pre-conditions ([canBrowseBatches]).
+/// - Supplying context required by the picker ([itemCode],
+///   [resolvedWarehouseForBatch], [preloadedBatchRows]).
 /// - Opening the picker sheet ([browseBatches]).
 /// - Returning the selection result.
 ///
@@ -129,7 +133,48 @@
 ///     conventions.
 ///   • Carries canonical ERPNext field-name and Total Row Dartdoc.
 ///   • No existing files modified.  No call sites changed.
+///
+/// fix(batch-delegate) — add itemCode, resolvedWarehouseForBatch,
+///   preloadedBatchRows:
+///   • [BrowseBatchButton] (inside SharedBatchField) reads
+///     `c.itemCode.value` and `c.resolvedWarehouseForBatch` to pass to
+///     the picker sheet.  These are browse-context members, not field-state
+///     members, so they belong on this interface rather than
+///     BatchNoFieldDelegate.
+///   • [preloadedBatchRows] lets SE pass its cached batchWiseHistory to
+///     the picker for zero-latency opens; base default returns `const []`.
 abstract interface class BatchNoBrowseDelegate {
+  // ── Browse context ────────────────────────────────────────────────────
+
+  /// The ERPNext Item Code currently loaded in the sheet.
+  ///
+  /// Used by [BrowseBatchButton] to filter the Batch-Wise Balance History
+  /// report to batches that belong to this item.  Must be reactive so the
+  /// picker button can disable itself via `Obx` when the value is empty.
+  RxString get itemCode;
+
+  /// The warehouse to use as the default scope filter when opening the
+  /// batch picker.
+  ///
+  /// May be `null` when no warehouse has been selected yet; the picker
+  /// falls back to warehouse-agnostic results in that case.
+  ///
+  /// Delegates to `resolvedWarehouse` in [ItemSheetControllerBase] so
+  /// call sites that already hold a [BatchNoFieldWithBrowseDelegate]
+  /// reference do not need a separate warehouse accessor.
+  String? get resolvedWarehouseForBatch;
+
+  /// Pre-fetched batch rows passed to [BatchPickerController] for
+  /// zero-latency picker opens.
+  ///
+  /// Returns `const []` at the base level — no pre-fetch occurs.
+  /// SE overrides to return its cached `batchWiseHistory` list cast to
+  /// `List<BatchWiseBalanceRow>`, enabling the picker to open instantly
+  /// without waiting for a network round-trip.
+  List<dynamic> get preloadedBatchRows;
+
+  // ── Browse capability & flow ──────────────────────────────────────────
+
   /// Whether the controller currently satisfies the pre-conditions required
   /// to open the batch picker.
   ///
