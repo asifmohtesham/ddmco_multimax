@@ -5,16 +5,16 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/validated_rack_field.dart';
-import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
 
-/// A reusable Rack input field backed by any [ItemSheetControllerBase].
+/// A reusable Rack input field backed by any [RackFieldWithBrowseDelegate].
 ///
 /// ## Modes
 ///
 /// ### `editMode: false` (default — SE style)
 /// Borderless [TextField], green check-circle when valid, clear + validate
 /// icons, per-rack stock tooltip.  [BalanceChip] shown below the field
-/// displaying the selected rack's balance from [rackStockMap].
+/// displaying the selected rack's balance via [RackFieldDelegate.rackBalanceFor].
 ///
 /// ### `editMode: true` (PR / DN style)
 /// Wraps [ValidatedRackField] inside [GlobalItemFormSheet.buildInputGroup]
@@ -30,11 +30,14 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///            Defaults to 'Enter or scan rack ID'.
 ///
 /// ## Balance source
-/// By default the [BalanceChip] sources [_rackBalance] which reads
-/// `c.rackStockMap[rackController.text]` — the bulk pre-loaded map.
-/// Pass [balanceOverride] to supply an alternative balance getter —
-/// for example DeliveryNote, which maintains a separate per-rack
-/// `rackBalance` RxDouble populated by the async `validateRack` fetch:
+/// By default the [BalanceChip] sources [_rackBalance] which calls
+/// [RackFieldDelegate.rackBalanceFor] on the controller.  Controllers
+/// that pre-load a `Map<String, double>` return a map lookup; controllers
+/// that maintain a live [RxDouble] override [rackBalanceFor] to return
+/// `rackBalance.value` instead.
+///
+/// Pass [balanceOverride] to bypass [rackBalanceFor] entirely and supply
+/// an alternative balance getter at the call site:
 ///
 /// ```dart
 /// SharedRackField(
@@ -51,14 +54,18 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// (UniversalItemFormSheet); this widget only renders the button.
 ///
 /// ## Architecture note
-/// [ValidatedRackField] was previously imported from the Stock Entry module
-/// path. It now lives in the shared layer as part of the
-/// RackFieldWithBrowseDelegate refactor (Commit 1 of 10). The import below
-/// references the canonical shared path.
+/// This widget previously depended on [ItemSheetControllerBase] directly.
+/// As of Commit 4 it depends only on [RackFieldWithBrowseDelegate], the
+/// narrow interface introduced in Commit 2.  Any DocType controller that
+/// implements this interface can now host this widget with zero additional
+/// ceremony — no inheritance of the full item-sheet base class required.
+///
+/// Existing call sites (SE, DN, PR) are unaffected: their controllers
+/// extend [ItemSheetControllerBase] which adopts the interface in Commit 3.
 ///
 /// P3-C: onChanged simplified — c.resetRack() replaces inline Rx read.
 /// P3-D: Per-rack stock tooltip in _EditModeRack suffix row.
-/// Balance chip: sources rackStockMap[rackController.text] for the balance.
+/// Balance chip: sources rackBalanceFor(rack) for the balance (Commit 4).
 /// Commit-E: _EditModeRack now delegates to ValidatedRackField instead of
 ///   its own hand-rolled TextFormField, eliminating the duplicate
 ///   OutlineInputBorder / suffix / readOnly implementation.
@@ -75,20 +82,19 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///   Callers that need a live RxDouble balance (e.g. DeliveryNote rackBalance)
 ///   pass balanceOverride; all existing callers fall back to _rackBalance().
 class SharedRackField extends StatelessWidget {
-  final ItemSheetControllerBase c;
+  final RackFieldWithBrowseDelegate c;
   final Color  accentColor;
   final String label;
   final String hint;
   final bool   editMode;
 
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
-  /// getter on every rebuild instead of reading
-  /// `c.rackStockMap[rackController.text]` via [_rackBalance].
+  /// getter on every rebuild instead of calling
+  /// [RackFieldDelegate.rackBalanceFor] via [_rackBalance].
   ///
-  /// Use this when the caller maintains a separate live balance field —
-  /// for example DeliveryNoteItemFormController.rackBalance (RxDouble
-  /// written by the async validateRack fetch) which is more authoritative
-  /// than the bulk-preloaded rackStockMap entry.
+  /// Use this when the call site needs a balance value that is not
+  /// sourced through [rackBalanceFor] — for example a separate live
+  /// RxDouble field maintained by the orchestrator controller.
   final double? Function()? balanceOverride;
 
   /// Optional callback fired when the picker icon button is tapped.
@@ -107,13 +113,15 @@ class SharedRackField extends StatelessWidget {
     this.onPickerTap,
   });
 
-  /// Returns the balance for the currently-typed rack from rackStockMap,
-  /// or 0.0 if the rack is not in the map.
+  /// Returns the balance for the currently-typed rack via
+  /// [RackFieldDelegate.rackBalanceFor].  Returns 0.0 when the field
+  /// is empty (guard before the delegate call).
+  ///
   /// Used as fallback when [balanceOverride] is not supplied.
-  double _rackBalance(ItemSheetControllerBase c) {
+  double _rackBalance(RackFieldWithBrowseDelegate c) {
     final rack = c.rackController.text.trim();
     if (rack.isEmpty) return 0.0;
-    return c.rackStockMap[rack] ?? 0.0;
+    return c.rackBalanceFor(rack);
   }
 
   @override
@@ -122,7 +130,7 @@ class SharedRackField extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode — SE style, unchanged ───────────────────────────
+// ── Simple (borderless) mode — SE style, unchanged ────────────────────────
 class _SimpleRack extends StatelessWidget {
   final SharedRackField w;
   const _SimpleRack(this.w);
@@ -133,10 +141,13 @@ class _SimpleRack extends StatelessWidget {
     final c     = w.c;
 
     return Obx(() {
-      final hasError   = c.rackError.value != null;
+      // Commit 4: rackError is RxString (non-nullable, '' = no error).
+      // Use isNotEmpty instead of != null to align with the standardised
+      // RackFieldDelegate contract (both modes now consistent).
+      final hasError   = c.rackError.value.isNotEmpty;
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
-      // DN-10: respect balanceOverride when supplied; fall back to rackStockMap.
+      // DN-10: respect balanceOverride when supplied; fall back to rackBalanceFor.
       final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
 
       final borderColor = hasError
@@ -164,7 +175,7 @@ class _SimpleRack extends StatelessWidget {
                 border:      InputBorder.none,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                errorText:   c.rackError.value,
+                errorText:   hasError ? c.rackError.value : null,
                 errorMaxLines: 2,
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -220,7 +231,7 @@ class _SimpleRack extends StatelessWidget {
   }
 }
 
-// ── Edit-mode — delegates to ValidatedRackField ────────────────────────────────────
+// ── Edit-mode — delegates to ValidatedRackField ─────────────────────────────
 //
 // Previously owned its own TextFormField + OutlineInputBorder + suffix
 // logic (Commits A-D history). Now delegates entirely to ValidatedRackField
@@ -244,13 +255,13 @@ class _EditModeRack extends StatelessWidget {
     return Obx(() {
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
-      // DN-10: respect balanceOverride when supplied; fall back to rackStockMap.
+      // DN-10: respect balanceOverride when supplied; fall back to rackBalanceFor.
       final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
 
       // Derive the border accent colour to match _SimpleRack behaviour:
       // green when valid, error colour on error, accent otherwise.
       final theme = Theme.of(context);
-      final hasError   = c.rackError.value != null && c.rackError.value!.isNotEmpty;
+      final hasError    = c.rackError.value.isNotEmpty;
       final borderColor = hasError
           ? theme.colorScheme.error
           : isValid
