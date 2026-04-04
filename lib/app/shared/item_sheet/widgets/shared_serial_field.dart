@@ -7,13 +7,12 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 /// Shared Invoice Serial No dropdown for any DocType that mixes in
 /// [PosSerialMixin].
 ///
-/// DN-1: the POS-cap Obx now uses [PosSerialMixin.posSerialCapText] directly
-/// instead of the previous duck-typed `(controller as dynamic).posSerialCapText`
-/// try/catch pattern.  posSerialCapText is a concrete getter on the mixin
-/// (added in DN-1) so the call is fully type-safe at compile time.
-///
 /// fix(serial-field): _PosCapChip moved outside buildInputGroup so the tinted
 /// background Container only wraps the dropdown input, not the chip row.
+///
+/// fix(serial-field): isDense: true collapses the invisible InputDecoration
+/// helper-text reserved space that caused the tinted Container fill to
+/// overflow ~20px below the visible field border.
 class SharedSerialField extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final Color accentColor;
@@ -46,6 +45,10 @@ class SharedSerialField extends StatelessWidget {
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   hintText: 'Select Serial',
+                  // Collapse the ~20px invisible helper/error/counter reserved
+                  // space so the buildInputGroup tinted Container ends exactly
+                  // at the field's bottom border with no colour tail.
+                  isDense: true,
                 ),
                 items: serials.map((s) {
                   return DropdownMenuItem(
@@ -58,13 +61,7 @@ class SharedSerialField extends StatelessWidget {
         ),
 
         // ── POS cap chip — sibling, NOT inside the tinted container ──────
-        //
-        // Placing the chip outside buildInputGroup ensures the accent-colour
-        // fill ends at the bottom of the dropdown and does not bleed into the
-        // chip row below it.
         Obx(() {
-          // Explicit subscription so the chip rebuilds whenever liveRemaining
-          // or selectedSerial changes.
           controller.liveRemaining.value;
           serial.selectedSerial.value;
 
