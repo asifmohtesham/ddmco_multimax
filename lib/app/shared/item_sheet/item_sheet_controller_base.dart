@@ -97,6 +97,13 @@ class BatchResult {
 ///                      handleRackPicked are provided here so all concrete
 ///                      controllers satisfy the interface with zero changes.
 ///                      Concrete controllers override as needed per DocType.
+///   rackStockMap     — (Commit 1 of 4 — SharedRackField universal refactor)
+///                      REMOVED.  The map-lookup pattern was the last
+///                      concrete coupling preventing zero-hassle adoption by
+///                      DocTypes that fetch live balances.  rackBalanceFor()
+///                      now returns rackBalance.value directly, which is
+///                      semantically identical for all existing controllers
+///                      and eliminates the dead `const {}` default map.
 abstract class ItemSheetControllerBase extends GetxController
     implements RackFieldWithBrowseDelegate {
   // ── Reactive state ──────────────────────────────────────────────────────
@@ -171,9 +178,6 @@ abstract class ItemSheetControllerBase extends GetxController
   // ── maxQty default ────────────────────────────────────────────────────────
   double get maxQty => 0.0;
 
-  /// Rack-name → available-qty map.
-  Map<String, double> get rackStockMap => const {};
-
   // Dirty-tracking snapshots
   String _snapshotBatch = '';
   String _snapshotRack  = '';
@@ -220,7 +224,7 @@ abstract class ItemSheetControllerBase extends GetxController
   /// Delete the item currently being edited.
   void deleteCurrentItem();
 
-  // ── RackFieldWithBrowseDelegate defaults (Commit 3) ─────────────────────
+  // ── RackFieldWithBrowseDelegate defaults (Commit 3 / updated Commit 1-of-4)
   //
   // These four methods satisfy the [RackFieldWithBrowseDelegate] interface
   // at the base-class level so every concrete controller automatically
@@ -228,9 +232,12 @@ abstract class ItemSheetControllerBase extends GetxController
   // methods relevant to their DocType.
   //
   // Design notes:
-  //   • rackBalanceFor   — uses the existing rackStockMap map-lookup pattern.
-  //                        Controllers that use a live RxDouble (e.g. DN)
-  //                        override to return rackBalance.value instead.
+  //   • rackBalanceFor   — returns rackBalance.value (the live RxDouble
+  //                        already populated by fetchRackBalance).  The
+  //                        previous rackStockMap map-lookup was removed in
+  //                        Commit 1 of 4; rackBalance.value is semantically
+  //                        identical for all controllers and works for both
+  //                        map-pre-loaded and live-fetch patterns.
   //   • canBrowseRacks   — false at the base level; concrete controllers
   //                        flip this true once itemCode + warehouse are set.
   //   • browseRacks      — returns null at the base level.  Concrete
@@ -242,14 +249,18 @@ abstract class ItemSheetControllerBase extends GetxController
   //                        with a non-standard mapping (e.g. SE source vs
   //                        target rack) override before/after super call.
 
-  /// Returns the available balance for [rack] by looking it up in
-  /// [rackStockMap].  Returns 0.0 when [rack] is not found.
+  /// Returns the available balance for [rack].
   ///
-  /// Override in controllers that maintain a live [RxDouble] balance
-  /// (e.g. `return rackBalance.value;`) instead of a pre-loaded map.
+  /// Default: returns [rackBalance].value — the live [RxDouble] populated
+  /// by [fetchRackBalance].  This is correct for all existing controllers:
+  ///   • Before any fetch: rackBalance == 0.0 → returns 0.0.
+  ///   • After a fetch: rackBalance == live value → returns live value.
+  ///
+  /// Controllers that previously overrode this to return `rackBalance.value`
+  /// explicitly (e.g. DN) may safely remove their override — it is now
+  /// identical to the base implementation.
   @override
-  double rackBalanceFor(String rack) =>
-      rackStockMap[rack.trim()] ?? 0.0;
+  double rackBalanceFor(String rack) => rackBalance.value;
 
   /// Whether the controller currently satisfies the pre-conditions to open
   /// the rack picker (item code known, warehouse resolvable).
@@ -605,8 +616,8 @@ abstract class ItemSheetControllerBase extends GetxController
   ///   4. Marks [isRackValid] = true on success.
   ///
   /// Concrete controllers (e.g. [DeliveryNoteItemFormController]) may
-  /// override to apply additional logic (rackStockMap fast-path, etc.) and
-  /// call `super.validateRack(rack)` as their fallback path.
+  /// override to apply additional logic and call `super.validateRack(rack)`
+  /// as their fallback path.
   ///
   /// Declared here so:
   ///   • [shared_rack_field.dart] can call `c.validateRack()` on the base type
