@@ -15,9 +15,17 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// displaying the selected rack's balance from [rackStockMap].
 ///
 /// ### `editMode: true` (PR / DN style)
-/// Delegates to [ValidatedRackField] → [ValidatedFieldWidget], giving
-/// consistent OutlineInputBorder, spinner → edit-button lifecycle, and
-/// picker button support through [onPickerTap].  [BalanceChip] shown below.
+/// Wraps [ValidatedRackField] inside [GlobalItemFormSheet.buildInputGroup]
+/// so the coloured left-border section header (sourced from [label]) is
+/// rendered, matching the layout of every other field in the sheet.
+/// [BalanceChip] shown below.
+///
+/// ## Label vs Hint
+/// [label]  — section header shown above / beside the field border
+///            (passed to buildInputGroup).  Defaults to 'Rack'.
+/// [hint]   — placeholder text inside the text field
+///            (passed as ValidatedRackField.label / hintText).
+///            Defaults to 'Enter or scan rack ID'.
 ///
 /// ## Picker integration
 /// Pass [onPickerTap] to show the shelves icon button in the suffix area
@@ -31,6 +39,8 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// Commit-E: _EditModeRack now delegates to ValidatedRackField instead of
 ///   its own hand-rolled TextFormField, eliminating the duplicate
 ///   OutlineInputBorder / suffix / readOnly implementation.
+/// Commit 2: _EditModeRack wraps ValidatedRackField in buildInputGroup so
+///   the section label is rendered in editMode (Bug 2 fix).
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -161,12 +171,17 @@ class _SimpleRack extends StatelessWidget {
   }
 }
 
-// ── Edit-mode — delegates to ValidatedRackField ───────────────────────────────
+// ── Edit-mode — delegates to ValidatedRackField ────────────────────────────────────
 //
 // Previously owned its own TextFormField + OutlineInputBorder + suffix
 // logic (Commits A-D history). Now delegates entirely to ValidatedRackField
 // → ValidatedFieldWidget so both DN and SE share a single rack field
-// implementation. The BalanceChip is rendered below as before.
+// implementation.
+//
+// Commit 2: wrapped in buildInputGroup(label: w.label) so the coloured
+// section header is rendered in editMode, matching _SimpleRack.  The
+// ValidatedRackField receives w.hint as its own inner label/hintText
+// (unchanged from Commit-E).
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -180,20 +195,38 @@ class _EditModeRack extends StatelessWidget {
       final validating = c.isValidatingRack.value;
       final rackBal    = w._rackBalance(c);
 
+      // Derive the border accent colour to match _SimpleRack behaviour:
+      // green when valid, error colour on error, accent otherwise.
+      final theme = Theme.of(context);
+      final hasError   = c.rackError.value != null && c.rackError.value!.isNotEmpty;
+      final borderColor = hasError
+          ? theme.colorScheme.error
+          : isValid
+              ? Colors.green
+              : w.accentColor;
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ValidatedRackField(
-            key:            const ValueKey('shared_rack_edit'),
-            textController: c.rackController,
-            isValid:        isValid,
-            isValidating:   validating,
-            label:          w.hint,   // hint text used as field label/hintText
-            color:          w.accentColor,
-            onReset:        c.resetRack,
-            onValidate:     () => c.validateRack(c.rackController.text),
-            onSubmitted:    (val) => c.validateRack(val),
-            onPickerTap:    w.onPickerTap,
+          // Bug 2 fix: wrap ValidatedRackField in buildInputGroup so the
+          // section label (w.label, e.g. 'Rack' / 'Source Rack') is
+          // rendered above the field, consistent with every other
+          // SharedXxxField in the sheet.
+          GlobalItemFormSheet.buildInputGroup(
+            label: w.label,
+            color: borderColor,
+            child: ValidatedRackField(
+              key:            const ValueKey('shared_rack_edit'),
+              textController: c.rackController,
+              isValid:        isValid,
+              isValidating:   validating,
+              label:          w.hint,   // inner field hint/label
+              color:          w.accentColor,
+              onReset:        c.resetRack,
+              onValidate:     () => c.validateRack(c.rackController.text),
+              onSubmitted:    (val) => c.validateRack(val),
+              onPickerTap:    w.onPickerTap,
+            ),
           ),
           // Rack balance chip — sources the typed rack's balance from rackStockMap.
           BalanceChip(
