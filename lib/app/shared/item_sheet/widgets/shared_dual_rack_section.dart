@@ -1,20 +1,27 @@
+// ignore_for_file: lines_longer_than_80_chars
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
-import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/item_form_sheet/derived_warehouse_label.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/validated_rack_field.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 
 /// Shared dual-rack section: Source Rack + Target Rack, balance chips,
 /// warehouse derivation labels, and the rack error banner.
 ///
-/// This is the canonical implementation extracted from SE's RackSection.
-/// Typed to [StockEntryItemFormController] — SE is the only DocType that
-/// uses a dual-rack (source + target) layout, so no false generality is
-/// needed here.
+/// ## Decoupling (Commit 8)
+///
+/// Previously typed to the concrete [StockEntryItemFormController].  Now
+/// depends on [DualRackDelegate] — the narrow interface that covers exactly
+/// the members this widget reads.  Any controller that implements
+/// [DualRackDelegate] can drive this widget without inheriting the SE
+/// item-sheet base class.
+///
+/// [StockEntryItemFormController] implements [DualRackDelegate] additively;
+/// all existing call sites (SE form) compile without change.
 ///
 /// ## Picker lifecycle
 /// [_openRackPicker] registers a scoped [RackPickerController] with a unique
@@ -28,8 +35,10 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 ///      instead of the SE-module re-export stub.
 /// Commit 7: rack-error banner now checks `err.isEmpty` instead of
 ///      `err == null` — rackError is RxString (never null).
+/// Commit 8: field type changed from StockEntryItemFormController to
+///      DualRackDelegate — see class-level doc above.
 class SharedDualRackSection extends StatelessWidget {
-  final StockEntryItemFormController controller;
+  final DualRackDelegate controller;
 
   const SharedDualRackSection({super.key, required this.controller});
 
@@ -44,11 +53,11 @@ class SharedDualRackSection extends StatelessWidget {
     final String warehouse = isSource
         ? (controller.itemSourceWarehouse.value ??
                controller.derivedSourceWarehouse.value ??
-               controller.parent.selectedFromWarehouse.value ??
+               controller.selectedFromWarehouse.value ??
                '')
         : (controller.itemTargetWarehouse.value ??
                controller.derivedTargetWarehouse.value ??
-               controller.parent.selectedToWarehouse.value ??
+               controller.selectedToWarehouse.value ??
                '');
 
     final ctrl = Get.put(RackPickerController(), tag: tag);
@@ -104,13 +113,13 @@ class SharedDualRackSection extends StatelessWidget {
       'Material Issue',
       'Material Transfer',
       'Material Transfer for Manufacture',
-    ].contains(controller.parent.selectedStockEntryType.value);
+    ].contains(controller.selectedStockEntryType.value);
 
     final showTarget = [
       'Material Receipt',
       'Material Transfer',
       'Material Transfer for Manufacture',
-    ].contains(controller.parent.selectedStockEntryType.value);
+    ].contains(controller.selectedStockEntryType.value);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -146,7 +155,7 @@ class SharedDualRackSection extends StatelessWidget {
           DerivedWarehouseLabel(
             itemWarehouse:    controller.itemSourceWarehouse,
             derivedWarehouse: controller.derivedSourceWarehouse,
-            headerWarehouse:  controller.parent.selectedFromWarehouse,
+            headerWarehouse:  controller.selectedFromWarehouse,
           ),
         ],
 
@@ -174,7 +183,7 @@ class SharedDualRackSection extends StatelessWidget {
           DerivedWarehouseLabel(
             itemWarehouse:    controller.itemTargetWarehouse,
             derivedWarehouse: controller.derivedTargetWarehouse,
-            headerWarehouse:  controller.parent.selectedToWarehouse,
+            headerWarehouse:  controller.selectedToWarehouse,
           ),
         ],
 

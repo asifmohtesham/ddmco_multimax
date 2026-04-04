@@ -11,6 +11,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
+import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 
@@ -40,8 +41,14 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • validateSheet() now gates on isSourceRackValid for SE types that
 ///     require a source rack (Material Issue / Transfer / Transfer for Mfg).
 ///   • validateDualRack() clears rackError on success for both sides.
+///
+/// Commit 8:
+///   • Implements [DualRackDelegate] — additive; no members change.
+///     SharedDualRackSection now depends on the narrow interface rather than
+///     this concrete class.
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with PosSerialMixin, AutoFillRackMixin {
+    with PosSerialMixin, AutoFillRackMixin
+    implements DualRackDelegate {
 
   // ── Parent back-reference ──────────────────────────────────────────────────────
   late StockEntryFormController _parent;
@@ -113,7 +120,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── PosSerialMixin: availableSerialNos ─────────────────────────────────────────
-  /// Derives from the parent’s posUploadSerialOptions RxList<String> which is
+  /// Derives from the parent's posUploadSerialOptions RxList<String> which is
   /// populated by StockEntryFormController.fetchPosUpload().
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
@@ -132,35 +139,49 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   Map<String, double> get rackStockMap => _rackStockMap;
 
   // ── Dual-rack state ──────────────────────────────────────────────────────────
-  final TextEditingController sourceRackController = TextEditingController();
-  final RxBool isSourceRackValid       = false.obs;
-  final RxBool isValidatingSourceRack  = false.obs;
+  @override final TextEditingController sourceRackController = TextEditingController();
+  @override final RxBool isSourceRackValid       = false.obs;
+  @override final RxBool isValidatingSourceRack  = false.obs;
 
-  final TextEditingController targetRackController = TextEditingController();
-  final RxBool isTargetRackValid       = false.obs;
-  final RxBool isValidatingTargetRack  = false.obs;
+  @override final TextEditingController targetRackController = TextEditingController();
+  @override final RxBool isTargetRackValid       = false.obs;
+  @override final RxBool isValidatingTargetRack  = false.obs;
 
-  final RxBool isLoadingRackBalance    = false.obs;
+  @override final RxBool isLoadingRackBalance    = false.obs;
 
-  final RxnString itemSourceWarehouse    = RxnString(null);
-  final RxnString derivedSourceWarehouse = RxnString(null);
-  final RxnString itemTargetWarehouse    = RxnString(null);
-  final RxnString derivedTargetWarehouse = RxnString(null);
+  @override final RxnString itemSourceWarehouse    = RxnString(null);
+  @override final RxnString derivedSourceWarehouse = RxnString(null);
+  @override final RxnString itemTargetWarehouse    = RxnString(null);
+  @override final RxnString derivedTargetWarehouse = RxnString(null);
 
   final Map<String, double> _rackStockMap = {};
 
+  // ── DualRackDelegate: parent warehouse accessors ─────────────────────────
+  @override
+  RxnString get selectedFromWarehouse => _parent.selectedFromWarehouse;
+
+  @override
+  RxnString get selectedToWarehouse => _parent.selectedToWarehouse;
+
+  @override
+  RxString get selectedStockEntryType => _parent.selectedStockEntryType;
+
+  // ── Dual-rack actions ──────────────────────────────────────────────────────
+  @override
   void resetSourceRackValidation() {
     sourceRackController.clear();
     isSourceRackValid.value      = false;
     isValidatingSourceRack.value = false;
   }
 
+  @override
   void resetTargetRackValidation() {
     targetRackController.clear();
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
   }
 
+  @override
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) { resetSourceRackValidation(); } else { resetTargetRackValidation(); }
