@@ -34,8 +34,10 @@ class BatchResult {
 /// ## Responsibilities
 ///
 ///   • Batch validation lifecycle  — [validateBatch], [resetBatch],
-///     [validateBatchOnInit], [isBatchValid], [batchError], [batchInfoTooltip]
-///   • Rack validation lifecycle   — [validateRack],  [resetRack]
+///     [softResetBatch], [validateBatchOnInit], [isBatchValid], [batchError],
+///     [batchInfoTooltip]
+///   • Rack validation lifecycle   — [validateRack], [resetRack],
+///     [softResetRack]
 ///   • Balance computation         — [maxQty], [batchBalance], [fetchBatchBalance]
 ///   • Save-button state           — [SaveButtonState], [saveButtonState]
 ///   • Sheet-valid gate            — [isSheetValid] (RxBool), [validateSheet]
@@ -72,6 +74,10 @@ class BatchResult {
 ///                      without needing a subclass override (Group B fix).
 ///   disposeControllers — public teardown helper called by parent
 ///                      orchestrators post-sheet-close (Group B fix).
+///   softResetBatch / softResetRack — DN-8: reset validity flags and errors
+///                      without zeroing batchBalance / rackBalance so the
+///                      BalanceChip does not flash blank between initForEdit
+///                      reset and the subsequent API fetch completing.
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Reactive state ──────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
@@ -300,6 +306,10 @@ abstract class ItemSheetControllerBase extends GetxController {
       qtyController.text   != _snapshotQty;
 
   // ── Rack reset ──────────────────────────────────────────────────────────
+
+  /// Full rack reset — clears the text field, zeros the balance, and
+  /// resets all validity state.  Called when the user explicitly clears
+  /// the rack field.
   void resetRack() {
     rackController.clear();
     isRackValid.value      = false;
@@ -308,14 +318,47 @@ abstract class ItemSheetControllerBase extends GetxController {
     rackStockTooltip.value = null;
   }
 
+  /// Soft rack reset — resets validity flags, error text, and tooltip
+  /// but does NOT zero [rackBalance].
+  ///
+  /// Use during [initForEdit] before re-seeding the rack value so that
+  /// the [BalanceChip] does not flash blank between the reset and the
+  /// subsequent [validateRack] / [fetchRackBalance] completing (DN-8).
+  void softResetRack() {
+    isRackValid.value      = false;
+    rackError.value        = '';
+    rackStockTooltip.value = null;
+    // rackBalance intentionally NOT zeroed — old value persists until
+    // fetchRackBalance() overwrites it with the freshly-fetched value.
+  }
+
   // ── Batch reset ─────────────────────────────────────────────────────────
+
+  /// Full batch reset — zeros balances and resets all validity state.
+  /// Called when the user explicitly clears / edits the batch field.
   void resetBatch() {
-    isBatchValid.value    = false;
-    isBatchReadOnly.value = false;
-    batchError.value      = '';
+    isBatchValid.value     = false;
+    isBatchReadOnly.value  = false;
+    batchError.value       = '';
     batchInfoTooltip.value = null;
-    batchBalance.value    = 0.0;
+    batchBalance.value     = 0.0;
     resetRack();
+  }
+
+  /// Soft batch reset — resets validity flags and errors without zeroing
+  /// [batchBalance] or [rackBalance].
+  ///
+  /// Use during [initForEdit] before re-seeding existing batch/rack values
+  /// so that [BalanceChip] widgets do not flash blank between the reset and
+  /// the API fetch completing (DN-8).
+  void softResetBatch() {
+    isBatchValid.value     = false;
+    isBatchReadOnly.value  = false;
+    batchError.value       = '';
+    batchInfoTooltip.value = null;
+    // batchBalance intentionally NOT zeroed — old value persists until
+    // fetchBatchBalance() overwrites it with the freshly-fetched value.
+    softResetRack();
   }
 
   // ── Fetch helpers ────────────────────────────────────────────────────────
@@ -423,7 +466,10 @@ abstract class ItemSheetControllerBase extends GetxController {
 
       isBatchValid.value    = true;
       isBatchReadOnly.value = true;
-      rackBalance.value     = 0.0;
+      // DN-8: removed premature `rackBalance.value = 0.0` here.
+      // Rack balance is only cleared by resetRack() / softResetRack();
+      // zeroing it mid-validateBatch caused the rack chip to flash blank
+      // on every batch re-validation even when the rack had not changed.
       await fetchBatchBalance();
 
     } catch (e) {

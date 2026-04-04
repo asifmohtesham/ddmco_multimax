@@ -41,6 +41,9 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///   OutlineInputBorder / suffix / readOnly implementation.
 /// Commit 2: _EditModeRack wraps ValidatedRackField in buildInputGroup so
 ///   the section label is rendered in editMode (Bug 2 fix).
+/// DN-8: pass forceShow: validating to all BalanceChip calls so the chip
+///   stays visible (showing spinner) during the async fetch instead of
+///   disappearing and reappearing when balance is temporarily 0.
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -159,11 +162,14 @@ class _SimpleRack extends StatelessWidget {
               ),
             ),
           ),
+          // DN-8: forceShow: validating keeps the chip visible during the
+          // async fetch so it never flashes blank when balance is 0 mid-load.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
             color:     w.accentColor,
             prefix:    'Rack Balance:',
+            forceShow: validating,
           ),
         ],
       );
@@ -228,12 +234,14 @@ class _EditModeRack extends StatelessWidget {
               onPickerTap:    w.onPickerTap,
             ),
           ),
-          // Rack balance chip — sources the typed rack's balance from rackStockMap.
+          // DN-8: forceShow: validating keeps the chip visible during the
+          // async fetch so it never flashes blank when balance is 0 mid-load.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
             color:     w.accentColor,
             prefix:    'Rack Balance:',
+            forceShow: validating,
           ),
         ],
       );
