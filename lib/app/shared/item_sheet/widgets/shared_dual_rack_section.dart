@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_item_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/item_form_sheet/derived_warehouse_label.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/item_form_sheet/validated_rack_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/validated_rack_field.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
@@ -24,6 +24,8 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 /// P2-2: extracted from SE module into shared/item_sheet/widgets.
 /// fix: pass rackStockMap as fallbackMap so the Available Rack Balance
 ///      bottom sheet is populated (was always empty due to `const {}`).
+/// Commit 5: import ValidatedRackField from canonical shared layer path
+///      instead of the SE-module re-export stub.
 /// Commit 7: rack-error banner now checks `err.isEmpty` instead of
 ///      `err == null` — rackError is RxString (never null).
 class SharedDualRackSection extends StatelessWidget {
