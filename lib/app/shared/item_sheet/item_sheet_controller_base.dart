@@ -78,6 +78,17 @@ class BatchResult {
 ///                      without zeroing batchBalance / rackBalance so the
 ///                      BalanceChip does not flash blank between initForEdit
 ///                      reset and the subsequent API fetch completing.
+///   validateBatchOnInit — convenience wrapper: fires validateBatch() in a
+///                      post-frame callback so the sheet widget tree is fully
+///                      built before async Rx mutations occur.  Previously
+///                      only existed on concrete controllers; promoted to base
+///                      so DN, SE, and PR controllers can all call it.
+///   validateRack     — base implementation: delegates to fetchRackBalance()
+///                      and marks isRackValid = true.  Previously absent from
+///                      the base class, causing compile errors in
+///                      shared_rack_field.dart, AutoFillRackMixin, and
+///                      DeliveryNoteItemFormController (super.validateRack()).
+///                      Concrete controllers may override to add extra logic.
 abstract class ItemSheetControllerBase extends GetxController {
   // ── Reactive state ──────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
@@ -486,6 +497,56 @@ abstract class ItemSheetControllerBase extends GetxController {
       batchError.value = 'Error validating batch: $e';
     } finally {
       isValidatingBatch.value = false;
+    }
+  }
+
+  /// Convenience wrapper: runs [validateBatch] in a post-frame callback so
+  /// the sheet widget tree is fully built before async Rx mutations occur.
+  ///
+  /// Called by all three item controllers (DN, SE, PR) during
+  /// [initForNewItem] / [initForEdit] when pre-seeding a known batch value.
+  /// Previously only existed on concrete controllers; promoted to base so
+  /// [shared_rack_field.dart] and mixins can also rely on it being present.
+  void validateBatchOnInit(String batch) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!isClosed) validateBatch(batch);
+    });
+  }
+
+  // ── Rack validation (base) ──────────────────────────────────────────────
+  /// Validates [rack] by fetching its stock balance from ERPNext.
+  ///
+  /// Base implementation:
+  ///   1. Trims whitespace; calls [resetRack] and returns early on empty input.
+  ///   2. Sets [isValidatingRack] = true, clears [rackError].
+  ///   3. Delegates to [fetchRackBalance] to populate [rackBalance].
+  ///   4. Marks [isRackValid] = true on success.
+  ///
+  /// Concrete controllers (e.g. [DeliveryNoteItemFormController]) may
+  /// override to apply additional logic (rackStockMap fast-path, etc.) and
+  /// call `super.validateRack(rack)` as their fallback path.
+  ///
+  /// Declared here so:
+  ///   • [shared_rack_field.dart] can call `c.validateRack()` on the base type
+  ///   • [AutoFillRackMixin.onAutoFillRackSelected] default can call it without
+  ///     a concrete-type cast
+  ///   • Concrete overrides can call `super.validateRack(trimmed)`
+  Future<void> validateRack(String rack) async {
+    final trimmed = rack.trim();
+    if (trimmed.isEmpty) { resetRack(); return; }
+
+    isValidatingRack.value = true;
+    rackError.value        = '';
+    isRackValid.value      = false;
+
+    try {
+      await fetchRackBalance(trimmed);
+      isRackValid.value = true;
+    } catch (e) {
+      rackError.value = 'Error validating rack: $e';
+      log('[ItemSheet] validateRack error: $e', name: 'ItemSheet');
+    } finally {
+      isValidatingRack.value = false;
     }
   }
 }
