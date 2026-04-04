@@ -1,8 +1,10 @@
+// ignore_for_file: lines_longer_than_80_chars
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/item_form_sheet/validated_rack_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/validated_rack_field.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 
 /// A reusable Rack input field backed by any [ItemSheetControllerBase].
@@ -47,6 +49,12 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// when `editMode: true`.  The full picker lifecycle (controller creation,
 /// data load, sheet presentation) is owned by the caller
 /// (UniversalItemFormSheet); this widget only renders the button.
+///
+/// ## Architecture note
+/// [ValidatedRackField] was previously imported from the Stock Entry module
+/// path. It now lives in the shared layer as part of the
+/// RackFieldWithBrowseDelegate refactor (Commit 1 of 10). The import below
+/// references the canonical shared path.
 ///
 /// P3-C: onChanged simplified — c.resetRack() replaces inline Rx read.
 /// P3-D: Per-rack stock tooltip in _EditModeRack suffix row.
