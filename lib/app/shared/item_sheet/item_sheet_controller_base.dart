@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
@@ -26,9 +27,9 @@ class BatchResult {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────────
 // ItemSheetControllerBase
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────────
 ///
 /// Shared state and behaviour for all item-sheet controllers (Stock Entry,
 /// Delivery Note, Purchase Receipt …).
@@ -106,9 +107,21 @@ class BatchResult {
 ///                      now returns rackBalance.value directly, which is
 ///                      semantically identical for all existing controllers
 ///                      and eliminates the dead `const {}` default map.
+///   BatchNoFieldWithBrowseDelegate — (Commit 7 of 7 — SharedBatchField
+///                      universal refactor) base class implements this
+///                      interface additively.  All existing batch fields
+///                      already satisfy BatchNoFieldDelegate; three new
+///                      BatchNoBrowseDelegate default overrides added:
+///                      browseBatches, canBrowseBatches, preloadedBatchRows.
+///                      handleBatchPicked default: writes batchNo into
+///                      batchController and calls validateBatch.
+///                      SharedBatchField.c re-typed from
+///                      ItemSheetControllerBase to
+///                      BatchNoFieldWithBrowseDelegate — zero call-site
+///                      changes required.
 abstract class ItemSheetControllerBase extends GetxController
-    implements RackFieldWithBrowseDelegate {
-  // ── Reactive state ──────────────────────────────────────────────────────
+    implements RackFieldWithBrowseDelegate, BatchNoFieldWithBrowseDelegate {
+  // ── Reactive state ────────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
   final RxBool   isValidatingBatch     = false.obs;
   final RxBool   isBatchReadOnly       = false.obs;
@@ -142,20 +155,20 @@ abstract class ItemSheetControllerBase extends GetxController
   /// null = add-mode; non-null = the rowId / docName being edited.
   final RxnString editingItemName      = RxnString(null);
 
-  // ── Item metadata (shown in sheet footer) ────────────────────────────────
+  // ── Item metadata (shown in sheet footer) ────────────────────────────────────
   final RxString  itemName             = ''.obs;
   final RxnString itemOwner            = RxnString(null);
   final RxnString itemCreation         = RxnString(null);
   final RxnString itemModified         = RxnString(null);
   final RxnString itemModifiedBy       = RxnString(null);
 
-  // ── Form key ────────────────────────────────────────────────────────────
+  // ── Form key ────────────────────────────────────────────────────────────────
   final GlobalKey<FormState> formKey   = GlobalKey<FormState>();
 
-  // ── isAddingItemFlag (used by PO/PS controllers) ─────────────────────────
+  // ── isAddingItemFlag (used by PO/PS controllers) ───────────────────────────
   bool isAddingItemFlag = false;
 
-  // ── Text controllers ────────────────────────────────────────────────────
+  // ── Text controllers ──────────────────────────────────────────────────────────
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
   final TextEditingController qtyController   = TextEditingController();
@@ -172,12 +185,12 @@ abstract class ItemSheetControllerBase extends GetxController
 
   var itemCode = ''.obs;
 
-  // ── batchWiseHistory defaults ─────────────────────────────────────────────
+  // ── batchWiseHistory defaults ──────────────────────────────────────────────────
   List<dynamic> get batchWiseHistory       => const [];
   RxBool        get isLoadingBatchHistory  => false.obs;
   Future<void>  fetchBatchWiseHistory()    async {}
 
-  // ── maxQty default ────────────────────────────────────────────────────────
+  // ── maxQty default ────────────────────────────────────────────────────────────────
   double get maxQty => 0.0;
 
   // Dirty-tracking snapshots
@@ -185,10 +198,10 @@ abstract class ItemSheetControllerBase extends GetxController
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ───────────────────────────────────────────────────
+  // ── Auto-submit worker ──────────────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ───────────────────────────────────────────────────
+  // ── Abstract interface ───────────────────────────────────────────────────────────
   String? get resolvedWarehouse;
   bool get requiresBatch;
   bool get requiresRack;
@@ -226,7 +239,107 @@ abstract class ItemSheetControllerBase extends GetxController
   /// Delete the item currently being edited.
   void deleteCurrentItem();
 
-  // ── RackFieldWithBrowseDelegate defaults (Commit 3 of 4 — confirmed)
+  // ── BatchNoFieldWithBrowseDelegate defaults (Commit 7 of 7) ────────────────
+  //
+  // These default overrides satisfy [BatchNoFieldWithBrowseDelegate] at the
+  // base-class level so every concrete controller automatically complies
+  // without any changes.  The pattern mirrors RackFieldWithBrowseDelegate
+  // (four defaults already on the base class since Commit 3 of the rack
+  // refactor).
+  //
+  // BatchNoFieldDelegate members (isBatchValid, isValidatingBatch,
+  // isBatchReadOnly, batchError, batchInfoTooltip, batchController,
+  // resetBatch, validateBatch) are all concrete fields / methods already
+  // declared below — they satisfy the interface automatically.
+  //
+  // BatchNoBrowseDelegate members added here:
+  //   • batchBalanceFor   — returns batchBalance.value (the live RxDouble
+  //                         populated by fetchBatchBalance).  Semantically
+  //                         identical to the previous c.maxQty pattern used
+  //                         in SharedBatchField before Commit 7.
+  //   • canBrowseBatches  — false at the base level; concrete controllers
+  //                         override once itemCode + warehouse are set.
+  //   • browseBatches     — delegates to openBatchPicker(); returns null
+  //                         at the base level (no picker context available).
+  //   • preloadedBatchRows— const []; SE overrides to return batchWiseHistory
+  //                         cast to List<BatchWiseBalanceRow>.
+  //   • resolvedWarehouseForBatch — delegates to resolvedWarehouse.
+  //
+  // handleBatchPicked (from BatchNoFieldWithBrowseDelegate):
+  //   Default: writes batchNo into batchController and calls validateBatch.
+  //   Mirrors handleRackPicked in structure and Dartdoc conventions.
+
+  /// Returns the available batch balance.
+  ///
+  /// Default: returns [batchBalance].value — the live [RxDouble] populated
+  /// by [fetchBatchBalance].  The [batchNo] parameter is accepted for
+  /// interface compatibility but ignored at the base level; controllers that
+  /// maintain per-batch balance maps may override to use it.
+  @override
+  double batchBalanceFor(String batchNo) => batchBalance.value;
+
+  /// Resolved warehouse used as the default filter for the Browse Batches
+  /// picker.  Delegates to [resolvedWarehouse] so call sites do not need to
+  /// distinguish between the two accessors.
+  @override
+  String? get resolvedWarehouseForBatch => resolvedWarehouse;
+
+  /// Whether the controller currently satisfies the pre-conditions to open
+  /// the batch picker (item code known, warehouse resolvable).
+  ///
+  /// Returns `false` at the base level.  Concrete controllers override:
+  /// ```dart
+  /// @override
+  /// bool get canBrowseBatches =>
+  ///     itemCode.value.isNotEmpty && resolvedWarehouse != null;
+  /// ```
+  @override
+  bool get canBrowseBatches => false;
+
+  /// Opens the Browse Batches picker and returns the selected batch number,
+  /// or `null` if the user dismissed without making a selection.
+  ///
+  /// Base implementation delegates to [openBatchPicker] and returns `null`
+  /// because [openBatchPicker] writes directly to [batchController] and
+  /// calls [validateBatch] inline.  Concrete controllers that need to
+  /// return the selected value for further processing may override.
+  @override
+  Future<String?> browseBatches() async {
+    await openBatchPicker();
+    return null;
+  }
+
+  /// Pre-fetched batch rows passed to [BatchPickerController].
+  ///
+  /// Returns `const []` at the base level — no pre-fetch occurs.
+  /// SE overrides to return its cached [batchWiseHistory] list cast to
+  /// `List<BatchWiseBalanceRow>`, enabling zero-latency picker opens.
+  @override
+  List<dynamic> get preloadedBatchRows => const [];
+
+  /// Standard post-selection hook called by the DocType orchestrator after
+  /// [browseBatches] returns a non-null batch number.
+  ///
+  /// Default behaviour:
+  ///   1. Writes [batchNo] into [batchController].
+  ///   2. Calls [validateBatch] to confirm live availability.
+  ///
+  /// Override in concrete controllers that need custom post-pick logic.
+  /// Call `super.handleBatchPicked(batchNo)` if the default write +
+  /// validate behaviour is still required.
+  ///
+  /// ## Contrast with RackFieldWithBrowseDelegate
+  ///
+  /// [handleRackPicked] receives a [RackPickerResult] because rack selection
+  /// may carry extra metadata.  [handleBatchPicked] receives a plain [String]
+  /// because batch selection carries only the batch number.
+  @override
+  Future<void> handleBatchPicked(String batchNo) async {
+    batchController.text = batchNo;
+    await validateBatch(batchNo);
+  }
+
+  // ── RackFieldWithBrowseDelegate defaults (Commit 3 of 4 — confirmed) ───────
   //
   // These four methods satisfy the [RackFieldWithBrowseDelegate] interface
   // at the base-class level so every concrete controller automatically
@@ -246,8 +359,8 @@ abstract class ItemSheetControllerBase extends GetxController
   //                        already populated by fetchRackBalance).  The
   //                        previous rackStockMap map-lookup was removed in
   //                        Commit 1 of 4; rackBalance.value is semantically
-  //                        identical for all controllers and works for both
-  //                        map-pre-loaded and live-fetch patterns.
+  //                        identical for all existing controllers and works
+  //                        for both map-pre-loaded and live-fetch patterns.
   //   • canBrowseRacks   — false at the base level; concrete controllers
   //                        flip this true once itemCode + warehouse are set.
   //   • browseRacks      — returns null at the base level.  Concrete
@@ -313,7 +426,7 @@ abstract class ItemSheetControllerBase extends GetxController
     await validateRack(result.rackId);
   }
 
-  // ── submitWithFeedback ──────────────────────────────────────────────────
+  // ── submitWithFeedback ─────────────────────────────────────────────────────────
   Future<bool> submitWithFeedback() async {
     saveButtonState.value = SaveButtonState.loading;
     try {
@@ -330,7 +443,7 @@ abstract class ItemSheetControllerBase extends GetxController
     }
   }
 
-  // ── disposeControllers ──────────────────────────────────────────────────
+  // ── disposeControllers ─────────────────────────────────────────────────────────
   /// Explicit teardown called by parent orchestrators immediately after the
   /// sheet closes (e.g. in a post-frame callback) before Get.delete().
   ///
@@ -345,7 +458,7 @@ abstract class ItemSheetControllerBase extends GetxController
     try { rackFocusNode.dispose();   } catch (_) {}
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
   @override
   void onClose() {
     _autoSubmitWorker?.dispose();
@@ -357,7 +470,7 @@ abstract class ItemSheetControllerBase extends GetxController
     super.onClose();
   }
 
-  // ── Listener wiring ──────────────────────────────────────────────────────
+  // ── Listener wiring ───────────────────────────────────────────────────────────
   void removeSheetListeners() {
     try { batchController.removeListener(validateSheet); } catch (_) {}
     try { batchController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
@@ -389,7 +502,7 @@ abstract class ItemSheetControllerBase extends GetxController
     }
   }
 
-  // ── setupAutoSubmit ──────────────────────────────────────────────────────
+  // ── setupAutoSubmit ──────────────────────────────────────────────────────────
   void setupAutoSubmit({required Future<void> Function() onValid}) {
     _autoSubmitWorker?.dispose();
     _autoSubmitWorker = ever(
@@ -406,7 +519,7 @@ abstract class ItemSheetControllerBase extends GetxController
   void setupAutoSubmitOnValid({required Future<void> Function() onValid}) =>
       setupAutoSubmit(onValid: onValid);
 
-  // ── Dirty-tracking ───────────────────────────────────────────────────────
+  // ── Dirty-tracking ─────────────────────────────────────────────────────────────
   void snapshotState() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
@@ -418,7 +531,7 @@ abstract class ItemSheetControllerBase extends GetxController
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Rack reset ──────────────────────────────────────────────────────────
+  // ── Rack reset ─────────────────────────────────────────────────────────────────
 
   /// Full rack reset — clears the text field, zeros the balance, and
   /// resets all validity state.  Called when the user explicitly clears
@@ -446,10 +559,11 @@ abstract class ItemSheetControllerBase extends GetxController
     // fetchRackBalance() overwrites it with the freshly-fetched value.
   }
 
-  // ── Batch reset ─────────────────────────────────────────────────────────
+  // ── Batch reset ────────────────────────────────────────────────────────────────
 
   /// Full batch reset — zeros balances and resets all validity state.
   /// Called when the user explicitly clears / edits the batch field.
+  @override
   void resetBatch() {
     isBatchValid.value     = false;
     isBatchReadOnly.value  = false;
@@ -475,7 +589,7 @@ abstract class ItemSheetControllerBase extends GetxController
     softResetRack();
   }
 
-  // ── Fetch helpers ────────────────────────────────────────────────────────
+  // ── Fetch helpers ──────────────────────────────────────────────────────────────
   Future<void> fetchBatchBalance() async {
     final batch = batchController.text.trim();
     if (batch.isEmpty || itemCode.value.isEmpty) {
@@ -528,7 +642,7 @@ abstract class ItemSheetControllerBase extends GetxController
     }
   }
 
-  // ── openBatchPicker (base) ──────────────────────────────────────────────
+  // ── openBatchPicker (base) ───────────────────────────────────────────────────────
   Future<void> openBatchPicker() async {
     final ctx = Get.context;
     if (ctx == null) return;
@@ -616,7 +730,7 @@ abstract class ItemSheetControllerBase extends GetxController
     });
   }
 
-  // ── Rack validation (base) ──────────────────────────────────────────────
+  // ── Rack validation (base) ───────────────────────────────────────────────────────
   /// Validates [rack] by fetching its stock balance from ERPNext.
   ///
   /// Base implementation:

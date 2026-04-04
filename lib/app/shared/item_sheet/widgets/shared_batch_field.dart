@@ -1,11 +1,15 @@
+// ignore_for_file: lines_longer_than_80_chars
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/browse_batch_button.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dart';
 
-/// A reusable Batch No input field backed by any [ItemSheetControllerBase].
+/// A reusable Batch No input field backed by any
+/// [BatchNoFieldWithBrowseDelegate].
 ///
 /// ## Modes
 ///
@@ -14,14 +18,21 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// rendered below the field showing the batch balance.
 ///
 /// ### `editMode: true` (DN / PR style)
-/// [TextFormField] with [OutlineInputBorder], readOnly-when-valid-and-clean,
+/// [ValidatedBatchField] with [OutlineInputBorder], readOnly-when-valid,
 /// explicit **Edit** button. [BalanceChip] shown below the field.
 ///
+/// ## Controller contract
+///
+/// `c` is typed as [BatchNoFieldWithBrowseDelegate] — the narrow interface
+/// defined in Commit 3 of the batch-field refactor.  Any controller that
+/// implements this interface (including all [ItemSheetControllerBase]
+/// subclasses, which adopt it in Commit 7) can be passed without change.
+///
 /// ## Balance source
-/// By default the [BalanceChip] sources `c.maxQty` (computed getter on base;
-/// see Commit 4). Pass [balanceOverride] to supply an alternative balance
-/// getter -- for example Stock Entry, which maintains a separate per-warehouse
-/// `batchBalance` distinct from the base `maxQty` field:
+/// By default the [BalanceChip] sources `c.batchBalanceFor('')` (the
+/// delegate's balance accessor).  Pass [balanceOverride] to supply an
+/// alternative balance getter — for example Stock Entry, which maintains a
+/// separate per-warehouse `batchBalance` distinct from the delegate value:
 ///
 /// ```dart
 /// SharedBatchField(
@@ -32,61 +43,47 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// ```
 ///
 /// P2-1 : added [balanceOverride] optional callback.
-/// P3-A : readOnly requires isValid AND batchError==null.
+/// P3-A : readOnly requires isValid AND batchError==''.
 /// P3-A : helperText / border colour is 3-tier (red / orange / grey).
 /// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
 /// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
-/// C    : Added [showBrowseBatches] flag -- renders a 'Browse Batches ->' text
-///        button that opens [BatchPickerSheet] when the batch is not yet
-///        validated.  Passing warehouse + accentColor is optional; the field
-///        falls back to controller values automatically.
+/// C    : Added [showBrowseBatches] flag -- renders a 'Browse Batches ->'
+///        text button that opens [BatchPickerSheet] when the batch is not yet
+///        validated.  Passing warehouse + accentColor is optional.
 /// P3-2 : Added [onPickerTap] -- when provided, a list-picker icon button is
 ///        injected into the suffixIcon Row in both idle and valid states.
-/// fix  : Removed stale `.value` calls on `c.maxQty` -- maxQty is a plain
-///        `double` computed getter since Commit 4, not an RxDouble.
-/// fix(BATCH-ICON): wrap every multi-icon suffixIcon Row in a SizedBox with
-///        explicit width so Flutter's tight suffixIcon constraints do not
-///        collapse the Row to zero width (hiding the picker icon).
+/// fix  : Removed stale `.value` calls on `c.maxQty`.
+/// fix(BATCH-ICON): wrap every multi-icon suffixIcon Row in SizedBox with
+///        explicit width so Flutter tight constraints do not collapse the Row.
 /// fix(BATCH-ICON-VALID): render picker btn in valid state; compute SizedBox
-///        width dynamically based on which slots (tooltip, picker, edit) are
-///        visible, so the icon is never clipped.
-/// fix(SE-BATCH-ICON): _SimpleField now also renders picker btn in valid state,
-///        matching _EditModeField parity (was idle-only, broke SE edit flow).
-/// DN-8 : pass forceShow: validating to all BalanceChip calls so the chip
-///        stays visible (showing spinner) during the async fetch instead of
-///        disappearing and reappearing when balance is temporarily 0.
-/// DN-9 : forceShow: validating || isValid — chip persists after validation
-///        completes even when batchBalance is momentarily 0.0 (race between
-///        async balance fetch and first post-validation rebuild).
-/// fix(batch-field): isDense: true added to both _SimpleField and _EditModeField
-///        InputDecorations to collapse the ~20px invisible helper/error reserved
-///        space that caused the buildInputGroup tinted Container to overflow
-///        below the visible field border.
+///        width dynamically based on visible slots.
+/// fix(SE-BATCH-ICON): _SimpleField now also renders picker btn in valid state.
+/// DN-8 : pass forceShow: validating to all BalanceChip calls.
+/// DN-9 : forceShow: validating || isValid.
+/// fix(batch-field): isDense: true in both InputDecorations.
+/// Commit 7: c re-typed to BatchNoFieldWithBrowseDelegate; _EditModeField
+///        delegates to ValidatedBatchField; _BrowseBatchButton replaced with
+///        BrowseBatchButton (extracted in Commit 6).
 class SharedBatchField extends StatelessWidget {
-  final ItemSheetControllerBase c;
+  final BatchNoFieldWithBrowseDelegate c;
   final Color  accentColor;
   final bool   editMode;
   final bool   readOnly;
   final String? fieldKey;
 
-  /// Whether to show the "Browse Batches ->" shortcut button below the field.
-  /// Defaults to false to preserve backward compatibility.
+  /// Whether to show the "Browse Batches" shortcut button below the field.
   final bool showBrowseBatches;
 
   /// Optional warehouse override for the batch picker.  When null the field
-  /// reads [ItemSheetControllerBase.resolvedWarehouse].
+  /// reads [BatchNoBrowseDelegate.resolvedWarehouseForBatch].
   final String? browseWarehouse;
 
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
-  /// getter on every rebuild instead of reading [ItemSheetControllerBase.maxQty].
+  /// getter on every rebuild instead of the delegate accessor.
   final double? Function()? balanceOverride;
 
-  /// Optional callback fired when the list-picker icon button inside the
-  /// suffixIcon is tapped.  When provided, the button is shown in both the
-  /// idle (not-yet-valid) and valid states.  The full picker lifecycle is owned
-  /// by the caller -- this widget only renders the button and fires the callback.
-  ///
-  /// When null (default) no picker button is added to the suffix row.
+  /// Optional callback fired when the list-picker icon button is tapped.
+  /// When provided, the button is shown in both idle and valid states.
   final VoidCallback? onPickerTap;
 
   const SharedBatchField({
@@ -122,7 +119,7 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// ── Picker suffix icon button (shared helper) ────────────────────────────────────────────
+// ── Picker suffix icon button (shared helper, _SimpleField only) ─────────────
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       icon:      Icon(Icons.shelves, color: color, size: 20),
       onPressed: onTap,
@@ -130,60 +127,7 @@ Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       padding:   EdgeInsets.zero,
     );
 
-// ── Browse-batch button (shared by both modes, below the field) ──────────
-class _BrowseBatchButton extends StatelessWidget {
-  final SharedBatchField w;
-  const _BrowseBatchButton(this.w);
-
-  @override
-  Widget build(BuildContext context) {
-    if (!w.showBrowseBatches) return const SizedBox.shrink();
-
-    return Obx(() {
-      final c          = w.c;
-      final isValid    = c.isBatchValid.value;
-      final isRO       = w.readOnly || c.isBatchReadOnly.value;
-      final validating = c.isValidatingBatch.value;
-
-      if (isValid || isRO || validating) return const SizedBox.shrink();
-
-      return Align(
-        alignment: Alignment.centerRight,
-        child: TextButton.icon(
-          onPressed: () async {
-            final warehouse = w.browseWarehouse ?? c.resolvedWarehouse;
-            final selected  = await showBatchPickerSheet(
-              context,
-              itemCode:    c.itemCode.value,
-              warehouse:   warehouse,
-              accentColor: w.accentColor,
-            );
-            if (selected != null && selected.isNotEmpty) {
-              c.batchController.text = selected;
-              await c.validateBatch(selected);
-            }
-          },
-          icon : Icon(Icons.shelves, size: 16, color: w.accentColor),
-          label: Text(
-            'Browse Batches',
-            style: TextStyle(
-              color:      w.accentColor,
-              fontSize:   12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          style: TextButton.styleFrom(
-            padding:         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            tapTargetSize:   MaterialTapTargetSize.shrinkWrap,
-            minimumSize:     Size.zero,
-          ),
-        ),
-      );
-    });
-  }
-}
-
-// ── Simple (borderless) mode ─────────────────────────────────────────────────────
+// ── Simple (borderless) mode ───────────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -199,8 +143,8 @@ class _SimpleField extends StatelessWidget {
       final errorMsg   = c.batchError.value;
 
       final isReadOnly  = w.readOnly || c.isBatchReadOnly.value;
-      final isHardError = !isValid && errorMsg != null;
-      final isWarning   =  isValid && errorMsg != null;
+      final isHardError = !isValid && errorMsg.isNotEmpty;
+      final isWarning   =  isValid && errorMsg.isNotEmpty;
 
       final borderColor = isHardError
           ? theme.colorScheme.error
@@ -209,7 +153,7 @@ class _SimpleField extends StatelessWidget {
               : w.accentColor;
 
       final chipColor   = isWarning ? Colors.orange : w.accentColor;
-      final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
+      final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
 
       Widget buildSuffixRow() => IntrinsicWidth(
         child: Row(
@@ -281,10 +225,6 @@ class _SimpleField extends StatelessWidget {
                 border:      InputBorder.none,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                // fix(batch-field): isDense collapses the ~20px invisible
-                // helper/error reserved slot so the buildInputGroup tinted
-                // Container ends flush with the visible field boundary.
-                // helperText / errorText still render when non-null.
                 isDense:       true,
                 errorText:     isHardError ? errorMsg : null,
                 errorMaxLines: 2,
@@ -301,7 +241,19 @@ class _SimpleField extends StatelessWidget {
               ),
             ),
           ),
-          _BrowseBatchButton(w),
+          // BrowseBatchButton guards showBrowseBatches internally;
+          // no Obx needed at this level for that flag.
+          Obx(() => BrowseBatchButton(
+            showBrowseBatches: w.showBrowseBatches,
+            isValid:           c.isBatchValid.value,
+            isReadOnly:        w.readOnly || c.isBatchReadOnly.value,
+            isValidating:      c.isValidatingBatch.value,
+            itemCode:          c.itemCode.value,
+            warehouse:         w.browseWarehouse ?? c.resolvedWarehouseForBatch,
+            accentColor:       w.accentColor,
+            batchController:   c.batchController,
+            onBatchSelected:   c.validateBatch,
+          )),
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -315,7 +267,7 @@ class _SimpleField extends StatelessWidget {
   }
 }
 
-// ── Edit-mode (OutlineInputBorder, readOnly-when-valid-and-clean) ─────────────
+// ── Edit-mode (OutlineInputBorder, delegates to ValidatedBatchField) ────────
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
@@ -329,18 +281,11 @@ class _EditModeField extends StatelessWidget {
       final validating = c.isValidatingBatch.value;
       final errorMsg   = c.batchError.value;
 
-      final isHardError = !isValid && errorMsg != null;
-      final isWarning   =  isValid && errorMsg != null;
-
-      final effectiveReadOnly  = w.readOnly || (isValid && !isWarning);
-      final helperColor        = isHardError
-          ? Colors.red
-          : isWarning ? Colors.orange : Colors.grey;
-      final enabledBorderColor = isHardError
-          ? Colors.red
-          : isWarning ? Colors.orange : w._validBorder;
+      final isHardError = !isValid && errorMsg.isNotEmpty;
+      final isWarning   =  isValid && errorMsg.isNotEmpty;
       final chipColor   = isWarning ? Colors.orange : w.accentColor;
-      final chipBalance = w.balanceOverride?.call() ?? c.maxQty;
+      final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
+      final warehouse   = w.browseWarehouse ?? c.resolvedWarehouseForBatch;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,54 +294,37 @@ class _EditModeField extends StatelessWidget {
             label:   'Batch No',
             color:   w.accentColor,
             bgColor: isValid ? w._validFill : null,
-            child: TextFormField(
-              key:        ValueKey(w.fieldKey ?? 'shared_batch_edit'),
-              controller: c.batchController,
-              readOnly:   effectiveReadOnly,
-              autofocus:  false,
-              style: const TextStyle(fontFamily: 'ShureTechMono'),
-              decoration: InputDecoration(
-                hintText:       'Enter or scan batch',
-                helperText:     errorMsg,
-                helperMaxLines: 2,
-                helperStyle: TextStyle(
-                  color:      helperColor,
-                  fontWeight: (isHardError || isWarning)
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide:   BorderSide(color: enabledBorderColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: isHardError
-                        ? Colors.red
-                        : isWarning ? Colors.orange : w.accentColor,
-                    width: 2,
-                  ),
-                ),
-                filled:    true,
-                fillColor: isValid ? w._validFill : Colors.white,
-                // fix(batch-field): isDense collapses the ~20px invisible
-                // helper/error reserved slot so the buildInputGroup tinted
-                // Container ends flush with the visible field boundary.
-                // helperText for validation messages still renders when
-                // errorMsg is non-null — isDense only removes the empty slot.
-                isDense:   true,
-                suffixIcon: _suffixIcon(c, isValid, validating, isWarning),
-              ),
-              onChanged:        (_) => c.validateSheet(),
-              onFieldSubmitted: (val) {
-                if (!c.isBatchValid.value) c.validateBatch(val);
-              },
+            child: ValidatedBatchField(
+              textController: c.batchController,
+              isValid:        isValid,
+              isValidating:   validating,
+              isHardError:    isHardError,
+              isWarning:      isWarning,
+              errorMsg:       errorMsg.isNotEmpty ? errorMsg : null,
+              label:          'Enter or scan batch',
+              accentColor:    w.accentColor,
+              validFill:      w._validFill,
+              validBorder:    w._validBorder,
+              onReset:        c.resetBatch,
+              onValidate:     () => c.validateBatch(c.batchController.text),
+              onSubmitted:    c.validateBatch,
+              onChanged:      c.validateSheet,
+              onPickerTap:    w.onPickerTap,
+              tooltipMessage: c.batchInfoTooltip.value,
+              fieldKey:       w.fieldKey ?? 'shared_batch_edit',
             ),
           ),
-          _BrowseBatchButton(w),
+          BrowseBatchButton(
+            showBrowseBatches: w.showBrowseBatches,
+            isValid:           isValid,
+            isReadOnly:        w.readOnly,
+            isValidating:      validating,
+            itemCode:          c.itemCode.value,
+            warehouse:         warehouse,
+            accentColor:       w.accentColor,
+            batchController:   c.batchController,
+            onBatchSelected:   c.validateBatch,
+          ),
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -407,86 +335,5 @@ class _EditModeField extends StatelessWidget {
         ],
       );
     });
-  }
-
-  Widget _suffixIcon(
-    ItemSheetControllerBase c,
-    bool isValid,
-    bool validating,
-    bool isWarning,
-  ) {
-    if (validating) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: 20, height: 20,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: w.accentColor),
-        ),
-      );
-    }
-
-    if (isValid) {
-      final hasPicker  = w.onPickerTap != null;
-      final hasTooltip = c.batchInfoTooltip.value != null;
-      final width = 48.0
-          + (hasPicker  ? 48.0 : 0.0)
-          + (hasTooltip ? 48.0 : 0.0);
-      return SizedBox(
-        width: width,
-        child: Row(
-          mainAxisSize:      MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (hasTooltip)
-              Tooltip(
-                message:     c.batchInfoTooltip.value!,
-                triggerMode: TooltipTriggerMode.tap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(
-                    isWarning
-                        ? Icons.warning_amber_rounded
-                        : Icons.info_outline,
-                    color: isWarning ? Colors.orange : w.accentColor,
-                    size: 20,
-                  ),
-                ),
-              ),
-            if (hasPicker)
-              _pickerSuffixBtn(
-                isWarning ? Colors.orange : w.accentColor,
-                w.onPickerTap!,
-              ),
-            IconButton(
-              icon:     Icon(Icons.edit,
-                  color: isWarning ? Colors.orange : w.accentColor,
-                  size: 20),
-              onPressed: c.resetBatch,
-              tooltip:   'Edit Batch',
-            ),
-          ],
-        ),
-      );
-    }
-
-    final hasPicker = w.onPickerTap != null;
-    return SizedBox(
-      width: hasPicker ? 96.0 : 48.0,
-      child: Row(
-        mainAxisSize:      MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (hasPicker)
-            _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
-          IconButton(
-            icon:      const Icon(Icons.check),
-            onPressed: () => c.validateBatch(c.batchController.text),
-            tooltip:   'Validate',
-            color:     Colors.grey,
-          ),
-        ],
-      ),
-    );
   }
 }
