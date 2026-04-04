@@ -27,6 +27,21 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///            (passed as ValidatedRackField.label / hintText).
 ///            Defaults to 'Enter or scan rack ID'.
 ///
+/// ## Balance source
+/// By default the [BalanceChip] sources [_rackBalance] which reads
+/// `c.rackStockMap[rackController.text]` — the bulk pre-loaded map.
+/// Pass [balanceOverride] to supply an alternative balance getter —
+/// for example DeliveryNote, which maintains a separate per-rack
+/// `rackBalance` RxDouble populated by the async `validateRack` fetch:
+///
+/// ```dart
+/// SharedRackField(
+///   c:               child,
+///   accentColor:     Colors.blueGrey,
+///   balanceOverride: () => child.rackBalance.value,
+/// )
+/// ```
+///
 /// ## Picker integration
 /// Pass [onPickerTap] to show the shelves icon button in the suffix area
 /// when `editMode: true`.  The full picker lifecycle (controller creation,
@@ -48,12 +63,25 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 ///   completes even when rackBalance is momentarily 0.0 (rackStockMapRx
 ///   populated asynchronously by preloadRackStockMap; chip must not
 ///   collapse between validation-complete and map-populated rebuilds).
+/// DN-10: add balanceOverride callback — parity with SharedBatchField P2-1.
+///   Callers that need a live RxDouble balance (e.g. DeliveryNote rackBalance)
+///   pass balanceOverride; all existing callers fall back to _rackBalance().
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
   final String label;
   final String hint;
   final bool   editMode;
+
+  /// Optional balance override.  When non-null, the [BalanceChip] calls this
+  /// getter on every rebuild instead of reading
+  /// `c.rackStockMap[rackController.text]` via [_rackBalance].
+  ///
+  /// Use this when the caller maintains a separate live balance field —
+  /// for example DeliveryNoteItemFormController.rackBalance (RxDouble
+  /// written by the async validateRack fetch) which is more authoritative
+  /// than the bulk-preloaded rackStockMap entry.
+  final double? Function()? balanceOverride;
 
   /// Optional callback fired when the picker icon button is tapped.
   /// Only active when [editMode] is true.  When null, no picker button
@@ -64,14 +92,16 @@ class SharedRackField extends StatelessWidget {
     super.key,
     required this.c,
     required this.accentColor,
-    this.label       = 'Rack',
-    this.hint        = 'Enter or scan rack ID',
-    this.editMode    = false,
+    this.label          = 'Rack',
+    this.hint           = 'Enter or scan rack ID',
+    this.editMode       = false,
+    this.balanceOverride,
     this.onPickerTap,
   });
 
   /// Returns the balance for the currently-typed rack from rackStockMap,
   /// or 0.0 if the rack is not in the map.
+  /// Used as fallback when [balanceOverride] is not supplied.
   double _rackBalance(ItemSheetControllerBase c) {
     final rack = c.rackController.text.trim();
     if (rack.isEmpty) return 0.0;
@@ -98,7 +128,8 @@ class _SimpleRack extends StatelessWidget {
       final hasError   = c.rackError.value != null;
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
-      final rackBal    = w._rackBalance(c);
+      // DN-10: respect balanceOverride when supplied; fall back to rackStockMap.
+      final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
 
       final borderColor = hasError
           ? theme.colorScheme.error
@@ -192,6 +223,8 @@ class _SimpleRack extends StatelessWidget {
 // section header is rendered in editMode, matching _SimpleRack.  The
 // ValidatedRackField receives w.hint as its own inner label/hintText
 // (unchanged from Commit-E).
+//
+// DN-10: rackBal now respects balanceOverride, matching _SimpleRack.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -203,7 +236,8 @@ class _EditModeRack extends StatelessWidget {
     return Obx(() {
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
-      final rackBal    = w._rackBalance(c);
+      // DN-10: respect balanceOverride when supplied; fall back to rackStockMap.
+      final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
 
       // Derive the border accent colour to match _SimpleRack behaviour:
       // green when valid, error colour on error, accent otherwise.
