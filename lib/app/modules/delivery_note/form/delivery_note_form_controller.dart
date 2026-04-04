@@ -342,16 +342,25 @@ class DeliveryNoteFormController extends GetxController
           scrollController: child.sheetScrollController,
           customFields: [
             SharedSerialField(controller: child),
+            // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
+            // reads child.batchBalance (RxDouble written by validateBatch /
+            // fetchBatchBalance) instead of the base maxQty getter which
+            // always returns 0.0 for DeliveryNoteItemFormController.
             SharedBatchField(
-              c:           child,
-              accentColor: Colors.blueGrey,
-              editMode:    true,
-              onPickerTap: child.openBatchPicker,
+              c:               child,
+              accentColor:     Colors.blueGrey,
+              editMode:        true,
+              onPickerTap:     child.openBatchPicker,
+              balanceOverride: () => child.batchBalance.value,
             ),
+            // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
+            // reads child.rackBalance (RxDouble written by validateRack /
+            // fetchRackBalance) instead of the base maxQty getter.
             SharedRackField(
-              c:           child,
-              accentColor: Colors.blueGrey,
-              editMode:    true,
+              c:               child,
+              accentColor:     Colors.blueGrey,
+              editMode:        true,
+              balanceOverride: () => child.rackBalance.value,
               onPickerTap: () async {
                 HapticFeedback.lightImpact();
 
