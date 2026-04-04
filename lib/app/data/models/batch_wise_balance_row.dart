@@ -5,6 +5,28 @@
 /// balance data so operators can select the right batch without
 /// knowing batch numbers in advance.
 ///
+/// ## ERPNext Batch-Wise Balance History — field-name reference
+///
+/// The canonical documentation for ERPNext column keys and the Total Row
+/// discard invariant lives on [BatchNoBrowseDelegate].  The two factory
+/// constructors below ([fromMap] and [fromReportRow]) each carry a
+/// field-name table that cross-references that source.
+///
+/// Quick reference:
+///   - `"batch"`       → [batchNo]    (primary key for the batch identifier)
+///   - `"balance_qty"` → [balanceQty] (available stock qty)
+///   - `"item"`        → Item Code — server-side filter only; not stored here
+///
+/// ## Total Row — caller responsibility
+///
+/// The Batch-Wise Balance History report **always appends a Total Row as
+/// its last entry**.  This class has no visibility into row position, so
+/// it cannot detect or discard the Total Row itself.  The caller
+/// ([ApiProvider.getBatchWiseBalance] / [ApiProvider.fetchBatchesForItem])
+/// MUST remove the last row before constructing [BatchWiseBalanceRow]
+/// instances.  See [BatchNoBrowseDelegate] for the canonical discard
+/// contract and guard snippet.
+///
 /// Commit 1: added [packagingQty] parsed from the `custom_packaging_qty`
 /// column in the report result. The column index is resolved dynamically
 /// by [BatchWiseBalanceRow.fromReportRow] via the caller-supplied
@@ -15,6 +37,10 @@
 /// Map<String,dynamic> rows from [ApiProvider.getBatchWiseBalance] (the
 /// key-based path) can construct a [BatchWiseBalanceRow] without going
 /// through [fromReportRow] (which expects index-based List rows).
+///
+/// Commit 4 of 7 (SharedBatchField refactor): added Dartdoc tables for
+/// ERPNext field names and Total Row invariant on [fromMap] and
+/// [fromReportRow]. Zero logic changes.
 class BatchWiseBalanceRow {
   final String batchNo;
   final double balanceQty;
@@ -46,17 +72,34 @@ class BatchWiseBalanceRow {
     return expiryDate!.isBefore(DateTime.now());
   }
 
-  // ── fromMap ───────────────────────────────────────────────────────────────
+  // ── fromMap ───────────────────────────────────────────────────────────────────────────
   /// Construct from a key-based [Map<String, dynamic>] row as returned by
   /// [ApiProvider.getBatchWiseBalance] (the Map path — when the report returns
   /// keyed objects rather than raw List rows).
   ///
-  /// Recognised keys:
-  ///   batch_no | batch | batch_id  → [batchNo]
-  ///   qty | balance_qty | bal_qty  → [balanceQty]
-  ///   warehouse                    → [warehouse]
-  ///   expiry_date | expiration_date → [expiryDate]
-  ///   custom_packaging_qty | packaging_qty → [packagingQty]
+  /// ## ERPNext Batch-Wise Balance History — field names
+  ///
+  /// | Dart field      | Primary key     | Fallback keys                     |
+  /// |-----------------|-----------------|-----------------------------------|
+  /// | [batchNo]       | `"batch"`       | `"batch_no"`, `"batch_id"`        |
+  /// | [balanceQty]    | `"balance_qty"` | `"qty"`, `"bal_qty"`, `"balance"` |
+  /// | [warehouse]     | `"warehouse"`   | —                                 |
+  /// | [expiryDate]    | `"expiry_date"` | `"expiration_date"`               |
+  /// | [packagingQty]  | `"custom_packaging_qty"` | `"packaging_qty"`      |
+  ///
+  /// The `"item"` column (Item Code) is a **server-side filter parameter**
+  /// applied when requesting the report.  It is not present in individual
+  /// row maps and is not stored on this model — the caller already holds
+  /// the item code.
+  ///
+  /// ## Total Row — caller responsibility
+  ///
+  /// This factory parses a single row and has no visibility into whether
+  /// it is the Total Row footer appended by the report.  The **caller**
+  /// ([ApiProvider]) must discard the last row of the raw result before
+  /// constructing [BatchWiseBalanceRow] instances.  See
+  /// [BatchNoBrowseDelegate] for the canonical discard contract and the
+  /// cross-file traceability chain.
   factory BatchWiseBalanceRow.fromMap(Map<String, dynamic> map) {
     final batchNo = (map['batch_no'] ?? map['batch'] ?? map['batch_id'] ?? '')
         .toString()
@@ -92,12 +135,40 @@ class BatchWiseBalanceRow {
     );
   }
 
-  // ── fromReportRow ─────────────────────────────────────────────────────────
+  // ── fromReportRow ───────────────────────────────────────────────────────────────────────
   /// Parse a row from the Batch-Wise Balance History report result.
   ///
   /// Column indices are resolved dynamically by the caller (see
   /// [ApiProvider.fetchBatchesForItem]) so this factory is resilient to
-  /// ERPNext version differences.
+  /// ERPNext version differences that shift column ordering.
+  ///
+  /// ## ERPNext Batch-Wise Balance History — column-to-field mapping
+  ///
+  /// | Index param      | ERPNext column key        | Dart field      |
+  /// |------------------|---------------------------|-----------------|
+  /// | [batchIdx]       | `"batch"`                 | [batchNo]       |
+  /// | [balanceIdx]     | `"balance_qty"`           | [balanceQty]    |
+  /// | [warehouseIdx]   | `"warehouse"`             | [warehouse]     |
+  /// | [expiryIdx]      | `"expiry_date"`           | [expiryDate]    |
+  /// | [packagingIdx]   | `"custom_packaging_qty"`  | [packagingQty]  |
+  ///
+  /// The `"item"` column (Item Code) is a **server-side filter parameter**
+  /// supplied when requesting the report.  It is not parsed into this
+  /// model — the caller already holds the item code.
+  ///
+  /// ## Total Row — caller responsibility
+  ///
+  /// The raw Batch-Wise Balance History report result **always includes a
+  /// Total Row as its last entry**.  This factory has no visibility into
+  /// row position within the report — it parses exactly the row it
+  /// receives.  A Total Row passed to this factory will produce a
+  /// [BatchWiseBalanceRow] with an **empty [batchNo]**, which would appear
+  /// as a blank, unselectable entry in [BatchPickerSheet].
+  ///
+  /// The caller ([ApiProvider.getBatchWiseBalance] /
+  /// [ApiProvider.fetchBatchesForItem]) MUST remove the last row from the
+  /// raw result before iterating and calling [fromReportRow].  See
+  /// [BatchNoBrowseDelegate] for the canonical discard contract and guard.
   ///
   /// Pass [packagingIdx] == -1 (or omit) when the column is absent.
   factory BatchWiseBalanceRow.fromReportRow(
