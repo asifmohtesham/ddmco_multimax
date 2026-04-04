@@ -46,7 +46,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -54,7 +54,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine ─────────────────────────────────────────
+  // ── Save result state machine ───────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -79,29 +79,29 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ──────────────────────────────
+  // ── Sheet-open + item-edit loading flags ─────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ───────────────────────────────────────────────────────
+  // ── Warehouse ───────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
 
-  // ── Item warehouse (derived from rack) ───────────────────────────────
+  // ── Item warehouse (derived from rack) ─────────────────────────────────
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ────────────────────────────────────────────
+  // ── Customer-level error ──────────────────────────────────────────────
   var customerError = RxnString();
 
   // ── EAN scan context ───────────────────────────────────────────────
   String currentScannedEan = '';
 
-  // ── Persistent scan worker ──────────────────────────────────────────────
+  // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
 
-  // ── items convenience getter ──────────────────────────────────────────────
+  // ── items convenience getter ────────────────────────────────────────────────
   // Commit 7: child submit() calls _parent.items directly; expose the list.
   List<DeliveryNoteItem> get items => deliveryNote.value?.items ?? [];
 
@@ -141,7 +141,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ────────────────────────────────────────────────────────────
+  // ── PopScope ─────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -288,7 +288,7 @@ class DeliveryNoteFormController extends GetxController
     return (cap - used).clamp(0.0, cap);
   }
 
-  // ── Item sheet orchestration ─────────────────────────────────────────────
+  // ── Item sheet orchestration ───────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -313,14 +313,11 @@ class DeliveryNoteFormController extends GetxController
       code:        itemCode,
       name:        itemName,
       batchNo:     batchNo,
-      // Commit 7: thread variantOf through so initForNewItem/initForEdit
-      // receive it; fall back to editingItem.customVariantOf for edit mode.
       variantOf:   variantOf ?? editingItem?.customVariantOf,
       scannedEan8: currentScannedEan,
       editingItem: editingItem,
     );
 
-    // Commit 7: setupAutoSubmit uses canonical {required onValid:} base signature.
     child.setupAutoSubmit(
       onValid: () async {
         isAddingItem.value = true;
@@ -350,7 +347,6 @@ class DeliveryNoteFormController extends GetxController
             accentColor: Colors.blueGrey,
             editMode:    true,
             onPickerTap: () async {
-              // Immediate tactile acknowledgement before async work begins.
               HapticFeedback.lightImpact();
 
               final picker = Get.put(
@@ -358,10 +354,6 @@ class DeliveryNoteFormController extends GetxController
                 tag: rackPickerTag,
               );
 
-              // Kick off the Stock Ledger fetch without awaiting it here.
-              // The sheet opens immediately and its built-in
-              // CircularProgressIndicator (isLoading.obs) plays while the
-              // network call is in-flight, then resolves to the rack list.
               picker.load(
                 itemCode:     child.itemCode.value,
                 batchNo:      child.batchController.text,
@@ -394,8 +386,25 @@ class DeliveryNoteFormController extends GetxController
         },
       ),
       isScrollControlled: true,
-      enableDrag: false,
-      isDismissible: false,
+      enableDrag:         false,
+      isDismissible:      false,
+      // C1: useSafeArea prevents the sheet from underlapping the status bar /
+      //     notification panel when isScrollControlled + enableDrag:false are
+      //     combined.  Flutter's modal bottom sheet does not enforce the top
+      //     safe-area inset in that combination without this flag.
+      useSafeArea:        true,
+      // C2: transparent background so GlobalItemFormSheet's own BoxDecoration
+      //     (color: colorScheme.surface) is the sole visible surface layer.
+      //     Without this, the modal scaffold renders a second opaque surface
+      //     behind the sheet, causing visual doubling and contrast artefacts.
+      backgroundColor:    Colors.transparent,
+      // C3: zero shape neutralises the modal scaffold's default
+      //     RoundedRectangleBorder, which otherwise fights with
+      //     GlobalItemFormSheet's borderRadius: …(top: 28).  The sheet's
+      //     BoxDecoration is the sole shape authority.
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
     );
     isItemSheetOpen.value = false;
 
@@ -541,7 +550,6 @@ class DeliveryNoteFormController extends GetxController
       itemCode:  result.itemCode!,
       itemName:  result.itemData?.itemName ?? result.itemCode!,
       batchNo:   result.batchNo,
-      // Commit 7: thread variantOf from scan result.
       variantOf: result.itemData?.variantOf,
     );
   }
@@ -553,7 +561,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ──────────────────────────────────────────────────────────
+  // ── Item CRUD ────────────────────────────────────────────────────────────
   void addItem(DeliveryNoteItem newItem) {
     deliveryNote.value?.items.add(newItem);
     deliveryNote.refresh();
@@ -724,7 +732,7 @@ class DeliveryNoteFormController extends GetxController
   }
 }
 
-// ── Multiple-match sheet (private widget) ────────────────────────────────────
+// ── Multiple-match sheet (private widget) ────────────────────────────────────────
 
 class _MultipleMatchSheet extends StatelessWidget {
   const _MultipleMatchSheet({
