@@ -56,6 +56,14 @@ import 'package:get/get.dart';
 /// should be rendered.  The widget checks `batchInfoTooltip.value != null`
 /// before building the tooltip widget.
 ///
+/// ## validateSheet semantics
+///
+/// [validateSheet] is called by [ValidatedBatchField]'s `onChanged`
+/// callback each time the batch text field changes.  Its role is to
+/// recompute the sheet-level save gate ([isSheetValid]) after each
+/// keystroke.  Lightweight controllers that do not gate a Save button can
+/// provide an empty-body implementation.
+///
 /// ## Constructor type (BatchNoFieldWithBrowseDelegate)
 ///
 /// [SharedBatchField.c] is typed against [BatchNoFieldWithBrowseDelegate]
@@ -76,6 +84,7 @@ import 'package:get/get.dart';
 ///
 ///   @override double batchBalanceFor(String batchNo) => _balance;
 ///   @override void   resetBatch()                    { /* ... */ }
+///   @override void   validateSheet()                 { /* no save gate */ }
 ///   @override Future<void> validateBatch(String batchNo) async { /* ... */ }
 /// }
 ///
@@ -91,8 +100,16 @@ import 'package:get/get.dart';
 /// Commit 1 of 7 — Extract BatchNoFieldDelegate:
 ///   • New file.  Mirrors RackFieldDelegate in structure and Dartdoc conventions.
 ///   • No existing files modified.  No call sites changed.
+///
+/// fix(batch-delegate) — add validateSheet:
+///   • [ValidatedBatchField] passes `c.validateSheet` as its `onChanged`
+///     callback (shared_batch_field.dart line 311).  Sheet-level save-gate
+///     recomputation after a keystroke is a field-state concern, so it
+///     belongs on this interface rather than [BatchNoBrowseDelegate].
+///   • [ItemSheetControllerBase] already declares `validateSheet` as
+///     abstract — no changes to the base class or any concrete controller.
 abstract interface class BatchNoFieldDelegate {
-  // ── Reactive state ──────────────────────────────────────────────────────
+  // ── Reactive state ──────────────────────────────────────────────
 
   /// Whether the current batch value has been confirmed valid by the server.
   RxBool get isBatchValid;
@@ -120,13 +137,13 @@ abstract interface class BatchNoFieldDelegate {
   /// `null` means no tooltip should be rendered.
   RxnString get batchInfoTooltip;
 
-  // ── Text controller ──────────────────────────────────────────────────────
+  // ── Text controller ────────────────────────────────────────────
 
   /// Text controller backing the batch number input field.
   /// Lifecycle (create / dispose) is owned by the implementing controller.
   TextEditingController get batchController;
 
-  // ── Balance ──────────────────────────────────────────────────────────────
+  // ── Balance ──────────────────────────────────────────────────
 
   /// Returns the available balance qty for the given [batchNo].
   ///
@@ -138,11 +155,24 @@ abstract interface class BatchNoFieldDelegate {
   ///   regardless of which strategy the controller uses.
   double batchBalanceFor(String batchNo);
 
-  // ── Actions ──────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────
 
   /// Clears the batch text field, resets all batch validity state, and zeros
   /// the batch balance.  Called when the user taps the clear / edit button.
   void resetBatch();
+
+  /// Recomputes the sheet-level save gate after a batch field change.
+  ///
+  /// Called by [ValidatedBatchField]'s `onChanged` callback on every
+  /// keystroke.  Implementations write [isSheetValid] (or equivalent)
+  /// based on the current state of all form fields.
+  ///
+  /// Lightweight controllers that do not need a save gate may provide an
+  /// empty-body implementation:
+  /// ```dart
+  /// @override void validateSheet() {}
+  /// ```
+  void validateSheet();
 
   /// Validates [batchNo] against the server (Batch-Wise Balance History) and
   /// populates [isBatchValid], [batchError], and the balance accordingly.
