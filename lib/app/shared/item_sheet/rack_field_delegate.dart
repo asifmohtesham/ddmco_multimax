@@ -80,6 +80,34 @@ import 'package:get/get.dart';
 /// directly (without inheriting [ItemSheetControllerBase]) is now a
 /// first-class citizen of [SharedRackField] — zero extra ceremony.
 ///
+/// ## RackFieldDelegate-only path (Commit 4 of 4)
+///
+/// A lightweight DocType controller that does NOT need Browse Racks
+/// support can implement this interface directly and drive [SharedRackField]
+/// in non-picker mode (i.e. without passing [onPickerTap]):
+///
+/// ```dart
+/// class LightweightRackController extends GetxController
+///     implements RackFieldDelegate {
+///   @override final isRackValid      = false.obs;
+///   @override final isValidatingRack = false.obs;
+///   @override final rackError        = RxString('');
+///   @override final rackStockTooltip = RxnString(null);
+///   @override final rackController   = TextEditingController();
+///   @override final rackFocusNode    = FocusNode();
+///
+///   @override double rackBalanceFor(String rack) => _balance;
+///   @override void   resetRack()                 { /* ... */ }
+///   @override Future<void> validateRack(String rack) async { /* ... */ }
+/// }
+///
+/// // No picker button rendered (onPickerTap omitted):
+/// SharedRackField(c: lightweightController, accentColor: Colors.teal)
+/// ```
+///
+/// To add Browse Racks support, upgrade to [RackFieldWithBrowseDelegate]
+/// — this adds [canBrowseRacks], [browseRacks], and [handleRackPicked].
+///
 /// ## Changelog
 ///
 /// Commit 2 of 4 — Standardize rackError to non-nullable RxString:
@@ -95,8 +123,20 @@ import 'package:get/get.dart';
 ///     browseRacks, handleRackPicked) — confirmed in base class changelog.
 ///   • All SE / DN / PR call sites satisfy the interface transitively.
 ///   • No runtime changes — implementation was already in its target state.
+///
+/// Commit 4 of 4 — Remove SE re-export stub + add RackFieldDelegate-only path:
+///   • Audit confirmed no SE re-export stub existed anywhere — never created.
+///   • rackBalanceFor() confirmed on ItemSheetControllerBase; rackStockMap
+///     removal confirmed (Commit 1 of 4 / base class changelog).
+///   • rack_field_with_browse_delegate.dart stale "Commit 5/6/7/9" adoption
+///     plan removed; replaced with the as-built 4-commit history table.
+///   • RackFieldDelegate-only path (non-picker mode) documented here and
+///     in rack_field_with_browse_delegate.dart with a full usage example.
+///   • rack_browse_delegate.dart usage example updated to use
+///     handleRackPicked (canonical hook) instead of inline widget logic.
+///   • No runtime changes. SERIES COMPLETE.
 abstract interface class RackFieldDelegate {
-  // ── Reactive state ────────────────────────────────────────────────────────
+  // ── Reactive state ──────────────────────────────────────────────────────
 
   /// Whether the current rack value has been confirmed valid by the server.
   RxBool get isRackValid;
@@ -115,7 +155,7 @@ abstract interface class RackFieldDelegate {
   /// `null` means no tooltip should be rendered.
   RxnString get rackStockTooltip;
 
-  // ── Text / focus controllers ──────────────────────────────────────────────
+  // ── Text / focus controllers ─────────────────────────────────────────────
 
   /// Text controller backing the rack input field.
   /// Lifecycle (create / dispose) is owned by the implementing controller.
@@ -125,7 +165,7 @@ abstract interface class RackFieldDelegate {
   /// Lifecycle is owned by the implementing controller.
   FocusNode get rackFocusNode;
 
-  // ── Balance ───────────────────────────────────────────────────────────────
+  // ── Balance ──────────────────────────────────────────────────────────────
 
   /// Returns the available balance for the given [rack] identifier.
   ///
@@ -143,7 +183,7 @@ abstract interface class RackFieldDelegate {
   /// instead of going through the delegate (e.g. legacy DN sites).
   double rackBalanceFor(String rack);
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Actions ──────────────────────────────────────────────────────────────
 
   /// Clears the rack text field, resets all rack validity state, and zeros
   /// the rack balance.  Called when the user taps the clear / edit button.

@@ -6,10 +6,9 @@ import 'rack_picker_result.dart';
 
 /// Combined rack-field + Browse Racks contract.
 ///
-/// This is the **primary interface** that [SharedRackField] (post Commit 6)
-/// will depend on instead of [ItemSheetControllerBase].  Any controller
-/// that implements this interface can fully drive the rack field widget,
-/// including the optional Browse Racks picker flow.
+/// This is the **primary interface** that [SharedRackField] depends on.
+/// Any controller that implements this interface can fully drive the rack
+/// field widget, including the optional Browse Racks picker flow.
 ///
 /// ## Composition
 ///
@@ -22,23 +21,57 @@ import 'rack_picker_result.dart';
 ///
 /// Keeping them separate means a controller can implement [RackFieldDelegate]
 /// alone (no picker support) and still work with the widget in non-picker
-/// mode.  Only when [RackFieldWithBrowseDelegate] is fully implemented does
-/// the picker button become active.
+/// mode (see **RackFieldDelegate-only path** below).  Only when
+/// [RackFieldWithBrowseDelegate] is fully implemented does the picker
+/// button become active.
 ///
-/// ## Adoption path
+/// ## As-built adoption — 4-commit series (COMPLETE)
 ///
-/// The refactor is phased to avoid breaking changes:
+/// The refactor was phased to avoid breaking changes:
 ///
-/// 1. **Commit 5**: [ItemSheetControllerBase] adopts this interface
-///    additively, providing default implementations of all members so
-///    existing concrete controllers require no changes.
-/// 2. **Commit 6**: [SharedRackField] switches its field type from
-///    `ItemSheetControllerBase` to `RackFieldWithBrowseDelegate`.
-/// 3. **Commit 7**: Delivery Note wires its concrete picker flow.
-/// 4. **Commit 9**: Stock Entry follows after DN QC passes.
+/// | Commit | Action                                                  |
+/// |--------|---------------------------------------------------------|
+/// | 1      | Extract RackFieldDelegate + RackFieldWithBrowseDelegate  |
+/// |        | interfaces; rackStockMap removed from base class;       |
+/// |        | rackBalanceFor() added to ItemSheetControllerBase.      |
+/// | 2      | Standardize rackError to non-nullable RxString; codebase|
+/// |        | audit confirmed zero nullable usages; contract sealed.  |
+/// | 3      | SharedRackField.c type switch confirmed complete; base  |
+/// |        | class already declared `implements RackFieldWithBrowse-  |
+/// |        | Delegate` with all four default overrides; SE/DN/PR     |
+/// |        | call sites satisfy the interface transitively.          |
+/// | 4      | Stale commit-numbering comments removed; RackFieldDelegate|
+/// |        | -only path documented; series sealed COMPLETE.          |
 ///
 /// New DocType controllers (e.g. Material Request item sheet) can implement
 /// this interface directly without inheriting [ItemSheetControllerBase].
+///
+/// ## RackFieldDelegate-only path (non-picker mode)
+///
+/// A lightweight controller that does NOT need Browse Racks support can
+/// implement [RackFieldDelegate] directly and still be used with
+/// [SharedRackField] as long as the call site does not pass [onPickerTap]:
+///
+/// ```dart
+/// class LightweightRackController extends GetxController
+///     implements RackFieldDelegate {
+///   @override final isRackValid      = false.obs;
+///   @override final isValidatingRack = false.obs;
+///   @override final rackError        = RxString('');
+///   @override final rackStockTooltip = RxnString(null);
+///   @override final rackController   = TextEditingController();
+///   @override final rackFocusNode    = FocusNode();
+///
+///   @override double rackBalanceFor(String rack) => _balance;
+///   @override void   resetRack()                 { /* ... */ }
+///   @override Future<void> validateRack(String rack) async { /* ... */ }
+/// }
+///
+/// // In the sheet — no picker button shown because onPickerTap is null:
+/// SharedRackField(c: lightweightController, accentColor: Colors.teal)
+/// ```
+///
+/// To enable the picker button, upgrade to [RackFieldWithBrowseDelegate].
 ///
 /// ## Post-pick responsibility
 ///
@@ -57,9 +90,8 @@ abstract interface class RackFieldWithBrowseDelegate
   ///
   /// Called by the DocType orchestrator after [browseRacks] returns a
   /// non-null [RackPickerResult].  The default implementation in
-  /// [ItemSheetControllerBase] (added in Commit 5) writes
-  /// [RackPickerResult.rackId] into [rackController] and calls
-  /// [validateRack].
+  /// [ItemSheetControllerBase] writes [RackPickerResult.rackId] into
+  /// [rackController] and calls [validateRack].
   ///
   /// Override in the concrete controller to apply DocType-specific
   /// post-pick behaviour before or after calling the default logic.

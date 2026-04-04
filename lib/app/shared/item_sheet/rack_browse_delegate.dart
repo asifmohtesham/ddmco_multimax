@@ -17,10 +17,11 @@ import 'rack_picker_result.dart';
 ///
 /// It does **not** write into any form field.  Post-selection handling
 /// (writing to `rackController`, triggering validation, updating balance)
-/// is the **calling DocType's responsibility**.  This boundary is
-/// intentional: different DocTypes may map the same picker result to
-/// different fields (source rack, target rack, single rack) and may have
-/// different post-pick validation flows.
+/// is the **calling DocType's responsibility** via [handleRackPicked] on
+/// [RackFieldWithBrowseDelegate].  This boundary is intentional: different
+/// DocTypes may map the same picker result to different fields (source
+/// rack, target rack, single rack) and may have different post-pick
+/// validation flows.
 ///
 /// ## Pre-conditions
 ///
@@ -44,7 +45,8 @@ import 'rack_picker_result.dart';
 /// ## Usage example
 ///
 /// ```dart
-/// // In the DocType controller:
+/// // In the DocType controller — implement RackFieldWithBrowseDelegate
+/// // (which extends both RackFieldDelegate and RackBrowseDelegate):
 /// class MyController extends GetxController
 ///     implements RackFieldWithBrowseDelegate {
 ///
@@ -54,16 +56,24 @@ import 'rack_picker_result.dart';
 ///   @override
 ///   Future<RackPickerResult?> browseRacks() async {
 ///     if (!canBrowseRacks) return null;
-///     final result = await showRackPickerSheet(...);
-///     return result;   // caller writes to field and validates
+///     return showRackPickerSheet(...);
+///   }
+///
+///   // handleRackPicked is the canonical post-pick hook.
+///   // ItemSheetControllerBase supplies a default implementation that
+///   // writes rackId into rackController and calls validateRack().
+///   // Override when DocType-specific post-pick logic is required:
+///   @override
+///   Future<void> handleRackPicked(RackPickerResult result) async {
+///     rackController.text = result.rackId;
+///     await validateRack(result.rackId);
+///     // DocType-specific extra logic here...
 ///   }
 /// }
 ///
-/// // In the widget (owned by DocType, not by this interface):
-/// if (result != null) {
-///   controller.rackController.text = result.rackId;
-///   await controller.validateRack(result.rackId);
-/// }
+/// // In the sheet orchestrator — call handleRackPicked after browseRacks:
+/// final result = await controller.browseRacks();
+/// if (result != null) await controller.handleRackPicked(result);
 /// ```
 abstract interface class RackBrowseDelegate {
   /// Whether the controller currently satisfies the pre-conditions required
@@ -81,10 +91,12 @@ abstract interface class RackBrowseDelegate {
   /// ## Post-selection contract
   ///
   /// This method returns **only the selection**.  The calling DocType is
-  /// responsible for:
-  /// 1. Writing `result.rackId` into the appropriate rack field.
-  /// 2. Calling `validateRack(result.rackId)` to confirm live availability.
-  /// 3. Updating any DocType-specific state that depends on the rack choice.
+  /// responsible for calling [RackFieldWithBrowseDelegate.handleRackPicked]
+  /// with the result.  The default implementation in
+  /// [ItemSheetControllerBase.handleRackPicked] writes `result.rackId`
+  /// into `rackController` and calls `validateRack`.  Override
+  /// `handleRackPicked` in the concrete controller for DocType-specific
+  /// post-pick logic.
   ///
   /// ## Concurrency
   ///
