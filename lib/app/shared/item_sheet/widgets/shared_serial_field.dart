@@ -11,6 +11,9 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart'
 /// instead of the previous duck-typed `(controller as dynamic).posSerialCapText`
 /// try/catch pattern.  posSerialCapText is a concrete getter on the mixin
 /// (added in DN-1) so the call is fully type-safe at compile time.
+///
+/// fix(serial-field): _PosCapChip moved outside buildInputGroup so the tinted
+/// background Container only wraps the dropdown input, not the chip row.
 class SharedSerialField extends StatelessWidget {
   final ItemSheetControllerBase controller;
   final Color accentColor;
@@ -28,14 +31,14 @@ class SharedSerialField extends StatelessWidget {
     final serials = serial.availableSerialNos;
     if (serials.isEmpty) return const SizedBox.shrink();
 
-    return GlobalItemFormSheet.buildInputGroup(
-      label: 'Invoice Serial No',
-      color: accentColor,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Serial dropdown ─────────────────────────────────────────────
-          Obx(() => DropdownButtonFormField<String>(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Serial dropdown inside its own tinted container ──────────────
+        GlobalItemFormSheet.buildInputGroup(
+          label: 'Invoice Serial No',
+          color: accentColor,
+          child: Obx(() => DropdownButtonFormField<String>(
                 value: serial.selectedSerial.value,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
@@ -52,26 +55,26 @@ class SharedSerialField extends StatelessWidget {
                 }).toList(),
                 onChanged: (value) => serial.selectedSerial.value = value,
               )),
+        ),
 
-          // ── POS cap chip ───────────────────────────────────────────────
-          //
-          // DN-1: subscribe to controller.liveRemaining so the chip rebuilds
-          // reactively on every qty change.  posSerialCapText is now a
-          // concrete getter on PosSerialMixin — no dynamic cast required.
-          Obx(() {
-            // Explicit subscription — chip rebuilds whenever liveRemaining
-            // or selectedSerial changes.
-            controller.liveRemaining.value;
-            serial.selectedSerial.value;
+        // ── POS cap chip — sibling, NOT inside the tinted container ──────
+        //
+        // Placing the chip outside buildInputGroup ensures the accent-colour
+        // fill ends at the bottom of the dropdown and does not bleed into the
+        // chip row below it.
+        Obx(() {
+          // Explicit subscription so the chip rebuilds whenever liveRemaining
+          // or selectedSerial changes.
+          controller.liveRemaining.value;
+          serial.selectedSerial.value;
 
-            final capText = serial.posSerialCapText;
-            if (capText == null || capText.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return _PosCapChip(text: capText);
-          }),
-        ],
-      ),
+          final capText = serial.posSerialCapText;
+          if (capText == null || capText.isEmpty) {
+            return const SizedBox.shrink();
+          }
+          return _PosCapChip(text: capText);
+        }),
+      ],
     );
   }
 }
