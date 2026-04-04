@@ -508,6 +508,19 @@ class GlobalItemFormSheet extends StatelessWidget {
     final sheetMargin = EdgeInsets.only(top: topPadding + 12);
 
     if (scrollController != null) {
+      // fix(global-item-sheet): use Flexible(fit: FlexFit.loose) instead of
+      // Expanded so the sheet content-hugs when the ListView is shorter than
+      // the available space, while still allowing full expansion + scrolling
+      // when content overflows (keyboard open, many fields).
+      //
+      // Expanded forces the ListView to fill ALL remaining space in the Column
+      // regardless of mainAxisSize: min — this caused the DN item form sheet
+      // to always expand to full-screen height and leave dead whitespace below
+      // the Remove Item button.
+      //
+      // Removing the flex wrapper entirely is not viable — it would give the
+      // ListView an unbounded height constraint, causing a Flutter layout
+      // error: "Vertical viewport was given unbounded height".
       return Container(
         margin: sheetMargin,
         decoration: sheetDecoration,
@@ -516,7 +529,8 @@ class GlobalItemFormSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             dragHandle,
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: Form(
                 key: formKey,
                 child: ListView(
