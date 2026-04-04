@@ -163,7 +163,7 @@ class _BrowseBatchButton extends StatelessWidget {
               await c.validateBatch(selected);
             }
           },
-          icon : Icon(Icons.list_alt, size: 16, color: w.accentColor),
+          icon : Icon(Icons.shelves, size: 16, color: w.accentColor),
           label: Text(
             'Browse Batches',
             style: TextStyle(
