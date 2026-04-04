@@ -7,6 +7,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 
 /// Drives the visual state of the animated Save button in the item sheet.
 enum SaveButtonState { idle, loading, success, error }
@@ -89,7 +91,14 @@ class BatchResult {
 ///                      shared_rack_field.dart, AutoFillRackMixin, and
 ///                      DeliveryNoteItemFormController (super.validateRack()).
 ///                      Concrete controllers may override to add extra logic.
-abstract class ItemSheetControllerBase extends GetxController {
+///   RackFieldWithBrowseDelegate — (Commit 3) base class now implements this
+///                      interface additively.  Default implementations of
+///                      rackBalanceFor, canBrowseRacks, browseRacks, and
+///                      handleRackPicked are provided here so all concrete
+///                      controllers satisfy the interface with zero changes.
+///                      Concrete controllers override as needed per DocType.
+abstract class ItemSheetControllerBase extends GetxController
+    implements RackFieldWithBrowseDelegate {
   // ── Reactive state ──────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
   final RxBool   isValidatingBatch     = false.obs;
@@ -211,6 +220,78 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Delete the item currently being edited.
   void deleteCurrentItem();
 
+  // ── RackFieldWithBrowseDelegate defaults (Commit 3) ─────────────────────
+  //
+  // These four methods satisfy the [RackFieldWithBrowseDelegate] interface
+  // at the base-class level so every concrete controller automatically
+  // complies without any changes.  Concrete controllers override only the
+  // methods relevant to their DocType.
+  //
+  // Design notes:
+  //   • rackBalanceFor   — uses the existing rackStockMap map-lookup pattern.
+  //                        Controllers that use a live RxDouble (e.g. DN)
+  //                        override to return rackBalance.value instead.
+  //   • canBrowseRacks   — false at the base level; concrete controllers
+  //                        flip this true once itemCode + warehouse are set.
+  //   • browseRacks      — returns null at the base level.  Concrete
+  //                        controllers override with the full picker flow
+  //                        (Get.put RackPickerController, showRackPickerSheet,
+  //                        map RackPickerEntry → RackPickerResult, Get.delete).
+  //   • handleRackPicked — standard post-selection hook: writes rackId into
+  //                        rackController and calls validateRack().  DocTypes
+  //                        with a non-standard mapping (e.g. SE source vs
+  //                        target rack) override before/after super call.
+
+  /// Returns the available balance for [rack] by looking it up in
+  /// [rackStockMap].  Returns 0.0 when [rack] is not found.
+  ///
+  /// Override in controllers that maintain a live [RxDouble] balance
+  /// (e.g. `return rackBalance.value;`) instead of a pre-loaded map.
+  @override
+  double rackBalanceFor(String rack) =>
+      rackStockMap[rack.trim()] ?? 0.0;
+
+  /// Whether the controller currently satisfies the pre-conditions to open
+  /// the rack picker (item code known, warehouse resolvable).
+  ///
+  /// Returns `false` at the base level.  Concrete controllers override:
+  /// ```dart
+  /// @override
+  /// bool get canBrowseRacks =>
+  ///     itemCode.value.isNotEmpty && resolvedWarehouse != null;
+  /// ```
+  @override
+  bool get canBrowseRacks => false;
+
+  /// Opens the Browse Racks picker and returns the selected rack, or `null`
+  /// if the user dismissed without making a selection.
+  ///
+  /// Base implementation returns `null` — no picker context is available at
+  /// this level.  Concrete controllers (DN, SE) override with the full
+  /// [RackPickerController] / [showRackPickerSheet] flow.
+  ///
+  /// Post-selection field writes are NOT performed here.  The calling
+  /// orchestrator calls [handleRackPicked] after a non-null result.
+  @override
+  Future<RackPickerResult?> browseRacks() async => null;
+
+  /// Standard post-selection hook called by the DocType orchestrator after
+  /// [browseRacks] returns a non-null [RackPickerResult].
+  ///
+  /// Default behaviour:
+  ///   1. Writes [result.rackId] into [rackController].
+  ///   2. Calls [validateRack] to confirm live availability.
+  ///
+  /// Override in concrete controllers that need custom post-pick logic
+  /// (e.g. SE writing to source rack vs target rack field).  Call
+  /// `super.handleRackPicked(result)` if the default write + validate
+  /// behaviour is still required.
+  @override
+  Future<void> handleRackPicked(RackPickerResult result) async {
+    rackController.text = result.rackId;
+    await validateRack(result.rackId);
+  }
+
   // ── submitWithFeedback ──────────────────────────────────────────────────
   Future<bool> submitWithFeedback() async {
     saveButtonState.value = SaveButtonState.loading;
@@ -321,6 +402,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   /// Full rack reset — clears the text field, zeros the balance, and
   /// resets all validity state.  Called when the user explicitly clears
   /// the rack field.
+  @override
   void resetRack() {
     rackController.clear();
     isRackValid.value      = false;
@@ -531,6 +613,7 @@ abstract class ItemSheetControllerBase extends GetxController {
   ///   • [AutoFillRackMixin.onAutoFillRackSelected] default can call it without
   ///     a concrete-type cast
   ///   • Concrete overrides can call `super.validateRack(trimmed)`
+  @override
   Future<void> validateRack(String rack) async {
     final trimmed = rack.trim();
     if (trimmed.isEmpty) { resetRack(); return; }
