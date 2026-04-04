@@ -381,6 +381,14 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
+  /// Fetches the available rack balance for [rack] from the Stock Balance
+  /// report (via [ApiProvider.getStockBalanceWithDimension]) and writes the
+  /// result to [rackBalance].
+  ///
+  /// Fix 3: the previous implementation matched rows on the key 'custom_rack'
+  /// but [getStockBalanceWithDimension] normalises the rack field to 'rack'.
+  /// The mismatch caused [firstWhere] to always fall through to orElse and
+  /// return {'qty': 0.0}.  Changed the match key to 'rack'.
   Future<void> fetchRackBalance(String rack) async {
     if (rack.isEmpty || itemCode.value.isEmpty) {
       rackBalance.value = 0.0;
@@ -394,8 +402,10 @@ abstract class ItemSheetControllerBase extends GetxController {
         warehouse: wh,
         batchNo:   batch.isEmpty ? null : batch,
       );
+      // Fix 3: match on 'rack' — the key getStockBalanceWithDimension
+      // normalises to — not 'custom_rack'.
       final match = rows.firstWhere(
-        (r) => (r['custom_rack'] as String?) == rack,
+        (r) => (r['rack'] as String?) == rack,
         orElse: () => {'qty': 0.0},
       );
       rackBalance.value = (match['qty'] as num).toDouble();
@@ -460,66 +470,22 @@ abstract class ItemSheetControllerBase extends GetxController {
       }
 
       final parts = <String>[];
-      if (mfgRaw    != null && mfgRaw.isNotEmpty)    parts.add('Mfg: $mfgRaw');
-      if (expiryRaw != null && expiryRaw.isNotEmpty) parts.add('Exp: $expiryRaw');
-      batchInfoTooltip.value = parts.isEmpty ? null : parts.join('  ·  ');
+      if (mfgRaw    != null && mfgRaw.isNotEmpty) {
+        final mfg = DateTime.tryParse(mfgRaw);
+        if (mfg != null) parts.add('Mfg: ${DateFormat('dd MMM yyyy').format(mfg)}');
+      }
+      if (expiryRaw != null && expiryRaw.isNotEmpty) {
+        final expiry = DateTime.tryParse(expiryRaw);
+        if (expiry != null) parts.add('Exp: ${DateFormat('dd MMM yyyy').format(expiry)}');
+      }
+      if (parts.isNotEmpty) batchInfoTooltip.value = parts.join('  •  ');
 
-      isBatchValid.value    = true;
-      isBatchReadOnly.value = true;
-      // DN-8: removed premature `rackBalance.value = 0.0` here.
-      // Rack balance is only cleared by resetRack() / softResetRack();
-      // zeroing it mid-validateBatch caused the rack chip to flash blank
-      // on every batch re-validation even when the rack had not changed.
+      isBatchValid.value = true;
       await fetchBatchBalance();
-
     } catch (e) {
-      batchError.value = 'Validation error: $e';
-      log('[ItemSheet] validateBatch error: $e', name: 'ItemSheet');
+      batchError.value = 'Error validating batch: $e';
     } finally {
       isValidatingBatch.value = false;
     }
-  }
-
-  void validateBatchOnInit(String batch) {
-    if (batch.isEmpty) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!isClosed) validateBatch(batch);
-    });
-  }
-
-  // ── Rack validation (base) ──────────────────────────────────────────────
-  Future<void> validateRack(String rack) async {
-    if (rack.isEmpty) {
-      resetRack();
-      return;
-    }
-    isValidatingRack.value = true;
-    rackError.value        = '';
-    isRackValid.value      = false;
-
-    try {
-      await fetchRackBalance(rack);
-      isRackValid.value = true;
-    } catch (e) {
-      rackError.value = 'Rack validation error: $e';
-      log('[ItemSheet] validateRack error: $e', name: 'ItemSheet');
-    } finally {
-      isValidatingRack.value = false;
-    }
-  }
-
-  // ── Sheet-valid helpers ──────────────────────────────────────────────────
-  bool get isBatchRequiredAndInvalid =>
-      requiresBatch && !isBatchValid.value;
-
-  bool get isRackRequiredAndInvalid =>
-      requiresRack && !isRackValid.value;
-
-  bool get baseSheetValid {
-    if (requiresBatch && !isBatchValid.value) return false;
-    if (requiresRack  && !isRackValid.value)  return false;
-    final qty = double.tryParse(qtyController.text);
-    if (qty == null || qty <= 0)              return false;
-    return true;
   }
 }

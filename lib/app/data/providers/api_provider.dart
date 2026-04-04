@@ -340,6 +340,11 @@ class ApiProvider {
   ///
   /// [batchNo] is optional — omit to fetch all in-stock batches for the item
   /// (used by BatchPickerSheet pre-fetch / fetchBatchWiseHistory).
+  ///
+  /// Both Map rows (key-based) and List rows (positional) are normalised to
+  /// a consistent shape: {'batch_no': String, 'qty': double, ...} so that
+  /// [ItemSheetControllerBase.fetchBatchBalance] can always read r['qty']
+  /// regardless of the ERPNext response format.
   Future<List<Map<String, dynamic>>> getBatchWiseBalance({
     required String itemCode,
     String? batchNo,
@@ -390,10 +395,18 @@ class ApiProvider {
       final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
 
       if (firstRow is Map) {
-        // Key-based rows — return as-is
+        // Fix 1: Map rows from Batch-Wise Balance History report carry the
+        // balance under 'balance_qty', not 'qty'.  Normalise to 'qty' so
+        // fetchBatchBalance() (which reads r['qty']) gets the correct value.
         return rawRows
             .whereType<Map>()
-            .map((r) => Map<String, dynamic>.from(r))
+            .map((r) {
+              final m = Map<String, dynamic>.from(r);
+              m['qty'] ??= _toDouble(
+                m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
+              );
+              return m;
+            })
             .toList();
       }
 
@@ -450,8 +463,12 @@ class ApiProvider {
   ///
   /// Always sends `show_variant_attributes=1` and
   /// `show_dimension_wise_stock=1` so the Stock Balance report expands
-  /// rows by rack dimension.  The trailing Total row (a List, not a Map)
-  /// is discarded before returning.
+  /// rows by rack dimension.
+  ///
+  /// Both Map rows (key-based) and List rows (positional) are handled.
+  /// Every returned row is normalised to {'rack': String, 'qty': double}
+  /// so callers can always read r['rack'] and r['qty'] regardless of the
+  /// ERPNext response format.
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
     required String itemCode,
     String? warehouse,
@@ -500,15 +517,59 @@ class ApiProvider {
       final rawRows = message['result'] as List<dynamic>?;
       if (rawRows == null || rawRows.isEmpty) return [];
 
-      // Discard the trailing Total row — it is always a List, never a Map.
-      // Map rows are the real per-rack data rows.
-      final dataRows = rawRows.whereType<Map>().toList();
-      if (dataRows.isEmpty) return [];
+      final firstDataRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
 
-      return dataRows
+      // ── Fix 2a: Map rows (key-based) ──────────────────────────────────────
+      // Accept both 'rack' and 'custom_rack' key spellings for resilience.
+      // Balance field is 'bal_qty' from Stock Balance report; fall back to
+      // 'qty' / 'balance_qty' for any variant report configurations.
+      if (firstDataRow is Map) {
+        return rawRows
+            .whereType<Map>()
+            .map((r) {
+              final rack = (r['rack'] ?? r['custom_rack'] ?? '').toString().trim();
+              final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
+              return <String, dynamic>{'rack': rack, 'qty': qty};
+            })
+            .where((r) => (r['rack'] as String).isNotEmpty)
+            .toList();
+      }
+
+      // ── Fix 2b: List rows (positional) ────────────────────────────────────
+      // The previous implementation discarded all List rows via
+      // whereType<Map>() with no fallback, silently returning [] when
+      // ERPNext sends positional arrays.  Resolve column indices and map
+      // to the same normalised shape as the Map branch above.
+      final rawColumns = message['columns'] as List<dynamic>?;
+      if (rawColumns == null) return [];
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      final cols    = rawColumns.map(fn).toList();
+      final rackIdx = cols.indexWhere((c) => c == 'rack' || c == 'custom_rack');
+
+      // Prefer exact 'bal_qty' column; fall back to any column containing
+      // 'balance' or the generic 'qty' column.
+      int balIdx = cols.indexWhere((c) => c == 'bal_qty');
+      if (balIdx == -1) {
+        balIdx = cols.indexWhere((c) => c.contains('balance') || c == 'qty');
+      }
+
+      if (rackIdx == -1 || balIdx == -1) return [];
+
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.length > rackIdx && r.length > balIdx)
           .map((r) {
-            final rack = (r['rack'] ?? '').toString().trim();
-            final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
+            final rack = r[rackIdx]?.toString().trim() ?? '';
+            final qty  = _toDouble(r[balIdx]);
             return <String, dynamic>{'rack': rack, 'qty': qty};
           })
           .where((r) => (r['rack'] as String).isNotEmpty)
