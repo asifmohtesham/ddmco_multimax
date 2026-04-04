@@ -58,6 +58,10 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// DN-9 : forceShow: validating || isValid — chip persists after validation
 ///        completes even when batchBalance is momentarily 0.0 (race between
 ///        async balance fetch and first post-validation rebuild).
+/// fix(batch-field): isDense: true added to both _SimpleField and _EditModeField
+///        InputDecorations to collapse the ~20px invisible helper/error reserved
+///        space that caused the buildInputGroup tinted Container to overflow
+///        below the visible field border.
 class SharedBatchField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -118,7 +122,7 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
-// ── Picker suffix icon button (shared helper) ────────────────────────────────────
+// ── Picker suffix icon button (shared helper) ────────────────────────────────────────────
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       icon:      Icon(Icons.shelves, color: color, size: 20),
       onPressed: onTap,
@@ -126,7 +130,7 @@ Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       padding:   EdgeInsets.zero,
     );
 
-// ── Browse-batch button (shared by both modes, below the field) ────────────
+// ── Browse-batch button (shared by both modes, below the field) ──────────
 class _BrowseBatchButton extends StatelessWidget {
   final SharedBatchField w;
   const _BrowseBatchButton(this.w);
@@ -179,7 +183,7 @@ class _BrowseBatchButton extends StatelessWidget {
   }
 }
 
-// ── Simple (borderless) mode ─────────────────────────────────────────────────
+// ── Simple (borderless) mode ─────────────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
   const _SimpleField(this.w);
@@ -239,10 +243,8 @@ class _SimpleField extends StatelessWidget {
                       color: w.accentColor, size: 20),
                 ),
               ),
-            // Idle state: show picker when batch not yet validated
             if (!validating && !isValid && w.onPickerTap != null)
               _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
-            // fix(SE-BATCH-ICON): also show picker in valid state, parity with _EditModeField
             if (!validating && isValid && w.onPickerTap != null)
               _pickerSuffixBtn(
                 isWarning ? Colors.orange : w.accentColor,
@@ -279,6 +281,11 @@ class _SimpleField extends StatelessWidget {
                 border:      InputBorder.none,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                // fix(batch-field): isDense collapses the ~20px invisible
+                // helper/error reserved slot so the buildInputGroup tinted
+                // Container ends flush with the visible field boundary.
+                // helperText / errorText still render when non-null.
+                isDense:       true,
                 errorText:     isHardError ? errorMsg : null,
                 errorMaxLines: 2,
                 helperText:    isWarning ? errorMsg : null,
@@ -295,8 +302,6 @@ class _SimpleField extends StatelessWidget {
             ),
           ),
           _BrowseBatchButton(w),
-          // DN-9: forceShow: validating || isValid — chip stays visible after
-          // validation completes even when batchBalance is momentarily 0.0.
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -377,6 +382,12 @@ class _EditModeField extends StatelessWidget {
                 ),
                 filled:    true,
                 fillColor: isValid ? w._validFill : Colors.white,
+                // fix(batch-field): isDense collapses the ~20px invisible
+                // helper/error reserved slot so the buildInputGroup tinted
+                // Container ends flush with the visible field boundary.
+                // helperText for validation messages still renders when
+                // errorMsg is non-null — isDense only removes the empty slot.
+                isDense:   true,
                 suffixIcon: _suffixIcon(c, isValid, validating, isWarning),
               ),
               onChanged:        (_) => c.validateSheet(),
@@ -386,8 +397,6 @@ class _EditModeField extends StatelessWidget {
             ),
           ),
           _BrowseBatchButton(w),
-          // DN-9: forceShow: validating || isValid — chip stays visible after
-          // validation completes even when batchBalance is momentarily 0.0.
           BalanceChip(
             balance:   chipBalance,
             isLoading: validating,
@@ -417,13 +426,7 @@ class _EditModeField extends StatelessWidget {
       );
     }
 
-    // fix(BATCH-ICON): SizedBox with explicit width prevents tight-constraints
-    // collapse of the inner Row (Flutter's suffixIcon slot forces tight
-    // BoxConstraints, making a bare mainAxisSize.min Row collapse to 0 width).
-    // Width is computed dynamically: 48px per visible action slot.
-
     if (isValid) {
-      // Slots: [tooltip?] [picker?] [edit]
       final hasPicker  = w.onPickerTap != null;
       final hasTooltip = c.batchInfoTooltip.value != null;
       final width = 48.0
@@ -450,7 +453,6 @@ class _EditModeField extends StatelessWidget {
                   ),
                 ),
               ),
-            // fix(BATCH-ICON-VALID): picker also shown in valid state.
             if (hasPicker)
               _pickerSuffixBtn(
                 isWarning ? Colors.orange : w.accentColor,
@@ -468,7 +470,6 @@ class _EditModeField extends StatelessWidget {
       );
     }
 
-    // Idle state: [picker?] [validate arrow]
     final hasPicker = w.onPickerTap != null;
     return SizedBox(
       width: hasPicker ? 96.0 : 48.0,
