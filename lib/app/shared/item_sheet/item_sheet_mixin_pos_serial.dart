@@ -30,14 +30,28 @@ mixin PosSerialMixin on ItemSheetControllerBase {
   /// Concrete class overrides this to delegate to the parent document
   /// controller (e.g. `_parent.posQtyCapForSerial(selectedSerial.value ?? '')`).
   /// Returns 0 when no serial is selected or there is no POS Upload loaded.
+  /// Returns double.infinity when a serial is selected but the POS Upload
+  /// does not impose a finite cap (treated as "no cap" — chip hidden).
   double get posItemQty => 0.0;
+
+  /// true when posItemQty is a real finite number greater than zero.
+  bool get isCapFinite {
+    final cap = posItemQty;
+    return cap > 0 && cap != double.infinity;
+  }
 
   /// Human-readable ratio shown below the Invoice Serial No dropdown:
   ///   "$liveRemaining / $posItemQty"
   ///
   /// Returns null (chip hidden) when:
   ///   - no serial is selected, OR
-  ///   - posItemQty is 0 (no POS Upload / no cap configured).
+  ///   - posItemQty is 0 or less (no POS Upload / no cap configured), OR
+  ///   - posItemQty is double.infinity (POS Upload loaded but no finite cap
+  ///     for this serial — parent returns infinity as the "uncapped" sentinel).
+  ///
+  /// DN-5: added the infinity guard.  Previously the cap check was only
+  /// `cap <= 0`, so a serial with no finite cap would render the chip as
+  /// "0.0 / Infinity" instead of hiding it.
   ///
   /// This replaces the duck-typed `(controller as dynamic).posSerialCapText`
   /// pattern that was used in SharedSerialField, giving compile-time
@@ -46,7 +60,7 @@ mixin PosSerialMixin on ItemSheetControllerBase {
     final serial = selectedSerial.value;
     if (serial == null || serial.isEmpty) return null;
     final cap = posItemQty;
-    if (cap <= 0) return null;
+    if (cap <= 0 || cap == double.infinity) return null;   // DN-5: infinity guard
     final remaining = liveRemaining.value;
     final fmt = _fmtQty;
     return '${fmt(remaining)} / ${fmt(cap)}';
@@ -70,7 +84,11 @@ mixin PosSerialMixin on ItemSheetControllerBase {
   // ── Internal helper ──────────────────────────────────────────────────────
 
   /// Formats a qty value: drops trailing ".0" for whole numbers.
+  ///
+  /// DN-5: short-circuits on infinity so _fmtQty never calls toInt() or
+  /// toStringAsFixed() on an infinite value (which throws in Dart).
   String Function(double) get _fmtQty => (double v) {
+        if (v == double.infinity || v == double.negativeInfinity) return '\u221e';
         if (v == v.truncateToDouble()) return v.toInt().toString();
         return v.toStringAsFixed(2);
       };
