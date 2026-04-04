@@ -44,6 +44,10 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 /// DN-8: pass forceShow: validating to all BalanceChip calls so the chip
 ///   stays visible (showing spinner) during the async fetch instead of
 ///   disappearing and reappearing when balance is temporarily 0.
+/// DN-9: forceShow: validating || isValid — chip persists after validation
+///   completes even when rackBalance is momentarily 0.0 (rackStockMapRx
+///   populated asynchronously by preloadRackStockMap; chip must not
+///   collapse between validation-complete and map-populated rebuilds).
 class SharedRackField extends StatelessWidget {
   final ItemSheetControllerBase c;
   final Color  accentColor;
@@ -162,14 +166,14 @@ class _SimpleRack extends StatelessWidget {
               ),
             ),
           ),
-          // DN-8: forceShow: validating keeps the chip visible during the
-          // async fetch so it never flashes blank when balance is 0 mid-load.
+          // DN-9: forceShow: validating || isValid — chip stays visible after
+          // validation completes even when rackBalance is momentarily 0.0.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
             color:     w.accentColor,
             prefix:    'Rack Balance:',
-            forceShow: validating,
+            forceShow: validating || isValid,
           ),
         ],
       );
@@ -234,14 +238,14 @@ class _EditModeRack extends StatelessWidget {
               onPickerTap:    w.onPickerTap,
             ),
           ),
-          // DN-8: forceShow: validating keeps the chip visible during the
-          // async fetch so it never flashes blank when balance is 0 mid-load.
+          // DN-9: forceShow: validating || isValid — chip stays visible after
+          // validation completes even when rackBalance is momentarily 0.0.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
             color:     w.accentColor,
             prefix:    'Rack Balance:',
-            forceShow: validating,
+            forceShow: validating || isValid,
           ),
         ],
       );
