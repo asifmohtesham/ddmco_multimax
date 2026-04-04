@@ -331,75 +331,74 @@ class DeliveryNoteFormController extends GetxController
 
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
-      // C1: SafeArea(top: true) pushes the sheet content below the status bar
-      // and notification panel.  Get.bottomSheet does not accept useSafeArea;
-      // wrapping the child is the GetX-compatible equivalent.
-      SafeArea(
-        top:    true,
-        bottom: false,
-        child: UniversalItemFormSheet(
-          controller:       child,
-          scrollController: child.sheetScrollController,
-          customFields: [
-            SharedSerialField(controller: child),
-            // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
-            // reads child.batchBalance (RxDouble written by validateBatch /
-            // fetchBatchBalance) instead of the base maxQty getter which
-            // always returns 0.0 for DeliveryNoteItemFormController.
-            SharedBatchField(
-              c:               child,
-              accentColor:     Colors.blueGrey,
-              editMode:        true,
-              onPickerTap:     child.openBatchPicker,
-              balanceOverride: () => child.batchBalance.value,
-            ),
-            // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
-            // reads child.rackBalance (RxDouble written by validateRack /
-            // fetchRackBalance) instead of the base maxQty getter.
-            SharedRackField(
-              c:               child,
-              accentColor:     Colors.blueGrey,
-              editMode:        true,
-              balanceOverride: () => child.rackBalance.value,
-              onPickerTap: () async {
-                HapticFeedback.lightImpact();
+      // Status-bar clearance is handled by GlobalItemFormSheet.build() via
+      // sheetMargin = EdgeInsets.only(top: viewPadding.top + 12).
+      // A SafeArea wrapper must NOT be used here — it claims the full
+      // viewport height as its constraint box, causing the sheet to expand
+      // to full-screen regardless of content volume and leaving dead space
+      // below the Save button.
+      UniversalItemFormSheet(
+        controller:       child,
+        scrollController: child.sheetScrollController,
+        customFields: [
+          SharedSerialField(controller: child),
+          // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
+          // reads child.batchBalance (RxDouble written by validateBatch /
+          // fetchBatchBalance) instead of the base maxQty getter which
+          // always returns 0.0 for DeliveryNoteItemFormController.
+          SharedBatchField(
+            c:               child,
+            accentColor:     Colors.blueGrey,
+            editMode:        true,
+            onPickerTap:     child.openBatchPicker,
+            balanceOverride: () => child.batchBalance.value,
+          ),
+          // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
+          // reads child.rackBalance (RxDouble written by validateRack /
+          // fetchRackBalance) instead of the base maxQty getter.
+          SharedRackField(
+            c:               child,
+            accentColor:     Colors.blueGrey,
+            editMode:        true,
+            balanceOverride: () => child.rackBalance.value,
+            onPickerTap: () async {
+              HapticFeedback.lightImpact();
 
-                final picker = Get.put(
-                  RackPickerController(),
-                  tag: rackPickerTag,
-                );
+              final picker = Get.put(
+                RackPickerController(),
+                tag: rackPickerTag,
+              );
 
-                picker.load(
-                  itemCode:     child.itemCode.value,
-                  batchNo:      child.batchController.text,
-                  warehouse:    child.resolvedWarehouse ?? '',
-                  requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
-                  currentRack:  child.rackController.text,
-                  fallbackMap:  Map<String, double>.from(child.rackStockMap),
-                );
+              picker.load(
+                itemCode:     child.itemCode.value,
+                batchNo:      child.batchController.text,
+                warehouse:    child.resolvedWarehouse ?? '',
+                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
+                currentRack:  child.rackController.text,
+                fallbackMap:  Map<String, double>.from(child.rackStockMap),
+              );
 
-                await Get.bottomSheet<void>(
-                  RackPickerSheet(
-                    pickerTag:  rackPickerTag,
-                    onSelected: (rackId) => child.applyRackScan(rackId),
-                  ),
-                  isScrollControlled: true,
-                );
+              await Get.bottomSheet<void>(
+                RackPickerSheet(
+                  pickerTag:  rackPickerTag,
+                  onSelected: (rackId) => child.applyRackScan(rackId),
+                ),
+                isScrollControlled: true,
+              );
 
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (Get.isRegistered<RackPickerController>(
-                      tag: rackPickerTag)) {
-                    Get.delete<RackPickerController>(tag: rackPickerTag);
-                  }
-                });
-              },
-            ),
-          ],
-          onSubmit: () async {
-            final ok = await child.submitWithFeedback();
-            if (ok) Get.back();
-          },
-        ),
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (Get.isRegistered<RackPickerController>(
+                    tag: rackPickerTag)) {
+                  Get.delete<RackPickerController>(tag: rackPickerTag);
+                }
+              });
+            },
+          ),
+        ],
+        onSubmit: () async {
+          final ok = await child.submitWithFeedback();
+          if (ok) Get.back();
+        },
       ),
       isScrollControlled: true,
       enableDrag:         false,
