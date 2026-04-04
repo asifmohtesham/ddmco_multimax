@@ -228,6 +228,11 @@ class GlobalItemFormSheet extends StatelessWidget {
           ),
         ),
         Container(
+          // fix(input-group): clip children to the BorderRadius boundary so
+          // that filled TextFormFields (filled:true + OutlineInputBorder) cannot
+          // paint their fillColor outside the rounded corners into the helper-
+          // text reserved slot below the visible border stroke.
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: bgColor ?? color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
