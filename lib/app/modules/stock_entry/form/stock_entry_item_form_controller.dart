@@ -50,11 +50,15 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///     SharedDualRackSection now depends on the narrow interface rather than
 ///     this concrete class.
 ///
-/// Commit 9:
+/// Commit 9 (build-2):
 ///   • Wires [RackFieldWithBrowseDelegate] picker flow: overrides
 ///     [canBrowseRacks], [browseRacks], and [handleRackPicked] with the
 ///     full SE-flavoured rack picker implementation so the shelves-icon
 ///     button in SharedRackField(editMode:true) becomes live for SE.
+///   • fix: RackPickerResult now requires `availableQty`; pass 0.0 in the
+///     onSelected callback — handleRackPicked calls validateRack() which
+///     overwrites rackBalance with the live authoritative value before it
+///     is ever read, so the 0.0 snapshot is never consumed.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -125,7 +129,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          result = RackPickerResult(rackId: rack);
+          // availableQty: 0.0 — the onSelected callback receives only the
+          // rack String, not the full RackPickerEntry qty.  handleRackPicked
+          // calls validateRack() immediately after, which writes the live
+          // authoritative balance into rackBalance.value before it is read.
+          result = RackPickerResult(rackId: rack, availableQty: 0.0);
         },
       ),
       isScrollControlled: true,

@@ -1,4 +1,5 @@
 // ignore_for_file: lines_longer_than_80_chars
+import 'package:flutter/foundation.dart';
 
 /// Immutable value type returned when the user selects a rack from the
 /// Browse Racks picker.
@@ -63,6 +64,11 @@ class RackPickerResult {
   ///
   /// This is a snapshot value.  The DocType must re-validate via its own
   /// [validateRack] call to obtain the authoritative live balance.
+  ///
+  /// When [browseRacks] builds the result from an [onSelected] callback
+  /// that only receives the rack String (not the full entry), pass 0.0
+  /// here — the DocType's post-pick validation will overwrite it with
+  /// the authoritative live balance before it is ever read.
   final double availableQty;
 
   /// Warehouse name associated with this rack row, when the report
