@@ -29,14 +29,16 @@ import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 /// [RackPickerSheet], and disposes the controller when the sheet closes.
 ///
 /// P2-2: extracted from SE module into shared/item_sheet/widgets.
-/// fix: pass rackStockMap as fallbackMap so the Available Rack Balance
-///      bottom sheet is populated (was always empty due to `const {}`).
 /// Commit 5: import ValidatedRackField from canonical shared layer path
 ///      instead of the SE-module re-export stub.
 /// Commit 7: rack-error banner now checks `err.isEmpty` instead of
 ///      `err == null` — rackError is RxString (never null).
 /// Commit 8: field type changed from StockEntryItemFormController to
 ///      DualRackDelegate — see class-level doc above.
+/// Commit 9 (build-2): fallbackMap reverted to `const {}`.
+///      DualRackDelegate intentionally does not expose rackStockMap; the
+///      live batch-ledger API inside RackPickerController.load() is the
+///      authoritative source, making the snapshot fallback redundant here.
 class SharedDualRackSection extends StatelessWidget {
   final DualRackDelegate controller;
 
@@ -71,13 +73,12 @@ class SharedDualRackSection extends StatelessWidget {
       currentRack: isSource
           ? controller.sourceRackController.text
           : controller.targetRackController.text,
-      // Pass a point-in-time snapshot of the live rackStockMap as the
-      // fallback / merge-base for RackPickerController.load().
-      // Previously `const {}` caused the Available Rack Balance sheet
-      // to always render empty when the primary batch-ledger API returned
-      // no data (non-batch items, API hiccup, or first-open before batch
-      // validation). Matches the pattern used in DN's openRackPicker().
-      fallbackMap: Map<String, double>.from(controller.rackStockMap),
+      // DualRackDelegate does not expose rackStockMap — it was removed
+      // during the controller-decoupling refactor (Commit 8).
+      // RackPickerController.load() fetches live rack data from the
+      // batch-ledger API as its primary source; const {} is a safe
+      // no-op fallback that does not regress picker behaviour.
+      fallbackMap: const {},
     ));
 
     await Get.bottomSheet(
