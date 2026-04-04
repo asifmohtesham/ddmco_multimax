@@ -88,9 +88,10 @@ class RackPickerEntry {
 ///
 /// ## Data source
 /// Uses [ApiProvider.getStockBalanceWithDimension] (Stock Balance report)
-/// which returns per-rack qty rows for a given item + warehouse + batch.
-/// Falls back to [fallbackMap] (pre-loaded rackStockMap from the item sheet)
-/// if the live fetch returns empty.
+/// with `show_variant_attributes=1` and `show_dimension_wise_stock=1`.
+/// The trailing Total row returned by Frappe is automatically discarded.
+/// Falls back to [fallbackMap] (pre-loaded rackStockMap from the item
+/// sheet) if the live fetch returns empty.
 ///
 /// ## Instantiation
 /// Created by the picker button in [ValidatedRackField] via `Get.put()`
@@ -130,8 +131,9 @@ class RackPickerController extends GetxController {
   /// The rack currently written into the rack field (may be empty).
   var selectedRack = ''.obs;
 
-  /// Non-null when the Stock Balance fetch failed and the picker fell back
-  /// to [fallbackMap]. Shown as a subtle info banner in the sheet.
+  /// Non-null when the Stock Balance fetch failed or returned empty and the
+  /// picker fell back to [fallbackMap]. Shown as a subtle info banner in
+  /// the sheet.
   var usedFallback = false.obs;
 
   /// Whether to restrict the visible list to racks whose warehouse matches
@@ -208,8 +210,9 @@ class RackPickerController extends GetxController {
 
     try {
       // ── 1. Primary: Stock Balance with Dimension (per-rack qty) ──────────
-      // Returns rows: [{custom_rack: 'KA-WH-DXB1-101A', qty: 12.0}, ...]
-      // Filtered by itemCode + warehouse + batchNo (if present).
+      // getStockBalanceWithDimension sends show_variant_attributes=1 and
+      // show_dimension_wise_stock=1, and discards the trailing Total row.
+      // Returns rows: [{'rack': 'KA-WH-DXB1-101A', 'qty': 12.0}, ...]
       final rows = await _api.getStockBalanceWithDimension(
         itemCode:  itemCode,
         warehouse: warehouse.isNotEmpty ? warehouse : null,
@@ -219,7 +222,7 @@ class RackPickerController extends GetxController {
       // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
       final liveMap = <String, double>{};
       for (final row in rows) {
-        final rack = (row['custom_rack'] ?? '').toString().trim();
+        final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
         final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
         liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
@@ -227,8 +230,7 @@ class RackPickerController extends GetxController {
 
       // ── 2. Merge / fallback ───────────────────────────────────────────────
       // If live fetch returned nothing, fall back to the pre-loaded
-      // rackStockMap (already fetched by preloadRackStockMap via
-      // getStockBalanceWithDimension, so data shape is identical).
+      // rackStockMap (already fetched by preloadRackStockMap).
       Map<String, double> stockMap;
       if (liveMap.isEmpty) {
         usedFallback.value = true;

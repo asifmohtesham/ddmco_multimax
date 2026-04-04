@@ -442,10 +442,16 @@ class ApiProvider {
   //   • DeliveryNoteItemFormController.preloadRackStockMap
   //   • StockEntryItemFormController.validateRack fallback
   //   • ItemSheetControllerBase.fetchRackBalance
+  //   • RackPickerController.load  (Browse Rack sheet)
   // ---------------------------------------------------------------------------
 
   /// Fetch per-rack stock balance rows for [itemCode] + [warehouse],
   /// optionally filtered by [batchNo].
+  ///
+  /// Always sends `show_variant_attributes=1` and
+  /// `show_dimension_wise_stock=1` so the Stock Balance report expands
+  /// rows by rack dimension.  The trailing Total row (a List, not a Map)
+  /// is discarded before returning.
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
     required String itemCode,
     String? warehouse,
@@ -458,10 +464,12 @@ class ApiProvider {
     final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final filters = <String, dynamic>{
-      'company'   : company,
-      'from_date' : today,
-      'to_date'   : today,
-      'item_code' : itemCode,
+      'company'                  : company,
+      'from_date'                : today,
+      'to_date'                  : today,
+      'item_code'                : itemCode,
+      'show_variant_attributes'  : 1,
+      'show_dimension_wise_stock': 1,
     };
     if (warehouse != null && warehouse.isNotEmpty) filters['warehouse'] = warehouse;
     if (batchNo   != null && batchNo.isNotEmpty)   filters['batch_no']  = batchNo;
@@ -492,46 +500,17 @@ class ApiProvider {
       final rawRows = message['result'] as List<dynamic>?;
       if (rawRows == null || rawRows.isEmpty) return [];
 
-      final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
+      // Discard the trailing Total row — it is always a List, never a Map.
+      // Map rows are the real per-rack data rows.
+      final dataRows = rawRows.whereType<Map>().toList();
+      if (dataRows.isEmpty) return [];
 
-      if (firstRow is Map) {
-        return rawRows
-            .whereType<Map>()
-            .map((r) {
-              final rack = (r['rack'] ?? r['rack'] ?? '').toString().trim();
-              final qty  = _toDouble(r['qty'] ?? r['balance_qty'] ?? r['bal_qty']);
-              return <String, dynamic>{'rack': rack, 'qty': qty};
-            })
-            .where((r) => (r['rack'] as String).isNotEmpty)
-            .toList();
-      }
-
-      // List rows — resolve column indices
-      final rawColumns = message['columns'] as List<dynamic>?;
-      if (rawColumns == null) return [];
-
-      String fn(dynamic col) {
-        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
-        final s = col.toString().toLowerCase();
-        final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0
-            ? s.substring(lastDot + 1).replaceAll('`', '')
-            : s;
-      }
-
-      final cols    = rawColumns.map(fn).toList();
-      final rackIdx = cols.indexWhere((c) => c.contains('rack'));
-      final qtyIdx  = cols.indexWhere((c) => c == 'qty' || c.contains('balance'));
-
-      if (rackIdx == -1 || qtyIdx == -1) return [];
-
-      return rawRows
-          .whereType<List>()
-          .where((r) => r.length > rackIdx && r.length > qtyIdx)
-          .map((r) => <String, dynamic>{
-                'rack': (r[rackIdx] ?? '').toString().trim(),
-                'qty'        : _toDouble(r[qtyIdx]),
-              })
+      return dataRows
+          .map((r) {
+            final rack = (r['rack'] ?? '').toString().trim();
+            final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
+            return <String, dynamic>{'rack': rack, 'qty': qty};
+          })
           .where((r) => (r['rack'] as String).isNotEmpty)
           .toList();
     } catch (_) {
