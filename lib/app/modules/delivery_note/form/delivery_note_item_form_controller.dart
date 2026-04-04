@@ -36,6 +36,12 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   Fix: after preloading, call `autoFillRackForQty(qty)` directly —
 ///   this is the public mixin entry-point that contains the core selection
 ///   logic, and it is always available on `this`.
+///
+/// Commit 1 fix:
+///   initForEdit() now seeds selectedSerial and preserves rackController
+///   text so the sheet opens with the item's existing serial and rack
+///   values pre-populated (Bugs 1 & 3 from the DN item-form discrepancy
+///   report).
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -220,13 +226,34 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     itemGroupRx.value      = item.itemGroup ?? '';
     currentVariantOf.value = variantOf;
 
-    batchController.text = item.batchNo ?? '';
-    rackController.text  = item.rack    ?? '';
-    qtyController.text   = item.qty.toString();
+    // Stash field values before the reset block clears controller state.
+    final existingRack   = item.rack    ?? '';
+    final existingBatch  = item.batchNo ?? '';
+    final existingQty    = item.qty.toString();
 
+    // Reset validation state without clearing the text controllers yet —
+    // we will re-apply the saved values immediately below.
     resetBatch();
     resetRack();
-    selectedSerial.value = null;
+
+    // Re-apply saved values so the sheet opens pre-populated.
+    batchController.text = existingBatch;
+    rackController.text  = existingRack;
+    qtyController.text   = existingQty;
+
+    // Bug 1 fix: seed selectedSerial from the item's persisted value so
+    // the Invoice Serial No dropdown shows the correct selection on open.
+    // Guard: only assign if the serial exists in availableSerialNos to
+    // avoid a DropdownButtonFormField assertion on an unlisted value.
+    final persistedSerial = item.customInvoiceSerialNumber;
+    if (persistedSerial != null &&
+        persistedSerial.isNotEmpty &&
+        availableSerialNos.contains(persistedSerial)) {
+      selectedSerial.value = persistedSerial;
+    } else {
+      selectedSerial.value = null;
+    }
+
     rackStockMapRx.clear();
     isSheetValid.value = false;
 
@@ -234,12 +261,15 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     addSheetListeners();
     snapshotState();
 
-    if ((item.batchNo ?? '').isNotEmpty) {
-      validateBatchOnInit(item.batchNo!);
+    if (existingBatch.isNotEmpty) {
+      validateBatchOnInit(existingBatch);
     }
-    if ((item.rack ?? '').isNotEmpty) {
+    // Bug 3 fix: the rack text is already in rackController at this point.
+    // Trigger validation in a post-frame callback so the sheet widget tree
+    // is fully built before the async validate call mutates Rx state.
+    if (existingRack.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!isClosed) validateRack(item.rack!);
+        if (!isClosed) validateRack(existingRack);
       });
     }
   }
