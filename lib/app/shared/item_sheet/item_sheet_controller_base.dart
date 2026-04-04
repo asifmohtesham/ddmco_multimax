@@ -91,12 +91,14 @@ class BatchResult {
 ///                      shared_rack_field.dart, AutoFillRackMixin, and
 ///                      DeliveryNoteItemFormController (super.validateRack()).
 ///                      Concrete controllers may override to add extra logic.
-///   RackFieldWithBrowseDelegate — (Commit 3) base class now implements this
-///                      interface additively.  Default implementations of
-///                      rackBalanceFor, canBrowseRacks, browseRacks, and
-///                      handleRackPicked are provided here so all concrete
-///                      controllers satisfy the interface with zero changes.
-///                      Concrete controllers override as needed per DocType.
+///   RackFieldWithBrowseDelegate — (Commit 3 of 4) base class implements this
+///                      interface additively.  Audit confirmed the clause
+///                      `implements RackFieldWithBrowseDelegate` was already
+///                      present along with all four required default overrides:
+///                      rackBalanceFor, canBrowseRacks, browseRacks,
+///                      handleRackPicked.  All concrete controllers (SE, DN,
+///                      PR) satisfy the interface transitively — zero changes
+///                      at call sites.  No runtime changes in this commit.
 ///   rackStockMap     — (Commit 1 of 4 — SharedRackField universal refactor)
 ///                      REMOVED.  The map-lookup pattern was the last
 ///                      concrete coupling preventing zero-hassle adoption by
@@ -224,12 +226,20 @@ abstract class ItemSheetControllerBase extends GetxController
   /// Delete the item currently being edited.
   void deleteCurrentItem();
 
-  // ── RackFieldWithBrowseDelegate defaults (Commit 3 / updated Commit 1-of-4)
+  // ── RackFieldWithBrowseDelegate defaults (Commit 3 of 4 — confirmed)
   //
   // These four methods satisfy the [RackFieldWithBrowseDelegate] interface
   // at the base-class level so every concrete controller automatically
   // complies without any changes.  Concrete controllers override only the
   // methods relevant to their DocType.
+  //
+  // Commit 3 audit confirmed:
+  //   • The `implements RackFieldWithBrowseDelegate` clause was already
+  //     present on the class declaration.
+  //   • All four default overrides were already implemented below.
+  //   • SharedRackField.c was already typed as RackFieldWithBrowseDelegate.
+  //   • Zero call-site changes were required — SE, DN, PR controllers
+  //     satisfy the interface transitively through this base class.
   //
   // Design notes:
   //   • rackBalanceFor   — returns rackBalance.value (the live RxDouble

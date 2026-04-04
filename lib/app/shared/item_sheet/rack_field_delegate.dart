@@ -59,14 +59,44 @@ import 'package:get/get.dart';
 /// should be rendered.  The widget checks `rackStockTooltip.value != null`
 /// before building the tooltip widget.
 ///
+/// ## Constructor type switch (Commit 3 of 4)
+///
+/// [SharedRackField.c] is typed against [RackFieldWithBrowseDelegate]
+/// (a super-interface of this class that adds the rack browser contract).
+/// The switch from `ItemSheetControllerBase c` to
+/// `RackFieldWithBrowseDelegate c` was confirmed complete in the Commit 3
+/// audit:
+///
+///   • `shared_rack_field.dart` declares `final RackFieldWithBrowseDelegate c`
+///     — no reference to [ItemSheetControllerBase] anywhere in the widget.
+///   • [ItemSheetControllerBase] declares
+///     `implements RackFieldWithBrowseDelegate` with four default overrides:
+///     [rackBalanceFor], [canBrowseRacks], [browseRacks], [handleRackPicked].
+///   • All existing call sites (SE, DN, PR) pass controllers that extend
+///     [ItemSheetControllerBase] → transitively satisfy the interface.
+///     Zero call-site changes required.
+///
+/// Any future DocType controller that implements [RackFieldWithBrowseDelegate]
+/// directly (without inheriting [ItemSheetControllerBase]) is now a
+/// first-class citizen of [SharedRackField] — zero extra ceremony.
+///
 /// ## Changelog
 ///
 /// Commit 2 of 4 — Standardize rackError to non-nullable RxString:
 ///   • Full codebase audit confirmed zero nullable rackError usages.
 ///   • Contract sealed: RxString + '' = no-error is now the enforced rule.
 ///   • No runtime changes — this commit is documentation + contract lock.
+///
+/// Commit 3 of 4 — Switch SharedRackField constructor type:
+///   • Audit confirmed SharedRackField.c already typed as
+///     RackFieldWithBrowseDelegate — not ItemSheetControllerBase.
+///   • ItemSheetControllerBase already implements RackFieldWithBrowseDelegate
+///     with all four required overrides (rackBalanceFor, canBrowseRacks,
+///     browseRacks, handleRackPicked) — confirmed in base class changelog.
+///   • All SE / DN / PR call sites satisfy the interface transitively.
+///   • No runtime changes — implementation was already in its target state.
 abstract interface class RackFieldDelegate {
-  // ── Reactive state ──────────────────────────────────────────────────
+  // ── Reactive state ────────────────────────────────────────────────────────
 
   /// Whether the current rack value has been confirmed valid by the server.
   RxBool get isRackValid;
@@ -85,7 +115,7 @@ abstract interface class RackFieldDelegate {
   /// `null` means no tooltip should be rendered.
   RxnString get rackStockTooltip;
 
-  // ── Text / focus controllers ────────────────────────────────────────
+  // ── Text / focus controllers ──────────────────────────────────────────────
 
   /// Text controller backing the rack input field.
   /// Lifecycle (create / dispose) is owned by the implementing controller.
@@ -95,7 +125,7 @@ abstract interface class RackFieldDelegate {
   /// Lifecycle is owned by the implementing controller.
   FocusNode get rackFocusNode;
 
-  // ── Balance ───────────────────────────────────────────────────────────
+  // ── Balance ───────────────────────────────────────────────────────────────
 
   /// Returns the available balance for the given [rack] identifier.
   ///
@@ -113,7 +143,7 @@ abstract interface class RackFieldDelegate {
   /// instead of going through the delegate (e.g. legacy DN sites).
   double rackBalanceFor(String rack);
 
-  // ── Actions ────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   /// Clears the rack text field, resets all rack validity state, and zeros
   /// the rack balance.  Called when the user taps the clear / edit button.
