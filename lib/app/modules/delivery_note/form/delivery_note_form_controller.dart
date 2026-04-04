@@ -331,80 +331,74 @@ class DeliveryNoteFormController extends GetxController
 
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
-      UniversalItemFormSheet(
-        controller:       child,
-        scrollController: child.sheetScrollController,
-        customFields: [
-          SharedSerialField(controller: child),
-          SharedBatchField(
-            c:           child,
-            accentColor: Colors.blueGrey,
-            editMode:    true,
-            onPickerTap: child.openBatchPicker,
-          ),
-          SharedRackField(
-            c:           child,
-            accentColor: Colors.blueGrey,
-            editMode:    true,
-            onPickerTap: () async {
-              HapticFeedback.lightImpact();
+      // C1: SafeArea(top: true) pushes the sheet content below the status bar
+      // and notification panel.  Get.bottomSheet does not accept useSafeArea;
+      // wrapping the child is the GetX-compatible equivalent.
+      SafeArea(
+        top:    true,
+        bottom: false,
+        child: UniversalItemFormSheet(
+          controller:       child,
+          scrollController: child.sheetScrollController,
+          customFields: [
+            SharedSerialField(controller: child),
+            SharedBatchField(
+              c:           child,
+              accentColor: Colors.blueGrey,
+              editMode:    true,
+              onPickerTap: child.openBatchPicker,
+            ),
+            SharedRackField(
+              c:           child,
+              accentColor: Colors.blueGrey,
+              editMode:    true,
+              onPickerTap: () async {
+                HapticFeedback.lightImpact();
 
-              final picker = Get.put(
-                RackPickerController(),
-                tag: rackPickerTag,
-              );
+                final picker = Get.put(
+                  RackPickerController(),
+                  tag: rackPickerTag,
+                );
 
-              picker.load(
-                itemCode:     child.itemCode.value,
-                batchNo:      child.batchController.text,
-                warehouse:    child.resolvedWarehouse ?? '',
-                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
-                currentRack:  child.rackController.text,
-                fallbackMap:  Map<String, double>.from(child.rackStockMap),
-              );
+                picker.load(
+                  itemCode:     child.itemCode.value,
+                  batchNo:      child.batchController.text,
+                  warehouse:    child.resolvedWarehouse ?? '',
+                  requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
+                  currentRack:  child.rackController.text,
+                  fallbackMap:  Map<String, double>.from(child.rackStockMap),
+                );
 
-              await Get.bottomSheet<void>(
-                RackPickerSheet(
-                  pickerTag:  rackPickerTag,
-                  onSelected: (rackId) => child.applyRackScan(rackId),
-                ),
-                isScrollControlled: true,
-              );
+                await Get.bottomSheet<void>(
+                  RackPickerSheet(
+                    pickerTag:  rackPickerTag,
+                    onSelected: (rackId) => child.applyRackScan(rackId),
+                  ),
+                  isScrollControlled: true,
+                );
 
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (Get.isRegistered<RackPickerController>(
-                    tag: rackPickerTag)) {
-                  Get.delete<RackPickerController>(tag: rackPickerTag);
-                }
-              });
-            },
-          ),
-        ],
-        onSubmit: () async {
-          final ok = await child.submitWithFeedback();
-          if (ok) Get.back();
-        },
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (Get.isRegistered<RackPickerController>(
+                      tag: rackPickerTag)) {
+                    Get.delete<RackPickerController>(tag: rackPickerTag);
+                  }
+                });
+              },
+            ),
+          ],
+          onSubmit: () async {
+            final ok = await child.submitWithFeedback();
+            if (ok) Get.back();
+          },
+        ),
       ),
       isScrollControlled: true,
       enableDrag:         false,
       isDismissible:      false,
-      // C1: useSafeArea prevents the sheet from underlapping the status bar /
-      //     notification panel when isScrollControlled + enableDrag:false are
-      //     combined.  Flutter's modal bottom sheet does not enforce the top
-      //     safe-area inset in that combination without this flag.
-      useSafeArea:        true,
       // C2: transparent background so GlobalItemFormSheet's own BoxDecoration
-      //     (color: colorScheme.surface) is the sole visible surface layer.
-      //     Without this, the modal scaffold renders a second opaque surface
-      //     behind the sheet, causing visual doubling and contrast artefacts.
+      // is the sole visible surface — prevents a double opaque layer behind
+      // the sheet's rounded corners.
       backgroundColor:    Colors.transparent,
-      // C3: zero shape neutralises the modal scaffold's default
-      //     RoundedRectangleBorder, which otherwise fights with
-      //     GlobalItemFormSheet's borderRadius: …(top: 28).  The sheet's
-      //     BoxDecoration is the sole shape authority.
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-      ),
     );
     isItemSheetOpen.value = false;
 
