@@ -324,9 +324,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       );
       final map = <String, double>{};
       for (final raw in rows) {
-        final rack = (raw['custom_rack'] ?? '').toString().trim();
+        final rack = (raw['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
-        final qty = (raw['qty'] as num?)?.toDouble() ?? 0.0;
+        final qty = (raw['bal_qty'] as num?)?.toDouble() ?? 0.0;
         map[rack] = (map[rack] ?? 0) + qty;
       }
       rackStockMapRx.assignAll(map);
