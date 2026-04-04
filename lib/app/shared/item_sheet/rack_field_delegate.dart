@@ -31,19 +31,40 @@ import 'package:get/get.dart';
 /// All state fields are `Rx*` so that `Obx` widgets inside
 /// [SharedRackField] rebuild correctly when the controller mutates them.
 ///
-/// ## Error semantics
+/// ## Error semantics — ENFORCED CONTRACT (Commit 2 of 4)
 ///
-/// [rackError] is [RxString] where an **empty string (`''`) means no
-/// error** is present.  Callers must check `rackError.value.isNotEmpty`
-/// rather than a null check.  This matches the convention already
-/// established in [ItemSheetControllerBase] where
-/// `rackError = RxString('')`.
+/// [rackError] is **[RxString]** (non-nullable).  An **empty string (`''`)
+/// means no error is present**.  Callers MUST check
+/// `rackError.value.isNotEmpty` — never `!= null`.
+///
+/// Rationale (Commit 2 audit):
+///   • [ItemSheetControllerBase] declares `rackError = RxString('')`.
+///   • [StockEntryItemFormController], [DeliveryNoteItemFormController],
+///     and [PurchaseReceiptItemFormController] all write
+///     `rackError.value = ''` on success and a non-empty string on
+///     failure — no nullable assignment anywhere.
+///   • [SharedRackField] (_SimpleRack and _EditModeRack) checks
+///     `c.rackError.value.isNotEmpty` in both modes — no null checks
+///     remain in the widget layer.
+///
+/// This is now the **sealed contract**: implementors of this interface
+/// MUST declare `rackError` as `RxString` and MUST use `''` to signal
+/// the no-error state.  Using `RxnString` or assigning `null` is a
+/// contract violation and will cause a runtime type error when the widget
+/// calls `.isNotEmpty` on the value.
 ///
 /// ## rackStockTooltip semantics
 ///
 /// [rackStockTooltip] is [RxnString] where **`null` means no tooltip**
 /// should be rendered.  The widget checks `rackStockTooltip.value != null`
 /// before building the tooltip widget.
+///
+/// ## Changelog
+///
+/// Commit 2 of 4 — Standardize rackError to non-nullable RxString:
+///   • Full codebase audit confirmed zero nullable rackError usages.
+///   • Contract sealed: RxString + '' = no-error is now the enforced rule.
+///   • No runtime changes — this commit is documentation + contract lock.
 abstract interface class RackFieldDelegate {
   // ── Reactive state ──────────────────────────────────────────────────
 
@@ -56,7 +77,8 @@ abstract interface class RackFieldDelegate {
   /// Validation error text for the rack field.
   ///
   /// **Empty string (`''`) means no error.** Check `rackError.value.isNotEmpty`.
-  /// Never null.
+  /// Never null.  Declaring this as [RxnString] or assigning `null` is a
+  /// contract violation — see class-level doc for the full rationale.
   RxString get rackError;
 
   /// Tooltip text shown in the rack field suffix (e.g. `'12 units in stock'`).
