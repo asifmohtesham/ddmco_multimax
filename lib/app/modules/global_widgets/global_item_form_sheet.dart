@@ -2,10 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
-import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 // ---------------------------------------------------------------------------
 // _AnimatedSaveButton
@@ -133,6 +134,21 @@ class _AnimatedSaveButton extends StatelessWidget {
   }
 }
 
+/// A fully self-contained item-entry bottom sheet used by every DocType.
+///
+/// ## Qty field
+///
+/// The qty section is driven by [qtyDelegate] (a [QtyFieldDelegate]) and
+/// rendered via [SharedQtyField].  This replaces the former
+/// `QuantityInputWidget` and its five raw sibling params
+/// (`qtyController`, `onIncrement`, `onDecrement`, `qtyInfoText`,
+/// `qtyInfoTooltip`, `isQtyReadOnly`).  All reactive behaviour —
+/// read-only locking, Max-Qty chip, ± stepper, inline error text, and
+/// blur clamping — is handled inside [SharedQtyField] by reading the
+/// delegate's Rx fields directly.
+///
+/// Pass [controller.accentColor] as [qtyAccentColor] so the field
+/// renders with the DocType's brand colour.
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
@@ -142,17 +158,16 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String? itemSubtext;
   final List<Widget> customFields;
 
-  final TextEditingController qtyController;
-  final VoidCallback onIncrement;
-  final VoidCallback onDecrement;
-  final String? qtyInfoText;
+  // ── Qty delegate ──────────────────────────────────────────────────────────
+  /// Drives [SharedQtyField].  Any controller implementing
+  /// [QtyFieldDelegate] (or [QtyFieldWithPlusMinusDelegate]) is accepted.
+  final QtyFieldDelegate qtyDelegate;
 
-  /// Optional breakdown string shown in a dialog when the Max badge is tapped.
-  /// When null the badge is non-interactive (no info icon rendered).
-  final String? qtyInfoTooltip;
+  /// Accent colour forwarded to [SharedQtyField] so the field matches the
+  /// DocType's brand colour (e.g. teal for SE, blue for DN).
+  final Color qtyAccentColor;
 
-  final bool isQtyReadOnly;
-
+  // ── Save / delete ──────────────────────────────────────────────────────────
   final Function onSubmit;
   final VoidCallback? onDelete;
 
@@ -161,11 +176,13 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isLoading;
   final Rx<SaveButtonState> saveButtonState;
 
+  // ── Metadata ───────────────────────────────────────────────────────────────
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
+  // ── Scan footer ────────────────────────────────────────────────────────────
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
@@ -181,12 +198,8 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.itemName,
     this.itemSubtext,
     this.customFields = const [],
-    required this.qtyController,
-    required this.onIncrement,
-    required this.onDecrement,
-    this.qtyInfoText,
-    this.qtyInfoTooltip,
-    this.isQtyReadOnly = false,
+    required this.qtyDelegate,
+    required this.qtyAccentColor,
     required this.onSubmit,
     this.onDelete,
     this.isSaveEnabled = true,
@@ -386,33 +399,14 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
 
       // ── Quantity input ─────────────────────────────────────────────────────
-      QuantityInputWidget(
-        controller: qtyController,
-        onIncrement: onIncrement,
-        onDecrement: onDecrement,
-        isReadOnly: isQtyReadOnly,
-        label: 'Quantity',
-        widgetTag: itemCode,
-        infoText: qtyInfoText,
-        onInfoTap: qtyInfoTooltip != null
-            ? () => showDialog<void>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('Stock Breakdown'),
-                    content: Text(
-                      qtyInfoTooltip!,
-                      style: const TextStyle(
-                          fontFamily: 'ShureTechMono', fontSize: 14),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Close'),
-                      ),
-                    ],
-                  ),
-                )
-            : null,
+      // Driven by QtyFieldDelegate via SharedQtyField.
+      // SharedQtyField reads all reactive state (isQtyReadOnly, qtyError,
+      // qtyInfoText, qtyInfoTooltip, isQtyValid) directly from qtyDelegate
+      // inside its own Obx, so no manual Obx wrapping is needed here.
+      SharedQtyField(
+        c:           qtyDelegate,
+        accentColor: qtyAccentColor,
+        labelText:   'Quantity',
       ),
 
       const SizedBox(height: 32),

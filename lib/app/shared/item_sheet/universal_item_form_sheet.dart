@@ -5,10 +5,30 @@ import 'item_sheet_controller_base.dart';
 
 /// Universal wrapper around [GlobalItemFormSheet] for all DocType item sheets.
 ///
+/// ## Qty wiring (Commit 7)
+///
+/// The five raw qty params that previously bridged [ItemSheetControllerBase]
+/// to [GlobalItemFormSheet] have been removed:
+///
+/// | Removed param       | Replaced by                                      |
+/// |---------------------|--------------------------------------------------|
+/// | `qtyController`     | [GlobalItemFormSheet.qtyDelegate] → controller   |
+/// | `onIncrement`       | [SharedQtyField] reads QtyPlusMinusDelegate      |
+/// | `onDecrement`       | [SharedQtyField] reads QtyPlusMinusDelegate      |
+/// | `qtyInfoText`       | [QtyCapBadge] reads QtyCapDelegate.qtyInfoText   |
+/// | `qtyInfoTooltip`    | [QtyCapBadge] reads QtyCapDelegate.qtyInfoTooltip|
+/// | `isQtyReadOnly`     | [SharedQtyField] reads isQtyReadOnly Rx directly |
+///
+/// [controller] satisfies [QtyFieldWithPlusMinusDelegate] (which extends
+/// [QtyFieldDelegate]) so it can be passed directly as `qtyDelegate`.
+/// [controller.accentColor] is forwarded as `qtyAccentColor` so the field
+/// matches the DocType's brand colour.
+///
+/// ## Other notes (unchanged from previous version)
+///
 /// Fix (compiler): GlobalItemFormSheet expects plain Dart types, not GetX Rx
 /// wrappers.  Unwrap inside the Obx builder:
-///   • qtyInfoTooltip  → controller.qtyInfoTooltip.value  (RxnString → String?)
-///   • isLoading       → controller.isSheetLoading.value  (RxBool    → bool)
+///   • isLoading       → controller.isSheetLoading.value  (RxBool → bool)
 ///   • scanController  → null (MobileScannerController ≠ TextEditingController;
 ///                        sheets that embed a scan bar do so in customFields)
 ///
@@ -59,12 +79,13 @@ class UniversalItemFormSheet extends StatelessWidget {
         modifiedBy: controller.itemModifiedBy.value,
 
         // ── Qty ──────────────────────────────────────────────────────────────────
-        qtyController:  controller.qtyController,
-        onIncrement:    () => controller.adjustQty(1),
-        onDecrement:    () => controller.adjustQty(-1),
-        qtyInfoText:    controller.qtyInfoText,
-        // Unwrap RxnString → String? so GlobalItemFormSheet receives the right type.
-        qtyInfoTooltip: controller.qtyInfoTooltip.value,
+        // controller implements QtyFieldWithPlusMinusDelegate (which extends
+        // QtyFieldDelegate) — pass it directly.  SharedQtyField reads all
+        // reactive qty state (isQtyReadOnly, effectiveMaxQty, qtyError,
+        // qtyInfoText, qtyInfoTooltip, adjustQty) from the delegate's Rx fields
+        // without any unwrapping needed here.
+        qtyDelegate:     controller,
+        qtyAccentColor:  controller.accentColor,
 
         // ── Save / delete ────────────────────────────────────────────────
         isSaveEnabledRx:  controller.isSheetValid,
