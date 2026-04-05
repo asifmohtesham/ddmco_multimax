@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../item_sheet_controller_base.dart';
+import '../qty_cap_delegate.dart';
 
-/// Tappable pill badge that shows the active qty cap from [ItemSheetControllerBase.qtyInfoText].
-/// Tapping it shows a breakdown dialog built from [ItemSheetControllerBase.qtyInfoTooltip].
+/// Tappable pill badge that shows the active qty cap from [QtyCapDelegate.qtyInfoText].
+/// Tapping it shows a breakdown dialog built from [QtyCapDelegate.qtyInfoTooltip].
 /// Renders nothing when [qtyInfoText] returns null.
 class QtyCapBadge extends StatelessWidget {
-  final ItemSheetControllerBase controller;
+  final QtyCapDelegate controller;
 
   const QtyCapBadge({super.key, required this.controller});
 
