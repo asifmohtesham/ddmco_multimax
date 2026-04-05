@@ -132,6 +132,76 @@ import 'qty_cap_delegate.dart';
 /// To add ± stepper support, upgrade to [QtyFieldWithPlusMinusDelegate]
 /// — this adds [isQtyReadOnly], [effectiveMaxQty], and [adjustQty].
 ///
+/// ## GetX convention — MANDATORY for all *FieldDelegate implementors
+///
+/// This app uses **GetX exclusively** for state management.  Every class
+/// that implements [QtyFieldDelegate] (or any `*FieldDelegate` in this
+/// codebase) **MUST extend [GetxController]** — not `ChangeNotifier`,
+/// not `Cubit`, not plain Dart classes.
+///
+/// This is not enforced by the Dart type system (interfaces cannot
+/// constrain the class hierarchy of their implementors) but it is an
+/// **architectural invariant**:
+///
+/// - All `Rx*` fields on this interface are GetX observables.  They are
+///   only reactive inside `Obx` / `Worker` contexts, which are GetX
+///   constructs.  A non-GetX controller cannot meaningfully fulfill the
+///   reactivity contract.
+///
+/// - [SharedQtyField] uses `Obx(() { ... })` directly.  `Obx` requires
+///   that reactive reads occur during a GetX observation context.  A
+///   `ChangeNotifier`-based controller's fields would not trigger `Obx`
+///   rebuilds.
+///
+/// - Lifecycle (`onInit`, `onClose`) is managed by GetX's dependency
+///   injection via `Get.put` / `Get.find`.  [TextEditingController]
+///   disposal belongs in `onClose()`, not `dispose()`.
+///
+/// ### Correct pattern
+///
+/// ```dart
+/// class MyQtyController extends GetxController
+///     implements QtyFieldWithPlusMinusDelegate {
+///
+///   @override final isQtyValid     = false.obs;
+///   @override final qtyError       = RxString('');
+///   @override final isQtyReadOnly  = false.obs;
+///   @override final qtyInfoTooltip = RxnString(null);
+///   @override final qtyController  = TextEditingController();
+///
+///   @override String? get qtyInfoText => null;
+///   @override double  get effectiveMaxQty => double.infinity;
+///
+///   @override void adjustQty(int delta) { /* ... */ }
+///   @override void validateSheet()      { /* ... */ }
+///
+///   @override
+///   void onClose() {
+///     qtyController.dispose(); // MUST be in onClose, not dispose()
+///     super.onClose();
+///   }
+/// }
+/// ```
+///
+/// ### Incorrect patterns — DO NOT USE
+///
+/// ```dart
+/// // ✗  ChangeNotifier: Rx fields will NOT trigger Obx rebuilds.
+/// class BadController extends ChangeNotifier
+///     implements QtyFieldDelegate { ... }
+///
+/// // ✗  Plain Dart class: no lifecycle, no GetX DI, Rx fields unusable.
+/// class AlsoBad implements QtyFieldDelegate { ... }
+/// ```
+///
+/// This convention applies to **all** `*FieldDelegate` interfaces in this
+/// package:
+///   - [RackFieldDelegate] / [RackFieldWithBrowseDelegate]
+///   - [BatchNoFieldDelegate] / [BatchNoFieldWithBrowseDelegate]
+///   - [QtyFieldDelegate] / [QtyFieldWithPlusMinusDelegate]
+///   - [QtyCapDelegate]
+///   - Any future `*FieldDelegate` introduced following this pattern.
+///
 /// ## Changelog
 ///
 /// Commit 2 of 7 — Add QtyFieldDelegate:
@@ -140,6 +210,11 @@ import 'qty_cap_delegate.dart';
 ///   • Extends [QtyCapDelegate] (Commit 1) so [SharedQtyField] can pass
 ///     `c` directly to [QtyCapBadge] without a cast.
 ///   • No existing files modified.  No call sites changed.
+/// Commit 9 — GetX convention + StatelessWidget migration:
+///   • Added mandatory GetX convention section documenting that ALL
+///     *FieldDelegate implementors MUST extend [GetxController], with
+///     correct / incorrect pattern examples and a full listing of all
+///     current delegate interfaces in this package.
 abstract interface class QtyFieldDelegate implements QtyCapDelegate {
   // ── Reactive sub-field validity ───────────────────────────────────
 

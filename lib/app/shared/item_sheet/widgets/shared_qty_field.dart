@@ -62,6 +62,28 @@ import 'qty_cap_badge.dart';
 /// - The widget never calls [QtyPlusMinusDelegate.adjustQty] with values
 ///   other than `+1` or `−1`; bulk-step overrides are a controller concern.
 ///
+/// ## GetX — StatelessWidget rationale
+///
+/// [SharedQtyField] is a [StatelessWidget].  The earlier [StatefulWidget]
+/// form existed solely to cache the [QtyPlusMinusDelegate] cast in
+/// `State.initState`, avoiding a repeated runtime type-check on every
+/// [Obx] rebuild.
+///
+/// That optimisation is unnecessary in a GetX app: [c] is a
+/// [GetxController] resolved by `Get.find` and passed as a constructor
+/// param.  Flutter's rebuild cycle never replaces the controller instance,
+/// so the cast result is identical across every rebuild.  Computing it
+/// once as a `final` local at the top of [build] is functionally
+/// equivalent, produces zero allocations beyond the single `is` check,
+/// and removes all [State] lifecycle overhead.
+///
+/// [_clampOnBlur] is a `static` helper with explicit parameters
+/// (no closure over [State]).  [_formatQty] was already `static`.
+///
+/// See [QtyFieldDelegate] class-level doc for the mandatory GetX
+/// convention that applies to all `*FieldDelegate` implementors in this
+/// package.
+///
 /// ## Changelog
 ///
 /// Commit 5 : Initial implementation.
@@ -91,7 +113,18 @@ import 'qty_cap_badge.dart';
 ///     control.
 ///   - Q3: Both buttons moved to the right of the field, adjacent
 ///     (4 px gap), eliminating full-screen thumb travel.
-class SharedQtyField extends StatefulWidget {
+/// Commit 9 — StatelessWidget migration + GetX convention Dartdoc:
+///   - Removed [StatefulWidget] / [State] subclass.  The sole purpose of
+///     [State] was to cache the [QtyPlusMinusDelegate] cast in
+///     `initState`.  In a GetX app [c] is never replaced by the rebuild
+///     cycle; computing the cast once as a local `final` in [build] is
+///     functionally equivalent with zero overhead.
+///   - [_clampOnBlur] promoted to a `static` helper with explicit
+///     `(stepper, c, context)` params.  Call site guards with
+///     `if (stepper != null)` before invoking.
+///   - Added GetX rationale section in class-level Dartdoc.
+///   - No interface, controller, or call-site changes.
+class SharedQtyField extends StatelessWidget {
   final QtyFieldDelegate c;
 
   /// Accent colour applied to label text, enabled border, and stepper icons.
@@ -112,50 +145,28 @@ class SharedQtyField extends StatefulWidget {
     this.unitOfMeasure,
   });
 
-  @override
-  State<SharedQtyField> createState() => _SharedQtyFieldState();
-}
+  // ── Blur clamping ─────────────────────────────────────────────────────────
 
-class _SharedQtyFieldState extends State<SharedQtyField> {
-  // ── Cached cast ───────────────────────────────────────────────────────────
-  //
-  // Evaluated once per widget instance.  Avoids a runtime type-check on every
-  // Obx rebuild — same pattern used in SharedRackField for the
-  // RackBrowseDelegate optional capability.
-
-  /// Non-null when [widget.c] also implements [QtyPlusMinusDelegate].
-  /// `null` means the stepper and blur-clamping are unavailable.
-  late final QtyPlusMinusDelegate? _stepper;
-
-  @override
-  void initState() {
-    super.initState();
-    _stepper = widget.c is QtyPlusMinusDelegate
-        ? widget.c as QtyPlusMinusDelegate
-        : null;
-  }
-
-  // ── Blur clamping ──────────────────────────────────────────────────────────
-
-  /// Called from [TextFormField.onEditingComplete].
-  ///
-  /// Clamps manually typed values to [QtyPlusMinusDelegate.effectiveMaxQty]
+  /// Clamps a manually typed value to [QtyPlusMinusDelegate.effectiveMaxQty]
   /// so the ceiling is enforced for keyboard input as well as ± taps.
-  /// No-ops when [_stepper] is null (plain [QtyFieldDelegate] path) or when
-  /// the ceiling is `double.infinity` (uncapped DocTypes such as MR, PO,
-  /// Job Card).
-  void _clampOnBlur() {
-    final stepper = _stepper;
-    if (stepper == null) return;
-    final entered = double.tryParse(widget.c.qtyController.text) ?? 0.0;
+  ///
+  /// Declared `static` because there is no [State] to close over —
+  /// all required context is passed explicitly.  No-ops when the ceiling
+  /// is `double.infinity` (uncapped DocTypes such as MR, PO, Job Card).
+  static void _clampOnBlur(
+    QtyPlusMinusDelegate stepper,
+    QtyFieldDelegate c,
+    BuildContext context,
+  ) {
+    final entered = double.tryParse(c.qtyController.text) ?? 0.0;
     final ceiling = stepper.effectiveMaxQty;
     if (ceiling.isFinite && entered > ceiling) {
-      widget.c.qtyController.text = _formatQty(ceiling);
-      widget.c.validateSheet();
+      c.qtyController.text = _formatQty(ceiling);
+      c.validateSheet();
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// Formats a [double] for display in the qty field.
   ///
@@ -173,10 +184,21 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
         .replaceAll(RegExp(r'\.$'), '');
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    // Cast evaluated once per build() call as a local final.
+    //
+    // In a GetX app [c] is a [GetxController] resolved via Get.find and
+    // passed as a constructor param.  Flutter's rebuild cycle never
+    // replaces the controller instance, so this cast result is identical
+    // across every Obx rebuild — computing it here is functionally
+    // equivalent to the former State.initState cache with zero overhead.
+    final stepper = c is QtyPlusMinusDelegate
+        ? c as QtyPlusMinusDelegate
+        : null;
+
     // Outer Obx governs isQtyReadOnly and qtyError — both are RxBool /
     // RxString and change at interaction time.
     //
@@ -186,20 +208,18 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
     // as its reactive anchor — that field is updated whenever the underlying
     // balance changes, which is exactly when qtyInfoText also changes.
     return Obx(() {
-      final stepper    = _stepper;
       final isReadOnly = stepper?.isQtyReadOnly.value ?? false;
-      final hasError   = widget.c.qtyError.value.isNotEmpty;
-      final label      = widget.labelText ?? 'Qty';
-      final uom        = widget.unitOfMeasure;
+      final hasError   = c.qtyError.value.isNotEmpty;
+      final label      = labelText ?? 'Qty';
 
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Text field ──────────────────────────────────────────────────
+          // ── Text field ────────────────────────────────────────────────
           Expanded(
             child: TextFormField(
-              controller:  widget.c.qtyController,
-              readOnly:    isReadOnly,
+              controller:   c.qtyController,
+              readOnly:     isReadOnly,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -217,14 +237,14 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
                 labelStyle: TextStyle(
                   color: hasError
                       ? Theme.of(context).colorScheme.error
-                      : widget.accentColor,
+                      : accentColor,
                 ),
-                errorText:     hasError ? widget.c.qtyError.value : null,
+                errorText:     hasError ? c.qtyError.value : null,
                 errorMaxLines: 2,
-                suffixText: uom,
+                suffixText: unitOfMeasure,
                 isDense:    true,
 
-                // ── Max-Qty chip as suffixIcon ───────────────────────────
+                // ── Max-Qty chip as suffixIcon ─────────────────────────
                 //
                 // Inner Obx keyed off qtyInfoTooltip (RxnString) so the
                 // chip reacts to balance changes even though qtyInfoText
@@ -236,31 +256,31 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
                   // balance updates.  QtyCapBadge reads qtyInfoText via
                   // its own internal Obx — we only need this outer gate
                   // to conditionally wrap the Padding+Center.
-                  widget.c.qtyInfoTooltip.value; // reactive anchor
-                  final capLabel = widget.c.qtyInfoText;
+                  c.qtyInfoTooltip.value; // reactive anchor
+                  final capLabel = c.qtyInfoText;
                   if (capLabel == null) return const SizedBox.shrink();
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Center(
                       widthFactor: 1.0,
-                      child: QtyCapBadge(controller: widget.c),
+                      child: QtyCapBadge(controller: c),
                     ),
                   );
                 }),
 
-                // ── Five explicit border states ──────────────────────────
+                // ── Five explicit border states ────────────────────────
                 // Declared individually so every state carries a visually
                 // intentional colour — same convention as SharedRackField
                 // which avoids relying on the default theme border cascade.
                 border: const OutlineInputBorder(),
                 enabledBorder: OutlineInputBorder(
                   borderSide: BorderSide(
-                    color: widget.accentColor.withOpacity(0.5),
+                    color: accentColor.withOpacity(0.5),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderSide: BorderSide(
-                    color: widget.accentColor,
+                    color: accentColor,
                     width: 2,
                   ),
                 ),
@@ -281,32 +301,32 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
                   ),
                 ),
               ),
-              onChanged: (_) => widget.c.validateSheet(),
+              onChanged: (_) => c.validateSheet(),
               onEditingComplete: () {
-                _clampOnBlur();
+                if (stepper != null) _clampOnBlur(stepper, c, context);
                 FocusScope.of(context).unfocus();
               },
             ),
           ),
 
-          // ── Stepper buttons: [−] [+] right-adjacent ─────────────────────
+          // ── Stepper buttons: [−] [+] right-adjacent ───────────────────
           //
           // Both buttons are placed to the right of the field, separated
           // by 4 px, so the user's thumb never has to travel across the
           // full screen width.  An 8 px gap separates the field from the
           // button group.  Hidden entirely (not merely disabled) when
           // read-only — consistent with SharedBatchField's collapse pattern.
-          if (stepper != null && !isReadOnly) ...[            
+          if (stepper != null && !isReadOnly) ...[
             const SizedBox(width: 8),
             _StepperButton(
               icon:        Icons.remove,
-              accentColor: widget.accentColor,
+              accentColor: accentColor,
               onTap:       () => stepper.adjustQty(-1),
             ),
             const SizedBox(width: 4),
             _StepperButton(
               icon:        Icons.add,
-              accentColor: widget.accentColor,
+              accentColor: accentColor,
               onTap:       () => stepper.adjustQty(1),
             ),
           ],
