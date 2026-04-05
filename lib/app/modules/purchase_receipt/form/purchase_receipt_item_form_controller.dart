@@ -64,14 +64,21 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   MobileScannerController? get sheetScanController => null;
 
-  /// Qty-info label: shows max from PO ordered qty when available.
+  /// Effective qty ceiling for PR: PO ordered qty.
+  ///
+  /// Returns [double.infinity] when no PO qty is set (open-ended entry).
+  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
   @override
-  String get qtyInfoText {
-    final po = poQty.value;
-    if (po != null && po > 0) {
-      return 'PO Qty: ${po.toStringAsFixed(po.truncateToDouble() == po ? 0 : 2)}';
-    }
-    return '';
+  double get effectiveMaxQty {
+    final poCeil = maxQty; // maxQty is the PO ordered qty set during initialise()
+    return poCeil > 0 ? poCeil : double.infinity;
+  }
+
+  @override
+  String? get qtyInfoText {
+    final eff = effectiveMaxQty;
+    if (eff == double.infinity) return null;
+    return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
 
   /// Backing RxnString for the qty-info tooltip (ceiling breakdown).
@@ -124,26 +131,35 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     _parent.linkToPurchaseOrder(code, this);
   }
 
-  // ── validateSheet ───────────────────────────────────────────────────────────
   @override
   void validateSheet() {
-    final qty  = double.tryParse(qtyController.text) ?? 0;
-    final ok   = qty > 0 && isRackValid.value;
-    isSheetValid.value    = ok;
-    saveButtonVisible.value = ok;
+    final qty  = double.tryParse(qtyController.text);
+    final ceil = effectiveMaxQty;
+    final qtyOk  = qty != null && qty > 0;
+    final ceilOk = ceil == double.infinity || (qty != null && qty <= ceil);
 
-    // Update qty-info tooltip with PO qty ceiling.
-    final po = poQty.value;
-    qtyInfoTooltip.value = (po != null && po > 0)
-        ? 'Ordered: ${po.toStringAsFixed(0)}'  
-        : null;
+    // ── isQtyValid / qtyError (Commit 6) ──────────────────────────────
+    if (!qtyOk) {
+      isQtyValid.value = false;
+      qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
+    } else if (!ceilOk) {
+      isQtyValid.value = false;
+      final ceilStr = ceil.toStringAsFixed(
+          ceil.truncateToDouble() == ceil ? 0 : 2);
+      qtyError.value = 'Qty cannot exceed $ceilStr';
+    } else {
+      isQtyValid.value = true;
+      qtyError.value   = '';
+    }
+
+    // existing save-gate logic stays below unchanged:
+    isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
   }
 
-  // ── adjustQty (abstract impl) ───────────────────────────────────────────────
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
-    final next    = (current + delta).clamp(0.0, double.infinity);
+    final next    = (current + delta).clamp(0.0, effectiveMaxQty);
     qtyController.text = next.toStringAsFixed(
         next.truncateToDouble() == next ? 0 : 2);
     validateSheet();
@@ -183,6 +199,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         warehouse,
       );
     } else {
+      // Reset so isQtyReadOnly is unlocked for a new item.
+      docStatus.value = 0;
+      isQtyValid.value = false;
+      qtyError.value   = '';
+
       _parent.addItemLocally(
         itemCode.value,
         itemName.value,
@@ -233,6 +254,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     required int index,
     required PurchaseReceiptItem item,
   }) {
+    // Seed so the ever() worker in ItemSheetControllerBase.onInit
+    // locks isQtyReadOnly when docstatus == 1 (submitted).
+    // docStatus.value = item.docstatus ?? 0;
     editingItemName.value = item.name;
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
