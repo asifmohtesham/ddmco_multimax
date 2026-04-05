@@ -352,7 +352,7 @@ class _StepperButton extends StatelessWidget {
       // 20 px top offset absorbs Material's default label-above-border gap
       // (~18–20 px) so the icon sits centre-aligned with the input text,
       // not with the full field height including the floating label.
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 0),
       child: SizedBox(
         width:  44,
         height: 44,
