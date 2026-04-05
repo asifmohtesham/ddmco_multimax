@@ -30,18 +30,26 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  • setupAutoSubmit call uses base signature {required onValid:}.
 ///  • GlobalSnackbar.error positional → named message:.
 ///  • validateSheet writes both isSheetValid and saveButtonVisible.
+///
+/// Commit 6 (QtyFieldWithPlusMinusDelegate wiring):
+///  • effectiveMaxQty overrides base: poQty.value when positive, else
+///    double.infinity (PO-qty is the only ceiling for inbound receipts;
+///    batch/rack balances are irrelevant for incoming stock).
+///  • adjustQty clamps to effectiveMaxQty (was double.infinity).
+///  • validateSheet additionally enforces qty <= poQty ceiling in the
+///    validity gate, and writes isQtyValid.value / qtyError.value so
+///    SharedQtyField can show an inline error beneath the qty field.
+///  • docStatus seeded in initForEdit / reset in initForCreate so the
+///    ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
+///    when docstatus == 1 (submitted).
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   // ── Parent back-reference ───────────────────────────────────────────────
-  // No-arg constructor so Get.put(PurchaseReceiptItemFormController()) compiles.
-  // Parent is wired lazily via initialise().
   late PurchaseReceiptFormController _parent;
 
   PurchaseReceiptFormController get parent => _parent;
 
   // ── In-sheet scan context ──────────────────────────────────────────────
-  /// EAN-8 / barcode that triggered this sheet open.
-  /// Forwarded from [PurchaseReceiptFormController.currentScannedEan].
   String currentScannedEan = '';
 
   // ── Parent-backed warehouse ───────────────────────────────────────────
@@ -52,26 +60,39 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       itemWarehouse.value ?? _parent.setWarehouse.value;
 
   // ── Abstract overrides ───────────────────────────────────────────────
-  @override bool get requiresBatch => false; // PR allows new batches
-  @override bool get requiresRack  => true;  // Target rack mandatory
+  @override bool get requiresBatch => false;
+  @override bool get requiresRack  => true;
   @override Color get accentColor  => Colors.purple;
 
-  /// True when the sheet was opened for a new item (not editing).
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// PR does not embed an in-sheet camera scanner; returns null.
   @override
   MobileScannerController? get sheetScanController => null;
 
+  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
+  /// Effective qty ceiling for PR: the PO ordered qty when positive.
+  ///
+  /// PO qty is the only meaningful ceiling for inbound receipts — batch
+  /// and rack balances are zero for goods not yet received.
+  ///
+  /// Returns [double.infinity] when no PO is linked or its qty is zero
+  /// (uncapped entry).
+  ///
+  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
+  @override
+  double get effectiveMaxQty {
+    final po = poQty.value;
+    if (po != null && po > 0) return po;
+    return double.infinity;
+  }
+
   /// Qty-info label: shows max from PO ordered qty when available.
   @override
-  String get qtyInfoText {
-    final po = poQty.value;
-    if (po != null && po > 0) {
-      return 'PO Qty: ${po.toStringAsFixed(po.truncateToDouble() == po ? 0 : 2)}';
-    }
-    return '';
+  String? get qtyInfoText {
+    final eff = effectiveMaxQty;
+    if (eff == double.infinity) return null;
+    return 'PO Qty: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
 
   /// Backing RxnString for the qty-info tooltip (ceiling breakdown).
@@ -79,8 +100,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── PO link metadata ─────────────────────────────────────────────────────
-  // Commit 6: renamed from poItem/poName → poItemId/poDocName to match
-  // PurchaseReceiptFormController.linkToPurchaseOrder() write path.
   final RxString  poItemId  = ''.obs;
   final RxString  poDocName = ''.obs;
   final RxnDouble poQty     = RxnDouble();
@@ -90,9 +109,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   final RxString itemUom = ''.obs;
 
   // ── initialise() entry point ───────────────────────────────────────────
-  /// Called by [PurchaseReceiptFormController._openItemSheet] immediately after
-  /// [Get.put]; wires the parent reference and delegates to initForCreate /
-  /// initForEdit.
   void initialise({
     required PurchaseReceiptFormController parent,
     required String code,
@@ -107,7 +123,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     currentScannedEan = scannedEan ?? '';
 
     if (editingItem != null) {
-      // Find index of this item in the parent list.
       final items  = parent.purchaseReceipt.value?.items ?? [];
       final idx    = items.indexWhere((i) => i.name == editingItem.name);
       initForEdit(index: idx >= 0 ? idx : 0, item: editingItem);
@@ -120,36 +135,55 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       );
     }
 
-    // Wire PO link if available.
     _parent.linkToPurchaseOrder(code, this);
   }
 
   // ── validateSheet ───────────────────────────────────────────────────────────
   @override
   void validateSheet() {
-    final qty  = double.tryParse(qtyController.text) ?? 0;
-    final ok   = qty > 0 && isRackValid.value;
-    isSheetValid.value    = ok;
+    final qty  = double.tryParse(qtyController.text) ?? 0.0;
+    final ceil = effectiveMaxQty;
+    final qtyOk  = qty > 0;
+    final ceilOk = ceil == double.infinity || qty <= ceil;
+
+    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────
+    if (!qtyOk) {
+      isQtyValid.value = false;
+      qtyError.value   = qty == 0.0 ? '' : 'Enter a quantity greater than 0';
+    } else if (!ceilOk) {
+      isQtyValid.value = false;
+      final ceilStr = ceil.toStringAsFixed(
+          ceil.truncateToDouble() == ceil ? 0 : 2);
+      qtyError.value = 'Qty cannot exceed PO qty of $ceilStr';
+    } else {
+      isQtyValid.value = true;
+      qtyError.value   = '';
+    }
+
+    final ok = qtyOk && ceilOk && isRackValid.value;
+    isSheetValid.value      = ok;
     saveButtonVisible.value = ok;
 
     // Update qty-info tooltip with PO qty ceiling.
     final po = poQty.value;
     qtyInfoTooltip.value = (po != null && po > 0)
-        ? 'Ordered: ${po.toStringAsFixed(0)}'  
+        ? 'Ordered: ${po.toStringAsFixed(0)}'
         : null;
   }
 
-  // ── adjustQty (abstract impl) ───────────────────────────────────────────────
+  // ── adjustQty ──────────────────────────────────────────────────────────────
+  /// Increments or decrements qty by [delta], clamped to
+  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
-    final next    = (current + delta).clamp(0.0, double.infinity);
+    final next    = (current + delta).clamp(0.0, effectiveMaxQty);
     qtyController.text = next.toStringAsFixed(
         next.truncateToDouble() == next ? 0 : 2);
     validateSheet();
   }
 
-  // ── deleteCurrentItem (abstract impl) ─────────────────────────────────────────
+  // ── deleteCurrentItem ─────────────────────────────────────────────────────
   @override
   void deleteCurrentItem() {
     final rowId = editingItemName.value;
@@ -207,6 +241,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     String? batchNo,
   }) {
     editingItemName.value = null;
+    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
+    docStatus.value       = 0;
     itemCode.value        = code;
     itemName.value        = name;
     itemUom.value         = uom;
@@ -223,6 +259,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
     resetBatch();
     resetRack();
+    isQtyValid.value = false;
+    qtyError.value   = '';
     removeSheetListeners();
     addSheetListeners();
     validateSheet();
@@ -234,6 +272,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     required PurchaseReceiptItem item,
   }) {
     editingItemName.value = item.name;
+    // Commit 6: seed docStatus so the ever() worker locks isQtyReadOnly
+    // when the item is submitted (docstatus == 1).
+    docStatus.value       = item.docstatus ?? 0;
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
     itemUom.value         = item.uom ?? '';
@@ -249,6 +290,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     poRate.value    = item.rate != null && item.rate! > 0 ? item.rate : null;
 
     resetBatch();
+    isQtyValid.value = false;
+    qtyError.value   = '';
     removeSheetListeners();
     addSheetListeners();
 
@@ -266,8 +309,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   // ── PR-specific batch validation override ───────────────────────────────────
-  // Existing system batches remain valid via base lookup.
-  // If not found, PR allows a new batch EXCEPT when batch == scanned EAN.
   @override
   Future<void> validateBatch(String batch) async {
     final trimmed = batch.trim();
@@ -309,9 +350,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         return;
       }
 
-      // New-batch branch: disallow when batch text == the scanned EAN.
-      // Commit 6: fixed from _parent.lastScannedBarcode.value
-      //           to     _parent.currentScannedEan.
       final scanned = _parent.currentScannedEan.trim();
       if (scanned.isNotEmpty && scanned == trimmed) {
         batchError.value = 'Batch cannot be identical to scanned EAN/barcode.';
@@ -350,7 +388,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isRackValid.value      = false;
 
     try {
-      // PR target rack must exist in selected warehouse; stock qty not required.
       final rows = await ApiProvider().getStockBalanceWithDimension(
         itemCode:  itemCode.value,
         warehouse: resolvedWarehouse,
@@ -367,7 +404,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         return;
       }
 
-      rackBalance.value = 0.0; // informational only in PR
+      rackBalance.value = 0.0;
       isRackValid.value = true;
       validateSheet();
     } catch (e) {
@@ -401,6 +438,5 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // Commit 6: named message: param.
   void showError(String msg) => GlobalSnackbar.error(message: msg);
 }
