@@ -8,6 +8,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/qty_cap_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_with_plus_minus_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 
@@ -59,12 +61,10 @@ class BatchResult {
 ///   editingItemName  — RxnString; null = add-mode, non-null = edit rowId.
 ///   formKey          — shared GlobalKey<FormState>.
 ///   itemName/Owner/Creation/Modified/ModifiedBy — shared metadata Rx fields.
-///   qtyInfoText      — abstract; each controller supplies its own label.
+///   qtyInfoText      — abstract String? getter (nullable); each controller
+///                      supplies its own label or null (no chip).
 ///   qtyInfoTooltip   — CONCRETE RxnString field (promoted from abstract).
-///                      SE writes it directly inside validateSheet() (Commit 5
-///                      intent: single backing store, no shadowing override).
-///                      PS and other subclasses may override the getter to
-///                      return their own RxnString instance if needed.
+///                      SE writes it directly inside validateSheet().
 ///   adjustQty        — abstract; concrete controllers implement stepper.
 ///   deleteCurrentItem — abstract; concrete controllers implement deletion.
 ///   sheetScanController/isScanning — scan-bar integration.
@@ -73,54 +73,25 @@ class BatchResult {
 ///   initBaseListeners/captureSnapshot — aliases for addSheetListeners /
 ///                      snapshotState used by PO and PS controllers.
 ///   sheetScrollController — concrete ScrollController exposed so parent
-///                      orchestrators can pass it to UniversalItemFormSheet
-///                      without needing a subclass override (Group B fix).
-///   disposeControllers — public teardown helper called by parent
-///                      orchestrators post-sheet-close (Group B fix).
-///   softResetBatch / softResetRack — DN-8: reset validity flags and errors
-///                      without zeroing batchBalance / rackBalance so the
-///                      BalanceChip does not flash blank between initForEdit
-///                      reset and the subsequent API fetch completing.
-///   validateBatchOnInit — convenience wrapper: fires validateBatch() in a
-///                      post-frame callback so the sheet widget tree is fully
-///                      built before async Rx mutations occur.  Previously
-///                      only existed on concrete controllers; promoted to base
-///                      so DN, SE, and PR controllers can all call it.
-///   validateRack     — base implementation: delegates to fetchRackBalance()
-///                      and marks isRackValid = true.  Previously absent from
-///                      the base class, causing compile errors in
-///                      shared_rack_field.dart, AutoFillRackMixin, and
-///                      DeliveryNoteItemFormController (super.validateRack()).
-///                      Concrete controllers may override to add extra logic.
-///   RackFieldWithBrowseDelegate — (Commit 3 of 4) base class implements this
-///                      interface additively.  Audit confirmed the clause
-///                      `implements RackFieldWithBrowseDelegate` was already
-///                      present along with all four required default overrides:
-///                      rackBalanceFor, canBrowseRacks, browseRacks,
-///                      handleRackPicked.  All concrete controllers (SE, DN,
-///                      PR) satisfy the interface transitively — zero changes
-///                      at call sites.  No runtime changes in this commit.
-///   rackStockMap     — (Commit 1 of 4 — SharedRackField universal refactor)
-///                      REMOVED.  The map-lookup pattern was the last
-///                      concrete coupling preventing zero-hassle adoption by
-///                      DocTypes that fetch live balances.  rackBalanceFor()
-///                      now returns rackBalance.value directly, which is
-///                      semantically identical for all existing controllers
-///                      and eliminates the dead `const {}` default map.
-///   BatchNoFieldWithBrowseDelegate — (Commit 7 of 7 — SharedBatchField
-///                      universal refactor) base class implements this
-///                      interface additively.  All existing batch fields
-///                      already satisfy BatchNoFieldDelegate; three new
-///                      BatchNoBrowseDelegate default overrides added:
-///                      browseBatches, canBrowseBatches, preloadedBatchRows.
-///                      handleBatchPicked default: writes batchNo into
-///                      batchController and calls validateBatch.
-///                      SharedBatchField.c re-typed from
-///                      ItemSheetControllerBase to
-///                      BatchNoFieldWithBrowseDelegate — zero call-site
-///                      changes required.
+///                      orchestrators can pass it to UniversalItemFormSheet.
+///   disposeControllers — public teardown helper.
+///   softResetBatch / softResetRack — reset validity flags without zeroing
+///                      balances (DN-8 fix).
+///   validateBatchOnInit — convenience post-frame wrapper.
+///   validateRack     — base implementation delegates to fetchRackBalance.
+///   RackFieldWithBrowseDelegate — base class implements (Commit 3 of 4).
+///   BatchNoFieldWithBrowseDelegate — base class implements (Commit 7 of 7).
+///   QtyFieldWithPlusMinusDelegate — base class implements (this commit).
+///     isQtyValid     — dedicated RxBool field; written by validateSheet.
+///     qtyError       — RxString(''); written by validateSheet.
+///     isQtyReadOnly  — backed by _isQtyReadOnly; wired to docStatus == 1.
+///     effectiveMaxQty — double.infinity base default; SE/DN/PR override.
+///     docStatus      — RxInt(0); write to lock/unlock the qty field.
 abstract class ItemSheetControllerBase extends GetxController
-    implements RackFieldWithBrowseDelegate, BatchNoFieldWithBrowseDelegate {
+    implements
+        RackFieldWithBrowseDelegate,
+        BatchNoFieldWithBrowseDelegate,
+        QtyFieldWithPlusMinusDelegate {
   // ── Reactive state ────────────────────────────────────────────────────────
   final RxBool   isBatchValid          = false.obs;
   final RxBool   isValidatingBatch     = false.obs;
@@ -151,6 +122,54 @@ abstract class ItemSheetControllerBase extends GetxController
   /// Tooltip shown in the rack suffix when a rack is selected.
   final RxnString rackStockTooltip     = RxnString(null);
 
+  // ── QtyFieldWithPlusMinusDelegate concrete fields ────────────────────────
+
+  /// Whether the qty sub-field is valid.
+  ///
+  /// Dedicated [RxBool] — NOT an alias of [isSheetValid].  The sheet-level
+  /// save gate should compose sub-validations:
+  /// ```dart
+  /// isSheetValid.value =
+  ///     isQtyValid.value && isBatchValid.value && isRackValid.value;
+  /// ```
+  /// Concrete [validateSheet] implementations write this field directly.
+  @override
+  final RxBool isQtyValid = false.obs;
+
+  /// Inline error text shown beneath the qty field.
+  ///
+  /// `''` = no error (same contract as [rackError] / [batchError]).
+  /// Concrete [validateSheet] implementations write this field directly.
+  @override
+  final RxString qtyError = RxString('');
+
+  /// Docstatus of the row being viewed / edited.
+  ///
+  /// Write `docStatus.value = row['docstatus']` in [initForEdit].
+  /// The [ever] worker in [onInit] automatically locks the qty field
+  /// when this reaches 1 (submitted).
+  final RxInt docStatus = 0.obs;
+
+  // Backing field for isQtyReadOnly — never expose as a getter literal
+  // (.obs) because that allocates a new Rx on every access, breaking
+  // Obx subscriptions in SharedQtyField.
+  final RxBool _isQtyReadOnly = false.obs;
+
+  /// Whether the qty field and ± buttons are read-only.
+  ///
+  /// Automatically `true` when [docStatus] == 1 (submitted).
+  /// Concrete controllers may also set `_isQtyReadOnly.value = true`
+  /// for DocType-specific pre-conditions (e.g. missing warehouse).
+  @override
+  RxBool get isQtyReadOnly => _isQtyReadOnly;
+
+  /// The effective qty ceiling for the ± buttons and blur-clamp.
+  ///
+  /// Base default: [double.infinity] (uncapped).  SE, DN, and PR
+  /// override this in Commit 6 with their DocType-specific formulas.
+  @override
+  double get effectiveMaxQty => double.infinity;
+
   // ── Edit-mode identity ───────────────────────────────────────────────────
   /// null = add-mode; non-null = the rowId / docName being edited.
   final RxnString editingItemName      = RxnString(null);
@@ -171,6 +190,14 @@ abstract class ItemSheetControllerBase extends GetxController
   // ── Text controllers ──────────────────────────────────────────────────────────
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
+
+  /// Backing text controller for the qty field.
+  ///
+  /// Exposed here (and via [QtyFieldDelegate.qtyController]) so
+  /// [SharedQtyField] and all existing listeners ([addSheetListeners],
+  /// [disposeControllers], [onClose]) can access it through a single
+  /// concrete field.
+  @override
   final TextEditingController qtyController   = TextEditingController();
 
   /// FocusNode for the rack text field.
@@ -209,6 +236,7 @@ abstract class ItemSheetControllerBase extends GetxController
   /// The accent colour used by this sheet's UI elements.
   Color get accentColor;
 
+  @override
   void validateSheet();
   Future<void> submit();
 
@@ -216,123 +244,79 @@ abstract class ItemSheetControllerBase extends GetxController
   /// Satisfies [AutoFillRackMixin.isAddMode].
   bool get isAddMode;
 
-  /// Qty-info label shown next to the qty field (e.g. 'Max: 12').
-  String get qtyInfoText;
+  /// Qty-info label shown on the [QtyCapBadge] chip.
+  ///
+  /// Returns `null` to suppress the badge entirely.
+  /// Examples: `'Max: 12'`, `'Max: 6.5 Kg'`, `null`.
+  ///
+  /// Satisfies [QtyCapDelegate.qtyInfoText] (nullable String getter).
+  @override
+  String? get qtyInfoText;
 
   /// Tooltip backing the qty-info label; null = no tap target rendered.
   ///
   /// Concrete field — NOT abstract.  SE writes this directly inside
   /// validateSheet() so that SharedBatchField observes the same [RxnString]
-  /// reference without any shadowing override (Commit 5 intent).  Subclasses
-  /// that need their own RxnString instance (e.g. PS) may override the getter
-  /// to return a different [RxnString], but must NOT declare a new field with
-  /// the same name — override the getter only.
+  /// reference without any shadowing override.  Subclasses that need their
+  /// own RxnString instance (e.g. PS) may override the getter to return a
+  /// different [RxnString], but must NOT declare a new field with the same
+  /// name — override the getter only.
   // ignore: prefer_final_fields
+  @override
   RxnString qtyInfoTooltip = RxnString(null);
 
   /// Mobile scanner controller backing the scan footer.
   MobileScannerController? get sheetScanController;
 
   /// Increment (+1) or decrement (-1) the qty field.
+  ///
+  /// Implementors MUST:
+  /// 1. Clamp `(current + delta)` to `[0.0, effectiveMaxQty]`.
+  /// 2. Write the result back to [qtyController].
+  /// 3. Call [validateSheet] to refresh the save gate.
+  @override
   void adjustQty(int delta);
 
   /// Delete the item currently being edited.
   void deleteCurrentItem();
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    // Lock / unlock the qty field based on docstatus.
+    ever(docStatus, (_) {
+      _isQtyReadOnly.value = docStatus.value == 1;
+    });
+  }
+
   // ── BatchNoFieldWithBrowseDelegate defaults (Commit 7 of 7) ────────────────
   //
-  // These default overrides satisfy [BatchNoFieldWithBrowseDelegate] at the
-  // base-class level so every concrete controller automatically complies
-  // without any changes.  The pattern mirrors RackFieldWithBrowseDelegate
-  // (four defaults already on the base class since Commit 3 of the rack
-  // refactor).
+  // See the full design note in the previous version of this file.
   //
   // BatchNoFieldDelegate members (isBatchValid, isValidatingBatch,
   // isBatchReadOnly, batchError, batchInfoTooltip, batchController,
   // resetBatch, validateBatch) are all concrete fields / methods already
   // declared below — they satisfy the interface automatically.
-  //
-  // BatchNoBrowseDelegate members added here:
-  //   • batchBalanceFor   — returns batchBalance.value (the live RxDouble
-  //                         populated by fetchBatchBalance).  Semantically
-  //                         identical to the previous c.maxQty pattern used
-  //                         in SharedBatchField before Commit 7.
-  //   • canBrowseBatches  — false at the base level; concrete controllers
-  //                         override once itemCode + warehouse are set.
-  //   • browseBatches     — delegates to openBatchPicker(); returns null
-  //                         at the base level (no picker context available).
-  //   • preloadedBatchRows— const []; SE overrides to return batchWiseHistory
-  //                         cast to List<BatchWiseBalanceRow>.
-  //   • resolvedWarehouseForBatch — delegates to resolvedWarehouse.
-  //
-  // handleBatchPicked (from BatchNoFieldWithBrowseDelegate):
-  //   Default: writes batchNo into batchController and calls validateBatch.
-  //   Mirrors handleRackPicked in structure and Dartdoc conventions.
 
-  /// Returns the available batch balance.
-  ///
-  /// Default: returns [batchBalance].value — the live [RxDouble] populated
-  /// by [fetchBatchBalance].  The [batchNo] parameter is accepted for
-  /// interface compatibility but ignored at the base level; controllers that
-  /// maintain per-batch balance maps may override to use it.
   @override
   double batchBalanceFor(String batchNo) => batchBalance.value;
 
-  /// Resolved warehouse used as the default filter for the Browse Batches
-  /// picker.  Delegates to [resolvedWarehouse] so call sites do not need to
-  /// distinguish between the two accessors.
   @override
   String? get resolvedWarehouseForBatch => resolvedWarehouse;
 
-  /// Whether the controller currently satisfies the pre-conditions to open
-  /// the batch picker (item code known, warehouse resolvable).
-  ///
-  /// Returns `false` at the base level.  Concrete controllers override:
-  /// ```dart
-  /// @override
-  /// bool get canBrowseBatches =>
-  ///     itemCode.value.isNotEmpty && resolvedWarehouse != null;
-  /// ```
   @override
   bool get canBrowseBatches => false;
 
-  /// Opens the Browse Batches picker and returns the selected batch number,
-  /// or `null` if the user dismissed without making a selection.
-  ///
-  /// Base implementation delegates to [openBatchPicker] and returns `null`
-  /// because [openBatchPicker] writes directly to [batchController] and
-  /// calls [validateBatch] inline.  Concrete controllers that need to
-  /// return the selected value for further processing may override.
   @override
   Future<String?> browseBatches() async {
     await openBatchPicker();
     return null;
   }
 
-  /// Pre-fetched batch rows passed to [BatchPickerController].
-  ///
-  /// Returns `const []` at the base level — no pre-fetch occurs.
-  /// SE overrides to return its cached [batchWiseHistory] list cast to
-  /// `List<BatchWiseBalanceRow>`, enabling zero-latency picker opens.
   @override
   List<dynamic> get preloadedBatchRows => const [];
 
-  /// Standard post-selection hook called by the DocType orchestrator after
-  /// [browseBatches] returns a non-null batch number.
-  ///
-  /// Default behaviour:
-  ///   1. Writes [batchNo] into [batchController].
-  ///   2. Calls [validateBatch] to confirm live availability.
-  ///
-  /// Override in concrete controllers that need custom post-pick logic.
-  /// Call `super.handleBatchPicked(batchNo)` if the default write +
-  /// validate behaviour is still required.
-  ///
-  /// ## Contrast with RackFieldWithBrowseDelegate
-  ///
-  /// [handleRackPicked] receives a [RackPickerResult] because rack selection
-  /// may carry extra metadata.  [handleBatchPicked] receives a plain [String]
-  /// because batch selection carries only the batch number.
   @override
   Future<void> handleBatchPicked(String batchNo) async {
     batchController.text = batchNo;
@@ -341,85 +325,17 @@ abstract class ItemSheetControllerBase extends GetxController
 
   // ── RackFieldWithBrowseDelegate defaults (Commit 3 of 4 — confirmed) ───────
   //
-  // These four methods satisfy the [RackFieldWithBrowseDelegate] interface
-  // at the base-class level so every concrete controller automatically
-  // complies without any changes.  Concrete controllers override only the
-  // methods relevant to their DocType.
-  //
-  // Commit 3 audit confirmed:
-  //   • The `implements RackFieldWithBrowseDelegate` clause was already
-  //     present on the class declaration.
-  //   • All four default overrides were already implemented below.
-  //   • SharedRackField.c was already typed as RackFieldWithBrowseDelegate.
-  //   • Zero call-site changes were required — SE, DN, PR controllers
-  //     satisfy the interface transitively through this base class.
-  //
-  // Design notes:
-  //   • rackBalanceFor   — returns rackBalance.value (the live RxDouble
-  //                        already populated by fetchRackBalance).  The
-  //                        previous rackStockMap map-lookup was removed in
-  //                        Commit 1 of 4; rackBalance.value is semantically
-  //                        identical for all existing controllers and works
-  //                        for both map-pre-loaded and live-fetch patterns.
-  //   • canBrowseRacks   — false at the base level; concrete controllers
-  //                        flip this true once itemCode + warehouse are set.
-  //   • browseRacks      — returns null at the base level.  Concrete
-  //                        controllers override with the full picker flow
-  //                        (Get.put RackPickerController, showRackPickerSheet,
-  //                        map RackPickerEntry → RackPickerResult, Get.delete).
-  //   • handleRackPicked — standard post-selection hook: writes rackId into
-  //                        rackController and calls validateRack().  DocTypes
-  //                        with a non-standard mapping (e.g. SE source vs
-  //                        target rack) override before/after super call.
+  // See the full design note in the previous version of this file.
 
-  /// Returns the available balance for [rack].
-  ///
-  /// Default: returns [rackBalance].value — the live [RxDouble] populated
-  /// by [fetchRackBalance].  This is correct for all existing controllers:
-  ///   • Before any fetch: rackBalance == 0.0 → returns 0.0.
-  ///   • After a fetch: rackBalance == live value → returns live value.
-  ///
-  /// Controllers that previously overrode this to return `rackBalance.value`
-  /// explicitly (e.g. DN) may safely remove their override — it is now
-  /// identical to the base implementation.
   @override
   double rackBalanceFor(String rack) => rackBalance.value;
 
-  /// Whether the controller currently satisfies the pre-conditions to open
-  /// the rack picker (item code known, warehouse resolvable).
-  ///
-  /// Returns `false` at the base level.  Concrete controllers override:
-  /// ```dart
-  /// @override
-  /// bool get canBrowseRacks =>
-  ///     itemCode.value.isNotEmpty && resolvedWarehouse != null;
-  /// ```
   @override
   bool get canBrowseRacks => false;
 
-  /// Opens the Browse Racks picker and returns the selected rack, or `null`
-  /// if the user dismissed without making a selection.
-  ///
-  /// Base implementation returns `null` — no picker context is available at
-  /// this level.  Concrete controllers (DN, SE) override with the full
-  /// [RackPickerController] / [showRackPickerSheet] flow.
-  ///
-  /// Post-selection field writes are NOT performed here.  The calling
-  /// orchestrator calls [handleRackPicked] after a non-null result.
   @override
   Future<RackPickerResult?> browseRacks() async => null;
 
-  /// Standard post-selection hook called by the DocType orchestrator after
-  /// [browseRacks] returns a non-null [RackPickerResult].
-  ///
-  /// Default behaviour:
-  ///   1. Writes [result.rackId] into [rackController].
-  ///   2. Calls [validateRack] to confirm live availability.
-  ///
-  /// Override in concrete controllers that need custom post-pick logic
-  /// (e.g. SE writing to source rack vs target rack field).  Call
-  /// `super.handleRackPicked(result)` if the default write + validate
-  /// behaviour is still required.
   @override
   Future<void> handleRackPicked(RackPickerResult result) async {
     rackController.text = result.rackId;
@@ -444,12 +360,6 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── disposeControllers ─────────────────────────────────────────────────────────
-  /// Explicit teardown called by parent orchestrators immediately after the
-  /// sheet closes (e.g. in a post-frame callback) before Get.delete().
-  ///
-  /// Disposes [sheetScrollController] and the three text controllers.  Safe
-  /// to call multiple times — each disposal is wrapped in a try/catch.
-  /// (Group B — B2 fix)
   void disposeControllers() {
     try { sheetScrollController.dispose(); } catch (_) {}
     try { batchController.dispose(); } catch (_) {}
@@ -533,9 +443,6 @@ abstract class ItemSheetControllerBase extends GetxController
 
   // ── Rack reset ─────────────────────────────────────────────────────────────────
 
-  /// Full rack reset — clears the text field, zeros the balance, and
-  /// resets all validity state.  Called when the user explicitly clears
-  /// the rack field.
   @override
   void resetRack() {
     rackController.clear();
@@ -545,24 +452,14 @@ abstract class ItemSheetControllerBase extends GetxController
     rackStockTooltip.value = null;
   }
 
-  /// Soft rack reset — resets validity flags, error text, and tooltip
-  /// but does NOT zero [rackBalance].
-  ///
-  /// Use during [initForEdit] before re-seeding the rack value so that
-  /// the [BalanceChip] does not flash blank between the reset and the
-  /// subsequent [validateRack] / [fetchRackBalance] completing (DN-8).
   void softResetRack() {
     isRackValid.value      = false;
     rackError.value        = '';
     rackStockTooltip.value = null;
-    // rackBalance intentionally NOT zeroed — old value persists until
-    // fetchRackBalance() overwrites it with the freshly-fetched value.
   }
 
   // ── Batch reset ────────────────────────────────────────────────────────────────
 
-  /// Full batch reset — zeros balances and resets all validity state.
-  /// Called when the user explicitly clears / edits the batch field.
   @override
   void resetBatch() {
     isBatchValid.value     = false;
@@ -573,19 +470,11 @@ abstract class ItemSheetControllerBase extends GetxController
     resetRack();
   }
 
-  /// Soft batch reset — resets validity flags and errors without zeroing
-  /// [batchBalance] or [rackBalance].
-  ///
-  /// Use during [initForEdit] before re-seeding existing batch/rack values
-  /// so that [BalanceChip] widgets do not flash blank between the reset and
-  /// the API fetch completing (DN-8).
   void softResetBatch() {
     isBatchValid.value     = false;
     isBatchReadOnly.value  = false;
     batchError.value       = '';
     batchInfoTooltip.value = null;
-    // batchBalance intentionally NOT zeroed — old value persists until
-    // fetchBatchBalance() overwrites it with the freshly-fetched value.
     softResetRack();
   }
 
@@ -609,14 +498,6 @@ abstract class ItemSheetControllerBase extends GetxController
     }
   }
 
-  /// Fetches the available rack balance for [rack] from the Stock Balance
-  /// report (via [ApiProvider.getStockBalanceWithDimension]) and writes the
-  /// result to [rackBalance].
-  ///
-  /// Fix 3: the previous implementation matched rows on the key 'custom_rack'
-  /// but [getStockBalanceWithDimension] normalises the rack field to 'rack'.
-  /// The mismatch caused [firstWhere] to always fall through to orElse and
-  /// return {'qty': 0.0}.  Changed the match key to 'rack'.
   Future<void> fetchRackBalance(String rack) async {
     if (rack.isEmpty || itemCode.value.isEmpty) {
       rackBalance.value = 0.0;
@@ -630,8 +511,6 @@ abstract class ItemSheetControllerBase extends GetxController
         warehouse: wh,
         batchNo:   batch.isEmpty ? null : batch,
       );
-      // Fix 3: match on 'rack' — the key getStockBalanceWithDimension
-      // normalises to — not 'custom_rack'.
       final match = rows.firstWhere(
         (r) => (r['rack'] as String?) == rack,
         orElse: () => {'qty': 0.0},
@@ -717,13 +596,6 @@ abstract class ItemSheetControllerBase extends GetxController
     }
   }
 
-  /// Convenience wrapper: runs [validateBatch] in a post-frame callback so
-  /// the sheet widget tree is fully built before async Rx mutations occur.
-  ///
-  /// Called by all three item controllers (DN, SE, PR) during
-  /// [initForNewItem] / [initForEdit] when pre-seeding a known batch value.
-  /// Previously only existed on concrete controllers; promoted to base so
-  /// [shared_rack_field.dart] and mixins can also rely on it being present.
   void validateBatchOnInit(String batch) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!isClosed) validateBatch(batch);
@@ -731,23 +603,6 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── Rack validation (base) ───────────────────────────────────────────────────────
-  /// Validates [rack] by fetching its stock balance from ERPNext.
-  ///
-  /// Base implementation:
-  ///   1. Trims whitespace; calls [resetRack] and returns early on empty input.
-  ///   2. Sets [isValidatingRack] = true, clears [rackError].
-  ///   3. Delegates to [fetchRackBalance] to populate [rackBalance].
-  ///   4. Marks [isRackValid] = true on success.
-  ///
-  /// Concrete controllers (e.g. [DeliveryNoteItemFormController]) may
-  /// override to apply additional logic and call `super.validateRack(rack)`
-  /// as their fallback path.
-  ///
-  /// Declared here so:
-  ///   • [shared_rack_field.dart] can call `c.validateRack()` on the base type
-  ///   • [AutoFillRackMixin.onAutoFillRackSelected] default can call it without
-  ///     a concrete-type cast
-  ///   • Concrete overrides can call `super.validateRack(trimmed)`
   @override
   Future<void> validateRack(String rack) async {
     final trimmed = rack.trim();
