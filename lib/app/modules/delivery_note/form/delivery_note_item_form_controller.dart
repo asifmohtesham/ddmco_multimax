@@ -74,6 +74,17 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   - browseRacks() overridden with the full RackPickerController lifecycle.
 ///   - handleRackPicked() is inherited from ItemSheetControllerBase (default
 ///     write + validate behaviour is correct for DN's single rack field).
+///
+/// Commit 6 (QtyFieldWithPlusMinusDelegate wiring):
+///   - effectiveMaxQty overrides base: min(batchBalance, rackBalance,
+///     liveRemaining) — three-way minimum per Q4 spec.
+///     Returns double.infinity when no meaningful ceiling is available.
+///   - adjustQty clamps to effectiveMaxQty (was double.infinity).
+///   - validateSheet writes isQtyValid.value and qtyError.value so
+///     SharedQtyField can show an inline error beneath the qty field.
+///   - docStatus seeded in initForEdit / reset in initForNewItem so the
+///     ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
+///     when docstatus == 1 (submitted).
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -94,7 +105,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
-  // ── Base abstract overrides ───────────────────────────────────────
+  // ── Base abstract overrides ───────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
@@ -111,10 +122,53 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── qtyInfoText / qtyInfoTooltip ──────────────────────────────────
   @override
-  String get qtyInfoText => '';
+  String? get qtyInfoText {
+    final eff = effectiveMaxQty;
+    if (eff == double.infinity) return null;
+    return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
+  }
 
   @override
   final RxnString qtyInfoTooltip = RxnString(null);
+
+  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────────
+  /// Effective qty ceiling for DN: min(batchBalance, rackBalance,
+  /// liveRemaining) — three-way minimum per Q4 spec.
+  ///
+  /// [liveRemaining] represents the POS-Upload remaining qty for the
+  /// selected serial after accounting for other DN items.
+  ///
+  /// Returns [double.infinity] when none of the three sources provide a
+  /// meaningful (> 0) ceiling (balances may still be loading, or no POS
+  /// serial is selected).
+  ///
+  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
+  @override
+  double get effectiveMaxQty {
+    double? ceil;
+
+    final batch = batchBalance.value;
+    if (batch > 0) {
+      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
+    }
+
+    final rack = rackBalance.value;
+    if (rack > 0) {
+      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
+    }
+
+    // liveRemaining is the POS-serial remaining qty cap (DN-2 / DN-6).
+    // Only apply it when a serial is selected and the cap is finite.
+    final serial = selectedSerial.value;
+    if (serial != null && serial.isNotEmpty) {
+      final cap = _parent.posQtyCapForSerial(serial);
+      if (cap != double.infinity && cap > 0) {
+        ceil = (ceil == null) ? cap : (cap < ceil ? cap : ceil);
+      }
+    }
+
+    return ceil ?? double.infinity;
+  }
 
   // ── PosSerialMixin: posItemQty override (DN-2) ────────────────────────
   /// Total POS-Upload qty cap for the currently selected serial.
@@ -128,10 +182,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _parent.posQtyCapForSerial(selectedSerial.value ?? '');
 
   // ── adjustQty ──────────────────────────────────────────────────
+  /// Increments or decrements qty by [delta], clamped to
+  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
-    final next    = (current + delta).clamp(0.0, double.infinity);
+    final next    = (current + delta).clamp(0.0, effectiveMaxQty);
     qtyController.text = next.toStringAsFixed(
         next.truncateToDouble() == next ? 0 : 2);
     validateSheet();
@@ -185,34 +241,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── RackBrowseDelegate — Commit 7 ─────────────────────────────────────
 
   /// Returns true as soon as an item code is known.
-  ///
-  /// The RackPickerSheet itself provides a warehouse-filter toggle, so we
-  /// do not gate on resolvedWarehouse here — the picker is still useful
-  /// when the header warehouse is not yet set (shows all racks unfiltered).
   @override
   bool get canBrowseRacks => itemCode.value.isNotEmpty;
 
-  /// Opens the Browse Racks picker and returns the selected [RackPickerResult],
-  /// or null if the user dismissed without selecting.
-  ///
-  /// Lifecycle:
-  ///   1. Register a [RackPickerController] with a DN-specific tag.
-  ///   2. Call load() immediately (non-blocking — sheet opens during fetch).
-  ///   3. Open [RackPickerSheet] via showModalBottomSheet.
-  ///   4. Map the selected rack name → [RackPickerResult] using the
-  ///      controller's entry list for the availableQty snapshot.
-  ///   5. Delete the controller in a finally block (no leak on dismiss).
-  ///
-  /// Post-selection field writes are NOT performed here.  The inherited
-  /// [handleRackPicked] from [ItemSheetControllerBase] handles:
-  ///   - Writing result.rackId into rackController.
-  ///   - Calling validateRack(result.rackId).
   static const _kPickerTag = 'dn_rack_picker';
 
   @override
   Future<RackPickerResult?> browseRacks() async {
     if (!canBrowseRacks) return null;
-    // Guard against re-entrant calls (e.g. double-tap on picker button).
     if (isValidatingRack.value) return null;
 
     final ctx = Get.context;
@@ -221,7 +257,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final pickerCtrl = Get.put(RackPickerController(), tag: _kPickerTag);
 
     try {
-      // Start the async data fetch — sheet opens immediately with a spinner.
       unawaited(pickerCtrl.load(
         itemCode:     itemCode.value,
         batchNo:      batchController.text.trim(),
@@ -247,8 +282,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
       if (selectedRackId == null || selectedRackId!.isEmpty) return null;
 
-      // Build RackPickerResult — read availableQty from the controller
-      // entry list so we return the same snapshot the user saw in the picker.
       final entry = pickerCtrl.entries.firstWhere(
         (e) => e.rackName == selectedRackId,
         orElse: () => RackPickerEntry(
@@ -269,8 +302,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       log('[DN-Item] browseRacks error: $e', name: 'DN-Item');
       return null;
     } finally {
-      // Always clean up — whether user selected, dismissed, or an error
-      // was thrown.  isRegistered guard prevents a double-delete crash.
       if (Get.isRegistered<RackPickerController>(tag: _kPickerTag)) {
         Get.delete<RackPickerController>(tag: _kPickerTag);
       }
@@ -321,6 +352,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = false;
     editingIndex.value    = -1;
     editingItemName.value = null;
+    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
+    docStatus.value       = 0;
 
     this.itemCode.value    = itemCode;
     itemCodeRx.value       = itemCode;
@@ -336,14 +369,16 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     resetBatch();
     resetRack();
     selectedSerial.value  = null;
-    liveRemaining.value   = 0.0;   // DN-2: explicit reset for new-item mode
+    liveRemaining.value   = 0.0;
     rackStockMapRx.clear();
     isSheetValid.value = false;
+    isQtyValid.value   = false;
+    qtyError.value     = '';
 
     removeSheetListeners();
     addSheetListeners();
     snapshotState();
-    captureSerialSnapshot();   // DN-6: baseline serial = null for new items
+    captureSerialSnapshot();
 
     if ((batchNo ?? '').isNotEmpty) {
       validateBatchOnInit(batchNo!);
@@ -358,6 +393,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = true;
     editingIndex.value    = index;
     editingItemName.value = item.name;
+    // Commit 6: seed docStatus so the ever() worker locks isQtyReadOnly
+    // when the item is submitted (docstatus == 1).
+    docStatus.value       = item.docstatus ?? 0;
 
     this.itemCode.value    = item.itemCode;
     itemCodeRx.value       = item.itemCode;
@@ -366,42 +404,23 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     itemGroupRx.value      = item.itemGroup ?? '';
     currentVariantOf.value = variantOf;
 
-    // Stash field values before the reset block clears controller state.
     final existingRack   = item.rack    ?? '';
     final existingBatch  = item.batchNo ?? '';
     final existingQty    = item.qty.toString();
 
-    // Reset validation state without clearing the text controllers yet —
-    // we will re-apply the saved values immediately below.
     resetBatch();
     resetRack();
 
-    // Re-apply saved values so the sheet opens pre-populated.
     batchController.text = existingBatch;
     rackController.text  = existingRack;
     qtyController.text   = existingQty;
 
-    // Bug 1 fix (relaxed by DN-6): seed selectedSerial from the item's
-    // persisted value.
-    //
-    // DN-6 guard logic:
-    //   - If availableSerialNos is non-empty (POS Upload already loaded),
-    //     only seed if the value is in the list — prevents a
-    //     DropdownButtonFormField assertion on an unlisted value.
-    //   - If availableSerialNos is empty (POS Upload not yet loaded or
-    //     no POS Upload attached), seed unconditionally.  SharedSerialField
-    //     hides the dropdown when serials.isEmpty, so there is no
-    //     assertion risk; the value will be available once the dropdown
-    //     becomes visible.
     final persistedSerial = item.customInvoiceSerialNumber;
     final serials = availableSerialNos;
     if (persistedSerial != null && persistedSerial.isNotEmpty) {
       if (serials.isEmpty || serials.contains(persistedSerial)) {
         selectedSerial.value = persistedSerial;
       } else {
-        // Serial exists on the item but is not in the loaded list —
-        // log a warning and leave the dropdown unset rather than
-        // throwing a DropdownButtonFormField assertion.
         log(
           '[DN-Item] initForEdit: persisted serial "$persistedSerial" '
           'is not in availableSerialNos $serials — dropdown left unset.',
@@ -413,24 +432,21 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       selectedSerial.value = null;
     }
 
-    // DN-2: seed liveRemaining immediately so the POS cap chip shows the
-    // correct remaining qty as soon as the sheet opens in edit mode.
     _seedLiveRemaining(serial: persistedSerial, excludeName: item.name);
 
     rackStockMapRx.clear();
     isSheetValid.value = false;
+    isQtyValid.value   = false;
+    qtyError.value     = '';
 
     removeSheetListeners();
     addSheetListeners();
     snapshotState();
-    captureSerialSnapshot();   // DN-6: baseline = seeded serial, not null
+    captureSerialSnapshot();
 
     if (existingBatch.isNotEmpty) {
       validateBatchOnInit(existingBatch);
     }
-    // Bug 3 fix: the rack text is already in rackController at this point.
-    // Trigger validation in a post-frame callback so the sheet widget tree
-    // is fully built before the async validate call mutates Rx state.
     if (existingRack.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!isClosed) validateRack(existingRack);
@@ -439,13 +455,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── liveRemaining helpers (DN-2) ───────────────────────────────────────────
-
-  /// Writes liveRemaining based on [_parent.remainingQtyForSerial], adjusted
-  /// for the item currently in the sheet.
-  ///
-  /// [serial]      — the selected invoice serial number (may be null).
-  /// [excludeName] — the name of the item being edited so its committed
-  ///                  qty is not double-counted against the remaining cap.
   void _seedLiveRemaining({String? serial, String? excludeName}) {
     if (serial == null || serial.isEmpty) {
       liveRemaining.value = 0.0;
@@ -453,15 +462,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
     final cap  = _parent.posQtyCapForSerial(serial);
     if (cap == double.infinity) {
-      liveRemaining.value = 0.0;  // chip hidden when no finite cap
+      liveRemaining.value = 0.0;
       return;
     }
     final used = _parent.scannedQtyForSerial(serial, excludeItemName: excludeName);
     liveRemaining.value = (cap - used).clamp(0.0, cap);
   }
 
-  /// Updates liveRemaining in response to qty field changes during active
-  /// editing.  Called from validateSheet() so it runs on every keystroke.
   void _updateLiveRemaining() {
     final serial = selectedSerial.value;
     if (serial == null || serial.isEmpty) {
@@ -484,11 +491,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── Sheet validity ─────────────────────────────────────────────────
   @override
   void validateSheet() {
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    isSheetValid.value = isBatchValid.value && qty > 0;
+    final qty  = double.tryParse(qtyController.text);
+    final ceil = effectiveMaxQty;
+    final qtyOk  = qty != null && qty > 0;
+    final ceilOk = ceil == double.infinity || (qty != null && qty <= ceil);
 
-    // DN-2: keep liveRemaining in sync with every qty keystroke so the
-    // POS cap chip reflects the qty the user is currently entering.
+    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────
+    if (!qtyOk) {
+      isQtyValid.value = false;
+      qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
+    } else if (!ceilOk) {
+      isQtyValid.value = false;
+      final ceilStr = ceil.toStringAsFixed(
+          ceil.truncateToDouble() == ceil ? 0 : 2);
+      qtyError.value = 'Qty cannot exceed $ceilStr';
+    } else {
+      isQtyValid.value = true;
+      qtyError.value   = '';
+    }
+
+    isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
+
     _updateLiveRemaining();
   }
 
@@ -547,14 +570,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  /// E2 fix: maybeAutoFillRack() is declared on AutoFillRackMixin, not on
-  /// ItemSheetControllerBase.  `super.maybeAutoFillRack()` fails at compile
-  /// time because `super` cannot dispatch to a mixin method — it resolves
-  /// only through the class chain.  The correct pattern is:
-  ///   1. Run any pre-autofill work (preloadRackStockMap).
-  ///   2. Call the mixin's public entry-point autoFillRackForQty(qty)
-  ///      directly on `this`, which applies the warehouse-aware rack
-  ///      selection logic defined in AutoFillRackMixin.
   @override
   Future<void> maybeAutoFillRack() async {
     await preloadRackStockMap();

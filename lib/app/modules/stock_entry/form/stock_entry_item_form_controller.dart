@@ -59,6 +59,18 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///     onSelected callback — handleRackPicked calls validateRack() which
 ///     overwrites rackBalance with the live authoritative value before it
 ///     is ever read, so the 0.0 snapshot is never consumed.
+///
+/// Commit 6 (QtyFieldWithPlusMinusDelegate wiring):
+///   • effectiveMaxQty overrides base default (double.infinity) with
+///     min(batchBalance, rackBalance, posSerialCeiling, mrQty) — the same
+///     multi-factor formula used in qtyInfoText/validateSheet, now surfaced
+///     as the single authoritative ceiling.
+///   • adjustQty clamps to effectiveMaxQty (was double.infinity).
+///   • validateSheet writes isQtyValid.value and qtyError.value so
+///     SharedQtyField can show an inline error beneath the field.
+///   • docStatus seeded in _loadExistingItem (edit mode) and reset to 0
+///     in initForNewItem so the ever() worker in
+///     ItemSheetControllerBase.onInit correctly locks / unlocks isQtyReadOnly.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -116,10 +128,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       warehouse:    resolvedWarehouse ?? '',
       requestedQty: double.tryParse(qtyController.text) ?? 0.0,
       currentRack:  rackController.text.trim(),
-      // Snapshot of the live rackStockMap so the Available Rack Balance
-      // sheet is populated for non-batch items / before the batch-ledger
-      // API returns data. Matches the fallbackMap pattern in
-      // SharedDualRackSection._openRackPicker.
       fallbackMap:  Map<String, double>.from(_rackStockMap),
     ));
 
@@ -129,19 +137,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          // availableQty: 0.0 — the onSelected callback receives only the
-          // rack String, not the full RackPickerEntry qty.  handleRackPicked
-          // calls validateRack() immediately after, which writes the live
-          // authoritative balance into rackBalance.value before it is read.
           result = RackPickerResult(rackId: rack, availableQty: 0.0);
         },
       ),
       isScrollControlled: true,
     );
 
-    // Deferred delete: one frame so in-flight Obx rebuilds drain before
-    // the controller is removed from the registry (prevents 'not found'
-    // crash on the final rebuild triggered by onSelected).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (Get.isRegistered<RackPickerController>(tag: tag)) {
         Get.delete<RackPickerController>(tag: tag);
@@ -307,33 +308,51 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   @override
-  String get qtyInfoText {
+  String? get qtyInfoText {
     final eff = effectiveMaxQty;
-    if (eff == null) return 'Max: -';
+    if (eff == double.infinity) return null;
     return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
 
-  double? get effectiveMaxQty {
+  /// Effective qty ceiling for SE: min(batchBalance, rackBalance,
+  /// posSerialCeiling, mrQty) — whichever positive value is lowest.
+  ///
+  /// Returns [double.infinity] when no positive balance is available
+  /// (open-ended entry; balances may still be loading).
+  ///
+  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
+  @override
+  double get effectiveMaxQty {
     double? ceil;
+
     final serial = _posSerialCeiling;
-    if (serial != null) ceil = serial;
+    if (serial != null && serial > 0) {
+      ceil = serial;
+    }
+
     final batch = batchBalance.value;
     if (batch > 0) {
       ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
     }
+
     final rack = rackBalance.value;
     if (rack > 0) {
       ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
     }
+
     final mr = _mrQty;
     if (mr != null && mr > 0) {
       ceil = (ceil == null) ? mr : (mr < ceil ? mr : ceil);
     }
-    return ceil;
+
+    return ceil ?? double.infinity;
   }
 
   @override
-  double get maxQty => effectiveMaxQty ?? 0.0;
+  double get maxQty {
+    final eff = effectiveMaxQty;
+    return eff == double.infinity ? 0.0 : eff;
+  }
 
   // ── State ──────────────────────────────────────────────────────────────────
   var uom              = ''.obs;
@@ -364,16 +383,30 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final qty  = double.tryParse(qtyController.text);
     final ceil = effectiveMaxQty;
 
-    final rackOk = !_requiresSourceRack || isSourceRackValid.value;
+    final rackOk   = !_requiresSourceRack || isSourceRackValid.value;
+    final ceilOk   = ceil == double.infinity || (qty != null && qty <= ceil);
+    final qtyOk    = qty != null && qty > 0;
 
-    final valid = isBatchValid.value &&
-        qty != null && qty > 0 &&
-        (ceil == null || qty <= ceil) &&
-        rackOk;
+    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────────
+    if (!qtyOk) {
+      isQtyValid.value = false;
+      qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
+    } else if (!ceilOk) {
+      isQtyValid.value = false;
+      final ceilStr = ceil.toStringAsFixed(
+          ceil.truncateToDouble() == ceil ? 0 : 2);
+      qtyError.value = 'Qty cannot exceed $ceilStr';
+    } else {
+      isQtyValid.value = true;
+      qtyError.value   = '';
+    }
+
+    final valid = isBatchValid.value && qtyOk && ceilOk && rackOk;
     isSheetValid.value = valid;
 
     final qtyVal = qty ?? 0.0;
-    liveRemaining.value = (ceil != null) ? (ceil - qtyVal).clamp(0.0, ceil) : 0.0;
+    liveRemaining.value =
+        (ceil != double.infinity) ? (ceil - qtyVal).clamp(0.0, ceil) : 0.0;
 
     final parts = <String>[];
     final serial = _posSerialCeiling;
@@ -388,10 +421,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── adjustQty ───────────────────────────────────────────────────────────────────
+  /// Increments or decrements qty by [delta], clamped to
+  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
-    final next    = (current + delta).clamp(0.0, double.infinity);
+    final next    = (current + delta).clamp(0.0, effectiveMaxQty);
     qtyController.text = next.toStringAsFixed(
         next.truncateToDouble() == next ? 0 : 2);
     validateSheet();
@@ -455,6 +490,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     editingItemName.value    = null;
     isEditingExisting.value  = false;
     editingOriginalBatch     = null;
+    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
+    docStatus.value          = 0;
     clearMrLink();
     batchController.clear();
     rackController.clear();
@@ -471,6 +508,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     rackBalance.value     = 0.0;
     liveRemaining.value   = 0.0;
     isSheetValid.value    = false;
+    isQtyValid.value      = false;
+    qtyError.value        = '';
     isSourceRackValid.value      = false;
     isValidatingSourceRack.value = false;
     isTargetRackValid.value      = false;
@@ -486,6 +525,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isEditingExisting.value = true;
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
+
+    // Commit 6: seed docStatus so the ever() worker in
+    // ItemSheetControllerBase.onInit locks isQtyReadOnly when submitted.
+    docStatus.value = item.docstatus ?? 0;
 
     batchController.text        = item.batchNo ?? '';
     rackController.text         = item.rack    ?? '';
