@@ -68,8 +68,18 @@ class MaterialRequestFormController extends GetxController
   // ── Item Sheet State ─────────────────────────────────────────────────────
   final itemFormKey = GlobalKey<FormState>();
 
-  @override
+  /// Backing controller for the qty field in the item bottom-sheet.
+  ///
+  /// Exposed under both names:
+  ///   • [bsQtyController] — used throughout this file and by the sheet UI.
+  ///   • [qtyController]   — satisfies [QtyFieldDelegate] so [GlobalItemFormSheet]
+  ///                         can bind directly via `qtyDelegate: controller`.
   final bsQtyController = TextEditingController();
+
+  /// [QtyFieldDelegate] bridge — delegates to [bsQtyController].
+  @override
+  TextEditingController get qtyController => bsQtyController;
+
   final bsWarehouseController = TextEditingController();
   final bsDateController = TextEditingController();
 
