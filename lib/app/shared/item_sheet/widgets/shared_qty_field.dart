@@ -13,37 +13,72 @@ import 'qty_cap_badge.dart';
 /// Driven by [QtyFieldDelegate].  When the delegate also implements
 /// [QtyPlusMinusDelegate] (i.e. the controller adopts
 /// [QtyFieldWithPlusMinusDelegate]), the widget automatically upgrades to
-/// expose ± stepper buttons and enforce the [QtyPlusMinusDelegate.effectiveMaxQty]
-/// ceiling on both stepper taps and manual keyboard entry (blur-clamp).
+/// expose ± stepper buttons and enforce the
+/// [QtyPlusMinusDelegate.effectiveMaxQty] ceiling on both stepper taps and
+/// manual keyboard entry (blur-clamp).
 ///
 /// ## Behaviour matrix
 ///
-/// | Runtime type of [c]       | ± buttons | Max-Qty chip    | Blur-clamp |
-/// |---------------------------|-----------|-----------------|------------|
-/// | [QtyFieldDelegate] only   | ✖         | if info ≠ null  | ✖          |
-/// | + [QtyPlusMinusDelegate]  | ✔         | if info ≠ null  | ✔          |
+/// | Runtime type of [c]       | ± buttons | Max-Qty chip   | Blur-clamp |
+/// |---------------------------|-----------|----------------|------------|
+/// | [QtyFieldDelegate] only   | ✖         | if info ≠ null | ✖          |
+/// | + [QtyPlusMinusDelegate]  | ✔         | if info ≠ null | ✔          |
 ///
 /// ## Max-Qty chip
 ///
 /// [QtyCapBadge] is rendered automatically whenever
-/// [QtyFieldDelegate.qtyInfoText] returns a non-null value.  No opt-in flag
-/// is required — this follows the same zero-config convention as
-/// [SharedRackField]'s tooltip icon, which auto-appears when
-/// `rackStockTooltip != null`.
+/// [QtyFieldDelegate.qtyInfoText] returns a non-null value.  No opt-in
+/// flag is required — presence is driven entirely by the delegate returning
+/// a non-null label, consistent with the zero-config convention used by
+/// [SharedRackField] (tooltip icon auto-appears when
+/// `rackStockTooltip != null`).
+///
+/// ### Reactivity note
+///
+/// [QtyFieldDelegate.qtyInfoText] is a plain `String?` getter (non-Rx)
+/// because its value is computed synchronously from other Rx sources
+/// (e.g. `effectiveMaxQty`, `batchBalance`).  To ensure the chip row
+/// appears / disappears reactively when those sources change, the chip
+/// section is wrapped in its own [Obx] keyed off
+/// [QtyFieldDelegate.qtyInfoTooltip] — an [RxnString] that is updated
+/// whenever the underlying balance changes.  The outer [Obx] only
+/// governs [QtyPlusMinusDelegate.isQtyReadOnly] and
+/// [QtyFieldDelegate.qtyError].
 ///
 /// ## Read-only guard
 ///
 /// When [QtyPlusMinusDelegate.isQtyReadOnly] is `true` the text field is
-/// disabled and both stepper buttons are hidden.  This is driven by
-/// `docstatus == 1` in the implementing controller.
+/// disabled and both stepper buttons are **hidden** (not merely disabled).
+/// This is driven by `docstatus == 1` in the implementing controller and
+/// gives a cleaner view-only appearance consistent with how
+/// [SharedBatchField] collapses its edit controls.
 ///
 /// ## Constraints
 ///
 /// - [c] owns the [TextEditingController] lifecycle (create / dispose).
-/// - [c.validateSheet] is called on every keystroke (`onChanged`) and on
-///   blur (`onEditingComplete`).
+///   [SharedQtyField] never calls `dispose()` on [QtyFieldDelegate.qtyController].
+/// - [QtyFieldDelegate.validateSheet] is called on every keystroke
+///   (`onChanged`) and on blur (`onEditingComplete`).
 /// - The widget never calls [QtyPlusMinusDelegate.adjustQty] with values
 ///   other than `+1` or `−1`; bulk-step overrides are a controller concern.
+///
+/// ## Changelog
+///
+/// Commit 5 : Initial implementation.
+///   - [StatefulWidget] with `_stepper` cast cached in [State.initState]
+///     to avoid a runtime type-check on every [Obx] rebuild.
+///   - [_clampOnBlur] enforces [QtyPlusMinusDelegate.effectiveMaxQty]
+///     ceiling on manual keyboard entry (fires on `onEditingComplete`).
+///   - [_formatQty] strips redundant trailing zeros (`12.0` → `'12'`).
+///   - Five explicit [OutlineInputBorder] states (enabled, focused,
+///     disabled, error, focusedError) — same convention as
+///     [SharedRackField].
+///   - [_StepperButton] top-padding offset absorbs Material's
+///     label-above-border gap so icons align with input text.
+/// fix(cap-badge-reactivity) : Wrap cap-badge row in its own [Obx] keyed
+///   off [QtyFieldDelegate.qtyInfoTooltip] ([RxnString]) so the chip
+///   appears/disappears reactively when balance changes at runtime.
+///   Outer [Obx] read of plain `String? qtyInfoText` was non-reactive.
 class SharedQtyField extends StatefulWidget {
   final QtyFieldDelegate c;
 
@@ -77,7 +112,7 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
   // RackBrowseDelegate optional capability.
 
   /// Non-null when [widget.c] also implements [QtyPlusMinusDelegate].
-  /// `null` means the stepper is unavailable for this controller.
+  /// `null` means the stepper and blur-clamping are unavailable.
   late final QtyPlusMinusDelegate? _stepper;
 
   @override
@@ -95,7 +130,8 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
   /// Clamps manually typed values to [QtyPlusMinusDelegate.effectiveMaxQty]
   /// so the ceiling is enforced for keyboard input as well as ± taps.
   /// No-ops when [_stepper] is null (plain [QtyFieldDelegate] path) or when
-  /// the ceiling is infinite (uncapped DocTypes).
+  /// the ceiling is `double.infinity` (uncapped DocTypes such as MR, PO,
+  /// Job Card).
   void _clampOnBlur() {
     final stepper = _stepper;
     if (stepper == null) return;
@@ -129,77 +165,94 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
 
   @override
   Widget build(BuildContext context) {
-    // Single Obx wrapping the entire widget so that any Rx change on the
-    // delegate (isQtyReadOnly, qtyError, qtyInfoText) triggers one atomic
-    // rebuild — identical to how SharedBatchField wraps its Column.
+    // Outer Obx governs isQtyReadOnly and qtyError — both are RxBool /
+    // RxString and change at interaction time.
+    //
+    // The cap-badge row has its own inner Obx (see below) because
+    // qtyInfoText is a plain String? getter (non-Rx): it cannot trigger
+    // this outer Obx.  The inner Obx uses qtyInfoTooltip (RxnString) as
+    // its reactive anchor — that field is updated whenever the underlying
+    // balance changes, which is exactly when qtyInfoText also changes.
     return Obx(() {
       final stepper    = _stepper;
       final isReadOnly = stepper?.isQtyReadOnly.value ?? false;
       final hasError   = widget.c.qtyError.value.isNotEmpty;
       final label      = widget.labelText ?? 'Qty';
       final uom        = widget.unitOfMeasure;
-      final capLabel   = widget.c.qtyInfoText;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Max-Qty chip ─────────────────────────────────────────────────
+          // ── Max-Qty chip ───────────────────────────────────────────────
           //
-          // Auto-rendered whenever qtyInfoText != null.  No opt-in flag:
-          // presence is driven entirely by the delegate returning a non-null
-          // label, consistent with the zero-config convention used by
-          // SharedRackField (tooltip icon auto-appears when
-          // rackStockTooltip != null).
-          if (capLabel != null) ...[
-            QtyCapBadge(controller: widget.c),
-            const SizedBox(height: 6),
-          ],
+          // Inner Obx keyed off qtyInfoTooltip (RxnString) so the row
+          // reacts to balance changes even though qtyInfoText is non-Rx.
+          // QtyCapBadge internally renders nothing when qtyInfoText is
+          // null, so the SizedBox(height:6) spacer must be guarded here
+          // rather than relying on the badge itself.
+          Obx(() {
+            // Touch qtyInfoTooltip.value to subscribe this Obx to balance
+            // updates.  The badge itself reads qtyInfoText via its own
+            // internal Obx — we only need the outer gate for the spacer.
+            widget.c.qtyInfoTooltip.value; // reactive subscription anchor
+            final capLabel = widget.c.qtyInfoText;
+            if (capLabel == null) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                QtyCapBadge(controller: widget.c),
+                const SizedBox(height: 6),
+              ],
+            );
+          }),
 
-          // ── Qty field row ────────────────────────────────────────────────
+          // ── Qty field row ──────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Decrement button (−) ──────────────────────────────────
+              // ── Decrement button (−) ─────────────────────────────────
               if (stepper != null && !isReadOnly)
                 _StepperButton(
-                  icon: Icons.remove,
+                  icon:        Icons.remove,
                   accentColor: widget.accentColor,
-                  onTap: () => stepper.adjustQty(-1),
+                  onTap:       () => stepper.adjustQty(-1),
                 ),
 
-              // ── Text field ─────────────────────────────────────────────
+              // ── Text field ────────────────────────────────────────────
               Expanded(
                 child: TextFormField(
-                  controller: widget.c.qtyController,
-                  readOnly: isReadOnly,
+                  controller:  widget.c.qtyController,
+                  readOnly:    isReadOnly,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
                   inputFormatters: [
                     // Permit only non-negative decimals while typing.
+                    // Empty string is allowed so backspace-to-empty works;
+                    // qtyError surfaces the validation state instead.
                     FilteringTextInputFormatter.allow(
                       RegExp(r'^\d*\.?\d*$'),
                     ),
                   ],
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
-                    labelText: label,
+                    labelText:  label,
                     labelStyle: TextStyle(
                       color: hasError
                           ? Theme.of(context).colorScheme.error
                           : widget.accentColor,
                     ),
-                    errorText: hasError
-                        ? widget.c.qtyError.value
-                        : null,
+                    errorText:     hasError ? widget.c.qtyError.value : null,
                     errorMaxLines: 2,
                     suffixText: uom,
-                    isDense: true,
-                    // ── Five explicit border states ───────────────────
-                    // Declared individually so every state has a visually
-                    // intentional border colour — same convention as
-                    // SharedRackField.
+                    isDense:    true,
+                    // ── Five explicit border states ────────────────────
+                    // Declared individually so every state carries a
+                    // visually intentional colour — same convention as
+                    // SharedRackField which avoids relying on the
+                    // default theme border cascade.
                     border: const OutlineInputBorder(),
                     enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
@@ -237,12 +290,12 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
                 ),
               ),
 
-              // ── Increment button (+) ───────────────────────────────────
+              // ── Increment button (+) ──────────────────────────────────
               if (stepper != null && !isReadOnly)
                 _StepperButton(
-                  icon: Icons.add,
+                  icon:        Icons.add,
                   accentColor: widget.accentColor,
-                  onTap: () => stepper.adjustQty(1),
+                  onTap:       () => stepper.adjustQty(1),
                 ),
             ],
           ),
@@ -260,16 +313,18 @@ class _SharedQtyFieldState extends State<SharedQtyField> {
 ///
 /// Rendered as a 44 × 44 tappable [InkWell] with a top-padding offset that
 /// absorbs the label-above-border gap in Material's [OutlineInputBorder]
-/// layout, keeping the icon visually centre-aligned with the input text.
+/// layout, keeping the icon visually centre-aligned with the input text
+/// rather than with the full field height (which includes the floating label).
 ///
-/// The button is only inserted into the [Row] when the stepper is available
-/// AND [QtyPlusMinusDelegate.isQtyReadOnly] is `false`.  Hiding (not merely
-/// disabling) the buttons when read-only gives a cleaner view-only appearance
-/// consistent with how [SharedBatchField] collapses its edit controls.
+/// The button is only inserted into the [Row] when the stepper capability
+/// is present AND [QtyPlusMinusDelegate.isQtyReadOnly] is `false`.
+/// **Hiding** (not merely disabling) the buttons when read-only gives a
+/// cleaner view-only appearance consistent with how [SharedBatchField]
+/// collapses its edit controls when a batch is already validated.
 class _StepperButton extends StatelessWidget {
-  final IconData icon;
-  final Color accentColor;
-  final VoidCallback onTap;
+  final IconData      icon;
+  final Color         accentColor;
+  final VoidCallback  onTap;
 
   const _StepperButton({
     required this.icon,
@@ -282,15 +337,15 @@ class _StepperButton extends StatelessWidget {
     return Padding(
       // 20 px top offset absorbs Material's default label-above-border gap
       // (~18–20 px) so the icon sits centre-aligned with the input text,
-      // not with the full field height including the label.
+      // not with the full field height including the floating label.
       padding: const EdgeInsets.only(top: 20),
       child: SizedBox(
-        width: 44,
+        width:  44,
         height: 44,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTap,
+            onTap:        onTap,
             borderRadius: BorderRadius.circular(8),
             child: Icon(icon, color: accentColor, size: 22),
           ),
