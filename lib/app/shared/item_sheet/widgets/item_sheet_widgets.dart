@@ -9,6 +9,12 @@
 /// Available widgets:
 ///   - [SharedBatchField]      -- batch no input (simple + edit modes)
 ///   - [SharedRackField]       -- single rack input (simple + edit modes)
+///   - [SharedQtyField]        -- qty input with optional ± stepper and
+///                                Max-Qty chip; driven by QtyFieldDelegate
+///                                (or QtyFieldWithPlusMinusDelegate for full
+///                                stepper support)
+///   - [QtyCapBadge]           -- tappable pill chip showing the active qty cap;
+///                                driven by QtyCapDelegate
 ///   - [SharedSerialField]     -- invoice serial number input
 ///   - [SharedDualRackSection] -- SE dual source+target rack section
 ///   - [ValidatedRackField]    -- primitive validated rack field (plain-param,
@@ -21,6 +27,8 @@
 ///                                rendered below the batch input field
 export 'shared_batch_field.dart';
 export 'shared_rack_field.dart';
+export 'shared_qty_field.dart';
+export 'qty_cap_badge.dart';
 export 'shared_serial_field.dart';
 export 'shared_dual_rack_section.dart';
 export 'validated_rack_field.dart';
