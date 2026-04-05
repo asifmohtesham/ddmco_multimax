@@ -16,9 +16,11 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
 
 class MaterialRequestFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin
+    implements QtyFieldDelegate {
   final MaterialRequestProvider _provider =
       Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -66,6 +68,7 @@ class MaterialRequestFormController extends GetxController
   // ── Item Sheet State ─────────────────────────────────────────────────────
   final itemFormKey = GlobalKey<FormState>();
 
+  @override
   final bsQtyController = TextEditingController();
   final bsWarehouseController = TextEditingController();
   final bsDateController = TextEditingController();
@@ -87,6 +90,30 @@ class MaterialRequestFormController extends GetxController
 
   final TextEditingController barcodeController = TextEditingController();
   final ScrollController scrollController = ScrollController();
+
+  // ── QtyFieldDelegate ─────────────────────────────────────────────────────
+  //
+  // MR uses a lightweight validation model: qty > 0 is the only rule.
+  // There is no batch ceiling, rack balance, or POS serial cap, so:
+  //   • qtyInfoText    returns null  → QtyCapBadge is not rendered.
+  //   • qtyInfoTooltip returns null  → badge tap does nothing.
+  //   • qtyError       is always ''  → no inline error text shown.
+  //   • isQtyValid     mirrors isSheetValid (the existing gate).
+  //
+  // validateSheet() already writes isSheetValid; isQtyValid is kept in sync
+  // inside that method so SharedQtyField's Obx picks up the correct state.
+
+  @override
+  final RxBool isQtyValid = false.obs;
+
+  @override
+  final RxString qtyError = RxString('');
+
+  @override
+  String? get qtyInfoText => null;
+
+  @override
+  final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── Persistent scan worker ──────────────────────────────────────────────────
   Worker? _scanWorker;
@@ -360,6 +387,8 @@ class MaterialRequestFormController extends GetxController
     bsItemVariantOf.value = null;
     isFormDirty.value = false;
     isSheetValid.value = false;
+    isQtyValid.value = false;
+    qtyError.value = '';
     _initialQty = '';
     _initialWh = '';
 
@@ -438,6 +467,7 @@ class MaterialRequestFormController extends GetxController
 
   // ── Sheet validation ───────────────────────────────────────────────────────────
 
+  @override
   void validateSheet() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     bool valid = qty > 0 && currentItemCode.isNotEmpty;
@@ -450,6 +480,8 @@ class MaterialRequestFormController extends GetxController
     if (currentItemNameKey.value != null && !dirty) valid = false;
 
     isSheetValid.value = valid;
+    // Keep QtyFieldDelegate sub-field in sync with sheet gate.
+    isQtyValid.value = valid;
   }
 
   void adjustSheetQty(int delta) {
