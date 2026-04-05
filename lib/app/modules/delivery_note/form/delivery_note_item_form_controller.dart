@@ -85,6 +85,11 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   - docStatus seeded in initForEdit / reset in initForNewItem so the
 ///     ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
 ///     when docstatus == 1 (submitted).
+///
+/// fix(docstatus): read from parent document, not item row.
+///   DeliveryNoteItem does not carry a docstatus field — docstatus belongs
+///   to the parent DeliveryNote only.  initForEdit now reads
+///   _parent.deliveryNote.value?.docstatus ?? 0.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin {
 
@@ -132,17 +137,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────────
-  /// Effective qty ceiling for DN: min(batchBalance, rackBalance,
-  /// liveRemaining) — three-way minimum per Q4 spec.
-  ///
-  /// [liveRemaining] represents the POS-Upload remaining qty for the
-  /// selected serial after accounting for other DN items.
-  ///
-  /// Returns [double.infinity] when none of the three sources provide a
-  /// meaningful (> 0) ceiling (balances may still be loading, or no POS
-  /// serial is selected).
-  ///
-  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
   @override
   double get effectiveMaxQty {
     double? ceil;
@@ -157,8 +151,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
     }
 
-    // liveRemaining is the POS-serial remaining qty cap (DN-2 / DN-6).
-    // Only apply it when a serial is selected and the cap is finite.
     final serial = selectedSerial.value;
     if (serial != null && serial.isNotEmpty) {
       final cap = _parent.posQtyCapForSerial(serial);
@@ -171,19 +163,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── PosSerialMixin: posItemQty override (DN-2) ────────────────────────
-  /// Total POS-Upload qty cap for the currently selected serial.
-  ///
-  /// Delegates to the parent form controller which reads the PosUpload
-  /// document.  Returns double.infinity (treated as "no cap" by
-  /// posSerialCapText, which returns null) when no serial is selected
-  /// or no POS Upload is loaded.
   @override
   double get posItemQty =>
       _parent.posQtyCapForSerial(selectedSerial.value ?? '');
 
   // ── adjustQty ──────────────────────────────────────────────────
-  /// Increments or decrements qty by [delta], clamped to
-  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -239,8 +223,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── RackBrowseDelegate — Commit 7 ─────────────────────────────────────
-
-  /// Returns true as soon as an item code is known.
   @override
   bool get canBrowseRacks => itemCode.value.isNotEmpty;
 
@@ -352,8 +334,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = false;
     editingIndex.value    = -1;
     editingItemName.value = null;
-    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
-    docStatus.value       = 0;
+    // fix(docstatus): docstatus belongs to the parent document, not the item
+    // row. Read from parent DeliveryNote to drive the isQtyReadOnly lock.
+    docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
 
     this.itemCode.value    = itemCode;
     itemCodeRx.value       = itemCode;
@@ -393,9 +376,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = true;
     editingIndex.value    = index;
     editingItemName.value = item.name;
-    // Commit 6: seed docStatus so the ever() worker locks isQtyReadOnly
-    // when the item is submitted (docstatus == 1).
-    docStatus.value       = item.docstatus ?? 0;
+    // fix(docstatus): docstatus belongs to the parent document, not the item
+    // row. Read from parent DeliveryNote to drive the isQtyReadOnly lock.
+    docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
 
     this.itemCode.value    = item.itemCode;
     itemCodeRx.value       = item.itemCode;
@@ -496,7 +479,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qtyOk  = qty != null && qty > 0;
     final ceilOk = ceil == double.infinity || (qty != null && qty <= ceil);
 
-    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────
     if (!qtyOk) {
       isQtyValid.value = false;
       qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
