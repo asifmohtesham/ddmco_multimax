@@ -42,6 +42,11 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  • docStatus seeded in initForEdit / reset in initForCreate so the
 ///    ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
 ///    when docstatus == 1 (submitted).
+///
+/// fix(docstatus): read from parent document, not item row.
+///   PurchaseReceiptItem does not carry a docstatus field — docstatus belongs
+///   to the parent PurchaseReceipt only.  Both initForCreate and initForEdit
+///   now read _parent.purchaseReceipt.value?.docstatus ?? 0.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   // ── Parent back-reference ───────────────────────────────────────────────
@@ -71,15 +76,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   MobileScannerController? get sheetScanController => null;
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
-  /// Effective qty ceiling for PR: the PO ordered qty when positive.
-  ///
-  /// PO qty is the only meaningful ceiling for inbound receipts — batch
-  /// and rack balances are zero for goods not yet received.
-  ///
-  /// Returns [double.infinity] when no PO is linked or its qty is zero
-  /// (uncapped entry).
-  ///
-  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
   @override
   double get effectiveMaxQty {
     final po = poQty.value;
@@ -87,7 +83,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     return double.infinity;
   }
 
-  /// Qty-info label: shows max from PO ordered qty when available.
   @override
   String? get qtyInfoText {
     final eff = effectiveMaxQty;
@@ -95,7 +90,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     return 'PO Qty: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
 
-  /// Backing RxnString for the qty-info tooltip (ceiling breakdown).
   @override
   final RxnString qtyInfoTooltip = RxnString(null);
 
@@ -146,7 +140,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     final qtyOk  = qty > 0;
     final ceilOk = ceil == double.infinity || qty <= ceil;
 
-    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────
     if (!qtyOk) {
       isQtyValid.value = false;
       qtyError.value   = qty == 0.0 ? '' : 'Enter a quantity greater than 0';
@@ -164,7 +157,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isSheetValid.value      = ok;
     saveButtonVisible.value = ok;
 
-    // Update qty-info tooltip with PO qty ceiling.
     final po = poQty.value;
     qtyInfoTooltip.value = (po != null && po > 0)
         ? 'Ordered: ${po.toStringAsFixed(0)}'
@@ -172,8 +164,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   // ── adjustQty ──────────────────────────────────────────────────────────────
-  /// Increments or decrements qty by [delta], clamped to
-  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -241,8 +231,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     String? batchNo,
   }) {
     editingItemName.value = null;
-    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
-    docStatus.value       = 0;
+    // fix(docstatus): docstatus belongs to the parent document, not the item
+    // row. Read from parent PurchaseReceipt to drive the isQtyReadOnly lock.
+    docStatus.value       = _parent.purchaseReceipt.value?.docstatus ?? 0;
     itemCode.value        = code;
     itemName.value        = name;
     itemUom.value         = uom;
@@ -272,9 +263,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     required PurchaseReceiptItem item,
   }) {
     editingItemName.value = item.name;
-    // Commit 6: seed docStatus so the ever() worker locks isQtyReadOnly
-    // when the item is submitted (docstatus == 1).
-    docStatus.value       = item.docstatus ?? 0;
+    // fix(docstatus): docstatus belongs to the parent document, not the item
+    // row. Read from parent PurchaseReceipt to drive the isQtyReadOnly lock.
+    docStatus.value       = _parent.purchaseReceipt.value?.docstatus ?? 0;
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
     itemUom.value         = item.uom ?? '';

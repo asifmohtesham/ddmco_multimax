@@ -71,6 +71,11 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   • docStatus seeded in _loadExistingItem (edit mode) and reset to 0
 ///     in initForNewItem so the ever() worker in
 ///     ItemSheetControllerBase.onInit correctly locks / unlocks isQtyReadOnly.
+///
+/// fix(docstatus): read from parent document, not item row.
+///   StockEntryItem does not carry a docstatus field — docstatus belongs
+///   to the parent StockEntry only.  _loadExistingItem now reads
+///   _parent.stockEntry.value?.docstatus ?? 0.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with PosSerialMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -526,9 +531,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
 
-    // Commit 6: seed docStatus so the ever() worker in
-    // ItemSheetControllerBase.onInit locks isQtyReadOnly when submitted.
-    docStatus.value = item.docstatus ?? 0;
+    // fix(docstatus): docstatus belongs to the parent document, not the item
+    // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
+    docStatus.value = _parent.stockEntry.value?.docstatus ?? 0;
 
     batchController.text        = item.batchNo ?? '';
     rackController.text         = item.rack    ?? '';
