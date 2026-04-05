@@ -138,6 +138,7 @@ class StockEntryItem {
   final String? creation;
   final String? modified;
   final String? modifiedBy;
+  final int docstatus;
 
   StockEntryItem({
     this.name,
@@ -159,6 +160,7 @@ class StockEntryItem {
     this.creation,
     this.modified,
     this.modifiedBy,
+    this.docstatus = 0,
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
@@ -183,6 +185,7 @@ class StockEntryItem {
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
       modifiedBy: json['modified_by']?.toString(),
+      docstatus: StockEntry._parseInt(json['docstatus']),
     );
   }
 

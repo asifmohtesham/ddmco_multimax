@@ -76,6 +76,7 @@ class PurchaseReceiptItem {
   final int idx;
   final String? customVariantOf;
   final double? purchaseOrderQty;
+  final int docstatus;
 
   // ── PO linkage fields ──────────────────────────────────────────────────────
   // Populated by PurchaseReceiptFormController when the receipt is created
@@ -107,6 +108,7 @@ class PurchaseReceiptItem {
     this.idx = 0,
     this.customVariantOf,
     this.purchaseOrderQty,
+    this.docstatus = 0,
     this.poName,
     this.poItem,
     this.poQty,
@@ -137,6 +139,7 @@ class PurchaseReceiptItem {
       customVariantOf: json['custom_variant_of'],
       purchaseOrderQty:
           (json['purchase_order_qty'] as num?)?.toDouble(),
+      docstatus: json['docstatus'] as int? ?? 0,
       poName: json['po_name'] as String?,
       poItem: json['po_item'] as String?,
       poQty:  (json['po_qty']  as num?)?.toDouble(),
@@ -165,6 +168,7 @@ class PurchaseReceiptItem {
     int? idx,
     String? customVariantOf,
     double? purchaseOrderQty,
+    int? docstatus,
     String? poName,
     String? poItem,
     double? poQty,
@@ -191,6 +195,7 @@ class PurchaseReceiptItem {
       idx: idx ?? this.idx,
       customVariantOf: customVariantOf ?? this.customVariantOf,
       purchaseOrderQty: purchaseOrderQty ?? this.purchaseOrderQty,
+      docstatus: docstatus ?? this.docstatus,
       poName: poName ?? this.poName,
       poItem: poItem ?? this.poItem,
       poQty:  poQty  ?? this.poQty,
