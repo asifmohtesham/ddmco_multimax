@@ -17,6 +17,7 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
+import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -218,6 +219,29 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── SerialFieldMixin: availableSerialNos ───────────────────────────────────
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
+
+  // ── SerialFieldMixin: rich dropdown row metadata ──────────────────────────
+  /// Resolves serial → PosUploadItem and returns the full tile metadata.
+  /// Falls back to null (index-badge only) when no POS Upload is loaded or
+  /// when the serial has no matching item.
+  @override
+  SerialDropdownItem? posDropdownItemFor(String serial) {
+    final upload = _parent.posUpload.value;
+    if (upload == null) return null;
+
+    final idx = int.tryParse(serial);
+    if (idx == null) return null;
+
+    final posItem = upload.items.firstWhereOrNull((i) => i.idx == idx);
+    if (posItem == null) return null;
+
+    return SerialDropdownItem(
+      serial:    serial,
+      itemName:  posItem.itemName,
+      qty:       posItem.quantity.toDouble(),
+      remaining: liveRemaining.value,
+    );
+  }
 
   // ── SerialFieldMixin: POS qty cap for a given serial ──────────────────────
   //

@@ -22,6 +22,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 
 // Parent controller
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 
 /// Item-level sheet controller for Delivery Note.
 ///
@@ -206,6 +207,33 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         .map((e) => e.idx.toString())
         .where((s) => s.isNotEmpty)
         .toList();
+  }
+
+  // ── SerialFieldMixin: rich dropdown row metadata ──────────────────────────
+  /// Resolves serial (= idx string) → PosUploadItem → SerialDropdownItem so
+  /// the dropdown shows a two-line tile: item name + ×qty.
+  ///
+  /// Returns null when the parent has no POS Upload loaded or when the
+  /// serial does not map to a known POS item — the widget falls back to the
+  /// plain index badge in those cases.
+  @override
+  SerialDropdownItem? posDropdownItemFor(String serial) {
+    final upload = _parent.posUpload.value;
+    if (upload == null) return null;
+
+    // serial == idx.toString(); find the PosUploadItem with matching idx.
+    final idx = int.tryParse(serial);
+    if (idx == null) return null;
+
+    final posItem = upload.items.firstWhereOrNull((i) => i.idx == idx);
+    if (posItem == null) return null;
+
+    return SerialDropdownItem(
+      serial:    serial,
+      itemName:  posItem.itemName,
+      qty:       posItem.quantity.toDouble(),
+      remaining: liveRemaining.value,
+    );
   }
 
   // ── Legacy name aliases ────────────────────────────────────────────────────
