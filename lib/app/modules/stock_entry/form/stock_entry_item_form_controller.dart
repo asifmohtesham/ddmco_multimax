@@ -9,7 +9,7 @@ import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
-import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
+import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
@@ -76,8 +76,21 @@ import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controlle
 ///   StockEntryItem does not carry a docstatus field — docstatus belongs
 ///   to the parent StockEntry only.  _loadExistingItem now reads
 ///   _parent.stockEntry.value?.docstatus ?? 0.
+///
+/// Commit 5 (serial refactor):
+///   • `with PosSerialMixin` replaced by `with SerialFieldMixin`.
+///   • import of item_sheet_mixin_pos_serial.dart removed; serial_field_mixin
+///     imported instead.
+///   • posItemQtyForSerial() delegates to _parent.posQtyCapForSerial().
+///   • sumQtyUsedForSerial() walks _parent.stockEntry.items to sum qty
+///     for the given serial (all rows, including the row being edited —
+///     savedQtyForRow() subtracts the edit-row's saved qty to avoid
+///     double-counting).
+///   • savedQtyForRow() returns the committed qty of the row being edited.
+///   • validateSheet() calls computeLiveRemaining() from SerialFieldMixin
+///     instead of the old hand-rolled liveRemaining assignment.
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with PosSerialMixin, AutoFillRackMixin
+    with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
 
   // ── Parent back-reference ──────────────────────────────────────────────────────
@@ -202,9 +215,44 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     await super.openBatchPicker();
   }
 
-  // ── PosSerialMixin: availableSerialNos ─────────────────────────────────────────
+  // ── SerialFieldMixin: availableSerialNos ───────────────────────────────────
   @override
   List<String> get availableSerialNos => _parent.posUploadSerialOptions;
+
+  // ── SerialFieldMixin: POS qty cap for a given serial ──────────────────────
+  //
+  // Delegates to _parent.posQtyCapForSerial(serial), which resolves
+  // serial → idx → PosUploadItem.quantity.  Returns double.infinity when
+  // no POS Upload is loaded (badge hidden by the widget).
+  @override
+  double posItemQtyForSerial(String serial) =>
+      _parent.posQtyCapForSerial(serial);
+
+  // ── SerialFieldMixin: sum of all committed rows for this serial ────────────
+  //
+  // Walks the parent SE's in-memory items list synchronously — no API call.
+  // Includes the row currently being edited (savedQtyForRow subtracts it
+  // back out in computeLiveRemaining to avoid double-counting).
+  @override
+  double sumQtyUsedForSerial(String serial) {
+    return (_parent.stockEntry.value?.items ?? [])
+        .where((i) => (i.customInvoiceSerialNumber ?? '0') == serial)
+        .fold(0.0, (sum, i) => sum + i.qty);
+  }
+
+  // ── SerialFieldMixin: saved qty of the row being edited ───────────────────
+  //
+  // In edit mode, computeLiveRemaining adds this value back so the live
+  // remaining reacts correctly to the user's current input rather than
+  // double-counting the saved row qty that sumQtyUsedForSerial already
+  // includes.
+  @override
+  double savedQtyForRow(String rowId) {
+    return _parent.stockEntry.value?.items
+            .firstWhereOrNull((i) => i.name == rowId)
+            ?.qty ??
+        0.0;
+  }
 
   // ── AutoFillRackMixin hooks ────────────────────────────────────────────────
   @override
@@ -409,9 +457,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final valid = isBatchValid.value && qtyOk && ceilOk && rackOk;
     isSheetValid.value = valid;
 
-    final qtyVal = qty ?? 0.0;
-    liveRemaining.value =
-        (ceil != double.infinity) ? (ceil - qtyVal).clamp(0.0, ceil) : 0.0;
+    // ── Live remaining via SerialFieldMixin ───────────────────────────────
+    // computeLiveRemaining handles: no serial selected, no POS Upload loaded,
+    // infinity cap (badge hidden), edit-mode double-count prevention via
+    // savedQtyForRow(), and negative over-allocation values.
+    computeLiveRemaining(
+      currentTypedQty: qty ?? 0.0,
+      editingRowId:    editingItemName.value,
+    );
 
     final parts = <String>[];
     final serial = _posSerialCeiling;
@@ -422,7 +475,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (rackBal > 0) parts.add('Rack: ${rackBal.toStringAsFixed(0)}');
     final mr = _mrQty;
     if (mr != null && mr > 0) parts.add('MR: ${mr.toStringAsFixed(0)}');
-    qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  ·  ');
+    qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  \u00b7  ');
   }
 
   // ── adjustQty ───────────────────────────────────────────────────────────────────
@@ -521,6 +574,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isValidatingTargetRack.value = false;
     isLoadingRackBalance.value   = false;
     _batchWiseHistory.clear();
+    // Reset serial selection so a freshly opened sheet never inherits the
+    // serial from a previous sheet session.
+    selectedSerial.value = null;
   }
 
   void _loadExistingItem(
@@ -606,6 +662,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     addSheetListeners();
     snapshotState();
+    // captureSerialSnapshot() is called inside snapshotState() via the
+    // SerialFieldMixin hook — baseline for isSerialDirty dirty-detection.
+    captureSerialSnapshot();
   }
 
   Future<void> initialise({
