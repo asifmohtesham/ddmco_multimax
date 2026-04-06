@@ -10,9 +10,8 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
-    controller.showServerGuide.value = false;
-    controller.update();
-
+    // Do NOT reset showServerGuide here — it is only cleared after a
+    // successful save inside _confirmAndSave in the controller.
     Get.bottomSheet(
       GetBuilder<LoginController>(
         builder: (c) => Container(
@@ -161,46 +160,61 @@ class LoginScreen extends GetView<LoginController> {
                     ),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          if (controller.emailController.text.isEmpty) {
-                            Get.snackbar(
-                              'Info',
-                              'Please enter your email address in the field above first.',
-                              backgroundColor: Colors.blue,
-                              colorText: Colors.white,
-                            );
-                          } else {
-                            Get.defaultDialog(
-                              title: 'Reset Password',
-                              middleText:
-                                  'Send password reset instructions to ${controller.emailController.text}?',
-                              textConfirm: 'Send',
-                              textCancel: 'Cancel',
-                              confirmTextColor: Colors.white,
-                              onConfirm: () {
-                                Get.back();
-                                controller.resetPassword();
-                              },
-                            );
-                          }
-                        },
-                        child: const Text('Forgot Password?'),
+                      child: GetBuilder<LoginController>(
+                        builder: (c) => TextButton(
+                          onPressed: () {
+                            // Guard: do not open reset dialog during an
+                            // in-flight login request.
+                            if (c.isLoading.value) return;
+                            if (controller.emailController.text.isEmpty) {
+                              Get.snackbar(
+                                'Info',
+                                'Please enter your email address in the field above first.',
+                                backgroundColor: Colors.blue,
+                                colorText: Colors.white,
+                              );
+                            } else {
+                              Get.defaultDialog(
+                                title: 'Reset Password',
+                                middleText:
+                                    'Send password reset instructions to ${controller.emailController.text}?',
+                                textConfirm: 'Send',
+                                textCancel: 'Cancel',
+                                confirmTextColor: Colors.white,
+                                onConfirm: () {
+                                  Get.back();
+                                  controller.resetPassword();
+                                },
+                              );
+                            }
+                          },
+                          child: const Text('Forgot Password?'),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24.0),
+                    // Login button keeps its shell during loading — only the
+                    // child swaps to a spinner and onPressed is nulled.
+                    // Prevents the form from jumping height when loading.
                     GetBuilder<LoginController>(
-                      builder: (c) => c.isLoading.value
-                          ? const Center(child: CircularProgressIndicator())
-                          : ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 16.0),
-                                textStyle: const TextStyle(fontSize: 16),
-                              ),
-                              onPressed: c.loginUser,
-                              child: const Text('Login'),
-                            ),
+                      builder: (c) => ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 16.0),
+                          textStyle: const TextStyle(fontSize: 16),
+                        ),
+                        onPressed: c.isLoading.value ? null : c.loginUser,
+                        child: c.isLoading.value
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Login'),
+                      ),
                     ),
                   ],
                 ),
