@@ -17,6 +17,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
@@ -254,6 +255,26 @@ class PackingSlipFormController extends GetxController
   }
 
   // ---------------------------------------------------------------------------
+  // POS qty cap helper (Commit 6)
+  // ---------------------------------------------------------------------------
+
+  /// Returns the POS Upload quantity cap for the given invoice serial number.
+  ///
+  /// Resolution: serial (string) → idx (int.tryParse) → PosUploadItem.quantity.
+  ///
+  /// Returns [double.infinity] when no POS Upload is loaded (badge hidden by
+  /// [SharedInvoiceSerialNumberField]).
+  /// Returns `0.0` when the serial cannot be matched to any POS Upload item.
+  double posQtyCapForSerial(String serial) {
+    final upload = posUpload.value;
+    if (upload == null) return double.infinity;
+    final idx = int.tryParse(serial);
+    if (idx == null) return 0.0;
+    final item = upload.items.firstWhereOrNull((i) => i.idx == idx);
+    return item?.quantity?.toDouble() ?? 0.0;
+  }
+
+  // ---------------------------------------------------------------------------
   // UI helpers
   // ---------------------------------------------------------------------------
 
@@ -430,6 +451,19 @@ class PackingSlipFormController extends GetxController
 
   Future<void> _openItemSheet(PackingSlipItemFormController child) async {
     isItemSheetOpen.value = true;
+
+    // ── Serial cap badge (Commit 6) ───────────────────────────────────────────
+    // Rendered as a read-only custom field tile when a POS Upload is loaded
+    // and the linked DN item carries a valid invoice serial number.
+    // posItemQtyOverride closes over this controller instance so the badge
+    // always reads posQtyCapForSerial(currentSerial) for the current sheet
+    // session, regardless of what the child controller exposes.
+    final serial = currentSerial;
+    final showSerialBadge = posUpload.value != null &&
+        serial != null &&
+        serial.isNotEmpty &&
+        serial != '0';
+
     await Get.bottomSheet(
       DraggableScrollableSheet(
         initialChildSize: 0.6,
@@ -447,6 +481,17 @@ class PackingSlipFormController extends GetxController
           customFields: [
             if (currentBatchNo != null && currentBatchNo!.isNotEmpty)
               BatchDisplayTile(batchNo: currentBatchNo!),
+            if (showSerialBadge)
+              SharedInvoiceSerialNumberField(
+                c:           child,
+                accentColor: Colors.teal,
+                label:       'Invoice Serial No',
+                hint:        serial!,
+                // Override: read the POS cap directly from this parent
+                // controller so the badge is correct even before the child
+                // controller's first validateSheet() fires.
+                posItemQtyOverride: () => posQtyCapForSerial(serial),
+              ),
           ],
         ),
       ),

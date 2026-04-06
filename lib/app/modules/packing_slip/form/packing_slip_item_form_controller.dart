@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
@@ -9,11 +10,25 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 ///
 /// Extends [ItemSheetControllerBase] for the full animated item-sheet
 /// infrastructure (save-button state, auto-submit worker, dirty tracking, etc.).
-class PackingSlipItemFormController extends ItemSheetControllerBase {
-  // ── Parent reference ──────────────────────────────────────────
+///
+/// Commit 6 (serial refactor):
+///   • Adopts [SerialFieldMixin] — full [SerialNumberFieldDelegate] compliance.
+///   • [availableSerialNos] returns a single-element list seeded from
+///     [PackingSlipFormController.currentSerial] when a POS Upload is loaded,
+///     otherwise [] (widget hidden).
+///   • [posItemQtyForSerial] delegates to [PackingSlipFormController.posQtyCapForSerial].
+///   • [sumQtyUsedForSerial] sums qty for the serial across the current slip's
+///     in-memory items list.
+///   • [selectedSerial] is seeded in [initialise] so the dropdown is
+///     pre-selected (read-only) on sheet open.
+///   • [computeLiveRemaining] wired into [validateSheet] — cap badge reacts
+///     to every qty keystroke.
+class PackingSlipItemFormController extends ItemSheetControllerBase
+    with SerialFieldMixin {
+  // ── Parent reference ───────────────────────────────────────────────────────
   late PackingSlipFormController _parent;
 
-  // ── ItemSheetControllerBase abstract overrides ──────────────────────
+  // ── ItemSheetControllerBase abstract overrides ─────────────────────────────
 
   @override
   String? get resolvedWarehouse => null;
@@ -30,8 +45,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// Fix 1: base abstract declares `String get qtyInfoText` (non-nullable).
-  /// Return '' instead of null when there is no ceiling.
   @override
   String get qtyInfoText {
     final max = _parent.bsMaxQty.value;
@@ -45,8 +58,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   @override
   MobileScannerController? get sheetScanController => null;
 
-  /// Fix 2: base abstract declares `void adjustQty(int delta)`.
-  /// The stepper always passes +1 / -1, so int is correct.
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -63,6 +74,41 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
 
   @override
   Future<void> deleteCurrentItem() => _parent.deleteCurrentItem();
+
+  // ── SerialFieldMixin: availableSerialNos ────────────────────────────────────
+  //
+  // PS serial field is read-only: the serial is fixed by the linked DN item.
+  // We expose it as a single-element list so SharedInvoiceSerialNumberField
+  // renders the dropdown pre-selected (no user selection needed).
+  // Return [] when no POS Upload is loaded → widget hidden entirely.
+  @override
+  List<String> get availableSerialNos {
+    if (_parent.posUpload.value == null) return [];
+    final serial = _parent.currentSerial;
+    if (serial == null || serial.isEmpty || serial == '0') return [];
+    return [serial];
+  }
+
+  // ── SerialFieldMixin: POS qty cap for a given serial ───────────────────────
+  //
+  // Delegates to PackingSlipFormController.posQtyCapForSerial(serial) which
+  // resolves serial → idx → PosUploadItem.quantity.
+  @override
+  double posItemQtyForSerial(String serial) =>
+      _parent.posQtyCapForSerial(serial);
+
+  // ── SerialFieldMixin: sum of all committed rows for this serial ────────────
+  //
+  // Walks the current slip's in-memory items list — no API call.
+  // PS items carry customInvoiceSerialNumber so we match on that field.
+  @override
+  double sumQtyUsedForSerial(String serial) {
+    return (_parent.packingSlip.value?.items ?? [])
+        .where((i) => (i.customInvoiceSerialNumber ?? '0') == serial)
+        .fold(0.0, (sum, i) => sum + i.qty);
+  }
+
+  // ── Sheet validation ────────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -81,6 +127,16 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
       return;
     }
 
+    // ── Live remaining via SerialFieldMixin ──────────────────────────────────
+    // computeLiveRemaining handles: no serial, no POS Upload (availableSerialNos
+    // empty → selectedSerial null → liveRemaining stays 0), infinity cap
+    // (badge hidden by widget), and edit-mode via savedQtyForRow (PS item
+    // controller is always in add mode — savedQtyForRow default 0.0 is correct).
+    computeLiveRemaining(
+      currentTypedQty: qty,
+      editingRowId:    editingItemName.value,
+    );
+
     isSheetValid.value = true;
   }
 
@@ -91,7 +147,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
     await _parent.addItemToSlipWithQty(qty);
   }
 
-  // ── Initialisation ────────────────────────────────────────────
+  // ── Initialisation ──────────────────────────────────────────────────────────
 
   void initialise({
     required PackingSlipFormController parent,
@@ -101,12 +157,23 @@ class PackingSlipItemFormController extends ItemSheetControllerBase {
   }) {
     _parent = parent;
 
-    // Fix 3: isAddingItemFlag is a plain bool field on the base;
-    // parent.isAddingItem is RxBool — unwrap with .value.
     isAddingItemFlag = parent.isAddingItem.value;
 
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
+
+    // ── Seed selectedSerial from parent's currentSerial ──────────────────────
+    // PS serial is fixed by the linked DN item; we pre-select it so the
+    // read-only dropdown opens already showing the correct serial, and
+    // computeLiveRemaining has a non-null serial to work with immediately.
+    final serial = parent.currentSerial;
+    if (serial != null && serial.isNotEmpty && serial != '0') {
+      selectedSerial.value = serial;
+    } else {
+      selectedSerial.value = null;
+    }
+    // Baseline for isSerialDirty — must follow the seed above.
+    captureSerialSnapshot();
 
     if (editingItem != null) {
       editingItemName.value = editingItem.name;
