@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
@@ -15,6 +16,7 @@ class PackingSlipController extends GetxController {
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final HomeController _homeController = Get.find<HomeController>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   /// Exposed so filter widgets can call provider search helpers directly.
   PackingSlipProvider get packingSlipProvider => _provider;
@@ -44,11 +46,21 @@ class PackingSlipController extends GetxController {
   var deliveryNotesForSelection = <DeliveryNote>[].obs;
   List<DeliveryNote> _allFetchedDNs = [];
 
+  /// Roles permitted to create / write Packing Slips.
+  ///
+  /// Seeded with `System Manager` as a safe default and then updated
+  /// dynamically in [fetchDocTypePermissions] by querying the ERPNext
+  /// `DocType` document for `Packing Slip` — mirroring the identical
+  /// mechanism in [StockEntryController] and [DeliveryNoteController].
+  /// Consumed by `RoleGuard` on the New Packing Slip FAB (wired in Commit 4).
+  var writeRoles = <String>['System Manager'].obs;
+
   @override
   void onInit() {
     super.onInit();
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
     fetchPackingSlips();
+    fetchDocTypePermissions();
   }
 
   @override
@@ -56,6 +68,34 @@ class PackingSlipController extends GetxController {
     super.onReady();
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
+    }
+  }
+
+  // ── Permissions ───────────────────────────────────────────────────────────
+
+  /// Fetches the `Packing Slip` DocType document from ERPNext and populates
+  /// [writeRoles] with every role that has `write == 1` at `permlevel == 0`.
+  ///
+  /// `System Manager` is always included as a non-removable fallback so the
+  /// FAB remains visible during the async fetch and in offline scenarios.
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response =
+          await _apiProvider.getDocument('DocType', 'Packing Slip');
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'};
+        for (var p in perms) {
+          if (p['write'] == 1 &&
+              (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      print('Error fetching Packing Slip permissions: $e');
     }
   }
 
