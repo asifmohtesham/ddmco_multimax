@@ -23,20 +23,14 @@ class LoginController extends GetxController {
   var currentServerUrl = ''.obs;
   var isCheckingConnection = false.obs;
   var isLoading = false.obs;
-
-  // ValueNotifier instead of RxBool — pure Flutter, no GetX reactive layer.
-  // TextFormField calls setState during _firstBuild which triggers GetX's
-  // notifyChildren chain and crashes Obx when used as a direct parent.
-  final isPasswordHidden = ValueNotifier<bool>(true);
-
   var showServerGuide = false.obs;
+
+  // ValueNotifier — pure Flutter, avoids GetX reactive layer on TextFormField.
+  final isPasswordHidden = ValueNotifier<bool>(true);
 
   @override
   void onInit() {
     super.onInit();
-    // Defer async mutations until after the first frame is fully rendered.
-    // Prevents any observable from firing notifyChildren while Obx/GetBuilder
-    // widgets are still mid-mount (_firstBuild race condition).
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedServerUrl());
   }
 
@@ -160,6 +154,7 @@ class LoginController extends GetxController {
 
     if (loginFormKey.currentState!.validate()) {
       isLoading.value = true;
+      update();
       try {
         final response = await _apiProvider.loginWithFrappe(
           emailController.text.trim(),
@@ -194,10 +189,10 @@ class LoginController extends GetxController {
         }
       } catch (e) {
         GlobalSnackbar.error(
-            title: 'Login Error',
-            message: 'An unexpected error occurred.');
+            title: 'Login Error', message: 'An unexpected error occurred.');
       } finally {
         isLoading.value = false;
+        update();
       }
     }
   }
@@ -208,6 +203,7 @@ class LoginController extends GetxController {
       return;
     }
     isLoading.value = true;
+    update();
     try {
       final response =
           await _apiProvider.resetPassword(emailController.text.trim());
@@ -222,6 +218,7 @@ class LoginController extends GetxController {
       GlobalSnackbar.error(message: 'Reset failed: $e');
     } finally {
       isLoading.value = false;
+      update();
     }
   }
 }

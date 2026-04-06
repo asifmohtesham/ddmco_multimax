@@ -136,10 +136,6 @@ class LoginScreen extends GetView<LoginController> {
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                     ),
                     const SizedBox(height: 16.0),
-                    // ValueListenableBuilder is pure Flutter — no GetX reactive
-                    // layer. Immune to _firstBuild timing crashes that occur
-                    // when Obx wraps TextFormField (which calls setState
-                    // internally via _TextFormFieldState during mount).
                     ValueListenableBuilder<bool>(
                       valueListenable: controller.isPasswordHidden,
                       builder: (context, isHidden, _) => TextFormField(
@@ -193,17 +189,21 @@ class LoginScreen extends GetView<LoginController> {
                       ),
                     ),
                     const SizedBox(height: 24.0),
-                    Obx(() => controller.isLoading.value
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16.0),
-                              textStyle: const TextStyle(fontSize: 16),
+                    // GetBuilder — pull-based, zero Obx inside Form tree.
+                    // isLoading driven by explicit update() calls in controller.
+                    GetBuilder<LoginController>(
+                      builder: (c) => c.isLoading.value
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 16.0),
+                                textStyle: const TextStyle(fontSize: 16),
+                              ),
+                              onPressed: c.loginUser,
+                              child: const Text('Login'),
                             ),
-                            onPressed: controller.loginUser,
-                            child: const Text('Login'),
-                          )),
+                    ),
                   ],
                 ),
               ),
