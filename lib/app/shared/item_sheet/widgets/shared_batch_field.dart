@@ -8,18 +8,48 @@ import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delega
 import 'package:multimax/app/shared/item_sheet/widgets/browse_batch_button.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dart';
 
-/// A reusable Batch No input field backed by any
+/// A reusable Batch No input field driven by any
 /// [BatchNoFieldWithBrowseDelegate].
 ///
 /// ## Modes
 ///
-/// ### `editMode: false` (default -- SE style)
-/// Plain [TextField] with borderless card container. A [BalanceChip] is
-/// rendered below the field showing the batch balance.
+/// The widget renders one of two internal sub-trees depending on [editMode]:
 ///
-/// ### `editMode: true` (DN / PR style)
-/// [ValidatedBatchField] with [OutlineInputBorder], readOnly-when-valid,
-/// explicit **Edit** button. [BalanceChip] shown below the field.
+/// | Mode                      | Widget tree         | Border style          | Use case               |
+/// |---------------------------|---------------------|-----------------------|------------------------|
+/// | `editMode: false` (default) | `_SimpleField`    | Borderless card       | Stock Entry            |
+/// | `editMode: true`            | `_EditModeField`  | [OutlineInputBorder]  | Delivery Note, PO, PR  |
+///
+/// ### `editMode: false` — Simple (SE) style
+///
+/// Renders a plain [TextField] inside a borderless
+/// [GlobalItemFormSheet.buildInputGroup] container.  A [BalanceChip] is
+/// shown below the field.  The suffix row contains a spinner while
+/// validating, a ✓ / ⚠ icon after validation, an optional picker button
+/// ([onPickerTap]), and a clear button when the field is non-empty.
+///
+/// ### `editMode: true` — Outline (DN / PR) style
+///
+/// Delegates to [ValidatedBatchField], which owns the
+/// [OutlineInputBorder] decoration, the read-only-when-valid lock, and
+/// the **Edit** button that reactivates the field.  The suffix row logic
+/// (spinner, status icon, tooltip, picker button, clear / edit button) is
+/// encapsulated inside [ValidatedBatchField] — this class does not
+/// duplicate it.
+///
+/// ## Parameters
+///
+/// | Parameter          | Required | Default | Description                                                            |
+/// |--------------------|----------|---------|------------------------------------------------------------------------|
+/// | `c`                | ✅        | —       | Controller; any [BatchNoFieldWithBrowseDelegate] implementation.       |
+/// | `accentColor`      | ✅        | —       | Tint applied to borders, icons, and the [BalanceChip].                 |
+/// | `editMode`         | —        | `false` | Selects between Simple and Outline rendering modes (see table above).  |
+/// | `readOnly`         | —        | `false` | Hard read-only override; disables typing in both modes.               |
+/// | `fieldKey`         | —        | `null`  | Passed to [ValidatedBatchField] as its form-field key (edit mode only).|
+/// | `balanceOverride`  | —        | `null`  | Alternative balance source; see **Balance source** section below.      |
+/// | `onPickerTap`      | —        | `null`  | Injects a picker icon button into the suffix row when non-null.        |
+/// | `showBrowseBatches`| —        | `false` | Shows the **Browse Batches →** text button below the field.            |
+/// | `browseWarehouse`  | —        | `null`  | Warehouse passed to the batch picker; falls back to the delegate value.|
 ///
 /// ## Controller contract
 ///
@@ -28,42 +58,75 @@ import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dar
 /// implements this interface (including all [ItemSheetControllerBase]
 /// subclasses, which adopt it in Commit 7) can be passed without change.
 ///
+/// The interface is split into two layers:
+///
+/// | Interface               | Responsibility                                    |
+/// |-------------------------|---------------------------------------------------|
+/// | [BatchNoFieldDelegate]  | Reactive state, text controller, validation       |
+/// | [BatchNoBrowseDelegate] | Browse Batches picker flow                        |
+///
+/// [BatchNoFieldWithBrowseDelegate] is the union of both.  For controllers
+/// that do not need Browse Batches support, [BatchNoFieldDelegate] alone
+/// suffices — simply omit [onPickerTap] at the call site to suppress the
+/// picker button.
+///
+/// ## validateSheet
+///
+/// In `editMode: true`, [ValidatedBatchField] fires
+/// [BatchNoFieldDelegate.validateSheet] on every `onChanged` event.  This
+/// recomputes the sheet-level save gate (`isSheetValid`) after each
+/// keystroke.  Controllers that do not gate a Save button can supply an
+/// empty-body implementation:
+///
+/// ```dart
+/// @override void validateSheet() {}
+/// ```
+///
+/// In `editMode: false` (_SimpleField), the field uses `onSubmitted` only —
+/// no `onChanged` — so `validateSheet` is **not** called while typing.
+///
 /// ## Balance source
-/// By default the [BalanceChip] sources `c.batchBalanceFor('')` (the
-/// delegate's balance accessor).  Pass [balanceOverride] to supply an
-/// alternative balance getter — for example Stock Entry, which maintains a
-/// separate per-warehouse `batchBalance` distinct from the delegate value:
+///
+/// By default the [BalanceChip] calls `c.batchBalanceFor('')`.  Pass
+/// [balanceOverride] to supply an alternative balance getter — for example
+/// Stock Entry, which maintains a separate per-warehouse `batchBalance`
+/// distinct from the delegate accessor:
 ///
 /// ```dart
 /// SharedBatchField(
 ///   c:               child,
-///   accentColor:     Colors.purple,
+///   accentColor:     Colors.blueGrey,
+///   editMode:        true,
+///   fieldKey:        'se_batch_edit',
 ///   balanceOverride: () => child.batchBalance.value,
+///   onPickerTap:     child.openBatchPicker,
 /// )
 /// ```
 ///
-/// P2-1 : added [balanceOverride] optional callback.
-/// P3-A : readOnly requires isValid AND batchError==''.
-/// P3-A : helperText / border colour is 3-tier (red / orange / grey).
-/// P3-B : errorText only for hard-invalid; warning rendered as orange helperText.
-/// P4-1 : _SimpleField now also respects c.isBatchReadOnly (parity with SE local BatchField).
-/// C    : Added [showBrowseBatches] flag -- renders a 'Browse Batches ->'
-///        text button that opens [BatchPickerSheet] when the batch is not yet
-///        validated.  Passing warehouse + accentColor is optional.
-/// P3-2 : Added [onPickerTap] -- when provided, a list-picker icon button is
-///        injected into the suffixIcon Row in both idle and valid states.
-/// fix  : Removed stale `.value` calls on `c.maxQty`.
-/// fix(BATCH-ICON): wrap every multi-icon suffixIcon Row in SizedBox with
-///        explicit width so Flutter tight constraints do not collapse the Row.
-/// fix(BATCH-ICON-VALID): render picker btn in valid state; compute SizedBox
-///        width dynamically based on visible slots.
-/// fix(SE-BATCH-ICON): _SimpleField now also renders picker btn in valid state.
-/// DN-8 : pass forceShow: validating to all BalanceChip calls.
-/// DN-9 : forceShow: validating || isValid.
-/// fix(batch-field): isDense: true in both InputDecorations.
-/// Commit 7: c re-typed to BatchNoFieldWithBrowseDelegate; _EditModeField
-///        delegates to ValidatedBatchField; _BrowseBatchButton replaced with
-///        BrowseBatchButton (extracted in Commit 6).
+/// ## Changelog
+///
+/// | Commit / fix                | Change summary                                                    |
+/// |-----------------------------|-------------------------------------------------------------------|
+/// | P2-1                        | Added [balanceOverride] optional callback.                        |
+/// | P3-A                        | readOnly requires isValid AND batchError == ''.                  |
+/// | P3-A                        | helperText / border colour is 3-tier (red / orange / grey).      |
+/// | P3-B                        | errorText only for hard-invalid; warning as orange helperText.    |
+/// | P4-1                        | _SimpleField respects c.isBatchReadOnly (parity with SE local).  |
+/// | C                           | Added [showBrowseBatches] — opens [BatchPickerSheet] on tap.     |
+/// | P3-2                        | Added [onPickerTap] — injects picker icon in both idle+valid.    |
+/// | fix(BATCH-ICON)             | Wrap multi-icon suffixIcon Row in IntrinsicWidth.                |
+/// | fix(BATCH-ICON-VALID)       | Render picker btn in valid state; width computed dynamically.    |
+/// | fix(SE-BATCH-ICON)          | _SimpleField also renders picker btn in valid state.             |
+/// | DN-8                        | Pass `forceShow: validating` to all BalanceChip calls.           |
+/// | DN-9                        | `forceShow: validating \|\| isValid`.                            |
+/// | fix(batch-field)            | `isDense: true` in both InputDecorations.                        |
+/// | fix(batch-delegate)         | `validateSheet` added to [BatchNoFieldDelegate]; called by       |
+/// |                             | [ValidatedBatchField].onChanged in _EditModeField only.          |
+/// | Commit 6                    | Extract [ValidatedBatchField] + [BrowseBatchButton] widgets.     |
+/// | Commit 7                    | `c` re-typed to [BatchNoFieldWithBrowseDelegate];                |
+/// |                             | [ItemSheetControllerBase] adopts interface with 4 overrides.     |
+/// | Commit 3 (Dartdoc)          | Expand class-level Dartdoc: mode table, parameter table,         |
+/// |                             | validateSheet cross-ref, balance source example, changelog table.|
 class SharedBatchField extends StatelessWidget {
   final BatchNoFieldWithBrowseDelegate c;
   final Color  accentColor;
@@ -79,11 +142,17 @@ class SharedBatchField extends StatelessWidget {
   final String? browseWarehouse;
 
   /// Optional balance override.  When non-null, the [BalanceChip] calls this
-  /// getter on every rebuild instead of the delegate accessor.
+  /// getter on every rebuild instead of `c.batchBalanceFor('')`.
+  ///
+  /// Use when the controller maintains a per-warehouse balance separately
+  /// from the delegate accessor — see class-level **Balance source** section.
   final double? Function()? balanceOverride;
 
   /// Optional callback fired when the list-picker icon button is tapped.
-  /// When provided, the button is shown in both idle and valid states.
+  ///
+  /// When non-null, a [Icons.shelves] icon button is injected into the
+  /// suffix row in both idle and valid states.  When null, the button is
+  /// omitted entirely — no dead UI element is rendered.
   final VoidCallback? onPickerTap;
 
   const SharedBatchField({
@@ -268,6 +337,13 @@ class _SimpleField extends StatelessWidget {
 }
 
 // ── Edit-mode (OutlineInputBorder, delegates to ValidatedBatchField) ────────
+//
+// onChanged → c.validateSheet
+//   Every keystroke fires [BatchNoFieldDelegate.validateSheet], which
+//   recomputes the sheet-level save gate (isSheetValid) so the Save button
+//   reflects the current form state in real time.  This is the edit-mode
+//   counterpart to _SimpleField's onSubmitted-only approach.
+//   Controllers that do not gate a Save button supply an empty-body override.
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
   const _EditModeField(this.w);
