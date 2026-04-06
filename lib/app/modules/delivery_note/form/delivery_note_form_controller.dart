@@ -46,7 +46,7 @@ class DeliveryNoteFormController extends GetxController
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  // ── Document-level state ─────────────────────────────────────────────
+  // ── Document-level state ──────────────────────────────────────────────────
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
@@ -54,7 +54,7 @@ class DeliveryNoteFormController extends GetxController
   var isDirty      = false.obs;
   String _originalJson = '';
 
-  // ── Save result state machine ───────────────────────────────────────────
+  // ── Save result state machine ─────────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -79,30 +79,29 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Sheet-open + item-edit loading flags ─────────────────────────────────
+  // ── Sheet-open + item-edit loading flags ──────────────────────────────────
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Warehouse ───────────────────────────────────────────────────────────
+  // ── Warehouse ─────────────────────────────────────────────────────────────
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
 
-  // ── Item warehouse (derived from rack) ─────────────────────────────────
+  // ── Item warehouse (derived from rack) ────────────────────────────────────
   var bsItemWarehouse = RxnString();
 
-  // ── Customer-level error ──────────────────────────────────────────────
+  // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
 
-  // ── EAN scan context ───────────────────────────────────────────────
+  // ── EAN scan context ──────────────────────────────────────────────────────
   String currentScannedEan = '';
 
   // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
 
-  // ── items convenience getter ────────────────────────────────────────────────
-  // Commit 7: child submit() calls _parent.items directly; expose the list.
+  // ── items convenience getter ──────────────────────────────────────────────
   List<DeliveryNoteItem> get items => deliveryNote.value?.items ?? [];
 
   @override
@@ -132,7 +131,7 @@ class DeliveryNoteFormController extends GetxController
     super.onClose();
   }
 
-  // ── Raw scan entry point ───────────────────────────────────────────────
+  // ── Raw scan entry point ──────────────────────────────────────────────────
   void _onRawScan(String code) {
     if (code.isEmpty) return;
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
@@ -141,7 +140,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── PopScope ─────────────────────────────────────────────────────────────
+  // ── PopScope ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
@@ -151,7 +150,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Dirty tracking ─────────────────────────────────────────────────────
+  // ── Dirty tracking ────────────────────────────────────────────────────────
   void _checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
@@ -179,7 +178,7 @@ class DeliveryNoteFormController extends GetxController
     isDirty.value = false;
   }
 
-  // ── Data fetching ─────────────────────────────────────────────────────
+  // ── Data fetching ─────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -263,7 +262,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── POS qty-cap helpers ───────────────────────────────────────────────
+  // ── POS qty-cap helpers ───────────────────────────────────────────────────
   double posQtyCapForSerial(String serial) {
     final idx = int.tryParse(serial);
     if (idx == null || posUpload.value == null) return double.infinity;
@@ -288,7 +287,7 @@ class DeliveryNoteFormController extends GetxController
     return (cap - used).clamp(0.0, cap);
   }
 
-  // ── Item sheet orchestration ───────────────────────────────────────────────
+  // ── Item sheet orchestration ──────────────────────────────────────────────
   Future<void> _openItemSheet({
     required String itemCode,
     required String itemName,
@@ -331,21 +330,13 @@ class DeliveryNoteFormController extends GetxController
 
     isItemSheetOpen.value = true;
     await Get.bottomSheet(
-      // Status-bar clearance is handled by GlobalItemFormSheet.build() via
-      // sheetMargin = EdgeInsets.only(top: viewPadding.top + 12).
-      // A SafeArea wrapper must NOT be used here — it claims the full
-      // viewport height as its constraint box, causing the sheet to expand
-      // to full-screen regardless of content volume and leaving dead space
-      // below the Save button.
       UniversalItemFormSheet(
         controller:       child,
         scrollController: child.sheetScrollController,
         customFields: [
-          SharedSerialField(controller: child),
-          // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
-          // reads child.batchBalance (RxDouble written by validateBatch /
-          // fetchBatchBalance) instead of the base maxQty getter which
-          // always returns 0.0 for DeliveryNoteItemFormController.
+          // Commit 4: migrated from SharedSerialField to
+          // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
+          SharedInvoiceSerialNumberField(c: child),
           SharedBatchField(
             c:               child,
             accentColor:     Colors.blueGrey,
@@ -353,9 +344,6 @@ class DeliveryNoteFormController extends GetxController
             onPickerTap:     child.openBatchPicker,
             balanceOverride: () => child.batchBalance.value,
           ),
-          // fix(dn-balance-chip): pass balanceOverride so the BalanceChip
-          // reads child.rackBalance (RxDouble written by validateRack /
-          // fetchRackBalance) instead of the base maxQty getter.
           SharedRackField(
             c:               child,
             accentColor:     Colors.blueGrey,
@@ -403,9 +391,6 @@ class DeliveryNoteFormController extends GetxController
       isScrollControlled: true,
       enableDrag:         false,
       isDismissible:      false,
-      // C2: transparent background so GlobalItemFormSheet's own BoxDecoration
-      // is the sole visible surface — prevents a double opaque layer behind
-      // the sheet's rounded corners.
       backgroundColor:    Colors.transparent,
     );
     isItemSheetOpen.value = false;
@@ -422,7 +407,7 @@ class DeliveryNoteFormController extends GetxController
     GlobalDialog.showCustomerNotFound(customer: customer);
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     isSaving.value = true;
@@ -563,7 +548,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ────────────────────────────────────────────────────────────
+  // ── Item CRUD ─────────────────────────────────────────────────────────────
   void addItem(DeliveryNoteItem newItem) {
     deliveryNote.value?.items.add(newItem);
     deliveryNote.refresh();
@@ -734,7 +719,7 @@ class DeliveryNoteFormController extends GetxController
   }
 }
 
-// ── Multiple-match sheet (private widget) ────────────────────────────────────────
+// ── Multiple-match sheet (private widget) ─────────────────────────────────────
 
 class _MultipleMatchSheet extends StatelessWidget {
   const _MultipleMatchSheet({

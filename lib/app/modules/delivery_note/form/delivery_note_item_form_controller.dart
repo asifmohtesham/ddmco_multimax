@@ -6,7 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 // Shared base + mixins
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
-import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_pos_serial.dart';
+import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 
 // Picker
@@ -25,6 +25,19 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 
 /// Item-level sheet controller for Delivery Note.
 ///
+/// Commit 4 (SerialFieldMixin adoption):
+///   - Replaced `with PosSerialMixin` with `with SerialFieldMixin`.
+///   - Removed private _seedLiveRemaining() and _updateLiveRemaining();
+///     both delegated to SerialFieldMixin.computeLiveRemaining().
+///   - posItemQtyForSerial(String serial) replaces posItemQty getter;
+///     delegates to _parent.posQtyCapForSerial(serial).
+///   - sumQtyUsedForSerial(String serial) added; delegates to
+///     _parent.scannedQtyForSerial() which walks items in-memory.
+///   - savedQtyForRow(String rowId) added; looks up the item's saved qty
+///     from _parent.items by name for edit-mode double-count prevention.
+///   - effectiveMaxQty: replaced posItemQty with
+///     posItemQtyForSerial(selectedSerial.value ?? '').
+///
 /// Group B fixes (on top of Commit 7):
 ///   B3 — deleteCurrentItem() called _parent.items.refresh() on a plain
 ///        List<DeliveryNoteItem>.  .refresh() does not exist on List;
@@ -34,13 +47,7 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///
 /// Error E2 fix:
 ///   maybeAutoFillRack() overrides the AutoFillRackMixin method to inject
-///   a preloadRackStockMap() step before autofill runs.  The original code
-///   called `await super.maybeAutoFillRack()` but `super.` resolves only
-///   through the class hierarchy — it cannot dispatch into a mixin method
-///   when the mixin does not declare maybeAutoFillRack on the base class.
-///   Fix: after preloading, call `autoFillRackForQty(qty)` directly —
-///   this is the public mixin entry-point that contains the core selection
-///   logic, and it is always available on `this`.
+///   a preloadRackStockMap() step before autofill runs.
 ///
 /// Commit 1 fix:
 ///   initForEdit() now seeds selectedSerial and preserves rackController
@@ -48,57 +55,32 @@ import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_contr
 ///   values pre-populated (Bugs 1 & 3 from the DN item-form discrepancy
 ///   report).
 ///
-/// DN-2:
-///   - posItemQty overrides the PosSerialMixin default (0.0) to return
-///     the actual POS-Upload qty cap for the selected serial via the
-///     parent controller.  This enables posSerialCapText (added in DN-1)
-///     to produce a meaningful "remaining / cap" ratio string.
-///   - liveRemaining is written in validateSheet() so the chip updates
-///     live as the user types a qty value.
-///   - liveRemaining is seeded in initForEdit() so the chip is correct
-///     immediately when the sheet opens on an existing item.
-///
 /// DN-6:
-///   - initForEdit() serial seed guard relaxed: when availableSerialNos
-///     is empty at init time (POS Upload async load not yet complete),
-///     selectedSerial is seeded unconditionally so the value is not
-///     silently dropped.  When availableSerialNos is non-empty the
-///     original contains() guard is preserved.
-///   - captureSerialSnapshot() called after selectedSerial is seeded so
-///     the dirty-check baseline matches the opened state (prevents false
-///     isDirty = true immediately on open).
+///   - initForEdit() serial seed guard relaxed.
+///   - captureSerialSnapshot() called after selectedSerial is seeded.
 ///   - initForNewItem() also calls captureSerialSnapshot() for symmetry.
 ///
 /// Commit 7 (SharedRackField universal refactor):
 ///   - canBrowseRacks overridden: returns true when itemCode is non-empty.
 ///   - browseRacks() overridden with the full RackPickerController lifecycle.
-///   - handleRackPicked() is inherited from ItemSheetControllerBase (default
-///     write + validate behaviour is correct for DN's single rack field).
 ///
 /// Commit 6 (QtyFieldWithPlusMinusDelegate wiring):
 ///   - effectiveMaxQty overrides base: min(batchBalance, rackBalance,
 ///     liveRemaining) — three-way minimum per Q4 spec.
-///     Returns double.infinity when no meaningful ceiling is available.
-///   - adjustQty clamps to effectiveMaxQty (was double.infinity).
-///   - validateSheet writes isQtyValid.value and qtyError.value so
-///     SharedQtyField can show an inline error beneath the qty field.
-///   - docStatus seeded in initForEdit / reset in initForNewItem so the
-///     ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
-///     when docstatus == 1 (submitted).
+///   - adjustQty clamps to effectiveMaxQty.
+///   - validateSheet writes isQtyValid.value and qtyError.value.
+///   - docStatus seeded in initForEdit / reset in initForNewItem.
 ///
 /// fix(docstatus): read from parent document, not item row.
-///   DeliveryNoteItem does not carry a docstatus field — docstatus belongs
-///   to the parent DeliveryNote only.  initForEdit now reads
-///   _parent.deliveryNote.value?.docstatus ?? 0.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
-    with PosSerialMixin, AutoFillRackMixin {
+    with SerialFieldMixin, AutoFillRackMixin {
 
-  // ── Parent back-reference ──────────────────────────────────────────────────────
+  // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
   DeliveryNoteFormController get parent => _parent;
 
-  // ── Local reactive state ───────────────────────────────────
+  // ── Local reactive state ───────────────────────────────────────────────────
   final RxString itemCodeRx       = ''.obs;
   final RxString itemNameRx       = ''.obs;
   final RxString itemUomRx        = ''.obs;
@@ -110,7 +92,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
-  // ── Base abstract overrides ───────────────────────────────────────────
+  // ── Base abstract overrides ────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
       _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
@@ -125,7 +107,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   MobileScannerController? get sheetScanController => null;
 
-  // ── qtyInfoText / qtyInfoTooltip ──────────────────────────────────
+  // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
   @override
   String? get qtyInfoText {
     final eff = effectiveMaxQty;
@@ -136,7 +118,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   final RxnString qtyInfoTooltip = RxnString(null);
 
-  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────────
+  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty ────────────────────────
   @override
   double get effectiveMaxQty {
     double? ceil;
@@ -153,7 +135,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     final serial = selectedSerial.value;
     if (serial != null && serial.isNotEmpty) {
-      final cap = _parent.posQtyCapForSerial(serial);
+      final cap = posItemQtyForSerial(serial);
       if (cap != double.infinity && cap > 0) {
         ceil = (ceil == null) ? cap : (cap < ceil ? cap : ceil);
       }
@@ -162,12 +144,41 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return ceil ?? double.infinity;
   }
 
-  // ── PosSerialMixin: posItemQty override (DN-2) ────────────────────────
+  // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
+  /// Delegates to the parent controller's POS qty-cap lookup.
+  /// The parent resolves serial (= idx string) → PosUploadItem.quantity.
   @override
-  double get posItemQty =>
-      _parent.posQtyCapForSerial(selectedSerial.value ?? '');
+  double posItemQtyForSerial(String serial) =>
+      _parent.posQtyCapForSerial(serial);
 
-  // ── adjustQty ──────────────────────────────────────────────────
+  // ── SerialFieldMixin: sumQtyUsedForSerial override ────────────────────────
+  /// Walks the parent document's in-memory items list synchronously.
+  /// Excludes the row currently being edited to avoid double-counting
+  /// (savedQtyForRow adds it back with the correct value).
+  @override
+  double sumQtyUsedForSerial(String serial) =>
+      _parent.scannedQtyForSerial(
+        serial,
+        excludeItemName: editingItemName.value,
+      );
+
+  // ── SerialFieldMixin: savedQtyForRow override ─────────────────────────────
+  /// Returns the already-saved qty of the row being edited.
+  /// Used by computeLiveRemaining to undo the double-count exclusion
+  /// performed by sumQtyUsedForSerial above, then subtract the live
+  /// typed qty instead.
+  @override
+  double savedQtyForRow(String rowId) {
+    final item = _parent.items.firstWhere(
+      (i) => i.name == rowId,
+      orElse: () => DeliveryNoteItem(
+        itemCode: '', qty: 0.0, rate: 0.0,
+      ),
+    );
+    return item.qty;
+  }
+
+  // ── adjustQty ──────────────────────────────────────────────────────────────
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -177,7 +188,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateSheet();
   }
 
-  // ── deleteCurrentItem ──────────────────────────────────────────────
+  // ── deleteCurrentItem ──────────────────────────────────────────────────────
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
@@ -186,7 +197,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     Get.back();
   }
 
-  // ── PosSerialMixin wiring ────────────────────────────────────────────
+  // ── SerialFieldMixin wiring ────────────────────────────────────────────────
   @override
   List<String> get availableSerialNos {
     final upload = _parent.posUpload.value;
@@ -197,19 +208,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         .toList();
   }
 
-  double get _posQtyCap {
-    final serial = selectedSerial.value;
-    if (serial == null || serial.isEmpty) return double.infinity;
-    return _parent.posQtyCapForSerial(serial);
-  }
-
-  // ── Legacy name aliases ────────────────────────────────────────────
+  // ── Legacy name aliases ────────────────────────────────────────────────────
   RxString get itemCodeValue  => itemCodeRx;
   RxString get itemNameValue  => itemNameRx;
   RxString get itemUomValue   => itemUomRx;
   RxString get itemGroupValue => itemGroupRx;
 
-  // ── AutoFillRackMixin wiring ────────────────────────────────────────
+  // ── AutoFillRackMixin wiring ───────────────────────────────────────────────
   @override String  get mixinItemCode  => itemCode.value;
   @override String? get mixinWarehouse => resolvedWarehouse;
   @override String  get mixinBatch     => batchController.text;
@@ -222,7 +227,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     validateRack(rackId);
   }
 
-  // ── RackBrowseDelegate — Commit 7 ─────────────────────────────────────
+  // ── RackBrowseDelegate ─────────────────────────────────────────────────────
   @override
   bool get canBrowseRacks => itemCode.value.isNotEmpty;
 
@@ -290,7 +295,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── initialise() entry point ────────────────────────────────────────
+  // ── initialise() entry point ───────────────────────────────────────────────
   void initialise({
     required DeliveryNoteFormController parent,
     required String code,
@@ -322,7 +327,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Lifecycle / init ──────────────────────────────────────────────
+  // ── Lifecycle / init ───────────────────────────────────────────────────────
   void initForNewItem({
     required String itemCode,
     required String itemName,
@@ -334,8 +339,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = false;
     editingIndex.value    = -1;
     editingItemName.value = null;
-    // fix(docstatus): docstatus belongs to the parent document, not the item
-    // row. Read from parent DeliveryNote to drive the isQtyReadOnly lock.
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
 
     this.itemCode.value    = itemCode;
@@ -376,8 +379,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = true;
     editingIndex.value    = index;
     editingItemName.value = item.name;
-    // fix(docstatus): docstatus belongs to the parent document, not the item
-    // row. Read from parent DeliveryNote to drive the isQtyReadOnly lock.
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
 
     this.itemCode.value    = item.itemCode;
@@ -387,9 +388,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     itemGroupRx.value      = item.itemGroup ?? '';
     currentVariantOf.value = variantOf;
 
-    final existingRack   = item.rack    ?? '';
-    final existingBatch  = item.batchNo ?? '';
-    final existingQty    = item.qty.toString();
+    final existingRack  = item.rack    ?? '';
+    final existingBatch = item.batchNo ?? '';
+    final existingQty   = item.qty.toString();
 
     resetBatch();
     resetRack();
@@ -415,7 +416,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       selectedSerial.value = null;
     }
 
-    _seedLiveRemaining(serial: persistedSerial, excludeName: item.name);
+    // Seed liveRemaining at open time using the mixin formula so the badge
+    // is correct before the user types anything.
+    final existingQtyDouble = item.qty;
+    computeLiveRemaining(
+      currentTypedQty: existingQtyDouble,
+      editingRowId: item.name,
+    );
 
     rackStockMapRx.clear();
     isSheetValid.value = false;
@@ -437,41 +444,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── liveRemaining helpers (DN-2) ───────────────────────────────────────────
-  void _seedLiveRemaining({String? serial, String? excludeName}) {
-    if (serial == null || serial.isEmpty) {
-      liveRemaining.value = 0.0;
-      return;
-    }
-    final cap  = _parent.posQtyCapForSerial(serial);
-    if (cap == double.infinity) {
-      liveRemaining.value = 0.0;
-      return;
-    }
-    final used = _parent.scannedQtyForSerial(serial, excludeItemName: excludeName);
-    liveRemaining.value = (cap - used).clamp(0.0, cap);
-  }
-
-  void _updateLiveRemaining() {
-    final serial = selectedSerial.value;
-    if (serial == null || serial.isEmpty) {
-      liveRemaining.value = 0.0;
-      return;
-    }
-    final cap = _parent.posQtyCapForSerial(serial);
-    if (cap == double.infinity) {
-      liveRemaining.value = 0.0;
-      return;
-    }
-    final usedByOthers = _parent.scannedQtyForSerial(
-      serial,
-      excludeItemName: editingItemName.value,
-    );
-    final enteredQty = double.tryParse(qtyController.text) ?? 0.0;
-    liveRemaining.value = (cap - usedByOthers - enteredQty).clamp(0.0, cap);
-  }
-
-  // ── Sheet validity ─────────────────────────────────────────────────
+  // ── Sheet validity ─────────────────────────────────────────────────────────
   @override
   void validateSheet() {
     final qty  = double.tryParse(qtyController.text);
@@ -494,10 +467,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
 
-    _updateLiveRemaining();
+    // Update live-remaining badge via mixin formula.
+    computeLiveRemaining(
+      currentTypedQty: qty ?? 0.0,
+      editingRowId: editingItemName.value,
+    );
   }
 
-  // ── submit ─────────────────────────────────────────────────────
+  // ── submit ─────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text);
@@ -509,7 +486,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       itemName:                  itemNameRx.value,
       uom:                       itemUomRx.value,
       qty:                       qty,
-      rate:                       0.0,
+      rate:                      0.0,
       batchNo:                   batchController.text.trim(),
       rack:  rackController.text.trim().isEmpty ? null : rackController.text.trim(),
       itemGroup:                 itemGroupRx.value,
@@ -526,7 +503,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  // ── Rack-map preload for AutoFillRack / RackPicker ──────────────────────
+  // ── Rack-map preload for AutoFillRack / RackPicker ─────────────────────────
   Future<void> preloadRackStockMap() async {
     final wh    = resolvedWarehouse;
     final batch = batchController.text.trim();
