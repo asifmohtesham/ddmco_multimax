@@ -18,7 +18,9 @@ const double _kToolbar = kToolbarHeight; // 56 dp
 const double _kExpandedExtra = 96.0; // total expanded = 152 dp
 
 /// Height reserved for the active-filter chip row.
-const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
+/// 48 dp — single horizontal-scroll row; matches SizedBox height used by
+/// [filterChipsBuilder] implementations (e.g. BatchWiseBalanceScreen).
+const double _kChipRow = 48.0;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Public widget
@@ -30,6 +32,20 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// owns the full layout (status-bar shield + collapsed toolbar +
 /// expanding large title + optional filter chip row) inside a single
 /// coordinated layout pass.
+///
+/// ---
+///
+/// ## Chip row contract
+///
+/// [filterChipsBuilder] now returns a **single `Widget`** (previously
+/// `List<Widget>`).  The caller is responsible for the full chip-row
+/// widget tree, including scroll behaviour, spacing, and any Clear-all
+/// button.  The header wraps the returned widget in a [Material] with the
+/// surface colour and constrains it to [_kChipRow] (48 dp) height.
+///
+/// Returning [SizedBox.shrink()] (or any zero-height widget) when there
+/// are no chips is the correct way to signal an empty state — the header
+/// calls [filterChipsBuilder] only when [_chipsActiveFor] is true.
 ///
 /// ---
 ///
@@ -99,7 +115,7 @@ const double _kChipRow = kToolbarHeight; // 56 dp — fits a single Wrap row
 /// maxExtent = _kStatusBar          (MediaQuery top padding — 0 when not needed)
 ///           + _kToolbar            (56 dp — always)
 ///           + _kExpandedExtra      (96 dp — large-title extra)
-///           + _kChipRow            (56 dp — only when _chipsActive is true)
+///           + _kChipRow            (48 dp — only when _chipsActive is true)
 /// minExtent = _kStatusBar + _kToolbar
 /// ```
 ///
@@ -173,7 +189,15 @@ class DocTypeListHeader extends StatelessWidget {
   final VoidCallback? onFilterTap;
 
   // ── Chip row ──────────────────────────────────────────────────────────
-  final List<Widget> Function(BuildContext context)? filterChipsBuilder;
+  /// Builder that returns the **full chip row widget**.
+  ///
+  /// The returned widget is placed inside a [Material] (surface colour) and
+  /// constrained to [_kChipRow] (48 dp) by the header delegate.  The caller
+  /// is responsible for scroll behaviour (use [SingleChildScrollView] with
+  /// [Axis.horizontal]), chip spacing, and any Clear-all button.
+  ///
+  /// Return [SizedBox.shrink()] when there are no chips to display.
+  final Widget Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
   const DocTypeListHeader({
@@ -215,11 +239,6 @@ class DocTypeListHeader extends StatelessWidget {
   }
 
   Widget _buildSliver(BuildContext context) {
-    // Read the status-bar height once per build and pass it into the
-    // delegate.  SliverPersistentHeader calls the delegate's build() with
-    // the same BuildContext, so the delegate can re-read it there too —
-    // but passing it explicitly keeps minExtent / maxExtent consistent
-    // with the same snapshot used for layout.
     final statusBarHeight = MediaQuery.paddingOf(context).top;
 
     return SliverPersistentHeader(
@@ -271,13 +290,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onSearchClear;
   final RxMap? activeFilters;
   final VoidCallback? onFilterTap;
-  final List<Widget> Function(BuildContext context)? filterChipsBuilder;
+
+  /// See [DocTypeListHeader.filterChipsBuilder] for the full contract.
+  final Widget Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
   /// Height of the system status bar on this device / orientation.
-  /// Comes from [MediaQuery.paddingOf(context).top] captured in
-  /// [DocTypeListHeader._buildSliver].
-  /// Zero on tablets, desktops, and Scaffolds that already pad the body.
   final double statusBarHeight;
 
   const _DocTypeListHeaderDelegate({
@@ -296,11 +314,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.statusBarHeight,
   });
 
-  // ── Chip presence ────────────────────────────────────────────────────────────
-  //
-  // Accepts pre-snapshotted values rather than reading Rx properties directly.
-  // This avoids GetX ObxError when the method is invoked by minExtent /
-  // maxExtent / shouldRebuild — all called outside any Obx/reactive context.
+  // ── Chip presence ──────────────────────────────────────────────────────────
   bool _chipsActiveFor({
     required String currentSearch,
     required int currentFilterCount,
@@ -309,18 +323,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       (currentSearch.isNotEmpty || currentFilterCount > 0);
 
   // ── Extents ────────────────────────────────────────────────────────────
-  //
-  // statusBarHeight is included in BOTH min and max so the sliver layout
-  // protocol allocates the correct amount of space at all collapse states.
   @override
   double get minExtent => statusBarHeight + _kToolbar;
 
   @override
   double get maxExtent {
-    // maxExtent reads Rx properties — snapshot them safely.
-    // In practice maxExtent is called by Flutter's sliver protocol, not
-    // inside any Obx, so we must not let GetX strict-mode warnings fire.
-    final hasSearch = (searchQuery?.value ?? '').isNotEmpty;
+    final hasSearch  = (searchQuery?.value ?? '').isNotEmpty;
     final hasFilters = activeFilters?.isNotEmpty ?? false;
     final chipsActive = filterChipsBuilder != null && (hasSearch || hasFilters);
     return statusBarHeight +
@@ -333,74 +341,43 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    // Snapshot Rx values once at the top of build().
-    // All subsequent logic reads these plain Dart values, never Rx properties
-    // directly, so there is no risk of GetX ObxError outside a reactive context.
-    final currentSearch = searchQuery?.value ?? '';
+    final currentSearch      = searchQuery?.value ?? '';
     final currentFilterCount = activeFilters?.length ?? 0;
-  
-    final theme = Theme.of(context);
+
+    final theme       = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // collapseProgress is computed against the *content* shrink range only
-    // (i.e. _kExpandedExtra), not the status-bar height, so the large-title
-    // fade is unaffected by the inset.
-    //
-    // clampDouble is the Flutter SDK utility — faster than math.min/max on
-    // double and avoids NaN propagation if shrinkOffset is ever non-finite.
-    // Dividing by zero (_kExpandedExtra == 0) is also guarded.
     final collapseProgress = _kExpandedExtra > 0
         ? clampDouble(shrinkOffset / _kExpandedExtra, 0.0, 1.0)
-        : 1.0; // collapsed immediately if no expanded region
-    final expandProgress = 1.0 - collapseProgress; // always ∈ [0.0, 1.0]
+        : 1.0;
+    final expandProgress = 1.0 - collapseProgress;
     final chipsNowActive = _chipsActiveFor(
-      currentSearch: currentSearch,
-      currentFilterCount: currentFilterCount,
+      currentSearch:       currentSearch,
+      currentFilterCount:  currentFilterCount,
     );
 
-    // ── Status-bar icon brightness ─────────────────────────────────────────
-    //
-    // Determine whether the system status-bar icons (clock, battery, signal)
-    // should be rendered dark or light based on the resolved surface colour.
-    //
-    // colorScheme.surface in this app is Colors.white (luminance ≈ 1.0), so
-    // the icons must be DARK (black) to stay visible.  The luminance check
-    // makes this theme-safe: if the surface ever changes to a dark colour the
-    // icons automatically switch to light.
-    //
-    // AnnotatedRegion<SystemUiOverlayStyle> is the Flutter-idiomatic approach:
-    // it applies the style only while this widget subtree is active and
-    // restores the previous style when it leaves — unlike
-    // SystemChrome.setSystemUIOverlayStyle() which mutates global state.
+    // ── Status-bar icon brightness ────────────────────────────────────────
     final surfaceLuminance = colorScheme.surface.computeLuminance();
-    final iconBrightness = surfaceLuminance > 0.5
-        ? Brightness.dark   // dark icons readable on light (white) surface
-        : Brightness.light; // light icons readable on dark surface
+    final iconBrightness   = surfaceLuminance > 0.5
+        ? Brightness.dark
+        : Brightness.light;
 
     final overlayStyle = SystemUiOverlayStyle(
-      // Transparent so the shield SizedBox background (from Material) shows
-      // through — we never hard-code a status-bar background colour here.
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: iconBrightness,        // Android
-      statusBarBrightness: iconBrightness == Brightness.dark  // iOS
+      statusBarColor:              Colors.transparent,
+      statusBarIconBrightness:     iconBrightness,
+      statusBarBrightness:         iconBrightness == Brightness.dark
           ? Brightness.light
           : Brightness.dark,
-      // Keep bottom-nav bar icons consistent while this header is on screen.
       systemNavigationBarIconBrightness: iconBrightness,
     );
 
-    // ─ Status-bar shield ───────────────────────────────────────────────────
-    // An opaque block that fills the inset with the surface colour.
-    // Collapses to zero on devices/configs where statusBarHeight == 0.
-    final statusBarShield = SizedBox(
-      height: statusBarHeight,
-      // No child needed — the parent Material provides the background colour.
-    );
+    // ─ Status-bar shield ────────────────────────────────────────────────
+    final statusBarShield = SizedBox(height: statusBarHeight);
 
-    // ─ Toolbar row ─────────────────────────────────────────────────────────
+    // ─ Toolbar row ──────────────────────────────────────────────────────
     final toolbar = _buildToolbar(context, colorScheme, theme);
 
-    // ─ Large title (fades out as user scrolls) ───────────────────────────
+    // ─ Large title (fades out as user scrolls) ──────────────────────────
     final largeTitle = Opacity(
       opacity: expandProgress,
       child: Padding(
@@ -421,55 +398,28 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
 
-    // ─ Chip row ──────────────────────────────────────────────────────────
+    // ─ Chip row ────────────────────────────────────────────────────────
+    //
+    // The caller's filterChipsBuilder returns the *complete* chip-row widget
+    // (a SingleChildScrollView with InputChips).  We only wrap it in a
+    // Material so it gets the correct surface background — scroll behaviour,
+    // spacing, and Clear-all are entirely the caller's responsibility.
+    //
+    // The SizedBox(_kChipRow) height constraint in the Column below is the
+    // single source of truth for how tall the chip row is allowed to be;
+    // it matches the SizedBox(height: 48) in each filterChipsBuilder impl.
     Widget? chipRow;
     if (chipsNowActive) {
-      // filterChipsBuilder is guaranteed non-null when chipsNowActive is true,
-      // but we use ?. + ?? [] as a belt-and-suspenders guard so a concurrent
-      // state change never produces a null-dereference crash.
-      final chips = filterChipsBuilder?.call(context) ?? [];
-      if (chips.isNotEmpty) {
+      final chipWidget = filterChipsBuilder?.call(context);
+      if (chipWidget != null) {
         chipRow = Material(
           color: colorScheme.surface,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ...chips,
-                if (chips.length > 1 && onClearAllFilters != null)
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: colorScheme.error,
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    onPressed: onClearAllFilters,
-                    icon: const Icon(Icons.clear_all, size: 16),
-                    label: const Text('Clear all'),
-                  ),
-              ],
-            ),
-          ),
+          child: chipWidget,
         );
       }
     }
 
-    // ─ Full layout ─────────────────────────────────────────────────────────
-    //
-    // Stack order (top → bottom on screen):
-    //   1. statusBarShield  — covers the system status bar area
-    //   2. large-title fade — collapses as shrinkOffset grows
-    //   3. toolbar          — always present
-    //   4. chip row         — only when chipsNowActive
-    //
-    // Column is anchored to the bottom so that as the header shrinks the
-    // toolbar and chip row stay pinned at the bottom of the allocated space.
-    //
-    // AnnotatedRegion wraps the entire widget tree so the SystemUiOverlayStyle
-    // is active for the full lifetime of this header frame.
+    // ─ Full layout ───────────────────────────────────────────────────────
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: Material(
@@ -479,24 +429,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
           mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Status-bar shield: always at the very top, always full height.
-            // Because the Column is end-aligned we pin it to the top with a
-            // Spacer trick: prepend the shield before the expanding region so
-            // it stays fixed regardless of collapse state.
-            //
-            // To achieve top-pinning inside an end-aligned Column we flip the
-            // anchor: place the shield first (it will be pushed up), then
-            // the content below it fills the remaining space.
-            //
-            // Actually we need the shield at the top regardless of shrink —
-            // use a Stack instead of relying on Column ordering:
-            //   The outer SizedBox constrains to maxExtent height.
-            //   The shield is Positioned at top:0.
-            //   The content Column is below it.
-            //
-            // Simpler: add the shield as the first child of the Column and
-            // use mainAxisAlignment.end only on the *content* children.
-            // We achieve this by wrapping content in an Expanded + Column.
             statusBarShield,
             Expanded(
               child: Column(
@@ -525,7 +457,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     ColorScheme colorScheme,
     ThemeData theme,
   ) {
-    final titleStyle = theme.textTheme.titleLarge;
+    final titleStyle  = theme.textTheme.titleLarge;
     final maxFontSize = (titleStyle?.fontSize ?? 22.0);
 
     return SizedBox(
@@ -549,22 +481,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
-    // ── Leading widget ──────────────────────────────────────────────────────────
-  //
-  // Hard-fail guards:
-  //
-  // 1. Scaffold.of(ctx).openDrawer() throws StateError when the Scaffold has no
-  //    drawer. We catch that and fall back to a plain back-arrow so the screen
-  //    is still navigable.
-  //
-  // 2. Navigator.of(context).maybePop() throws FlutterError when there is no
-  //    Navigator ancestor (bare tests, certain nested-Navigator configurations).
-  //    We guard with a null-check on Navigator.maybeOf() before calling pop.
+  // ── Leading widget ────────────────────────────────────────────────────────
   Widget? _buildLeading(BuildContext context) {
     if (!automaticallyImplyLeading) {
-      // Top-level list screen: attempt to open the Scaffold drawer.
-      // Falls back to a plain ← arrow if no drawer is registered, so the
-      // screen is always navigable rather than throwing StateError.
       return Builder(
         builder: (ctx) => IconButton(
           icon: const Icon(Icons.menu),
@@ -574,7 +493,6 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
             if (scaffold != null && scaffold.hasDrawer) {
               scaffold.openDrawer();
             } else {
-              // Drawer unavailable — degrade gracefully to back navigation.
               Navigator.maybeOf(ctx)?.maybePop();
             }
           },
@@ -582,16 +500,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       );
     }
 
-    // Form / pushed screen: show ← back arrow only when there is a route
-    // to pop back to AND a Navigator is available.
     final ModalRoute<Object?>? parentRoute = ModalRoute.of(context);
     final bool canPop = parentRoute?.canPop ?? false;
     if (canPop) {
       return IconButton(
         icon: const Icon(Icons.arrow_back),
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-        // Navigator.maybeOf avoids the FlutterError thrown by Navigator.of
-        // when no Navigator ancestor exists (e.g. bare widget tests).
         onPressed: () => Navigator.maybeOf(context)?.maybePop(),
       );
     }
@@ -603,13 +517,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final items = <Widget>[
       ...(extraActions ?? []),
 
-            if (onFilterTap != null)
-        // Guard: if activeFilters is null the Obx closure would subscribe to
-        // zero observables, causing GetX to throw ObxError at runtime.
-        // We provide a static filter button when activeFilters is unavailable.
+      if (onFilterTap != null)
         Builder(builder: (ctx) {
-          // When activeFilters is null we can't use Obx (no observable to
-          // subscribe to). Render a static filter button instead.
           if (activeFilters == null) {
             return IconButton(
               icon: const Icon(Icons.filter_list),
@@ -618,9 +527,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
             );
           }
           return Obx(() {
-            final count = activeFilters!.length; // non-null guaranteed above
+            final count    = activeFilters!.length;
             final isActive = count > 0;
-            final tooltip = isActive
+            final tooltip  = isActive
                 ? '$count filter${count > 1 ? 's' : ''} active — tap to edit'
                 : 'Filter';
             final button = isActive
@@ -725,12 +634,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     return Row(mainAxisSize: MainAxisSize.min, children: items);
   }
 
-  // ── shouldRebuild ────────────────────────────────────────────────────────
-  //
-  // ✔ FIX 2: also compare Rx *values*, not just object identity.
-  // statusBarHeight is also compared so an orientation change (portrait ↔
-  // landscape, which changes the status-bar height on some devices) forces
-  // a full recalculation of minExtent / maxExtent.
+  // ── shouldRebuild ──────────────────────────────────────────────────────────
   @override
   bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
     final filtersChanged =
