@@ -16,91 +16,31 @@ class LoginController extends GetxController {
   final DatabaseService _dbService = Get.find<DatabaseService>();
 
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
-  final TextEditingController emailController    = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController serverUrlController = TextEditingController();
 
-  // ---------------------------------------------------------------------------
-  // Server-history search
-  // ---------------------------------------------------------------------------
-
-  /// Full list of historically-connected server URLs (most-recent first).
-  final savedServerUrls = <String>[].obs;
-
-  /// Subset of [savedServerUrls] matching the current [searchController] text.
-  final filteredServerUrls = <String>[].obs;
-
-  /// Search / filter field inside the server-config sheet.
-  final TextEditingController searchController = TextEditingController();
-
-  // ---------------------------------------------------------------------------
-  // Other observables
-  // ---------------------------------------------------------------------------
-
-  var currentServerUrl    = ''.obs;
+  var currentServerUrl = ''.obs;
   var isCheckingConnection = false.obs;
-  var isLoading           = false.obs;
-  var isPasswordHidden    = true.obs;
-  var showServerGuide     = false.obs;
+  var isLoading = false.obs;
+  var showServerGuide = false.obs;
+
+  // ValueNotifier — pure Flutter, avoids GetX reactive layer on TextFormField.
+  final isPasswordHidden = ValueNotifier<bool>(true);
 
   @override
   void onInit() {
     super.onInit();
-    _loadSavedServerUrl();
-    searchController.addListener(_filterServerUrls);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedServerUrl());
   }
 
-  // ---------------------------------------------------------------------------
-  // Server URL helpers
-  // ---------------------------------------------------------------------------
-
   Future<void> _loadSavedServerUrl() async {
-    // Load the currently-active URL
     final savedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
     final targetUrl = savedUrl ?? ApiProvider.defaultBaseUrl;
     serverUrlController.text = targetUrl;
-    currentServerUrl.value   = targetUrl;
+    currentServerUrl.value = targetUrl;
     _apiProvider.setBaseUrl(targetUrl);
-
-    // Load full history list
-    await refreshServerHistory();
   }
-
-  /// Reloads [savedServerUrls] from DB and resets the filter.
-  Future<void> refreshServerHistory() async {
-    final urls = await _dbService.getServerUrls();
-    savedServerUrls.assignAll(urls);
-    _filterServerUrls();
-  }
-
-  /// Called by the search field listener — keeps [filteredServerUrls] in sync.
-  void _filterServerUrls() {
-    final query = searchController.text.trim().toLowerCase();
-    if (query.isEmpty) {
-      filteredServerUrls.assignAll(savedServerUrls);
-    } else {
-      filteredServerUrls.assignAll(
-        savedServerUrls.where((u) => u.toLowerCase().contains(query)),
-      );
-    }
-  }
-
-  /// Fills [serverUrlController] with [url] and clears the search field.
-  void selectSavedUrl(String url) {
-    serverUrlController.text = url;
-    searchController.clear();
-  }
-
-  /// Removes [url] from history (both DB and observable lists).
-  Future<void> deleteSavedUrl(String url) async {
-    await _dbService.removeServerUrl(url);
-    savedServerUrls.remove(url);
-    _filterServerUrls();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Connect / save
-  // ---------------------------------------------------------------------------
 
   Future<void> saveServerConfiguration() async {
     String url = serverUrlController.text.trim();
@@ -113,6 +53,7 @@ class LoginController extends GetxController {
     if (url.endsWith('/')) url = url.substring(0, url.length - 1);
 
     isCheckingConnection.value = true;
+    update();
     try {
       _apiProvider.setBaseUrl(url);
       final dio = Dio();
@@ -124,12 +65,14 @@ class LoginController extends GetxController {
         GlobalSnackbar.success(
             title: 'Connected', message: 'Successfully connected to $url');
         showServerGuide.value = false;
+        update();
       } else {
         throw Exception(
             'Invalid response from server (Status: ${response.statusCode})');
       }
     } catch (e) {
       isCheckingConnection.value = false;
+      update();
       Get.dialog(
         Builder(
           builder: (context) => AlertDialog(
@@ -152,6 +95,7 @@ class LoginController extends GetxController {
                       title: 'Saved',
                       message: 'Server URL saved (Validation skipped)');
                   showServerGuide.value = false;
+                  update();
                 },
                 child: const Text('Save Anyway'),
               ),
@@ -161,39 +105,24 @@ class LoginController extends GetxController {
       );
     } finally {
       isCheckingConnection.value = false;
+      update();
     }
   }
 
-  /// Persists the validated URL as the active URL **and** appends it to history,
-  /// then closes any open overlay.
   Future<void> _confirmAndSave(String url) async {
-    // Save as the active server URL
     await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
-    // Push into the searchable history list
-    await _pushToServerHistory(url);
     serverUrlController.text = url;
-    currentServerUrl.value   = url;
+    currentServerUrl.value = url;
     _apiProvider.setBaseUrl(url);
     AppNavigator.pop();
   }
-
-  /// Appends [url] to the persistent server-URL history and refreshes the
-  /// in-memory observable list.
-  Future<void> _pushToServerHistory(String url) async {
-    await _dbService.saveServerUrl(url);
-    await refreshServerHistory();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Auth helpers
-  // ---------------------------------------------------------------------------
 
   @override
   void onClose() {
     emailController.dispose();
     passwordController.dispose();
     serverUrlController.dispose();
-    searchController.dispose();
+    isPasswordHidden.dispose();
     super.onClose();
   }
 
@@ -212,11 +141,11 @@ class LoginController extends GetxController {
       isPasswordHidden.value = !isPasswordHidden.value;
 
   Future<void> loginUser() async {
-    final storedUrl =
-        await _dbService.getConfig(DatabaseService.serverUrlKey);
+    final storedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
 
     if (storedUrl == null || storedUrl.isEmpty) {
       showServerGuide.value = true;
+      update();
       AppNotification.warning(
         'Please set the Server URL using the settings icon above before logging in.',
       );
@@ -225,6 +154,7 @@ class LoginController extends GetxController {
 
     if (loginFormKey.currentState!.validate()) {
       isLoading.value = true;
+      update();
       try {
         final response = await _apiProvider.loginWithFrappe(
           emailController.text.trim(),
@@ -247,35 +177,33 @@ class LoginController extends GetxController {
             );
             _authController.processSuccessfulLogin(user);
           }
-        } else if (response.statusCode == 401 ||
-            response.statusCode == 403) {
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
           GlobalSnackbar.error(
               title: 'Login Failed',
-              message:
-                  response.data?['message'] ?? 'Invalid credentials.');
+              message: response.data?['message'] ?? 'Invalid credentials.');
         } else {
           GlobalSnackbar.error(
               title: 'Login Error',
-              message: response.data?['message'] ??
-                  'An unknown error occurred.');
+              message:
+                  response.data?['message'] ?? 'An unknown error occurred.');
         }
       } catch (e) {
         GlobalSnackbar.error(
-            title: 'Login Error',
-            message: 'An unexpected error occurred.');
+            title: 'Login Error', message: 'An unexpected error occurred.');
       } finally {
         isLoading.value = false;
+        update();
       }
     }
   }
 
   Future<void> resetPassword() async {
     if (emailController.text.isEmpty) {
-      GlobalSnackbar.error(
-          message: 'Please enter your email address first');
+      GlobalSnackbar.error(message: 'Please enter your email address first');
       return;
     }
     isLoading.value = true;
+    update();
     try {
       final response =
           await _apiProvider.resetPassword(emailController.text.trim());
@@ -290,6 +218,7 @@ class LoginController extends GetxController {
       GlobalSnackbar.error(message: 'Reset failed: $e');
     } finally {
       isLoading.value = false;
+      update();
     }
   }
 }
