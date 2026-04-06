@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
@@ -11,59 +10,118 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
-    // Reset guide flag when user opens the sheet
     controller.showServerGuide.value = false;
 
     Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(24.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Connect to Instance', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text('Enter the URL of your instance.', style: TextStyle(color: Colors.grey)),
-              const SizedBox(height: 24),
-              TextField(
-                controller: controller.serverUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'Server URL',
-                  hintText: 'https://erp.domain.com',
-                  prefixIcon: Icon(Icons.link),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
+      /// StatefulBuilder keeps Obx out of the bottomSheet scope entirely.
+      /// The button rebuilds via setState when isCheckingConnection changes.
+      StatefulBuilder(
+        builder: (sheetContext, setState) {
+          // Subscribe to the observable and mirror it into local state so
+          // the sheet can rebuild without an Obx outside the widget tree.
+          ever(controller.isCheckingConnection, (_) {
+            if (sheetContext.mounted) setState(() {});
+          });
+
+          return Container(
+            padding: const EdgeInsets.all(24.0),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Connect to Instance',
+                    style: Theme.of(sheetContext)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Enter the URL of your instance.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: controller.serverUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'https://erp.domain.com',
+                      prefixIcon: Icon(Icons.link),
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.url,
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: controller.isCheckingConnection.value
+                          ? null
+                          : controller.saveServerConfiguration,
+                      style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: controller.isCheckingConnection.value
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Connect'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: Obx(() => ElevatedButton(
-                  onPressed: controller.isCheckingConnection.value ? null : controller.saveServerConfiguration,
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                  child: controller.isCheckingConnection.value
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Connect'),
-                )),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
       isScrollControlled: true,
     );
   }
 
+  /// Extracted to its own method so the Obx always unconditionally reads
+  /// showServerGuide.value — the value is captured in a local variable
+  /// first, ensuring GetX registers the subscription on every rebuild
+  /// regardless of which branch of the conditional is taken.
+  Widget _buildSettingsIcon(BuildContext context) {
+    return Obx(() {
+      final showGuide = controller.showServerGuide.value; // always read
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          if (showGuide)
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.orange.withValues(alpha: 0.3),
+                border: Border.all(color: Colors.orange, width: 2),
+              ),
+            ),
+          IconButton(
+            icon: Icon(
+              Icons.settings,
+              color: showGuide ? Colors.orange : Colors.grey,
+            ),
+            tooltip: 'Server Configuration',
+            onPressed: () => _showServerConfigSheet(context),
+          ),
+        ],
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Add an AppBar-like structure or just a safe area with the settings icon
       body: Stack(
         children: [
           Center(
@@ -85,102 +143,84 @@ class LoginScreen extends GetView<LoginController> {
                         prefixIcon: Icon(Icons.email),
                         border: OutlineInputBorder(),
                       ),
-                      // keyboardType: TextInputType.emailAddress,
                       validator: controller.validateEmail,
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                     ),
                     const SizedBox(height: 16.0),
+                    /// Split into two lean Obx widgets instead of wrapping
+                    /// the entire heavy TextFormField in one.
                     Obx(() => TextFormField(
-                      controller: controller.passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        prefixIcon: const Icon(Icons.lock),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            controller.isPasswordHidden.value
-                                ? Icons.visibility_off
-                                : Icons.visibility,
+                          controller: controller.passwordController,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            hintText: 'Enter your password',
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                controller.isPasswordHidden.value
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: controller.togglePasswordVisibility,
+                            ),
                           ),
-                          onPressed: controller.togglePasswordVisibility,
-                        ),
-                      ),
-                      obscureText: controller.isPasswordHidden.value,
-                      validator: controller.validatePassword,
-                      autovalidateMode: AutovalidateMode.onUserInteraction,
-                    )),
-
+                          obscureText: controller.isPasswordHidden.value,
+                          validator: controller.validatePassword,
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        )),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                          onPressed: () {
-                            if (controller.emailController.text.isEmpty) {
-                              Get.snackbar('Info', 'Please enter your email address in the field above first.', backgroundColor: Colors.blue, colorText: Colors.white);
-                            } else {
-                              Get.defaultDialog(
-                                  title: 'Reset Password',
-                                  middleText: 'Send password reset instructions to ${controller.emailController.text}?',
-                                  textConfirm: 'Send',
-                                  textCancel: 'Cancel',
-                                  confirmTextColor: Colors.white,
-                                  onConfirm: () {
-                                    Get.back(); // close dialog
-                                    controller.resetPassword();
-                                  }
-                              );
-                            }
-                          },
-                          child: const Text('Forgot Password?')
+                        onPressed: () {
+                          if (controller.emailController.text.isEmpty) {
+                            Get.snackbar(
+                              'Info',
+                              'Please enter your email address in the field above first.',
+                              backgroundColor: Colors.blue,
+                              colorText: Colors.white,
+                            );
+                          } else {
+                            Get.defaultDialog(
+                              title: 'Reset Password',
+                              middleText:
+                                  'Send password reset instructions to ${controller.emailController.text}?',
+                              textConfirm: 'Send',
+                              textCancel: 'Cancel',
+                              confirmTextColor: Colors.white,
+                              onConfirm: () {
+                                Get.back();
+                                controller.resetPassword();
+                              },
+                            );
+                          }
+                        },
+                        child: const Text('Forgot Password?'),
                       ),
                     ),
-
                     const SizedBox(height: 24.0),
                     Obx(() => controller.isLoading.value
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16.0),
-                        textStyle: const TextStyle(fontSize: 16),
-                      ),
-                      onPressed: controller.loginUser,
-                      child: const Text('Login'),
-                    )),
+                            style: ElevatedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16.0),
+                              textStyle: const TextStyle(fontSize: 16),
+                            ),
+                            onPressed: controller.loginUser,
+                            child: const Text('Login'),
+                          )),
                   ],
                 ),
               ),
             ),
           ),
 
-          // Settings Icon with Guide Overlay
+          // Settings icon — extracted to guarantee unconditional observable read
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             right: 16,
-            child: Obx(() => Stack(
-              alignment: Alignment.center,
-              children: [
-                // Pulse effect or guide background if calling for attention
-                if (controller.showServerGuide.value)
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.orange.withValues(alpha: 0.3),
-                      border: Border.all(color: Colors.orange, width: 2),
-                    ),
-                  ),
-
-                IconButton(
-                  icon: Icon(
-                      Icons.settings,
-                      color: controller.showServerGuide.value ? Colors.orange : Colors.grey
-                  ),
-                  tooltip: 'Server Configuration',
-                  onPressed: () => _showServerConfigSheet(context),
-                ),
-              ],
-            )),
+            child: _buildSettingsIcon(context),
           ),
         ],
       ),
