@@ -2,6 +2,38 @@
 
 import 'package:get/get.dart';
 
+/// Metadata for one row in the [SharedInvoiceSerialNumberField] dropdown.
+///
+/// Returned by [SerialNumberFieldDelegate.serialDropdownItems].
+/// Controllers that have POS Upload context supply [itemName] and [qty];
+/// controllers without POS context leave them null (widget falls back to
+/// showing only the index badge).
+class SerialDropdownItem {
+  /// The serial / idx string used as the [DropdownMenuItem] value.
+  final String serial;
+
+  /// Human-readable POS Upload item name, or null when unavailable.
+  final String? itemName;
+
+  /// POS Upload qty cap for this serial, or null when unavailable.
+  final double? qty;
+
+  /// Live remaining qty (mirrors [SerialNumberFieldDelegate.liveRemaining]
+  /// at list-build time).  Used to decide whether this row is "full".
+  final double remaining;
+
+  const SerialDropdownItem({
+    required this.serial,
+    this.itemName,
+    this.qty,
+    required this.remaining,
+  });
+
+  /// True when a finite qty cap is set and no allocation remains.
+  bool get isFull =>
+      qty != null && qty! != double.infinity && remaining <= 0;
+}
+
 /// Narrow interface that [SharedInvoiceSerialNumberField] depends on.
 ///
 /// Any DocType item-sheet controller that carries an invoice serial number
@@ -29,6 +61,7 @@ import 'package:get/get.dart';
 /// | [availableSerialNos]            | Ordered list for the dropdown                   |
 /// | [posItemQtyForSerial]           | POS Upload qty cap for a given serial / idx     |
 /// | [liveRemaining]                 | Live pressure-gauge qty (updated per keystroke) |
+/// | [serialDropdownItems]           | Rich metadata list for the dropdown rows        |
 ///
 /// ## POS qty matching
 ///
@@ -57,6 +90,13 @@ import 'package:get/get.dart';
 /// Negative values indicate over-allocation; the widget renders the badge
 /// in the error colour in that case.
 ///
+/// ## Rich dropdown rows
+///
+/// Override [serialDropdownItems] to supply per-row [SerialDropdownItem]
+/// metadata (item name, qty cap, remaining).  The default implementation
+/// wraps [availableSerialNos] with null metadata so existing adopters
+/// require no change.
+///
 /// ## Adoption pattern
 ///
 /// | DocType           | Serial source                     | Widget mode            | Activation gate                          |
@@ -76,6 +116,7 @@ import 'package:get/get.dart';
 /// | 5      | Migrate `StockEntryItemFormController` — `with SerialFieldMixin`               |
 /// | 6      | Adopt `SerialFieldMixin` on `PackingSlipItemFormController` (new capability)   |
 /// | 7      | Delete `PosSerialMixin` and legacy `SharedSerialField` widget                  |
+/// | 8      | Rich dropdown rows — `SerialDropdownItem` + `serialDropdownItems` (this file)  |
 abstract interface class SerialNumberFieldDelegate {
   /// Currently selected invoice serial number.
   ///
@@ -103,4 +144,22 @@ abstract interface class SerialNumberFieldDelegate {
   /// Updated by [SerialFieldMixin.computeLiveRemaining] on every
   /// `validateSheet()` call.  Negative values indicate over-allocation.
   RxDouble get liveRemaining;
+
+  /// Rich metadata list used by [SharedInvoiceSerialNumberField] to render
+  /// each dropdown row as a two-line tile:
+  ///   `#N  [itemName]  ×qty`
+  ///
+  /// Default implementation wraps [availableSerialNos] with null metadata —
+  /// existing adopters that do not override this getter continue to work;
+  /// the widget falls back gracefully to showing only the index badge.
+  ///
+  /// Override (via [SerialFieldMixin.serialDropdownItems] or directly) to
+  /// supply POS Upload item names and qty caps.
+  List<SerialDropdownItem> get serialDropdownItems =>
+      availableSerialNos
+          .map((s) => SerialDropdownItem(
+                serial: s,
+                remaining: posItemQtyForSerial(s),
+              ))
+          .toList();
 }

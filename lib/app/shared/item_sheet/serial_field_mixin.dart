@@ -11,6 +11,7 @@ import 'serial_number_field_delegate.dart';
 /// - Full [SerialNumberFieldDelegate] compliance (widget-ready out of the box)
 /// - Live remaining qty computation that reacts to every keystroke
 /// - Edit-mode double-count prevention via [savedQtyForRow]
+/// - Rich dropdown row metadata via [serialDropdownItems] override
 /// - Dirty-check helpers ported from [PosSerialMixin] with identical semantics
 /// - A static [fmtQty] helper shared with the widget's cap badge
 ///
@@ -32,6 +33,19 @@ import 'serial_number_field_delegate.dart';
 ///       _parent.items
 ///           .where((r) => r.serial == serial)
 ///           .fold(0.0, (s, r) => s + r.qty);
+///
+///   // Optional: supply rich row metadata for the dropdown.
+///   @override
+///   SerialDropdownItem? posDropdownItemFor(String serial) {
+///     final item = _parent.posItemFor(serial);
+///     if (item == null) return null;
+///     return SerialDropdownItem(
+///       serial: serial,
+///       itemName: item.itemName,
+///       qty: item.qty?.toDouble(),
+///       remaining: liveRemaining.value,
+///     );
+///   }
 ///
 ///   // --- call this from validateSheet() ---
 ///   @override
@@ -83,6 +97,7 @@ import 'serial_number_field_delegate.dart';
 /// | Live remaining        | exposed via `posSerialCapText`  | computed via `computeLiveRemaining()`    |
 /// | Edit-mode handling    | absent                          | `savedQtyForRow` hook                    |
 /// | qty source            | `posItemQty` getter             | `posItemQtyForSerial(String serial)`     |
+/// | Rich dropdown rows    | absent                          | `posDropdownItemFor` hook                |
 ///
 /// `PosSerialMixin` will be deleted in commit 7 of this series.
 mixin SerialFieldMixin implements SerialNumberFieldDelegate {
@@ -128,6 +143,42 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
   ///
   /// Return 0.0 in add mode (default) or when the row is not found.
   double savedQtyForRow(String rowId) => 0.0;
+
+  /// Optional rich metadata for a single dropdown row.
+  ///
+  /// Override to supply POS Upload item name and qty cap for [serial].
+  /// Return `null` to fall back to the index-badge-only rendering.
+  ///
+  /// Example:
+  /// ```dart
+  /// @override
+  /// SerialDropdownItem? posDropdownItemFor(String serial) {
+  ///   final pos = _parent.posItemFor(serial);
+  ///   if (pos == null) return null;
+  ///   return SerialDropdownItem(
+  ///     serial: serial,
+  ///     itemName: pos.itemName,
+  ///     qty: pos.qty?.toDouble(),
+  ///     remaining: liveRemaining.value,
+  ///   );
+  /// }
+  /// ```
+  SerialDropdownItem? posDropdownItemFor(String serial) => null;
+
+  /// Rich metadata list for the dropdown — overrides the default
+  /// pass-through in [SerialNumberFieldDelegate].
+  ///
+  /// Calls [posDropdownItemFor] for each serial; falls back to a bare
+  /// [SerialDropdownItem] (index badge only) when the hook returns null.
+  @override
+  List<SerialDropdownItem> get serialDropdownItems =>
+      availableSerialNos.map((s) {
+        return posDropdownItemFor(s) ??
+            SerialDropdownItem(
+              serial: s,
+              remaining: posItemQtyForSerial(s),
+            );
+      }).toList();
 
   // ── Live remaining computation ────────────────────────────────────────────
 

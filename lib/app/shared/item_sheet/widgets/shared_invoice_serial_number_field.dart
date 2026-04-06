@@ -17,6 +17,26 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 /// [SerialFieldMixin], a hand-rolled implementation, or a test double — can
 /// host this widget without modification.
 ///
+/// ## Dropdown row format
+///
+/// Each row renders as a two-column tile:
+///
+/// ```
+/// ┌──────┐  Item Name (1 line, ellipsis)
+/// │  #1  │  ×10
+/// └──────┘
+/// ```
+///
+/// The index badge uses [accentColor] at 12 % opacity.  When no item name
+/// or qty is available (non-POS context) the right column is omitted and
+/// only the badge is shown.
+///
+/// Rows where [SerialDropdownItem.isFull] is true are rendered at 40 %
+/// opacity and disabled — the user cannot select an exhausted serial.
+///
+/// The closed trigger shows a compact `"#N · Item Name"` summary via
+/// [DropdownButtonFormField.selectedItemBuilder].
+///
 /// ## POS qty matching
 ///
 /// The cap badge reads [SerialNumberFieldDelegate.posItemQtyForSerial] using
@@ -88,15 +108,103 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
   bool _isBadgeVisible(double cap) =>
       cap > 0 && cap != double.infinity;
 
+  // ── Dropdown item builder ───────────────────────────────────────────────
+
+  /// Builds a rich two-column tile for each serial:
+  ///   Left  — rounded index badge (#N) tinted with [accentColor]
+  ///   Right — itemName (1 line, ellipsis) + ×qty sub-label
+  ///
+  /// Full rows are dimmed (opacity 0.4) and non-selectable.
+  List<DropdownMenuItem<String>> _buildItems() {
+    return c.serialDropdownItems.map((item) {
+      final badge = _IndexBadge(
+        serial: item.serial,
+        accentColor: accentColor,
+      );
+
+      final hasName = item.itemName != null && item.itemName!.isNotEmpty;
+      final hasQty  = item.qty != null && item.qty! != double.infinity;
+
+      Widget tile;
+      if (hasName || hasQty) {
+        tile = Row(
+          children: [
+            badge,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasName)
+                    Text(
+                      item.itemName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  if (hasQty)
+                    Text(
+                      item.isFull
+                          ? '\u00d7${SerialFieldMixin.fmtQty(item.qty!)}  \u2014  Full'
+                          : '\u00d7${SerialFieldMixin.fmtQty(item.qty!)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: item.isFull
+                            ? Colors.red.shade400
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      } else {
+        // No POS context — badge only.
+        tile = badge;
+      }
+
+      return DropdownMenuItem<String>(
+        value: item.serial,
+        enabled: !item.isFull,
+        child: Opacity(
+          opacity: item.isFull ? 0.4 : 1.0,
+          child: tile,
+        ),
+      );
+    }).toList();
+  }
+
+  /// Builds the compact summary shown in the closed trigger:
+  ///   `"#N · Item Name"` when item name is available
+  ///   `"#N"`             otherwise
+  List<Widget> _buildSelectedItems() {
+    return c.serialDropdownItems.map((item) {
+      final label = item.itemName != null && item.itemName!.isNotEmpty
+          ? '#${item.serial} \u00b7 ${item.itemName}'
+          : '#${item.serial}';
+      return Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13),
+      );
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (c.availableSerialNos.isEmpty) return const SizedBox.shrink();
 
     return Obx(() {
       // Read both reactive values so Obx tracks them.
-      final serial = c.selectedSerial.value;
+      final serial    = c.selectedSerial.value;
       final remaining = c.liveRemaining.value;
-      final cap = _capQty();
+      final cap       = _capQty();
       final showBadge = serial != null &&
           serial.isNotEmpty &&
           _isBadgeVisible(cap);
@@ -121,12 +229,8 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
                 // at the field's bottom border with no colour tail.
                 isDense: true,
               ),
-              items: c.availableSerialNos.map((s) {
-                return DropdownMenuItem(
-                  value: s,
-                  child: Text('Serial #$s'),
-                );
-              }).toList(),
+              items: _buildItems(),
+              selectedItemBuilder: (_) => _buildSelectedItems(),
               onChanged: (value) => c.selectedSerial.value = value,
             ),
           ),
@@ -134,7 +238,7 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           // ── POS cap badge — sibling, NOT inside the tinted container ────
           if (showBadge)
             _PosCapChip(
-              text: '${SerialFieldMixin.fmtQty(remaining)}'  
+              text: '${SerialFieldMixin.fmtQty(remaining)}'
                     ' / '
                     '${SerialFieldMixin.fmtQty(cap)}',
               isOverAllocated: remaining < 0,
@@ -146,6 +250,38 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
 }
 
 // ── Private widgets ─────────────────────────────────────────────────────────
+
+/// Rounded square index badge — `#N` tinted with [accentColor].
+///
+/// Used as the left column of each dropdown row tile and recycled for the
+/// badge-only fallback when no POS metadata is available.
+class _IndexBadge extends StatelessWidget {
+  final String serial;
+  final Color accentColor;
+
+  const _IndexBadge({required this.serial, required this.accentColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '#$serial',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: accentColor,
+        ),
+      ),
+    );
+  }
+}
 
 /// Teal pill chip shown below the Invoice Serial No dropdown when a POS
 /// Upload is loaded and a serial is selected.
