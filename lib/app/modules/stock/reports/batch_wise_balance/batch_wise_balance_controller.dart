@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BatchWiseBalanceController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
-  // ── Filter field controllers ────────────────────────────────────────
+  // ── Filter field controllers ──────────────────────────────────────
 
   final fromDateController  = TextEditingController();
   final toDateController    = TextEditingController();
@@ -17,7 +17,11 @@ class BatchWiseBalanceController extends GetxController {
 
   late final Map<String, TextEditingController> filterControllers;
 
-  // ── State ────────────────────────────────────────────────────────
+  /// FocusNode exposed so DataWedge (hardware barcode scanner) can route
+  /// its output directly to the Batch No field via the batchBrowse type.
+  final batchNoFocusNode = FocusNode();
+
+  // ── State ──────────────────────────────────────────────────
 
   final isLoading  = false.obs;
   final reportData = <Map<String, dynamic>>[].obs;
@@ -25,41 +29,48 @@ class BatchWiseBalanceController extends GetxController {
   /// Reactive map driving active filter chips in the screen.
   final activeFilters = <String, String>{}.obs;
 
-  // ── Filter field descriptors (passed to ReportFilterSheet) ────────────
-
-  static const filterFields = [
-    ReportFilterField(
+  // ── Filter field descriptors (passed to ReportFilterSheet) ─────────────
+  // NOTE: filterFields is now a getter (not const) so batchNoFocusNode
+  // (an instance field) can be wired into the descriptor at runtime.
+  List<ReportFilterField> get filterFields => [
+    const ReportFilterField(
       key:        'from_date',
       label:      'From Date',
       type:       ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
-    ReportFilterField(
+    const ReportFilterField(
       key:        'to_date',
       label:      'To Date',
       type:       ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
-    ReportFilterField(
+    const ReportFilterField(
       key:        'item_code',
       label:      'Item Code *',
       prefixIcon: Icons.category_outlined,
       required:   true,
     ),
+    // batch_no: optional, batchBrowse type for DataWedge + manual entry
     ReportFilterField(
       key:        'batch_no',
-      label:      'Batch No *',
+      label:      'Batch No',
+      type:       ReportFilterType.batchBrowse,
       prefixIcon: Icons.qr_code_2_outlined,
-      required:   true,
+      focusNode:  batchNoFocusNode,
+      // required: false (default) — batch filter is now optional
     ),
-    ReportFilterField(
-      key:        'warehouse',
-      label:      'Warehouse',
-      prefixIcon: Icons.warehouse_outlined,
+    // warehouse: doctypeLink picker fetches from Warehouse DocType
+    const ReportFilterField(
+      key:         'warehouse',
+      label:       'Warehouse',
+      type:        ReportFilterType.doctypeLink,
+      prefixIcon:  Icons.warehouse_outlined,
+      linkDoctype: 'Warehouse',
     ),
   ];
 
-  // ── Lifecycle ──────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────
 
   @override
   void onInit() {
@@ -84,10 +95,11 @@ class BatchWiseBalanceController extends GetxController {
     for (final c in filterControllers.values) {
       c.dispose();
     }
+    batchNoFocusNode.dispose();
     super.onClose();
   }
 
-  // ── Public API ───────────────────────────────────────────────────
+  // ── Public API ──────────────────────────────────────────────
 
   int get activeFilterCount =>
       filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
@@ -114,16 +126,15 @@ class BatchWiseBalanceController extends GetxController {
 
   /// Runs the Batch-Wise Balance History report with current filter values.
   ///
-  /// Fix: [ApiProvider.getBatchWiseBalance] signature changed to all-named params
-  /// and now returns [List<Map<String,dynamic>>] directly (not a [Response]).
+  /// Only [itemCode] is required. [batchNo] and [warehouse] are optional
+  /// and are omitted from the API call when empty.
   Future<void> runReport() async {
     final itemCode = itemCodeController.text.trim();
-    final batchNo  = batchNoController.text.trim();
 
-    if (itemCode.isEmpty || batchNo.isEmpty) {
+    if (itemCode.isEmpty) {
       GlobalSnackbar.warning(
-        title:   'Filters Required',
-        message: 'Please enter both Item Code and Batch No to run the report.',
+        title:   'Filter Required',
+        message: 'Please enter an Item Code to run the report.',
       );
       return;
     }
@@ -133,12 +144,12 @@ class BatchWiseBalanceController extends GetxController {
     reportData.clear();
 
     try {
+      final batchNo   = batchNoController.text.trim();
       final warehouse = warehouseController.text.trim();
 
-      // ✓ All-named params; return type is List<Map<String,dynamic>>.
       final rows = await _apiProvider.getBatchWiseBalance(
         itemCode:  itemCode,
-        batchNo:   batchNo.isEmpty ? null : batchNo,
+        batchNo:   batchNo.isEmpty   ? null : batchNo,
         warehouse: warehouse.isEmpty ? null : warehouse,
       );
 
@@ -153,7 +164,7 @@ class BatchWiseBalanceController extends GetxController {
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────
 
   static const _filterLabels = {
     'from_date' : 'From',
