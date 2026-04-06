@@ -7,15 +7,14 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   const BatchWiseBalanceScreen({super.key});
 
-  // ── Filter chip builder ───────────────────────────────────────────────────────────
+  // ── Filter chip builder ───────────────────────────────────────────────────
   //
-  // Returns a SINGLE horizontally-scrollable row widget (not a List<Widget>)
-  // so chips never wrap into the list content area beneath the header.
-  // Each chip uses InputChip (not Chip) because InputChip gives the delete
-  // icon a full 48dp tap target out of the box — Chip with shrinkWrap +
-  // compact density was silently swallowing onDeleted gestures.
+  // Returns List<Widget> — one InputChip per active filter.
+  // DocTypeListHeader wraps them in a horizontal SingleChildScrollView
+  // internally, so this builder only needs to produce the chip widgets.
+  // InputChip gives the delete icon a full 48dp tap target out of the box.
 
-  Widget _buildFilterChips(BuildContext context) {
+  List<Widget> _buildFilterChips(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     Widget chip(String key, String label) => InputChip(
@@ -32,34 +31,16 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
           onDeleted: () => controller.clearFilter(key),
           side: BorderSide.none,
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          // No materialTapTargetSize override — default pads delete icon
-          // to the Material minimum (48 × 48 dp), making it reliably tappable.
         );
 
     final chips = <Widget>[];
     controller.activeFilters.forEach((key, label) {
       chips.add(chip(key, label));
     });
-
-    if (chips.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: 48,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: chips
-              .expand((c) => [c, const SizedBox(width: 6)])
-              .toList()
-            ..removeLast(), // trim trailing spacer
-        ),
-      ),
-    );
+    return chips;
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +56,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ───────────────────────────────────────────────
+              // ── Unified header ──────────────────────────────────────────
               DocTypeListHeader(
                 title: 'Batch-Wise Balance',
                 automaticallyImplyLeading: false,
@@ -84,17 +65,17 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                     .obs,
                 onFilterTap: () => showReportFilterSheet(
                   context: context,
-                  title:   'Batch-Wise Balance Filters',
-                  fields:  controller.filterFields,
+                  title:       'Batch-Wise Balance Filters',
+                  fields:      controller.filterFields,
                   controllers: controller.filterControllers,
-                  onRun:   controller.runReport,
-                  onClear: controller.clearFilters,
+                  onRun:       controller.runReport,
+                  onClear:     controller.clearFilters,
                 ),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters:  controller.clearFilters,
               ),
 
-              // ── Results ───────────────────────────────────────────────────────
+              // ── Results ────────────────────────────────────────────────
               if (controller.isLoading.value)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -117,17 +98,16 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                           Text(
                             'Enter filters and tap the filter icon to run the report',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant),
+                            style: TextStyle(color: cs.onSurfaceVariant),
                           ),
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
                             onPressed: () => showReportFilterSheet(
                               context: context,
-                              title:  'Batch-Wise Balance Filters',
-                              fields: controller.filterFields,
+                              title:   'Batch-Wise Balance Filters',
+                              fields:  controller.filterFields,
                               controllers: controller.filterControllers,
-                              onRun:  controller.runReport,
+                              onRun:   controller.runReport,
                               onClear: controller.clearFilters,
                             ),
                             icon: const Icon(Icons.filter_alt_outlined),
@@ -162,7 +142,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   }
 }
 
-// ── Result tile ─────────────────────────────────────────────────────────────────────────────────
+// ── Result tile ──────────────────────────────────────────────────────────────
 
 class _BalanceTile extends StatelessWidget {
   final Map<String, dynamic> row;
@@ -193,16 +173,14 @@ class _BalanceTile extends StatelessWidget {
                       Text(
                         row['item'] ?? 'Unknown Item',
                         style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15),
+                            fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                       if ((row['item_name'] ?? '') != '' &&
                           row['item_name'] != row['item'])
                         Text(
                           row['item_name'],
                           style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 12),
+                              color: cs.onSurfaceVariant, fontSize: 12),
                         ),
                     ],
                   ),
@@ -229,20 +207,14 @@ class _BalanceTile extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                    child: _Detail(
-                        label: 'Batch',
-                        value: row['batch'])),
+                    child: _Detail(label: 'Batch',     value: row['batch'])),
                 Expanded(
-                    child: _Detail(
-                        label: 'Warehouse',
-                        value: row['warehouse'])),
+                    child: _Detail(label: 'Warehouse', value: row['warehouse'])),
               ],
             ),
             if ((row['expiry_date'] ?? '') != '') ...[
               const SizedBox(height: 8),
-              _Detail(
-                  label: 'Expiry',
-                  value: row['expiry_date']),
+              _Detail(label: 'Expiry', value: row['expiry_date']),
             ],
           ],
         ),
@@ -263,15 +235,11 @@ class _Detail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: TextStyle(
-                fontSize: 11, color: cs.onSurfaceVariant)),
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(
-          value?.toString().isNotEmpty == true
-              ? value.toString()
-              : '—',
-          style: const TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w500),
+          value?.toString().isNotEmpty == true ? value.toString() : '—',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         ),
       ],
     );
