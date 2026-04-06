@@ -18,8 +18,7 @@ const double _kToolbar = kToolbarHeight; // 56 dp
 const double _kExpandedExtra = 96.0; // total expanded = 152 dp
 
 /// Height reserved for the active-filter chip row.
-/// 48 dp — single horizontal-scroll row; matches SizedBox height used by
-/// [filterChipsBuilder] implementations (e.g. BatchWiseBalanceScreen).
+/// 48 dp — single horizontal-scroll row.
 const double _kChipRow = 48.0;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -37,15 +36,15 @@ const double _kChipRow = 48.0;
 ///
 /// ## Chip row contract
 ///
-/// [filterChipsBuilder] now returns a **single `Widget`** (previously
-/// `List<Widget>`).  The caller is responsible for the full chip-row
-/// widget tree, including scroll behaviour, spacing, and any Clear-all
-/// button.  The header wraps the returned widget in a [Material] with the
-/// surface colour and constrains it to [_kChipRow] (48 dp) height.
+/// [filterChipsBuilder] returns a **`List<Widget>`** of chip widgets.
+/// The header renders them inside a horizontal [SingleChildScrollView]
+/// constrained to [_kChipRow] (48 dp) height so chips never wrap or
+/// overflow into the list content below.  When the list is empty (or the
+/// builder is null) the chip row is hidden and [_kChipRow] is not added
+/// to [maxExtent].
 ///
-/// Returning [SizedBox.shrink()] (or any zero-height widget) when there
-/// are no chips is the correct way to signal an empty state — the header
-/// calls [filterChipsBuilder] only when [_chipsActiveFor] is true.
+/// An optional "Clear all" [TextButton] is appended at the end of the
+/// scroll row when [onClearAllFilters] is set and the list has > 1 chip.
 ///
 /// ---
 ///
@@ -103,7 +102,7 @@ const double _kChipRow = 48.0;
 /// Both the toolbar and the chip row honour the same [pinnedAppBar] flag.
 ///
 /// | [pinnedAppBar] | [floatingAppBar] | Behaviour |
-/// |----------------|------------------|-----------|
+/// |----------------|------------------|-----------| 
 /// | `true` (default) | `false` (default) | Toolbar + chips **permanently pinned**. Large title fades out on scroll. |
 /// | `true` | `true` | Same pinning + header snaps back on any upward swipe. |
 /// | `false` | `false` | Entire header scrolls off-screen. |
@@ -189,15 +188,13 @@ class DocTypeListHeader extends StatelessWidget {
   final VoidCallback? onFilterTap;
 
   // ── Chip row ──────────────────────────────────────────────────────────
-  /// Builder that returns the **full chip row widget**.
+  /// Builder that returns the list of chip widgets to display.
   ///
-  /// The returned widget is placed inside a [Material] (surface colour) and
-  /// constrained to [_kChipRow] (48 dp) by the header delegate.  The caller
-  /// is responsible for scroll behaviour (use [SingleChildScrollView] with
-  /// [Axis.horizontal]), chip spacing, and any Clear-all button.
-  ///
-  /// Return [SizedBox.shrink()] when there are no chips to display.
-  final Widget Function(BuildContext context)? filterChipsBuilder;
+  /// The chips are rendered inside a horizontal [SingleChildScrollView]
+  /// constrained to [_kChipRow] (48 dp).  When the returned list is empty
+  /// the chip row is hidden.  A "Clear all" button is appended when
+  /// [onClearAllFilters] is set and the list has more than one chip.
+  final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
   const DocTypeListHeader({
@@ -292,7 +289,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onFilterTap;
 
   /// See [DocTypeListHeader.filterChipsBuilder] for the full contract.
-  final Widget Function(BuildContext context)? filterChipsBuilder;
+  final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
   /// Height of the system status bar on this device / orientation.
@@ -400,21 +397,44 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     // ─ Chip row ────────────────────────────────────────────────────────
     //
-    // The caller's filterChipsBuilder returns the *complete* chip-row widget
-    // (a SingleChildScrollView with InputChips).  We only wrap it in a
-    // Material so it gets the correct surface background — scroll behaviour,
-    // spacing, and Clear-all are entirely the caller's responsibility.
-    //
-    // The SizedBox(_kChipRow) height constraint in the Column below is the
-    // single source of truth for how tall the chip row is allowed to be;
-    // it matches the SizedBox(height: 48) in each filterChipsBuilder impl.
+    // filterChipsBuilder returns List<Widget>.  We render them in a
+    // horizontal SingleChildScrollView so they never wrap or overflow
+    // into the list content below.  A "Clear all" button is appended
+    // at the trailing end when onClearAllFilters is set and there are
+    // more than one chip visible.
     Widget? chipRow;
-    if (chipsNowActive) {
-      final chipWidget = filterChipsBuilder?.call(context);
-      if (chipWidget != null) {
+    if (chipsNowActive && filterChipsBuilder != null) {
+      final chips = filterChipsBuilder!.call(context);
+      if (chips.isNotEmpty) {
         chipRow = Material(
           color: colorScheme.surface,
-          child: chipWidget,
+          child: SizedBox(
+            height: _kChipRow,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ...chips.map((chip) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: chip,
+                      )),
+                  if (chips.length > 1 && onClearAllFilters != null)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: colorScheme.error,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: onClearAllFilters,
+                      icon: const Icon(Icons.clear_all, size: 16),
+                      label: const Text('Clear all'),
+                    ),
+                ],
+              ),
+            ),
+          ),
         );
       }
     }
