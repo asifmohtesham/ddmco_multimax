@@ -9,6 +9,24 @@ import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
+/// Packing Slip list screen.
+///
+/// ## Interaction model
+/// Each slip card uses the same expand-panel pattern as [StockEntryScreen]
+/// and [DeliveryNoteScreen]:
+/// - **Tap** → [PackingSlipController.toggleExpand] expands/collapses the
+///   card in place via [GenericDocumentCard.expandedContent].
+/// - Inside the panel: a **View** (or **Edit** for Draft slips) CTA
+///   navigates to [AppRoutes.PACKING_SLIP_FORM].
+///
+/// This replaces the previous direct-navigation-on-tap behaviour that caused
+/// the [Icons.expand_more] chevron to be a false affordance.
+///
+/// ## UI/UX contract
+/// Do **not** revert the card tap to direct navigation. The [AnimatedRotation]
+/// chevron in [GenericDocumentCard] is truthful only when [onTap] toggles
+/// the expand panel. Any change to the interaction model must be applied
+/// identically to [StockEntryScreen] and [DeliveryNoteScreen] for consistency.
 class PackingSlipScreen extends StatefulWidget {
   const PackingSlipScreen({super.key});
 
@@ -220,7 +238,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header: AppBar + search + filter chips ──────────────
+            // ── Unified header: AppBar + search + filter chips ─────────────
             DocTypeListHeader(
               title: 'Packing Slip',
               automaticallyImplyLeading: false,
@@ -236,7 +254,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
               onClearAllFilters: controller.clearFilters,
             ),
 
-            // ── Result count pill ───────────────────────────────────────────────
+            // ── Result count pill ───────────────────────────────────────────
             SliverToBoxAdapter(
               child: Obx(() {
                 if (controller.isLoading.value &&
@@ -290,7 +308,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
               }),
             ),
 
-            // ── List content ──────────────────────────────────────────────────
+            // ── List content ───────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value &&
                   controller.packingSlips.isEmpty) {
@@ -595,16 +613,23 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
   /// Builds a [GenericDocumentCard] for a single [PackingSlip] row.
   ///
-  /// Field mapping:
-  ///   title        → slip.name
-  ///   subtitle     → slip.deliveryNote  (parent DN identifier)
-  ///   status       → slip.status        ('Draft' / 'Submitted' / 'Cancelled')
-  ///   stats[0]     → case range         'Pkg X–Y'
-  ///   stats[1]     → item count         (omitted when 0)
-  ///   auditStats[0]→ relative time      from slip.creation
-  ///   auditStats[1]→ owner              (omitted when null/empty)
-  ///   isExpanded   → false              (no expand panel on list tiles)
-  ///   onTap        → navigate to PACKING_SLIP_FORM in view mode
+  /// ## Interaction model
+  /// [onTap] calls [PackingSlipController.toggleExpand] to expand/collapse
+  /// the card in place. Navigation to [AppRoutes.PACKING_SLIP_FORM] is
+  /// deferred to the CTA button inside [_buildExpandedContent], matching
+  /// the behaviour of [StockEntryScreen] and [DeliveryNoteScreen].
+  ///
+  /// ## Field mapping
+  /// | Slot          | Source field             |
+  /// |---------------|--------------------------|
+  /// | title         | slip.name                |
+  /// | subtitle      | slip.deliveryNote        |
+  /// | status        | slip.status              |
+  /// | stats[0]      | case range  'Pkg X–Y'   |
+  /// | stats[1]      | item count (if > 0)      |
+  /// | auditStats[0] | relative creation time   |
+  /// | auditStats[1] | owner (if non-empty)     |
+  /// | expandedContent | [_buildExpandedContent]|
   Widget _buildSlipCard(BuildContext context, dynamic slip) {
     final caseRange =
         'Pkg ${slip.fromCaseNo ?? "?"}\u2013${slip.toCaseNo ?? "?"}';
@@ -635,17 +660,185 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         ),
     ];
 
-    return GenericDocumentCard(
-      title: slip.name as String,
-      subtitle: slip.deliveryNote as String,
-      status: slip.status as String,
-      stats: stats,
-      auditStats: auditStats,
-      isExpanded: false,
-      onTap: () => Get.toNamed(
-        AppRoutes.PACKING_SLIP_FORM,
-        arguments: {'name': slip.name, 'mode': 'view'},
-      ),
+    return Obx(() {
+      final isExpanded =
+          controller.expandedSlipName.value == (slip.name as String);
+      final isLoadingDetails = controller.isLoadingDetails.value &&
+          controller.detailedSlip?.name != slip.name;
+
+      return GenericDocumentCard(
+        title: slip.name as String,
+        subtitle: slip.deliveryNote as String,
+        status: slip.status as String,
+        stats: stats,
+        auditStats: auditStats,
+        isExpanded: isExpanded,
+        isLoadingDetails: isLoadingDetails && isExpanded,
+        onTap: () => controller.toggleExpand(slip.name as String),
+        expandedContent: isExpanded
+            ? _buildExpandedContent(context, slip.name as String)
+            : null,
+      );
+    });
+  }
+
+  /// Builds the expand-panel content for a single [PackingSlip].
+  ///
+  /// Rendered inside [GenericDocumentCard.expandedContent] after
+  /// [PackingSlipController.fetchSlipDetails] completes. Shows case range,
+  /// Delivery Note reference, item count summary, and a View / Edit CTA.
+  ///
+  /// ⚠️ UI/UX contract: mirrors [StockEntryScreen._buildDetailedContent].
+  /// The layout (divider, info cells, right-aligned CTA row) must remain
+  /// consistent across all three list screens.
+  Widget _buildExpandedContent(BuildContext context, String slipName) {
+    return Obx(() {
+      final detailed = controller.detailedSlip;
+      if (detailed == null || detailed.name != slipName) {
+        return const SizedBox.shrink();
+      }
+
+      final theme = Theme.of(context);
+      final colorScheme = theme.colorScheme;
+
+      final caseRange =
+          'Pkg ${detailed.fromCaseNo ?? "?"}\u2013${detailed.toCaseNo ?? "?"}';
+      final itemCount = detailed.items?.length ?? 0;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Case range + DN ref row ────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: _infoCell(
+                  context,
+                  label: 'CASE RANGE',
+                  value: caseRange,
+                  icon: Icons.filter_none,
+                ),
+              ),
+              if (detailed.deliveryNote.isNotEmpty)
+                Expanded(
+                  child: _infoCell(
+                    context,
+                    label: 'DELIVERY NOTE',
+                    value: detailed.deliveryNote,
+                    icon: Icons.local_shipping_outlined,
+                    alignRight: true,
+                  ),
+                ),
+            ],
+          ),
+
+          // ── Item count row (only when items are present) ────────────
+          if (itemCount > 0) ...[
+            const SizedBox(height: 12),
+            Divider(height: 1, color: colorScheme.outlineVariant),
+            const SizedBox(height: 12),
+            _infoCell(
+              context,
+              label: 'ITEMS',
+              value: '$itemCount item${itemCount == 1 ? '' : 's'}',
+              icon: Icons.inventory_2_outlined,
+            ),
+          ],
+
+          // ── CTA row ───────────────────────────────────────────────
+          const SizedBox(height: 12),
+          Divider(height: 1, color: colorScheme.outlineVariant),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (detailed.status == 'Draft')
+                RoleGuard(
+                  roles: controller.writeRoles.toList(),
+                  fallback: const SizedBox.shrink(),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.PACKING_SLIP_FORM,
+                      arguments: {
+                        'name': detailed.name,
+                        'mode': 'edit',
+                      },
+                    ),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Edit'),
+                  ),
+                )
+              else
+                FilledButton.tonalIcon(
+                  onPressed: () => Get.toNamed(
+                    AppRoutes.PACKING_SLIP_FORM,
+                    arguments: {
+                      'name': detailed.name,
+                      'mode': 'view',
+                    },
+                  ),
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: const Text('View Details'),
+                ),
+            ],
+          ),
+        ],
+      );
+    });
+  }
+
+  /// Labelled info cell used inside [_buildExpandedContent].
+  ///
+  /// Copied verbatim from [StockEntryScreen._infoCell] to guarantee visual
+  /// consistency across all list screens. Do not modify independently.
+  Widget _infoCell(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+    Color? valueColor,
+    bool alignRight = false,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment:
+          alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment:
+              alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (!alignRight) ...[
+              Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.4,
+              ),
+            ),
+            if (alignRight) ...[
+              const SizedBox(width: 4),
+              Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: valueColor ?? colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: alignRight ? TextAlign.end : TextAlign.start,
+        ),
+      ],
     );
   }
 }
