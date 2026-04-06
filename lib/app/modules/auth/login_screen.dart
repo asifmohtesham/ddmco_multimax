@@ -11,112 +11,106 @@ class LoginScreen extends GetView<LoginController> {
 
   void _showServerConfigSheet(BuildContext context) {
     controller.showServerGuide.value = false;
+    controller.update();
 
     Get.bottomSheet(
-      /// StatefulBuilder keeps Obx out of the bottomSheet scope entirely.
-      /// The button rebuilds via setState when isCheckingConnection changes.
-      StatefulBuilder(
-        builder: (sheetContext, setState) {
-          // Subscribe to the observable and mirror it into local state so
-          // the sheet can rebuild without an Obx outside the widget tree.
-          ever(controller.isCheckingConnection, (_) {
-            if (sheetContext.mounted) setState(() {});
-          });
-
-          return Container(
-            padding: const EdgeInsets.all(24.0),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      // GetBuilder is pull-based — immune to reactive timing issues that
+      // crash Obx when used inside Get.bottomSheet's detached overlay.
+      GetBuilder<LoginController>(
+        builder: (c) => Container(
+          padding: const EdgeInsets.all(24.0),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connect to Instance',
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Enter the URL of your instance.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: c.serverUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Server URL',
+                    hintText: 'https://erp.domain.com',
+                    prefixIcon: Icon(Icons.link),
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.url,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: c.isCheckingConnection.value
+                        ? null
+                        : c.saveServerConfiguration,
+                    style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16)),
+                    child: c.isCheckingConnection.value
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Connect'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
             ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Connect to Instance',
-                    style: Theme.of(sheetContext)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Enter the URL of your instance.',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: controller.serverUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Server URL',
-                      hintText: 'https://erp.domain.com',
-                      prefixIcon: Icon(Icons.link),
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.url,
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: controller.isCheckingConnection.value
-                          ? null
-                          : controller.saveServerConfiguration,
-                      style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16)),
-                      child: controller.isCheckingConnection.value
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Connect'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          );
-        },
+          ),
+        ),
       ),
       isScrollControlled: true,
     );
   }
 
-  /// Extracted to its own method so the Obx always unconditionally reads
-  /// showServerGuide.value — the value is captured in a local variable
-  /// first, ensuring GetX registers the subscription on every rebuild
-  /// regardless of which branch of the conditional is taken.
+  /// GetBuilder is pull-based — it only rebuilds when update() is called
+  /// from the controller. This is immune to the _firstBuild crash that
+  /// Obx suffers when observables are mutated during widget mounting.
   Widget _buildSettingsIcon(BuildContext context) {
-    return Obx(() {
-      final showGuide = controller.showServerGuide.value; // always read
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          if (showGuide)
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.orange.withValues(alpha: 0.3),
-                border: Border.all(color: Colors.orange, width: 2),
+    return GetBuilder<LoginController>(
+      builder: (c) {
+        final showGuide = c.showServerGuide.value;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            if (showGuide)
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.orange.withValues(alpha: 0.3),
+                  border: Border.all(color: Colors.orange, width: 2),
+                ),
               ),
+            IconButton(
+              icon: Icon(
+                Icons.settings,
+                color: showGuide ? Colors.orange : Colors.grey,
+              ),
+              tooltip: 'Server Configuration',
+              onPressed: () => _showServerConfigSheet(context),
             ),
-          IconButton(
-            icon: Icon(
-              Icons.settings,
-              color: showGuide ? Colors.orange : Colors.grey,
-            ),
-            tooltip: 'Server Configuration',
-            onPressed: () => _showServerConfigSheet(context),
-          ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -147,8 +141,9 @@ class LoginScreen extends GetView<LoginController> {
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                     ),
                     const SizedBox(height: 16.0),
-                    /// Split into two lean Obx widgets instead of wrapping
-                    /// the entire heavy TextFormField in one.
+                    // Obx is safe here — isPasswordHidden is never mutated
+                    // during onInit or any async init path, so it will never
+                    // fire notifyChildren during _firstBuild.
                     Obx(() => TextFormField(
                           controller: controller.passwordController,
                           decoration: InputDecoration(
@@ -199,6 +194,8 @@ class LoginScreen extends GetView<LoginController> {
                       ),
                     ),
                     const SizedBox(height: 24.0),
+                    // Obx safe — isLoading is only mutated inside loginUser()
+                    // which is user-triggered, never during mount.
                     Obx(() => controller.isLoading.value
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton(
@@ -216,7 +213,7 @@ class LoginScreen extends GetView<LoginController> {
             ),
           ),
 
-          // Settings icon — extracted to guarantee unconditional observable read
+          // Settings icon — GetBuilder for pull-based rebuild safety
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             right: 16,

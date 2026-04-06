@@ -18,7 +18,6 @@ class LoginController extends GetxController {
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
   final TextEditingController serverUrlController = TextEditingController();
 
   var currentServerUrl = ''.obs;
@@ -30,7 +29,10 @@ class LoginController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _loadSavedServerUrl();
+    // Defer async mutations until after the first frame is fully rendered.
+    // This prevents GetX notifyChildren from firing while Obx/GetBuilder
+    // widgets are still mid-mount, which causes the _firstBuild crash.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedServerUrl());
   }
 
   Future<void> _loadSavedServerUrl() async {
@@ -52,6 +54,7 @@ class LoginController extends GetxController {
     if (url.endsWith('/')) url = url.substring(0, url.length - 1);
 
     isCheckingConnection.value = true;
+    update(); // notify GetBuilder widgets
     try {
       _apiProvider.setBaseUrl(url);
       final dio = Dio();
@@ -63,14 +66,14 @@ class LoginController extends GetxController {
         GlobalSnackbar.success(
             title: 'Connected', message: 'Successfully connected to $url');
         showServerGuide.value = false;
+        update();
       } else {
         throw Exception(
             'Invalid response from server (Status: ${response.statusCode})');
       }
     } catch (e) {
       isCheckingConnection.value = false;
-      // Builder gives dialog buttons a valid local BuildContext so they
-      // can call Navigator.of(context).pop() without touching Get.back().
+      update();
       Get.dialog(
         Builder(
           builder: (context) => AlertDialog(
@@ -93,6 +96,7 @@ class LoginController extends GetxController {
                       title: 'Saved',
                       message: 'Server URL saved (Validation skipped)');
                   showServerGuide.value = false;
+                  update();
                 },
                 child: const Text('Save Anyway'),
               ),
@@ -102,10 +106,10 @@ class LoginController extends GetxController {
       );
     } finally {
       isCheckingConnection.value = false;
+      update();
     }
   }
 
-  /// Persists the validated URL and closes any open overlay.
   Future<void> _confirmAndSave(String url) async {
     await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
     serverUrlController.text = url;
@@ -142,6 +146,7 @@ class LoginController extends GetxController {
 
     if (storedUrl == null || storedUrl.isEmpty) {
       showServerGuide.value = true;
+      update();
       AppNotification.warning(
         'Please set the Server URL using the settings icon above before logging in.',
       );
