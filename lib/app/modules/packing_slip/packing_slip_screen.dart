@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 class PackingSlipScreen extends StatefulWidget {
@@ -61,8 +61,6 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   }
 
   /// Builds dismissible filter chips for every active filter + search query.
-  /// Called inside [DocTypeListHeader.filterChipsBuilder] which is wrapped
-  /// in [Obx], so all Rx reads here are tracked automatically.
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final filters = controller.activeFilters;
@@ -387,7 +385,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                 );
               }
 
-              // Touch map length so Obx listens to customer map updates
+              // Touch map length so Obx listens to customer map updates.
               // ignore: unused_local_variable
               final _dummyListener = controller.posCustomerMap.length;
 
@@ -575,8 +573,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                                       ),
                                       itemBuilder: (context, slipIndex) {
                                         final slip = slips[slipIndex];
-                                        return PackingSlipListTile(
-                                            slip: slip);
+                                        return _buildSlipCard(
+                                            context, slip);
                                       },
                                     ),
                             );
@@ -594,93 +592,59 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// PackingSlipListTile — preserved intact; replaced by GenericDocumentCard
-// in Commit 6
-// ---------------------------------------------------------------------------
+  /// Builds a [GenericDocumentCard] for a single [PackingSlip] row.
+  ///
+  /// Field mapping:
+  ///   title        → slip.name
+  ///   subtitle     → slip.deliveryNote  (parent DN identifier)
+  ///   status       → slip.status        ('Draft' / 'Submitted' / 'Cancelled')
+  ///   stats[0]     → case range         'Pkg X–Y'
+  ///   stats[1]     → item count         (omitted when 0)
+  ///   auditStats[0]→ relative time      from slip.creation
+  ///   auditStats[1]→ owner              (omitted when null/empty)
+  ///   isExpanded   → false              (no expand panel on list tiles)
+  ///   onTap        → navigate to PACKING_SLIP_FORM in view mode
+  Widget _buildSlipCard(BuildContext context, dynamic slip) {
+    final caseRange =
+        'Pkg ${slip.fromCaseNo ?? "?"}\u2013${slip.toCaseNo ?? "?"}';
 
-class PackingSlipListTile extends StatelessWidget {
-  final dynamic slip;
-
-  const PackingSlipListTile({super.key, required this.slip});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return InkWell(
-      onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP_FORM,
-          arguments: {'name': slip.name, 'mode': 'view'}),
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          slip.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        FormattingHelper.getRelativeTime(slip.creation),
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: colorScheme.outline),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.filter_none,
-                          size: 14, color: colorScheme.secondary),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Pkg: ${slip.fromCaseNo ?? "?"} - ${slip.toCaseNo ?? "?"}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.secondary,
-                        ),
-                      ),
-                      if (slip.docstatus == 1) ...[
-                        const SizedBox(width: 12),
-                        Icon(Icons.check_circle_outline,
-                            size: 14, color: Colors.green.shade700),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Submitted',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (slip.status != 'Submitted')
-              StatusPill(status: slip.status)
-            else
-              Icon(Icons.chevron_right,
-                  color: colorScheme.onSurfaceVariant),
-          ],
+    final stats = <Widget>[
+      GenericDocumentCard.buildIconStat(
+          context, Icons.filter_none, caseRange),
+      if (slip.items != null && (slip.items as List).isNotEmpty)
+        GenericDocumentCard.buildIconStat(
+          context,
+          Icons.inventory_2_outlined,
+          '${(slip.items as List).length} '
+          'item${(slip.items as List).length == 1 ? '' : 's'}',
         ),
+    ];
+
+    final auditStats = <Widget>[
+      GenericDocumentCard.buildIconStat(
+        context,
+        Icons.schedule_outlined,
+        FormattingHelper.getRelativeTime(slip.creation),
+      ),
+      if (slip.owner != null && (slip.owner as String).isNotEmpty)
+        GenericDocumentCard.buildIconStat(
+          context,
+          Icons.person_outline,
+          slip.owner as String,
+        ),
+    ];
+
+    return GenericDocumentCard(
+      title: slip.name as String,
+      subtitle: slip.deliveryNote as String,
+      status: slip.status as String,
+      stats: stats,
+      auditStats: auditStats,
+      isExpanded: false,
+      onTap: () => Get.toNamed(
+        AppRoutes.PACKING_SLIP_FORM,
+        arguments: {'name': slip.name, 'mode': 'view'},
       ),
     );
   }
