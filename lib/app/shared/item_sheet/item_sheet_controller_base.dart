@@ -87,6 +87,10 @@ class BatchResult {
 ///     isQtyReadOnly  — backed by _isQtyReadOnly; wired to docStatus == 1.
 ///     effectiveMaxQty — double.infinity base default; SE/DN/PR override.
 ///     docStatus      — RxInt(0); write to lock/unlock the qty field.
+///   fix(item-sheet): defer TextEditingController disposal to post-frame
+///     so the bottom-sheet exit animation completes before controllers are
+///     invalidated.  Prevents "TextEditingController was used after being
+///     disposed" crash triggered by back-nav with keyboard open.
 abstract class ItemSheetControllerBase extends GetxController
     implements
         RackFieldWithBrowseDelegate,
@@ -360,23 +364,67 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── disposeControllers ─────────────────────────────────────────────────────────
+  /// Public teardown helper for call sites that need to trigger disposal
+  /// outside of the normal GetX lifecycle (e.g. parent-orchestrated cleanup).
+  ///
+  /// Uses the same deferred-dispose pattern as [onClose] to guard against
+  /// use-after-dispose when called while an exit animation is in progress.
   void disposeControllers() {
-    try { sheetScrollController.dispose(); } catch (_) {}
-    try { batchController.dispose(); } catch (_) {}
-    try { rackController.dispose();  } catch (_) {}
-    try { qtyController.dispose();   } catch (_) {}
-    try { rackFocusNode.dispose();   } catch (_) {}
+    final textControllers = <TextEditingController>[
+      batchController,
+      rackController,
+      qtyController,
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in textControllers) {
+        try { c.dispose(); } catch (_) {}
+      }
+      try { sheetScrollController.dispose(); } catch (_) {}
+      try { rackFocusNode.dispose(); } catch (_) {}
+    });
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────────
   @override
   void onClose() {
     _autoSubmitWorker?.dispose();
-    try { sheetScrollController.dispose(); } catch (_) {}
-    try { batchController.dispose(); } catch (_) {}
-    try { rackController.dispose();  } catch (_) {}
-    try { qtyController.dispose();   } catch (_) {}
-    try { rackFocusNode.dispose();   } catch (_) {}
+
+    // ── Deferred TextEditingController / FocusNode / ScrollController disposal ──
+    //
+    // Problem: GetX calls onClose() synchronously when the bottom sheet is
+    // dismissed.  If the keyboard was open, Flutter schedules one final
+    // build/layout frame to animate the sheet's exit transition.  During
+    // that frame the floating-label AnimatedState inside each TextFormField
+    // calls controller.addListener() — but the controller is already
+    // disposed, producing:
+    //
+    //   "A TextEditingController was used after being disposed."
+    //
+    // Fix: capture all disposable objects into local variables BEFORE
+    // super.onClose() runs (which may null out fields), then schedule their
+    // disposal for the next frame.  By then the exit animation frame has
+    // already been committed and no widget in the dying subtree holds an
+    // active listener reference.
+    //
+    // The local-variable capture is necessary because super.onClose() → GetX
+    // may GC this controller instance; accessing instance fields after that
+    // point is unsafe.
+    final textControllers = <TextEditingController>[
+      batchController,
+      rackController,
+      qtyController,
+    ];
+    final scroll = sheetScrollController;
+    final focus  = rackFocusNode;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in textControllers) {
+        try { c.dispose(); } catch (_) {}
+      }
+      try { scroll.dispose(); } catch (_) {}
+      try { focus.dispose();  } catch (_) {}
+    });
+
     super.onClose();
   }
 
