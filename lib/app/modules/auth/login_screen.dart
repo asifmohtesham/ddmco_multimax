@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class LoginScreen extends GetView<LoginController> {
   const LoginScreen({super.key});
@@ -15,7 +16,14 @@ class LoginScreen extends GetView<LoginController> {
     Get.bottomSheet(
       GetBuilder<LoginController>(
         builder: (c) => Container(
-          padding: const EdgeInsets.all(24.0),
+          padding: EdgeInsets.only(
+            left: 24.0,
+            right: 24.0,
+            top: 24.0,
+            // Commit 4: push sheet content above the software keyboard
+            // so the URL field is not obscured on small screens.
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24.0,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
@@ -47,6 +55,7 @@ class LoginScreen extends GetView<LoginController> {
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.done,
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -66,7 +75,6 @@ class LoginScreen extends GetView<LoginController> {
                         : const Text('Connect'),
                   ),
                 ),
-                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -117,106 +125,119 @@ class LoginScreen extends GetView<LoginController> {
               padding: const EdgeInsets.all(24.0),
               child: Form(
                 key: controller.loginFormKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _buildLogo(),
-                    const SizedBox(height: 48.0),
-                    TextFormField(
-                      controller: controller.emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'Email / Username',
-                        hintText: 'Enter your email or username',
-                        prefixIcon: Icon(Icons.email),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: controller.validateEmail,
-                      autovalidateMode: AutovalidateMode.onUserInteraction,
-                    ),
-                    const SizedBox(height: 16.0),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: controller.isPasswordHidden,
-                      builder: (context, isHidden, _) => TextFormField(
-                        controller: controller.passwordController,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Enter your password',
-                          prefixIcon: const Icon(Icons.lock),
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              isHidden
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                            ),
-                            onPressed: controller.togglePasswordVisibility,
-                          ),
+                // Commit 3: AutofillGroup enables Android credential manager
+                // and third-party password managers to autofill both fields.
+                child: AutofillGroup(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _buildLogo(),
+                      const SizedBox(height: 48.0),
+                      // Commit 2 + 3 + 5: keyboard type, action chaining,
+                      // autofill hints, autocorrect off.
+                      TextFormField(
+                        controller: controller.emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email / Username',
+                          hintText: 'Enter your email or username',
+                          prefixIcon: Icon(Icons.email),
+                          border: OutlineInputBorder(),
                         ),
-                        obscureText: isHidden,
-                        validator: controller.validatePassword,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autocorrect: false,
+                        autofillHints: const [
+                          AutofillHints.username,
+                          AutofillHints.email,
+                        ],
+                        validator: controller.validateEmail,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
                       ),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: GetBuilder<LoginController>(
-                        builder: (c) => TextButton(
-                          onPressed: () {
-                            // Guard: do not open reset dialog during an
-                            // in-flight login request.
-                            if (c.isLoading.value) return;
-                            if (controller.emailController.text.isEmpty) {
-                              Get.snackbar(
-                                'Info',
-                                'Please enter your email address in the field above first.',
-                                backgroundColor: Colors.blue,
-                                colorText: Colors.white,
-                              );
-                            } else {
-                              Get.defaultDialog(
-                                title: 'Reset Password',
-                                middleText:
-                                    'Send password reset instructions to ${controller.emailController.text}?',
-                                textConfirm: 'Send',
-                                textCancel: 'Cancel',
-                                confirmTextColor: Colors.white,
-                                onConfirm: () {
-                                  Get.back();
-                                  controller.resetPassword();
-                                },
-                              );
-                            }
-                          },
-                          child: const Text('Forgot Password?'),
+                      const SizedBox(height: 16.0),
+                      // Commit 2 + 3 + 5: action done triggers login,
+                      // autofill hints, suggestions off.
+                      ValueListenableBuilder<bool>(
+                        valueListenable: controller.isPasswordHidden,
+                        builder: (context, isHidden, _) => TextFormField(
+                          controller: controller.passwordController,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            hintText: 'Enter your password',
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                isHidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: controller.togglePasswordVisibility,
+                            ),
+                          ),
+                          obscureText: isHidden,
+                          textInputAction: TextInputAction.done,
+                          enableSuggestions: false,
+                          autofillHints: const [AutofillHints.password],
+                          onFieldSubmitted: (_) => controller.loginUser(),
+                          validator: controller.validatePassword,
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24.0),
-                    // Login button keeps its shell during loading — only the
-                    // child swaps to a spinner and onPressed is nulled.
-                    // Prevents the form from jumping height when loading.
-                    GetBuilder<LoginController>(
-                      builder: (c) => ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 16.0),
-                          textStyle: const TextStyle(fontSize: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: GetBuilder<LoginController>(
+                          builder: (c) => TextButton(
+                            onPressed: () {
+                              if (c.isLoading.value) return;
+                              if (controller.emailController.text.isEmpty) {
+                                // Commit 5: use GlobalSnackbar for consistency.
+                                GlobalSnackbar.info(
+                                  message:
+                                      'Please enter your email address in the field above first.',
+                                );
+                              } else {
+                                Get.defaultDialog(
+                                  title: 'Reset Password',
+                                  middleText:
+                                      'Send password reset instructions to ${controller.emailController.text}?',
+                                  textConfirm: 'Send',
+                                  textCancel: 'Cancel',
+                                  confirmTextColor: Colors.white,
+                                  onConfirm: () {
+                                    Get.back();
+                                    controller.resetPassword();
+                                  },
+                                );
+                              }
+                            },
+                            child: const Text('Forgot Password?'),
+                          ),
                         ),
-                        onPressed: c.isLoading.value ? null : c.loginUser,
-                        child: c.isLoading.value
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Login'),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24.0),
+                      GetBuilder<LoginController>(
+                        builder: (c) => ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16.0),
+                            textStyle: const TextStyle(fontSize: 16),
+                          ),
+                          onPressed: c.isLoading.value ? null : c.loginUser,
+                          child: c.isLoading.value
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Login'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
