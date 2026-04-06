@@ -166,6 +166,26 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     );
   }
 
+  /// Small pill showing the slip count inside a group header.
+  Widget _countPill(int count, ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Text(
+        '$count',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -436,108 +456,131 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Group Header
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0, vertical: 12.0),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHigh,
-                              border: Border(
-                                  bottom: BorderSide(
-                                      color: colorScheme.outlineVariant
-                                          .withValues(alpha: 0.5))),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.primaryContainer,
-                                    shape: BoxShape.circle,
+                          // ── Group Header (tappable) ──────────────────────
+                          InkWell(
+                            onTap: () => controller.toggleGroup(groupKey),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 12.0),
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHigh,
+                                border: Border(
+                                    bottom: BorderSide(
+                                        color: colorScheme.outlineVariant
+                                            .withValues(alpha: 0.5))),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.primaryContainer,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                        Icons.inventory_2_outlined,
+                                        size: 16,
+                                        color:
+                                            colorScheme.onPrimaryContainer),
                                   ),
-                                  child: Icon(
-                                      Icons.inventory_2_outlined,
-                                      size: 16,
-                                      color:
-                                          colorScheme.onPrimaryContainer),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        groupKey,
-                                        style: theme.textTheme.titleSmall
-                                            ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          groupKey,
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (customerName != null &&
-                                          customerName.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                              top: 2.0),
-                                          child: Text(
-                                            customerName,
-                                            style: theme
-                                                .textTheme.bodySmall
-                                                ?.copyWith(
-                                              color: colorScheme
-                                                  .onSurfaceVariant,
+                                        if (customerName != null &&
+                                            customerName.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                                top: 2.0),
+                                            child: Text(
+                                              customerName,
+                                              style: theme
+                                                  .textTheme.bodySmall
+                                                  ?.copyWith(
+                                                color: colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Count pill + animated chevron
+                                  Obx(() {
+                                    final isCollapsed =
+                                        controller.expandedGroup.value ==
+                                            groupKey;
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _countPill(slips.length, colorScheme),
+                                        const SizedBox(width: 6),
+                                        AnimatedRotation(
+                                          turns: isCollapsed ? 0.5 : 0.0,
+                                          duration: const Duration(
+                                              milliseconds: 220),
+                                          curve: Curves.easeInOut,
+                                          child: Icon(
+                                            Icons.expand_more,
+                                            size: 20,
+                                            color: colorScheme
+                                                .onSurfaceVariant,
                                           ),
                                         ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.surface,
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color: colorScheme.outlineVariant),
-                                  ),
-                                  child: Text(
-                                    '${slips.length}',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: colorScheme.onSurface),
-                                  ),
-                                ),
-                              ],
+                                      ],
+                                    );
+                                  }),
+                                ],
+                              ),
                             ),
                           ),
 
-                          // Slips list
-                          ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: slips.length,
-                            padding: EdgeInsets.zero,
-                            separatorBuilder: (context, index) => Divider(
-                              height: 1,
-                              indent: 16,
-                              endIndent: 16,
-                              color: colorScheme.outlineVariant
-                                  .withValues(alpha: 0.5),
-                            ),
-                            itemBuilder: (context, slipIndex) {
-                              final slip = slips[slipIndex];
-                              return PackingSlipListTile(slip: slip);
-                            },
-                          ),
+                          // ── Slip list (animated show/hide) ────────────────
+                          Obx(() {
+                            final isCollapsed =
+                                controller.expandedGroup.value == groupKey;
+                            return AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              child: isCollapsed
+                                  ? const SizedBox.shrink()
+                                  : ListView.separated(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: slips.length,
+                                      padding: EdgeInsets.zero,
+                                      separatorBuilder: (context, index) =>
+                                          Divider(
+                                        height: 1,
+                                        indent: 16,
+                                        endIndent: 16,
+                                        color: colorScheme.outlineVariant
+                                            .withValues(alpha: 0.5),
+                                      ),
+                                      itemBuilder: (context, slipIndex) {
+                                        final slip = slips[slipIndex];
+                                        return PackingSlipListTile(
+                                            slip: slip);
+                                      },
+                                    ),
+                            );
+                          }),
                         ],
                       ),
                     );
