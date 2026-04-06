@@ -999,16 +999,17 @@ class StockEntryFormController extends GetxController
           itemSubtext:      currentVariantOf,
           isSaveEnabled:    isEditable,
           customFields: [
-            SharedBatchField(
-              c:               child,
-              accentColor:     Colors.purple,
-              editMode:        true,
-              balanceOverride: () => child.batchBalance.value,
-              onPickerTap:     child.openBatchPicker,
-            ),
             SharedSerialField(
               controller:  child,
               accentColor: Colors.blueGrey,
+            ),
+            SharedBatchField(
+              c:               child,
+              accentColor:     Colors.blueGrey,
+              editMode:        true,
+              fieldKey:        'se_batch_edit',
+              balanceOverride: () => child.batchBalance.value,
+              onPickerTap:     child.openBatchPicker,
             ),
             RackSection(controller: child),
           ],
