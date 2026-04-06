@@ -7,13 +7,18 @@ import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   const BatchWiseBalanceScreen({super.key});
 
-  // ── Filter chip builder ─────────────────────────────────────────────────
+  // ── Filter chip builder ───────────────────────────────────────────────────────────
+  //
+  // Returns a SINGLE horizontally-scrollable row widget (not a List<Widget>)
+  // so chips never wrap into the list content area beneath the header.
+  // Each chip uses InputChip (not Chip) because InputChip gives the delete
+  // icon a full 48dp tap target out of the box — Chip with shrinkWrap +
+  // compact density was silently swallowing onDeleted gestures.
 
-  List<Widget> _buildFilterChips(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
-    final chips = <Widget>[];
+  Widget _buildFilterChips(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
 
-    Widget chip(String key, String label) => Chip(
+    Widget chip(String key, String label) => InputChip(
           avatar: Icon(Icons.filter_alt_outlined,
               size: 14, color: cs.onSecondaryContainer),
           label: Text(
@@ -25,19 +30,36 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
           backgroundColor: cs.secondaryContainer,
           deleteIconColor: cs.onSecondaryContainer,
           onDeleted: () => controller.clearFilter(key),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
           side: BorderSide.none,
           padding: const EdgeInsets.symmetric(horizontal: 4),
+          // No materialTapTargetSize override — default pads delete icon
+          // to the Material minimum (48 × 48 dp), making it reliably tappable.
         );
 
+    final chips = <Widget>[];
     controller.activeFilters.forEach((key, label) {
       chips.add(chip(key, label));
     });
-    return chips;
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 48,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: chips
+              .expand((c) => [c, const SizedBox(width: 6)])
+              .toList()
+            ..removeLast(), // trim trailing spacer
+        ),
+      ),
+    );
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +75,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Unified header ───────────────────────────────────────────
+              // ── Unified header ───────────────────────────────────────────────
               DocTypeListHeader(
                 title: 'Batch-Wise Balance',
                 automaticallyImplyLeading: false,
@@ -63,7 +85,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                 onFilterTap: () => showReportFilterSheet(
                   context: context,
                   title:   'Batch-Wise Balance Filters',
-                  fields:  BatchWiseBalanceController.filterFields,
+                  fields:  controller.filterFields,
                   controllers: controller.filterControllers,
                   onRun:   controller.runReport,
                   onClear: controller.clearFilters,
@@ -72,7 +94,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                 onClearAllFilters:  controller.clearFilters,
               ),
 
-              // ── Results ───────────────────────────────────────────────────
+              // ── Results ───────────────────────────────────────────────────────
               if (controller.isLoading.value)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -103,7 +125,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                             onPressed: () => showReportFilterSheet(
                               context: context,
                               title:  'Batch-Wise Balance Filters',
-                              fields: BatchWiseBalanceController.filterFields,
+                              fields: controller.filterFields,
                               controllers: controller.filterControllers,
                               onRun:  controller.runReport,
                               onClear: controller.clearFilters,
@@ -118,13 +140,11 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                 )
               else
                 SliverPadding(
-                  padding:
-                      const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        final row =
-                            controller.reportData[index];
+                        final row = controller.reportData[index];
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _BalanceTile(row: row),
@@ -142,7 +162,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   }
 }
 
-// ── Result tile ───────────────────────────────────────────────────────────────────
+// ── Result tile ─────────────────────────────────────────────────────────────────────────────────
 
 class _BalanceTile extends StatelessWidget {
   final Map<String, dynamic> row;
@@ -194,8 +214,7 @@ class _BalanceTile extends StatelessWidget {
                     color: cs.tertiaryContainer,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color:
-                            cs.tertiary.withValues(alpha: 0.3)),
+                        color: cs.tertiary.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     '${row['balance_qty'] ?? 0}',
