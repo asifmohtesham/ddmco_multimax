@@ -14,8 +14,6 @@ class LoginScreen extends GetView<LoginController> {
     controller.update();
 
     Get.bottomSheet(
-      // GetBuilder is pull-based — immune to reactive timing issues that
-      // crash Obx when used inside Get.bottomSheet's detached overlay.
       GetBuilder<LoginController>(
         builder: (c) => Container(
           padding: const EdgeInsets.all(24.0),
@@ -79,9 +77,6 @@ class LoginScreen extends GetView<LoginController> {
     );
   }
 
-  /// GetBuilder is pull-based — it only rebuilds when update() is called
-  /// from the controller. This is immune to the _firstBuild crash that
-  /// Obx suffers when observables are mutated during widget mounting.
   Widget _buildSettingsIcon(BuildContext context) {
     return GetBuilder<LoginController>(
       builder: (c) {
@@ -141,29 +136,33 @@ class LoginScreen extends GetView<LoginController> {
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                     ),
                     const SizedBox(height: 16.0),
-                    // Obx is safe here — isPasswordHidden is never mutated
-                    // during onInit or any async init path, so it will never
-                    // fire notifyChildren during _firstBuild.
-                    Obx(() => TextFormField(
-                          controller: controller.passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            hintText: 'Enter your password',
-                            prefixIcon: const Icon(Icons.lock),
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                controller.isPasswordHidden.value
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                              onPressed: controller.togglePasswordVisibility,
+                    // ValueListenableBuilder is pure Flutter — no GetX reactive
+                    // layer. Immune to _firstBuild timing crashes that occur
+                    // when Obx wraps TextFormField (which calls setState
+                    // internally via _TextFormFieldState during mount).
+                    ValueListenableBuilder<bool>(
+                      valueListenable: controller.isPasswordHidden,
+                      builder: (context, isHidden, _) => TextFormField(
+                        controller: controller.passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          hintText: 'Enter your password',
+                          prefixIcon: const Icon(Icons.lock),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              isHidden
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                             ),
+                            onPressed: controller.togglePasswordVisibility,
                           ),
-                          obscureText: controller.isPasswordHidden.value,
-                          validator: controller.validatePassword,
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        )),
+                        ),
+                        obscureText: isHidden,
+                        validator: controller.validatePassword,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                      ),
+                    ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -194,8 +193,6 @@ class LoginScreen extends GetView<LoginController> {
                       ),
                     ),
                     const SizedBox(height: 24.0),
-                    // Obx safe — isLoading is only mutated inside loginUser()
-                    // which is user-triggered, never during mount.
                     Obx(() => controller.isLoading.value
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton(
@@ -212,8 +209,6 @@ class LoginScreen extends GetView<LoginController> {
               ),
             ),
           ),
-
-          // Settings icon — GetBuilder for pull-based rebuild safety
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             right: 16,

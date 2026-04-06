@@ -23,15 +23,20 @@ class LoginController extends GetxController {
   var currentServerUrl = ''.obs;
   var isCheckingConnection = false.obs;
   var isLoading = false.obs;
-  var isPasswordHidden = true.obs;
+
+  // ValueNotifier instead of RxBool — pure Flutter, no GetX reactive layer.
+  // TextFormField calls setState during _firstBuild which triggers GetX's
+  // notifyChildren chain and crashes Obx when used as a direct parent.
+  final isPasswordHidden = ValueNotifier<bool>(true);
+
   var showServerGuide = false.obs;
 
   @override
   void onInit() {
     super.onInit();
     // Defer async mutations until after the first frame is fully rendered.
-    // This prevents GetX notifyChildren from firing while Obx/GetBuilder
-    // widgets are still mid-mount, which causes the _firstBuild crash.
+    // Prevents any observable from firing notifyChildren while Obx/GetBuilder
+    // widgets are still mid-mount (_firstBuild race condition).
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedServerUrl());
   }
 
@@ -54,7 +59,7 @@ class LoginController extends GetxController {
     if (url.endsWith('/')) url = url.substring(0, url.length - 1);
 
     isCheckingConnection.value = true;
-    update(); // notify GetBuilder widgets
+    update();
     try {
       _apiProvider.setBaseUrl(url);
       final dio = Dio();
@@ -123,6 +128,7 @@ class LoginController extends GetxController {
     emailController.dispose();
     passwordController.dispose();
     serverUrlController.dispose();
+    isPasswordHidden.dispose();
     super.onClose();
   }
 
@@ -141,8 +147,7 @@ class LoginController extends GetxController {
       isPasswordHidden.value = !isPasswordHidden.value;
 
   Future<void> loginUser() async {
-    final storedUrl =
-        await _dbService.getConfig(DatabaseService.serverUrlKey);
+    final storedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
 
     if (storedUrl == null || storedUrl.isEmpty) {
       showServerGuide.value = true;
@@ -177,17 +182,15 @@ class LoginController extends GetxController {
             );
             _authController.processSuccessfulLogin(user);
           }
-        } else if (response.statusCode == 401 ||
-            response.statusCode == 403) {
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
           GlobalSnackbar.error(
               title: 'Login Failed',
-              message:
-                  response.data?['message'] ?? 'Invalid credentials.');
+              message: response.data?['message'] ?? 'Invalid credentials.');
         } else {
           GlobalSnackbar.error(
               title: 'Login Error',
-              message: response.data?['message'] ??
-                  'An unknown error occurred.');
+              message:
+                  response.data?['message'] ?? 'An unknown error occurred.');
         }
       } catch (e) {
         GlobalSnackbar.error(
@@ -201,8 +204,7 @@ class LoginController extends GetxController {
 
   Future<void> resetPassword() async {
     if (emailController.text.isEmpty) {
-      GlobalSnackbar.error(
-          message: 'Please enter your email address first');
+      GlobalSnackbar.error(message: 'Please enter your email address first');
       return;
     }
     isLoading.value = true;
