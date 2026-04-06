@@ -999,9 +999,14 @@ class StockEntryFormController extends GetxController
           itemSubtext:      currentVariantOf,
           isSaveEnabled:    isEditable,
           customFields: [
-            SharedSerialField(
-              controller:  child,
+            SharedInvoiceSerialNumberField(
+              c:           child,
               accentColor: Colors.blueGrey,
+              posItemQtyOverride: () {
+                final serial = child.selectedSerial.value;
+                if (serial == null || serial.isEmpty) return 0.0;
+                return posQtyCapForSerial(serial);
+              },
             ),
             SharedBatchField(
               c:               child,

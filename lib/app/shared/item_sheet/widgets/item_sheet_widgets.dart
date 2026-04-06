@@ -19,11 +19,6 @@
 ///                                           + POS cap badge; driven by
 ///                                           SerialNumberFieldDelegate /
 ///                                           SerialFieldMixin
-///   - [SharedSerialField]                -- DEPRECATED: legacy serial field
-///                                           (deleted in commit 7 of
-///                                           SharedInvoiceSerialNumberField refactor).
-///                                           Migrate call sites to
-///                                           [SharedInvoiceSerialNumberField].
 ///   - [SharedDualRackSection]            -- SE dual source+target rack section
 ///   - [ValidatedRackField]               -- primitive validated rack field (plain-param,
 ///                                           controller-free; moved from stock_entry
@@ -38,7 +33,6 @@ export 'shared_rack_field.dart';
 export 'shared_qty_field.dart';
 export 'qty_cap_badge.dart';
 export 'shared_invoice_serial_number_field.dart';
-export 'shared_serial_field.dart'; // DEPRECATED — remove in commit 7
 export 'shared_dual_rack_section.dart';
 export 'validated_rack_field.dart';
 export 'validated_batch_field.dart';
