@@ -1002,6 +1002,7 @@ class StockEntryFormController extends GetxController
             SharedBatchField(
               c:               child,
               accentColor:     Colors.purple,
+              editMode:        true,
               balanceOverride: () => child.batchBalance.value,
               onPickerTap:     child.openBatchPicker,
             ),
