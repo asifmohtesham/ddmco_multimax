@@ -82,6 +82,23 @@ abstract class ItemSheetControllerBase extends GetxController
     await validateBatch(batchNo);
   }
 
+  // ── BatchNoBrowseDelegate concrete defaults ──────────────────────────────
+  // resolvedWarehouseForBatch — delegates to resolvedWarehouse so subclasses
+  // that already override resolvedWarehouse get correct behaviour for free.
+  @override
+  String? get resolvedWarehouseForBatch => resolvedWarehouse;
+
+  // preloadedBatchRows — base returns an empty list (no pre-fetch).
+  // SE overrides to return its cached batchWiseHistory for zero-latency opens.
+  @override
+  List<dynamic> get preloadedBatchRows => const [];
+
+  // ── BatchNoFieldDelegate concrete default ────────────────────────────────
+  // batchBalanceFor — delegates to the in-memory batchBalance Rx.
+  // Controllers that need per-batch lookup override this method.
+  @override
+  double batchBalanceFor(String batchNo) => batchBalance.value;
+
   // ── Abstract overrides (QtyFieldWithPlusMinusDelegate) ───────────────────
   @override double get effectiveMaxQty => double.infinity;
   @override double get maxQty => 0.0;
@@ -144,6 +161,11 @@ abstract class ItemSheetControllerBase extends GetxController
 
   // ── Warehouse accessor (subclass provides) ───────────────────────────────
   String? get resolvedWarehouse => null;
+
+  // ── Scan context — last EAN scanned while this sheet was open ────────────
+  // Read by parent form controllers (e.g. DeliveryNoteFormController) to
+  // correlate a barcode scan with the item currently being edited.
+  final RxString currentScannedEan = ''.obs;
 
   // ── Dirty detection snapshot ─────────────────────────────────────────────
   String? _snapshotBatch;
