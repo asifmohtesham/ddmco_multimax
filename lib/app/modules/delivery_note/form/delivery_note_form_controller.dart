@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'package:dio/dio.dart' show Response;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
@@ -21,6 +22,8 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/inline_banner.dart'
+    show BannerType;
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
@@ -29,8 +32,6 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'delivery_note_item_form_controller.dart';
-
-enum BannerType { info, warning, error }
 
 class DeliveryNoteFormController extends GetxController
     with OptimisticLockingMixin {
@@ -43,7 +44,7 @@ class DeliveryNoteFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // ── Document-level state ──────────────────────────────────────────────
+  // ── Document-level state ────────────────────────────────────────────────
   var isLoading          = true.obs;
   var isSaving           = false.obs;
   var isDirty            = false.obs;
@@ -56,7 +57,7 @@ class DeliveryNoteFormController extends GetxController
   var recentlyAddedItemCode = ''.obs;
   var recentlyAddedSerial   = ''.obs;
 
-  // ── Save result state machine ─────────────────────────────────────────
+  // ── Save result state machine ───────────────────────────────────────────────
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -70,7 +71,7 @@ class DeliveryNoteFormController extends GetxController
 
   var deliveryNote = Rx<DeliveryNote?>(null);
 
-  // ── Header form controllers ───────────────────────────────────────────
+  // ── Header form controllers ──────────────────────────────────────────────
   final customerController    = TextEditingController();
   final postingDateController = TextEditingController();
   final postingTimeController = TextEditingController();
@@ -78,27 +79,27 @@ class DeliveryNoteFormController extends GetxController
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // ── Warehouse ─────────────────────────────────────────────────────────
+  // ── Warehouse ────────────────────────────────────────────────────────────────
   var setWarehouse         = RxnString();
   var bsItemWarehouse      = RxnString();
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── POS Upload ────────────────────────────────────────────────────────
+  // ── POS Upload ────────────────────────────────────────────────────────────
   var posUpload = Rx<PosUpload?>(null);
 
-  // ── EAN context ───────────────────────────────────────────────────────
+  // ── EAN context ─────────────────────────────────────────────────────────────
   String currentScannedEan = '';
 
-  // ── Banner state ──────────────────────────────────────────────────────
+  // ── Banner state ────────────────────────────────────────────────────────────
   final RxBool         bannerVisible = false.obs;
   final RxString       bannerMessage = ''.obs;
   final Rx<BannerType> bannerType    = BannerType.info.obs;
 
-  // ── Validation errors ─────────────────────────────────────────────────
+  // ── Validation errors ───────────────────────────────────────────────────────
   final RxnString customerError = RxnString();
 
-  // ── Item filter / expansion ───────────────────────────────────────────
+  // ── Item filter / expansion ───────────────────────────────────────────────
   final RxString itemFilter      = 'All'.obs;
   final RxString expandedInvoice = ''.obs;
 
@@ -108,7 +109,7 @@ class DeliveryNoteFormController extends GetxController
       expandedInvoice.value =
           (expandedInvoice.value == key) ? '' : key;
 
-  // ── Counts ────────────────────────────────────────────────────────────
+  // ── Counts ───────────────────────────────────────────────────────────────────
   int get allCount => deliveryNote.value?.items.length ?? 0;
 
   int get pendingCount {
@@ -127,7 +128,7 @@ class DeliveryNoteFormController extends GetxController
     ).length;
   }
 
-  // ── Grouped items (by invoice serial number) ──────────────────────────
+  // ── Grouped items (by invoice serial number) ───────────────────────────
   Map<String, List<DeliveryNoteItem>> get groupedItems {
     final result = <String, List<DeliveryNoteItem>>{};
     for (final item in items) {
@@ -137,7 +138,7 @@ class DeliveryNoteFormController extends GetxController
     return result;
   }
 
-  // ── Confirm and delete ────────────────────────────────────────────────
+  // ── Confirm and delete ───────────────────────────────────────────────────
   void confirmAndDeleteItem(DeliveryNoteItem item) {
     GlobalDialog.showConfirmation(
       title:   'Delete Item?',
@@ -150,7 +151,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Persistent scan worker ────────────────────────────────────────────
+  // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
 
   bool get isEditable => (deliveryNote.value?.docstatus ?? 1) == 0;
@@ -158,7 +159,7 @@ class DeliveryNoteFormController extends GetxController
   List<DeliveryNoteItem> get items =>
       deliveryNote.value?.items ?? const [];
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
@@ -212,7 +213,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Raw scan entry point ──────────────────────────────────────────────
+  // ── Raw scan entry point ────────────────────────────────────────────────
   void _onRawScan(String code) {
     log('[DN:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'DN');
     if (code.isEmpty) return;
@@ -222,7 +223,7 @@ class DeliveryNoteFormController extends GetxController
     scanBarcode(clean);
   }
 
-  // ── Data fetching ─────────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -249,8 +250,14 @@ class DeliveryNoteFormController extends GetxController
     deliveryNote.value = DeliveryNote(
       name:        'new',
       customer:    customer,
+      grandTotal:  0.0,
       postingDate: DateFormat('yyyy-MM-dd').format(now),
       postingTime: DateFormat('HH:mm:ss').format(now),
+      modified:    '',
+      creation:    now.toString(),
+      status:      'Draft',
+      currency:    'AED',
+      totalQty:    0.0,
       docstatus:   0,
       items:       [],
     );
@@ -309,7 +316,7 @@ class DeliveryNoteFormController extends GetxController
     }
   }
 
-  // ── POS qty-cap helper ────────────────────────────────────────────────
+  // ── POS qty-cap helper ─────────────────────────────────────────────────────
   double posQtyCapForSerial(String serial) {
     final upload = posUpload.value;
     if (upload == null) return double.infinity;
@@ -331,12 +338,12 @@ class DeliveryNoteFormController extends GetxController
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
-  // ── Warehouse setter ──────────────────────────────────────────────────
+  // ── Warehouse setter ─────────────────────────────────────────────────────────
   void setWarehouseValue(String? value) {
     setWarehouse.value = value;
   }
 
-  // ── OptimisticLockingMixin ────────────────────────────────────────────
+  // ── OptimisticLockingMixin ────────────────────────────────────────────────────
   @override
   String? get currentVersion => deliveryNote.value?.modified;
 
@@ -352,7 +359,7 @@ class DeliveryNoteFormController extends GetxController
     return true;
   }
 
-  // ── Sheet-scan routing ────────────────────────────────────────────────
+  // ── Sheet-scan routing ──────────────────────────────────────────────────────
   Future<void> _handleSheetScan(String barcode) async {
     barcodeController.clear();
     if (!Get.isRegistered<DeliveryNoteItemFormController>()) {
@@ -441,7 +448,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  // ── Item CRUD ─────────────────────────────────────────────────────────
+  // ── Item CRUD ───────────────────────────────────────────────────────────────
   void addItem(DeliveryNoteItem newItem) {
     deliveryNote.value?.items.add(newItem);
     deliveryNote.refresh();
@@ -507,7 +514,7 @@ class DeliveryNoteFormController extends GetxController
 
   void _checkForChanges() => _markDirty();
 
-  // ── Item sheet ────────────────────────────────────────────────────────
+  // ── Item sheet ───────────────────────────────────────────────────────────────
   Future<void> openItemSheetForCode(
     String itemCode,
     String itemName, {
@@ -737,7 +744,7 @@ class DeliveryNoteFormController extends GetxController
     GlobalSnackbar.error(message: 'Customer "$customer" not found');
   }
 
-  // ── Item-key helpers ──────────────────────────────────────────────────
+  // ── Item-key helpers ─────────────────────────────────────────────────────────
   void ensureItemKey(DeliveryNoteItem item) {
     final key = item.name ?? item.itemCode;
     itemKeys[key] ??= GlobalKey();
@@ -756,7 +763,7 @@ class DeliveryNoteFormController extends GetxController
     });
   }
 
-  // ── Save / submit ─────────────────────────────────────────────────────
+  // ── Save / submit ────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -829,8 +836,8 @@ class DeliveryNoteFormController extends GetxController
   }
 }
 
-// ── Private widget ────────────────────────────────────────────────────────────
-class _MultipleMatchSheet extends StatelessWidget {
+// ── Private widget ────────────────────────────────────────────────────────────────
+  class _MultipleMatchSheet extends StatelessWidget {
   final List<Item> candidates;
   final DeliveryNoteFormController parent;
 
