@@ -982,48 +982,64 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  // ── fix(se-form): wrap _openItemSheet in try/finally so isItemSheetOpen
+  //   is always reset and the child controller is always cleaned up,
+  //   regardless of how the sheet exits (normal dismiss, exception, or
+  //   Flutter BuildContext error during the open animation).
+  //
+  //   Without this guard, any exception thrown by Get.bottomSheet() left
+  //   isItemSheetOpen.value == true permanently.  Subsequent DataWedge
+  //   scans then passed the isItemSheetOpen gate in scanBarcode() and
+  //   _handleSheetScan() tried Get.find<StockEntryItemFormController>()
+  //   on a controller that had already been deleted — crashing the scan
+  //   handler instead of opening a new item sheet.
+  //
+  //   Resolves: #17 — barcode scan does not set field values in SE item form.
   Future<void> _openItemSheet(StockEntryItemFormController child) async {
     isItemSheetOpen.value = true;
-    await Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize:     0.4,
-        maxChildSize:     0.95,
-        expand:           false,
-        builder: (context, sc) => UniversalItemFormSheet(
-          key:              ValueKey(child.editingItemName.value ?? 'new'),
-          controller:       child,
-          scrollController: sc,
-          onSubmit:         addItem,
-          onScan:           null,
-          itemSubtext:      currentVariantOf,
-          isSaveEnabled:    isEditable,
-          customFields: [
-            SharedInvoiceSerialNumberField(
-              c:           child,
-              accentColor: Colors.blueGrey,
-              posItemQtyOverride: () {
-                final serial = child.selectedSerial.value;
-                if (serial == null || serial.isEmpty) return 0.0;
-                return posQtyCapForSerial(serial);
-              },
-            ),
-            SharedBatchField(
-              c:               child,
-              accentColor:     Colors.blueGrey,
-              editMode:        true,
-              fieldKey:        'se_batch_edit',
-              balanceOverride: () => child.batchBalance.value,
-              onPickerTap:     child.openBatchPicker,
-            ),
-            RackSection(controller: child),
-          ],
+    try {
+      await Get.bottomSheet(
+        DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize:     0.4,
+          maxChildSize:     0.95,
+          expand:           false,
+          builder: (context, sc) => UniversalItemFormSheet(
+            key:              ValueKey(child.editingItemName.value ?? 'new'),
+            controller:       child,
+            scrollController: sc,
+            onSubmit:         addItem,
+            onScan:           null,
+            itemSubtext:      currentVariantOf,
+            isSaveEnabled:    isEditable,
+            customFields: [
+              SharedInvoiceSerialNumberField(
+                c:           child,
+                accentColor: Colors.blueGrey,
+                posItemQtyOverride: () {
+                  final serial = child.selectedSerial.value;
+                  if (serial == null || serial.isEmpty) return 0.0;
+                  return posQtyCapForSerial(serial);
+                },
+              ),
+              SharedBatchField(
+                c:               child,
+                accentColor:     Colors.blueGrey,
+                editMode:        true,
+                fieldKey:        'se_batch_edit',
+                balanceOverride: () => child.batchBalance.value,
+                onPickerTap:     child.openBatchPicker,
+              ),
+              RackSection(controller: child),
+            ],
+          ),
         ),
-      ),
-      isScrollControlled: true,
-    );
-    isItemSheetOpen.value = false;
-    Get.delete<StockEntryItemFormController>();
+        isScrollControlled: true,
+      );
+    } finally {
+      isItemSheetOpen.value = false;
+      Get.delete<StockEntryItemFormController>();
+    }
   }
 
   // ── Scan routing ───────────────────────────────────────────────────────────────────────────────────
