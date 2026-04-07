@@ -110,6 +110,12 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • Ensures Rule 3 (tec_lifecycle_rules.dart) teardown in prepareForItem()
 ///     is complete for all TECs owned by this controller, not just the
 ///     base-class trio (batch/rack/qty).
+///
+/// fix(se-item-form): guard initForNewItem against post-disposal writes
+///   • initForNewItem() now returns immediately when isClosed is true.
+///   • Prevents "Cannot use a disposed controller" / "Cannot write to a
+///     closed observable" crashes on racing async paths where the sheet
+///     is dismissed before prepareForItem() completes.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -639,7 +645,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isSerialisedItem.value = hasSerial;
   }
 
+  /// Resets all sheet state for a new (add-mode) item session.
+  ///
+  /// ## isClosed guard
+  ///
+  /// Returns immediately when [isClosed] is true.  This prevents
+  /// "Cannot use a disposed controller" and "Cannot write to a closed
+  /// observable" exceptions on racing async paths where [prepareForItem]
+  /// is still executing after the sheet has been dismissed and GetX has
+  /// already called [onClose] on this controller.
   void initForNewItem() {
+    if (isClosed) return;
     editingItemName.value    = null;
     isEditingExisting.value  = false;
     editingOriginalBatch     = null;
