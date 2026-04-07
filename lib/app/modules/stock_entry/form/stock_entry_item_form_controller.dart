@@ -18,6 +18,9 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
+// docs only — tree-shaken at compile time; surfaces TEC rules in IDE hover
+import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
+    show TecLifecycleRules; // ignore: unused_import
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -90,6 +93,15 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 ///   • savedQtyForRow() returns the committed qty of the row being edited.
 ///   • validateSheet() calls computeLiveRemaining() from SerialFieldMixin
 ///     instead of the old hand-rolled liveRemaining assignment.
+///
+/// fix(se-item-form): defer dual-rack TEC disposal; remove stale listeners
+///   on session reset.
+///   • onClose() now defers sourceRackController / targetRackController
+///     disposal to addPostFrameCallback (Rule 1 — tec_lifecycle_rules.dart)
+///     instead of disposing synchronously.
+///   • prepareForItem() now calls removeSheetListeners() before
+///     addSheetListeners() (Rule 3 — tec_lifecycle_rules.dart) to prevent
+///     listener accumulation across reused controller sessions.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -289,6 +301,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   Map<String, double> get rackStockMap => _rackStockMap;
 
   // ── Dual-rack state ──────────────────────────────────────────────────────────
+  //
+  // Rule 1 (tec_lifecycle_rules.dart): These TECs are disposed via
+  // addPostFrameCallback in onClose() — never synchronously.
   @override final TextEditingController sourceRackController = TextEditingController();
   @override final RxBool isSourceRackValid       = false.obs;
   @override final RxBool isValidatingSourceRack  = false.obs;
@@ -368,10 +383,35 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Overrides [ItemSheetControllerBase.onClose] to defer disposal of the
+  /// dual-rack TECs ([sourceRackController], [targetRackController]).
+  ///
+  /// ## Rule 1 — tec_lifecycle_rules.dart
+  ///
+  /// Both controllers are captured into locals **before** `super.onClose()`
+  /// runs, then disposed inside `addPostFrameCallback` so the bottom-sheet
+  /// exit-animation frame (which calls `controller.addListener()` via
+  /// `_AnimatedState.didUpdateWidget`) completes before the controllers are
+  /// invalidated.
+  ///
+  /// `super.onClose()` handles the remaining base-class TECs
+  /// (`batchController`, `rackController`, `qtyController`) through the
+  /// same deferred + idempotent [ItemSheetControllerBase.disposeControllers]
+  /// path (Rules 1 & 2).
   @override
   void onClose() {
-    try { sourceRackController.dispose(); } catch (_) {}
-    try { targetRackController.dispose(); } catch (_) {}
+    // Capture before super.onClose() (Rule 1 — tec_lifecycle_rules.dart).
+    final src = sourceRackController;
+    final tgt = targetRackController;
+
+    // Defer to post-frame: exit animation must complete first (Rule 1).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try { src.dispose(); } catch (_) {}
+      try { tgt.dispose(); } catch (_) {}
+    });
+
+    // Base class handles batch/rack/qty/scroll/focus via disposeControllers()
+    // which is itself deferred + guarded (Rules 1 & 2).
     super.onClose();
   }
 
@@ -654,6 +694,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Prepares this controller for a new or existing item sheet session.
+  ///
+  /// ## Rule 3 — tec_lifecycle_rules.dart
+  ///
+  /// [removeSheetListeners] is called **before** [addSheetListeners] so
+  /// that any listeners wired in a previous session are removed before the
+  /// new session registers its own copies.  Without this, each successive
+  /// call to `prepareForItem` on a reused controller instance stacks
+  /// another duplicate of every listener onto the same TECs, causing:
+  ///   • Redundant `validateSheet()` calls on every keystroke.
+  ///   • Stale listeners that fire after the controller is disposed,
+  ///     potentially crashing in a future session.
   Future<void> prepareForItem({
     required String itemCode,
     required String itemName,
@@ -684,6 +736,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       }
     }
 
+    // Rule 3 (tec_lifecycle_rules.dart): remove prior-session listeners
+    // before registering new ones to prevent accumulation.
+    removeSheetListeners();
     addSheetListeners();
     snapshotState();
     // captureSerialSnapshot() is called inside snapshotState() via the
