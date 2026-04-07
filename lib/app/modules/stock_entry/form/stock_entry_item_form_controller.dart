@@ -116,6 +116,12 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • Prevents "Cannot use a disposed controller" / "Cannot write to a
 ///     closed observable" crashes on racing async paths where the sheet
 ///     is dismissed before prepareForItem() completes.
+///
+/// fix(se-item-form): guard _loadExistingItem against post-disposal writes
+///   • _loadExistingItem() now returns immediately when isClosed is true.
+///   • Consistent with the initForNewItem guard (Commit B) and the
+///     existing `if (!isClosed)` pattern in the postFrameCallbacks already
+///     present in this same method.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -690,10 +696,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     selectedSerial.value = null;
   }
 
+  /// Populates sheet state from an existing [StockEntryItem] (edit mode).
+  ///
+  /// ## isClosed guard
+  ///
+  /// Returns immediately when [isClosed] is true.  Without this guard,
+  /// a racing dismiss between the `await ApiProvider().getDocument()`
+  /// call in [initialise] and this method's synchronous TEC/Rx writes
+  /// would throw "Cannot use a disposed controller".  The
+  /// `addPostFrameCallback` closures below already carry `if (!isClosed)`
+  /// individually; this top-level guard makes the entire method safe.
   void _loadExistingItem(
     StockEntryItem item,
     List<Map<String, dynamic>> mrReferenceItems,
   ) {
+    if (isClosed) return;
     isEditingExisting.value = true;
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
