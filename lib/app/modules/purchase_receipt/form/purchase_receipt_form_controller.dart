@@ -443,45 +443,47 @@ class PurchaseReceiptFormController extends GetxController
     isItemSheetOpen.value = true;
     log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');
 
-    await Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize:     0.4,
-        maxChildSize:     0.95,
-        expand:           false,
-        builder: (ctx, sc) => UniversalItemFormSheet(
-          controller:       child,
-          scrollController: sc,
-          onSubmit: () async {
-            await onSubmit();
-            Get.back();
-          },
-          onScan: (code) => scanBarcode(code),
-          customFields: [
-            SharedBatchField(
-              c:           child,
-              accentColor: Colors.purple,
-              editMode:    true,
-              fieldKey:    'pr_batch_field',
-            ),
-            SharedRackField(
-              c:           child,
-              accentColor: Colors.green,
-              label:       'Target Rack',
-              hint:        'Rack',
-              editMode:    true,
-            ),
-          ],
+    try {
+      await Get.bottomSheet(
+        DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize:     0.4,
+          maxChildSize:     0.95,
+          expand:           false,
+          builder: (ctx, sc) => UniversalItemFormSheet(
+            controller:       child,
+            scrollController: sc,
+            onSubmit: () async {
+              await onSubmit();
+              Get.back();
+            },
+            onScan: (code) => scanBarcode(code),
+            customFields: [
+              SharedBatchField(
+                c:           child,
+                accentColor: Colors.purple,
+                editMode:    true,
+                fieldKey:    'pr_batch_field',
+              ),
+              SharedRackField(
+                c:           child,
+                accentColor: Colors.green,
+                label:       'Target Rack',
+                hint:        'Rack',
+                editMode:    true,
+              ),
+            ],
+          ),
         ),
-      ),
-      isScrollControlled: true,
-    );
-
-    isItemSheetOpen.value = false;
-    log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
-    barcodeController.clear();
-    if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
-      Get.delete<PurchaseReceiptItemFormController>();
+        isScrollControlled: true,
+      );
+    } finally {
+      isItemSheetOpen.value = false;
+      log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
+      barcodeController.clear();
+      if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
+        Get.delete<PurchaseReceiptItemFormController>();
+      }
     }
   }
 

@@ -292,38 +292,42 @@ class DeliveryNoteFormController extends GetxController
 
   // ── Sheet-scan routing ────────────────────────────────────────────────
   //
-  // Commit 2 (fix #17): route DataWedge scans to the item-form sheet
-  // controller when isItemSheetOpen is true.
+  // Commit 3 (fix #17): upgrade _handleSheetScan to processScan-based routing
+  // matching PurchaseReceiptFormController behaviour.
   //
   // Sequence:
-  //   batch scan     → child.batchController + validateBatch()
-  //   rack scan      → child.applyRackScan(rackId)
-  //
-  // Logic: if batch is not yet valid, treat scan as a batch number.
-  // Once batch is valid, treat every subsequent scan as a rack scan.
-  void _handleSheetScan(String barcode) {
+  //   ScanType.rack   → child.applyRackScan(rackId)
+  //   ScanType.batch  → child.batchController + validateBatch()
+  //   else            → GlobalSnackbar.error (unknown barcode)
+  Future<void> _handleSheetScan(String barcode) async {
     barcodeController.clear();
-    if (!Get.isRegistered<DeliveryNoteItemFormController>()) return;
+    if (!Get.isRegistered<DeliveryNoteItemFormController>()) {
+      log('[DN:_handleSheetScan] child not registered — scan dropped', name: 'DN');
+      return;
+    }
+
     final child = Get.find<DeliveryNoteItemFormController>();
+    final contextEan = child.currentScannedEan.isNotEmpty
+        ? child.currentScannedEan
+        : child.itemCode.value;
 
-    final trimmed = barcode.trim();
-    if (trimmed.isEmpty) return;
+    final result =
+        await _scanService.processScan(barcode, contextItemCode: contextEan);
 
-    if (child.isBatchValid.value) {
-      // Batch already set — treat scan as rack.
-      child.applyRackScan(trimmed);
+    if (result.type == ScanType.rack && result.rackId != null) {
+      child.applyRackScan(result.rackId!);
+    } else if (result.batchNo != null) {
+      child.batchController.text = result.batchNo!;
+      child.validateBatch(result.batchNo!);
     } else {
-      // Batch not yet set — treat scan as batch number.
-      child.batchController.text = trimmed;
-      child.validateBatch(trimmed);
+      GlobalSnackbar.error(message: result.message ?? 'Invalid input for this field');
     }
   }
 
   Future<void> scanBarcode(String barcode) async {
-    // Commit 2 (fix #17): route scans to sheet controller while item
-    // form sheet is open, mirroring PurchaseReceiptFormController behaviour.
+    // Commit 3 (fix #17): await _handleSheetScan since it is now async.
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
-      _handleSheetScan(barcode);
+      await _handleSheetScan(barcode);
       return;
     }
     if (!_validateHeaderBeforeScan()) return;
@@ -493,11 +497,123 @@ class DeliveryNoteFormController extends GetxController
       const rackPickerTag = 'dn_rack_picker';
 
       isItemSheetOpen.value = true;
+      try {
+        await Get.bottomSheet(
+          UniversalItemFormSheet(
+            controller:       child,
+            scrollController: child.sheetScrollController,
+            customFields: [
+              SharedInvoiceSerialNumberField(c: child),
+              SharedBatchField(
+                c:               child,
+                accentColor:     Colors.blueGrey,
+                editMode:        true,
+                onPickerTap:     child.openBatchPicker,
+                balanceOverride: () => child.batchBalance.value,
+              ),
+              SharedRackField(
+                c:               child,
+                accentColor:     Colors.blueGrey,
+                editMode:        true,
+                balanceOverride: () => child.rackBalance.value,
+                onPickerTap: () async {
+                  HapticFeedback.lightImpact();
+
+                  final picker = Get.put(
+                    RackPickerController(),
+                    tag: rackPickerTag,
+                  );
+
+                  picker.load(
+                    itemCode:     child.itemCode.value,
+                    batchNo:      child.batchController.text,
+                    warehouse:    child.resolvedWarehouse ?? '',
+                    requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
+                    currentRack:  child.rackController.text,
+                    fallbackMap:  Map<String, double>.from(child.rackStockMap),
+                  );
+
+                  await Get.bottomSheet<void>(
+                    RackPickerSheet(
+                      pickerTag:  rackPickerTag,
+                      onSelected: (rackId) => child.applyRackScan(rackId),
+                    ),
+                    isScrollControlled: true,
+                  );
+
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (Get.isRegistered<RackPickerController>(
+                        tag: rackPickerTag)) {
+                      Get.delete<RackPickerController>(tag: rackPickerTag);
+                    }
+                  });
+                },
+              ),
+            ],
+            onSubmit: () async {
+              final ok = await child.submitWithFeedback();
+              if (ok) Get.back();
+            },
+          ),
+          isScrollControlled: true,
+          enableDrag:         false,
+          isDismissible:      false,
+          backgroundColor:    Colors.transparent,
+        );
+      } finally {
+        isItemSheetOpen.value = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          child.disposeControllers();
+          Get.delete<DeliveryNoteItemFormController>(force: true);
+          log('[DN:editItem] post-frame teardown complete', name: 'DN');
+        });
+      }
+    } finally {
+      isLoadingItemEdit.value  = false;
+      loadingForItemName.value = null;
+    }
+  }
+
+  Future<void> _openItemSheet({
+    required String itemCode,
+    required String itemName,
+    String? batchNo,
+    String? variantOf,
+    DeliveryNoteItem? editingItem,
+  }) async {
+    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
+
+    final child = Get.put(DeliveryNoteItemFormController());
+
+    child.initialise(
+      parent:      this,
+      code:        itemCode,
+      name:        itemName,
+      batchNo:     batchNo,
+      variantOf:   variantOf,
+      editingItem: editingItem,
+    );
+
+    child.setupAutoSubmit(
+      onValid: () async {
+        isAddingItem.value = true;
+        final ok = await child.submitWithFeedback();
+        isAddingItem.value = false;
+        if (ok && Get.isBottomSheetOpen == true) Get.back();
+      },
+    );
+
+    const rackPickerTag = 'dn_rack_picker';
+
+    isItemSheetOpen.value = true;
+    try {
       await Get.bottomSheet(
         UniversalItemFormSheet(
           controller:       child,
           scrollController: child.sheetScrollController,
           customFields: [
+            // Commit 4: migrated from SharedSerialField to
+            // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
             SharedInvoiceSerialNumberField(c: child),
             SharedBatchField(
               c:               child,
@@ -555,122 +671,14 @@ class DeliveryNoteFormController extends GetxController
         isDismissible:      false,
         backgroundColor:    Colors.transparent,
       );
+    } finally {
       isItemSheetOpen.value = false;
-
       WidgetsBinding.instance.addPostFrameCallback((_) {
         child.disposeControllers();
         Get.delete<DeliveryNoteItemFormController>(force: true);
-        log('[DN:editItem] post-frame teardown complete', name: 'DN');
+        log('[DN:_openItemSheet] post-frame teardown complete', name: 'DN');
       });
-    } finally {
-      isLoadingItemEdit.value  = false;
-      loadingForItemName.value = null;
     }
-  }
-
-  Future<void> _openItemSheet({
-    required String itemCode,
-    required String itemName,
-    String? batchNo,
-    String? variantOf,
-    DeliveryNoteItem? editingItem,
-  }) async {
-    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
-
-    final child = Get.put(DeliveryNoteItemFormController());
-
-    child.initialise(
-      parent:      this,
-      code:        itemCode,
-      name:        itemName,
-      batchNo:     batchNo,
-      variantOf:   variantOf,
-      editingItem: editingItem,
-    );
-
-    child.setupAutoSubmit(
-      onValid: () async {
-        isAddingItem.value = true;
-        final ok = await child.submitWithFeedback();
-        isAddingItem.value = false;
-        if (ok && Get.isBottomSheetOpen == true) Get.back();
-      },
-    );
-
-    const rackPickerTag = 'dn_rack_picker';
-
-    isItemSheetOpen.value = true;
-    await Get.bottomSheet(
-      UniversalItemFormSheet(
-        controller:       child,
-        scrollController: child.sheetScrollController,
-        customFields: [
-          // Commit 4: migrated from SharedSerialField to
-          // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
-          SharedInvoiceSerialNumberField(c: child),
-          SharedBatchField(
-            c:               child,
-            accentColor:     Colors.blueGrey,
-            editMode:        true,
-            onPickerTap:     child.openBatchPicker,
-            balanceOverride: () => child.batchBalance.value,
-          ),
-          SharedRackField(
-            c:               child,
-            accentColor:     Colors.blueGrey,
-            editMode:        true,
-            balanceOverride: () => child.rackBalance.value,
-            onPickerTap: () async {
-              HapticFeedback.lightImpact();
-
-              final picker = Get.put(
-                RackPickerController(),
-                tag: rackPickerTag,
-              );
-
-              picker.load(
-                itemCode:     child.itemCode.value,
-                batchNo:      child.batchController.text,
-                warehouse:    child.resolvedWarehouse ?? '',
-                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
-                currentRack:  child.rackController.text,
-                fallbackMap:  Map<String, double>.from(child.rackStockMap),
-              );
-
-              await Get.bottomSheet<void>(
-                RackPickerSheet(
-                  pickerTag:  rackPickerTag,
-                  onSelected: (rackId) => child.applyRackScan(rackId),
-                ),
-                isScrollControlled: true,
-              );
-
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (Get.isRegistered<RackPickerController>(
-                    tag: rackPickerTag)) {
-                  Get.delete<RackPickerController>(tag: rackPickerTag);
-                }
-              });
-            },
-          ),
-        ],
-        onSubmit: () async {
-          final ok = await child.submitWithFeedback();
-          if (ok) Get.back();
-        },
-      ),
-      isScrollControlled: true,
-      enableDrag:         false,
-      isDismissible:      false,
-      backgroundColor:    Colors.transparent,
-    );
-    isItemSheetOpen.value = false;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      child.disposeControllers();
-      Get.delete<DeliveryNoteItemFormController>(force: true);
-      log('[DN:_openItemSheet] post-frame teardown complete', name: 'DN');
-    });
   }
 
   void _handleCustomerNotFound(String customer) {
