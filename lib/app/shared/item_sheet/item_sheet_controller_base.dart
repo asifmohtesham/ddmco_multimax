@@ -23,13 +23,16 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart'
     show SaveButtonState;
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/qty_field_with_plus_minus_delegate.dart';
 
 /// Lifecycle rules for TextEditingControllers owned by this class.
 /// See tec_lifecycle_rules.dart for the full contract.
 abstract class ItemSheetControllerBase extends GetxController
-    implements RackFieldWithBrowseDelegate, QtyFieldWithPlusMinusDelegate {
+    implements RackFieldWithBrowseDelegate, QtyFieldWithPlusMinusDelegate,
+               BatchNoFieldWithBrowseDelegate {
 
   // ── Commit 2: sheet BuildContext ─────────────────────────────────────────
   BuildContext? sheetContext;
@@ -69,6 +72,14 @@ abstract class ItemSheetControllerBase extends GetxController
   @override Future<void> handleRackPicked(RackPickerResult result) async {
     rackController.text = result.rackId;
     await validateRack(result.rackId);
+  }
+
+  // ── Abstract overrides (BatchNoFieldWithBrowseDelegate) ──────────────────
+  @override bool get canBrowseBatches => false;
+  @override Future<String?> browseBatches() async => null;
+  @override Future<void> handleBatchPicked(String batchNo) async {
+    batchController.text = batchNo;
+    await validateBatch(batchNo);
   }
 
   // ── Abstract overrides (QtyFieldWithPlusMinusDelegate) ───────────────────
