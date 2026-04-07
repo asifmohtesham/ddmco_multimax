@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/theme/app_bar_tokens.dart';
 
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -28,7 +29,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
 
-  // ── Search configuration ─────────────────────────────────────────────────────────
+  // ── Search configuration ───────────────────────────────────────────────
 
   /// When provided, shows a 🔍 icon in the app bar that opens
   /// [DocTypeSearchDelegate].
@@ -76,15 +77,14 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   bool get _hasSearch => (searchDoctype ?? '').isNotEmpty;
 
   /// API mode: both doctype and route are provided.
-  bool get _isApiSearch =>
-      _hasSearch && (searchRoute ?? '').isNotEmpty;
+  bool get _isApiSearch => _hasSearch && (searchRoute ?? '').isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
     final List<Widget> appActions = [
-      // ── Search icon (API or local mode) ─────────────────────────────────
+      // ── Search icon (API or local mode) ─────────────────────────────────────
       if (_hasSearch)
         IconButton(
           tooltip: 'Search ${searchDoctype!}',
@@ -93,29 +93,29 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
             showSearch(
               context: context,
               delegate: DocTypeSearchDelegate(
-                doctype:        searchDoctype!,
-                targetRoute:    _isApiSearch ? searchRoute! : '',
+                doctype: searchDoctype!,
+                targetRoute: _isApiSearch ? searchRoute! : '',
                 onSearchChanged: !_isApiSearch ? onSearchChanged : null,
-                onSearchClear:   !_isApiSearch ? onSearchClear  : null,
+                onSearchClear: !_isApiSearch ? onSearchClear : null,
               ),
             );
           },
         ),
-      // ── Reload ──────────────────────────────────────────────────────────────
+      // ── Reload ─────────────────────────────────────────────────────────────────
       if (onReload != null)
         IconButton(
           tooltip: 'Reload document',
           icon: const Icon(Icons.refresh),
           onPressed: isSaving ? null : onReload,
         ),
-      // ── Extra caller-supplied actions ────────────────────────────────────
+      // ── Extra caller-supplied actions ─────────────────────────────────────────
       ...(actions ?? []),
-      // ── Save icon (always last) ────────────────────────────────────────
+      // ── Save icon (always last) ───────────────────────────────────────────────
       if (onSave != null)
         SaveIconButton(
-          onPressed:  onSave,
-          isSaving:   isSaving,
-          isDirty:    isDirty,
+          onPressed: onSave,
+          isSaving: isSaving,
+          isDirty: isDirty,
           saveResult: saveResult,
         ),
     ];
@@ -136,8 +136,13 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
           titleWidget ??
               Text(
                 title,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  // Pin the title colour explicitly so it always reads as
+                  // onSurface regardless of the ambient foreground inheritance.
+                  color: AppBarTokens.foreground(context),
+                ),
               ),
           if (displayStatus != null) ...[
             const SizedBox(height: 4),
@@ -148,9 +153,13 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: appActions,
       centerTitle: centerTitle,
       elevation: 0,
-      scrolledUnderElevation: 0,
-      backgroundColor: Theme.of(context).primaryColor,
-      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+      // Replaced hardcoded 0 — a subtle shadow appears when content
+      // scrolls under the pinned bar, providing a depth cue.
+      scrolledUnderElevation: AppBarTokens.scrolledUnderElevation,
+      // Replaced Theme.of(context).primaryColor (deep red).
+      backgroundColor: AppBarTokens.background(context),
+      // Replaced colorScheme.onPrimary (white on red).
+      foregroundColor: AppBarTokens.foreground(context),
       bottom: bottom,
     );
   }
