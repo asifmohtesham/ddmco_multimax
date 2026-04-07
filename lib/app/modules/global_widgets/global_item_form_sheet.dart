@@ -9,6 +9,13 @@ import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 // ---------------------------------------------------------------------------
+// SaveButtonState
+// ---------------------------------------------------------------------------
+/// Visual state machine for the animated save button inside
+/// [GlobalItemFormSheet] and [_AnimatedSaveButton].
+enum SaveButtonState { idle, loading, success, error }
+
+// ---------------------------------------------------------------------------
 // _AnimatedSaveButton
 // ---------------------------------------------------------------------------
 class _AnimatedSaveButton extends StatelessWidget {
@@ -135,20 +142,6 @@ class _AnimatedSaveButton extends StatelessWidget {
 }
 
 /// A fully self-contained item-entry bottom sheet used by every DocType.
-///
-/// ## Qty field
-///
-/// The qty section is driven by [qtyDelegate] (a [QtyFieldDelegate]) and
-/// rendered via [SharedQtyField].  This replaces the former
-/// `QuantityInputWidget` and its five raw sibling params
-/// (`qtyController`, `onIncrement`, `onDecrement`, `qtyInfoText`,
-/// `qtyInfoTooltip`, `isQtyReadOnly`).  All reactive behaviour —
-/// read-only locking, Max-Qty chip, ± stepper, inline error text, and
-/// blur clamping — is handled inside [SharedQtyField] by reading the
-/// delegate's Rx fields directly.
-///
-/// Pass [controller.accentColor] as [qtyAccentColor] so the field
-/// renders with the DocType's brand colour.
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
@@ -158,16 +151,9 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String? itemSubtext;
   final List<Widget> customFields;
 
-  // ── Qty delegate ──────────────────────────────────────────────────────────
-  /// Drives [SharedQtyField].  Any controller implementing
-  /// [QtyFieldDelegate] (or [QtyFieldWithPlusMinusDelegate]) is accepted.
   final QtyFieldDelegate qtyDelegate;
-
-  /// Accent colour forwarded to [SharedQtyField] so the field matches the
-  /// DocType's brand colour (e.g. teal for SE, blue for DN).
   final Color qtyAccentColor;
 
-  // ── Save / delete ──────────────────────────────────────────────────────────
   final Function onSubmit;
   final VoidCallback? onDelete;
 
@@ -176,13 +162,11 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isLoading;
   final Rx<SaveButtonState> saveButtonState;
 
-  // ── Metadata ───────────────────────────────────────────────────────────────
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
-  // ── Scan footer ────────────────────────────────────────────────────────────
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
@@ -241,10 +225,6 @@ class GlobalItemFormSheet extends StatelessWidget {
           ),
         ),
         Container(
-          // fix(input-group): clip children to the BorderRadius boundary so
-          // that filled TextFormFields (filled:true + OutlineInputBorder) cannot
-          // paint their fillColor outside the rounded corners into the helper-
-          // text reserved slot below the visible border stroke.
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: bgColor ?? color.withValues(alpha: 0.08),
@@ -398,11 +378,6 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       ),
 
-      // ── Quantity input ─────────────────────────────────────────────────────
-      // Driven by QtyFieldDelegate via SharedQtyField.
-      // SharedQtyField reads all reactive state (isQtyReadOnly, qtyError,
-      // qtyInfoText, qtyInfoTooltip, isQtyValid) directly from qtyDelegate
-      // inside its own Obx, so no manual Obx wrapping is needed here.
       SharedQtyField(
         c:           qtyDelegate,
         accentColor: qtyAccentColor,
@@ -452,13 +427,12 @@ class GlobalItemFormSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     _sheetCtrl;
 
-    final theme       = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final mediaQuery  = MediaQuery.of(context);
-    final topPadding  = mediaQuery.viewPadding.top;
+    final theme         = Theme.of(context);
+    final colorScheme   = theme.colorScheme;
+    final mediaQuery    = MediaQuery.of(context);
+    final topPadding    = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
-    // Drag handle — sits on the same surface as the sheet body.
     final dragHandle = Container(
       color: colorScheme.surface,
       width: double.infinity,
@@ -499,7 +473,6 @@ class GlobalItemFormSheet extends StatelessWidget {
           )
         : null;
 
-    // Shared decoration — both branches use identical appearance.
     final sheetDecoration = BoxDecoration(
       color: colorScheme.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
@@ -507,19 +480,6 @@ class GlobalItemFormSheet extends StatelessWidget {
     final sheetMargin = EdgeInsets.only(top: topPadding + 12);
 
     if (scrollController != null) {
-      // fix(global-item-sheet): use Flexible(fit: FlexFit.loose) instead of
-      // Expanded so the sheet content-hugs when the ListView is shorter than
-      // the available space, while still allowing full expansion + scrolling
-      // when content overflows (keyboard open, many fields).
-      //
-      // Expanded forces the ListView to fill ALL remaining space in the Column
-      // regardless of mainAxisSize: min — this caused the DN item form sheet
-      // to always expand to full-screen height and leave dead whitespace below
-      // the Remove Item button.
-      //
-      // Removing the flex wrapper entirely is not viable — it would give the
-      // ListView an unbounded height constraint, causing a Flutter layout
-      // error: "Vertical viewport was given unbounded height".
       return Container(
         margin: sheetMargin,
         decoration: sheetDecoration,
@@ -545,8 +505,6 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       );
     } else {
-      // Non-scrollable branch: wrap in the same Container so the sheet always
-      // owns its opaque background regardless of the call-site backgroundColor.
       return Container(
         margin: sheetMargin,
         decoration: sheetDecoration,
