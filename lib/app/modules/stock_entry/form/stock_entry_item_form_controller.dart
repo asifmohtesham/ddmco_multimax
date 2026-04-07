@@ -40,7 +40,7 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     _openNewItemSheet in parent; not on base or any mixin).
 ///   • Remove redundant qtyInfoTooltip getter override — base RxnString is
 ///     the single source of truth; validateSheet() writes it correctly via
-///     super.qtyInfoTooltip.value and SharedBatchField reads the same ref.
+///     super.qtyInfoTooltip.value and SharedBatchField observes the same ref.
 ///   • Fix showError / showSuccess: use named `message:` param as required
 ///     by GlobalSnackbar.
 ///
@@ -101,9 +101,9 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     listener accumulation across reused controller sessions.
 ///
 /// fix(se-item-form): extend removeSheetListeners to cover dual-rack TECs
-///   • Overrides removeSheetListeners() to also remove validateSheet and
-///     _resetSaveStateOnEdit listeners from sourceRackController and
-///     targetRackController before delegating to super.
+///   • Overrides removeSheetListeners() to also remove validateSheet
+///     listeners from sourceRackController and targetRackController before
+///     delegating to super.
 ///   • Ensures Rule 3 (tec_lifecycle_rules.dart) teardown in prepareForItem()
 ///     is complete for all TECs owned by this controller, not just the
 ///     base-class trio (batch/rack/qty).
@@ -127,6 +127,13 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • onClose() simplified to `super.onClose()` — the base class already
 ///     defers disposeControllers() to addPostFrameCallback (Rule 1), so all
 ///     five TECs share a single deferred + idempotent disposal path.
+///
+/// fix(se-item-form): drop inaccessible _resetSaveStateOnEdit refs
+///   • _resetSaveStateOnEdit is file-private to item_sheet_controller_base.dart.
+///     Dart file-privacy means it cannot be referenced by name from this file,
+///     causing a compile error. Removed the two removeListener calls that
+///     referenced it — they were no-ops anyway since addSheetListeners() never
+///     wires _resetSaveStateOnEdit to sourceRackController / targetRackController.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -430,7 +437,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
-  /// listeners from the dual-rack TECs owned by this subclass.
+  /// [validateSheet] listeners from the dual-rack TECs owned by this subclass.
   ///
   /// ## Rule 3 — tec_lifecycle_rules.dart
   ///
@@ -438,17 +445,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// [rackController], and [qtyController].  [sourceRackController] and
   /// [targetRackController] are declared here and are invisible to the base,
   /// so their listeners would otherwise survive across [prepareForItem] calls,
-  /// stacking duplicate [validateSheet] / [_resetSaveStateOnEdit] invocations
-  /// on every keystroke and leaving stale closures that fire after disposal.
+  /// stacking duplicate [validateSheet] invocations on every keystroke.
   ///
-  /// This override removes both listener variants from both dual-rack TECs
-  /// first, then delegates to [super.removeSheetListeners] for the base trio.
+  /// Note: _resetSaveStateOnEdit is file-private to
+  /// item_sheet_controller_base.dart and is never wired to sourceRackController
+  /// or targetRackController by addSheetListeners(), so no removeListener call
+  /// for it is needed or possible here.
   @override
   void removeSheetListeners() {
     try { sourceRackController.removeListener(validateSheet); } catch (_) {}
     try { targetRackController.removeListener(validateSheet); } catch (_) {}
-    try { sourceRackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
-    try { targetRackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
     super.removeSheetListeners();
   }
 
