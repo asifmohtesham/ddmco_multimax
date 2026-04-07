@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
 
@@ -30,6 +30,8 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'delivery_note_item_form_controller.dart';
 
+enum BannerType { info, warning, error }
+
 class DeliveryNoteFormController extends GetxController
     with OptimisticLockingMixin {
   final DeliveryNoteProvider _provider         = Get.find<DeliveryNoteProvider>();
@@ -50,7 +52,7 @@ class DeliveryNoteFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var isItemSheetOpen    = false.obs;
 
-  var loadingForItemName   = RxnString();
+  var loadingForItemName    = RxnString();
   var recentlyAddedItemCode = ''.obs;
   var recentlyAddedSerial   = ''.obs;
 
@@ -87,6 +89,66 @@ class DeliveryNoteFormController extends GetxController
 
   // ── EAN context ───────────────────────────────────────────────────────
   String currentScannedEan = '';
+
+  // ── Banner state ──────────────────────────────────────────────────────
+  final RxBool         bannerVisible = false.obs;
+  final RxString       bannerMessage = ''.obs;
+  final Rx<BannerType> bannerType    = BannerType.info.obs;
+
+  // ── Validation errors ─────────────────────────────────────────────────
+  final RxnString customerError = RxnString();
+
+  // ── Item filter / expansion ───────────────────────────────────────────
+  final RxString itemFilter      = 'All'.obs;
+  final RxString expandedInvoice = ''.obs;
+
+  void setFilter(String filter) => itemFilter.value = filter;
+
+  void toggleInvoiceExpand(String key) =>
+      expandedInvoice.value =
+          (expandedInvoice.value == key) ? '' : key;
+
+  // ── Counts ────────────────────────────────────────────────────────────
+  int get allCount => deliveryNote.value?.items.length ?? 0;
+
+  int get pendingCount {
+    final upload = posUpload.value;
+    if (upload == null) return 0;
+    return upload.items.where((p) =>
+        scannedQtyForSerial(p.idx.toString()) < p.quantity
+    ).length;
+  }
+
+  int get completedCount {
+    final upload = posUpload.value;
+    if (upload == null) return 0;
+    return upload.items.where((p) =>
+        scannedQtyForSerial(p.idx.toString()) >= p.quantity
+    ).length;
+  }
+
+  // ── Grouped items (by invoice serial number) ──────────────────────────
+  Map<String, List<DeliveryNoteItem>> get groupedItems {
+    final result = <String, List<DeliveryNoteItem>>{};
+    for (final item in items) {
+      final key = item.customInvoiceSerialNumber ?? '';
+      result.putIfAbsent(key, () => []).add(item);
+    }
+    return result;
+  }
+
+  // ── Confirm and delete ────────────────────────────────────────────────
+  void confirmAndDeleteItem(DeliveryNoteItem item) {
+    GlobalDialog.showConfirmation(
+      title:   'Delete Item?',
+      message: 'Remove "${item.itemName ?? item.itemCode}"?',
+      onConfirm: () {
+        final idx =
+            deliveryNote.value?.items.indexOf(item) ?? -1;
+        if (idx != -1) removeItem(idx);
+      },
+    );
+  }
 
   // ── Persistent scan worker ────────────────────────────────────────────
   Worker? _scanWorker;
@@ -291,14 +353,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Sheet-scan routing ────────────────────────────────────────────────
-  //
-  // Commit 3 (fix #17): upgrade _handleSheetScan to processScan-based routing
-  // matching PurchaseReceiptFormController behaviour.
-  //
-  // Sequence:
-  //   ScanType.rack   → child.applyRackScan(rackId)
-  //   ScanType.batch  → child.batchController + validateBatch()
-  //   else            → GlobalSnackbar.error (unknown barcode)
   Future<void> _handleSheetScan(String barcode) async {
     barcodeController.clear();
     if (!Get.isRegistered<DeliveryNoteItemFormController>()) {
@@ -307,8 +361,9 @@ class DeliveryNoteFormController extends GetxController
     }
 
     final child = Get.find<DeliveryNoteItemFormController>();
-    final contextEan = child.currentScannedEan.isNotEmpty
-        ? child.currentScannedEan
+    // currentScannedEan is RxString — append .value to obtain a plain String.
+    final contextEan = child.currentScannedEan.value.isNotEmpty
+        ? child.currentScannedEan.value
         : child.itemCode.value;
 
     final result =
@@ -325,7 +380,6 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Future<void> scanBarcode(String barcode) async {
-    // Commit 3 (fix #17): await _handleSheetScan since it is now async.
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
       await _handleSheetScan(barcode);
       return;
@@ -501,7 +555,7 @@ class DeliveryNoteFormController extends GetxController
         await Get.bottomSheet(
           UniversalItemFormSheet(
             controller:       child,
-            scrollController: child.sheetScrollController,
+            scrollController: child.sheetScrollController!,
             customFields: [
               SharedInvoiceSerialNumberField(c: child),
               SharedBatchField(
@@ -610,10 +664,8 @@ class DeliveryNoteFormController extends GetxController
       await Get.bottomSheet(
         UniversalItemFormSheet(
           controller:       child,
-          scrollController: child.sheetScrollController,
+          scrollController: child.sheetScrollController!,
           customFields: [
-            // Commit 4: migrated from SharedSerialField to
-            // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
             SharedInvoiceSerialNumberField(c: child),
             SharedBatchField(
               c:               child,
@@ -714,9 +766,9 @@ class DeliveryNoteFormController extends GetxController
       final dn = deliveryNote.value;
       if (dn == null) return;
 
-      dn.customer    = customerController.text.trim();
-      dn.postingDate = postingDateController.text.trim();
-      dn.postingTime = postingTimeController.text.trim();
+      dn.customer     = customerController.text.trim();
+      dn.postingDate  = postingDateController.text.trim();
+      dn.postingTime  = postingTimeController.text.trim();
       dn.setWarehouse = setWarehouse.value;
 
       Response response;
