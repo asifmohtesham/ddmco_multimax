@@ -96,9 +96,6 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///
 /// fix(se-item-form): defer dual-rack TEC disposal; remove stale listeners
 ///   on session reset.
-///   • onClose() now defers sourceRackController / targetRackController
-///     disposal to addPostFrameCallback (Rule 1 — tec_lifecycle_rules.dart)
-///     instead of disposing synchronously.
 ///   • prepareForItem() now calls removeSheetListeners() before
 ///     addSheetListeners() (Rule 3 — tec_lifecycle_rules.dart) to prevent
 ///     listener accumulation across reused controller sessions.
@@ -122,6 +119,14 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • Consistent with the initForNewItem guard (Commit B) and the
 ///     existing `if (!isClosed)` pattern in the postFrameCallbacks already
 ///     present in this same method.
+///
+/// refactor(se-item-form): override disposeControllers() + simplify onClose()
+///   • disposeControllers() override disposes sourceRackController and
+///     targetRackController via try/catch, then delegates to
+///     super.disposeControllers() for the base-class trio.
+///   • onClose() simplified to `super.onClose()` — the base class already
+///     defers disposeControllers() to addPostFrameCallback (Rule 1), so all
+///     five TECs share a single deferred + idempotent disposal path.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -323,7 +328,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Dual-rack state ──────────────────────────────────────────────────────────
   //
   // Rule 1 (tec_lifecycle_rules.dart): These TECs are disposed via
-  // addPostFrameCallback in onClose() — never synchronously.
+  // disposeControllers() which is called inside addPostFrameCallback
+  // in the base onClose() — never synchronously.
   @override final TextEditingController sourceRackController = TextEditingController();
   @override final RxBool isSourceRackValid       = false.obs;
   @override final RxBool isValidatingSourceRack  = false.obs;
@@ -403,36 +409,24 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  /// Overrides [ItemSheetControllerBase.onClose] to defer disposal of the
-  /// dual-rack TECs ([sourceRackController], [targetRackController]).
+  /// Overrides [ItemSheetControllerBase.disposeControllers] to include
+  /// the dual-rack TECs owned by this subclass.
   ///
   /// ## Rule 1 — tec_lifecycle_rules.dart
   ///
-  /// Both controllers are captured into locals **before** `super.onClose()`
-  /// runs, then disposed inside `addPostFrameCallback` so the bottom-sheet
-  /// exit-animation frame (which calls `controller.addListener()` via
-  /// `_AnimatedState.didUpdateWidget`) completes before the controllers are
-  /// invalidated.
+  /// This method is called by the base [onClose] from inside an
+  /// `addPostFrameCallback`, so disposal is always deferred past the
+  /// exit-animation frame — identical to the previous two-callback
+  /// approach but expressed as a single override point.
   ///
-  /// `super.onClose()` handles the remaining base-class TECs
-  /// (`batchController`, `rackController`, `qtyController`) through the
-  /// same deferred + idempotent [ItemSheetControllerBase.disposeControllers]
-  /// path (Rules 1 & 2).
+  /// [super.disposeControllers] handles the base-class trio
+  /// (`batchController`, `rackController`, `qtyController`) through
+  /// its own idempotent + guarded try/catch blocks (Rule 2).
   @override
-  void onClose() {
-    // Capture before super.onClose() (Rule 1 — tec_lifecycle_rules.dart).
-    final src = sourceRackController;
-    final tgt = targetRackController;
-
-    // Defer to post-frame: exit animation must complete first (Rule 1).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try { src.dispose(); } catch (_) {}
-      try { tgt.dispose(); } catch (_) {}
-    });
-
-    // Base class handles batch/rack/qty/scroll/focus via disposeControllers()
-    // which is itself deferred + guarded (Rules 1 & 2).
-    super.onClose();
+  void disposeControllers() {
+    try { sourceRackController.dispose(); } catch (_) {}
+    try { targetRackController.dispose(); } catch (_) {}
+    super.disposeControllers();
   }
 
   /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
