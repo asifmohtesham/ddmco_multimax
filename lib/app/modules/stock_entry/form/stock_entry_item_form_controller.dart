@@ -134,6 +134,10 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     causing a compile error. Removed the two removeListener calls that
 ///     referenced it — they were no-ops anyway since addSheetListeners() never
 ///     wires _resetSaveStateOnEdit to sourceRackController / targetRackController.
+///
+/// fix(rx-type): override currentScannedEan as RxString to satisfy
+///   ItemSheetControllerBase contract. Write site in initialise() updated
+///   to currentScannedEan.value =.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -144,7 +148,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   StockEntryFormController get parent => _parent;
 
   // ── In-sheet scan context ───────────────────────────────────────────────
-  String currentScannedEan = '';
+  @override
+  final RxString currentScannedEan = ''.obs;
 
   // ── Abstract overrides ─────────────────────────────────────────────────
   @override
@@ -853,7 +858,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       scannedBatch:     batchNo,
     );
 
-    if (scannedEan8.isNotEmpty) currentScannedEan = scannedEan8;
+    if (scannedEan8.isNotEmpty) currentScannedEan.value = scannedEan8;
 
     unawaited(_preloadRackStockMap());
   }

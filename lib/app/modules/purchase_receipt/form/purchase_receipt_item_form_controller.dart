@@ -47,6 +47,9 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///   PurchaseReceiptItem does not carry a docstatus field — docstatus belongs
 ///   to the parent PurchaseReceipt only.  Both initForCreate and initForEdit
 ///   now read _parent.purchaseReceipt.value?.docstatus ?? 0.
+///
+/// fix(rx-type): override currentScannedEan as RxString to satisfy
+///   ItemSheetControllerBase contract. Write sites updated to .value =.
 class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   // ── Parent back-reference ───────────────────────────────────────────────
@@ -55,7 +58,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   PurchaseReceiptFormController get parent => _parent;
 
   // ── In-sheet scan context ──────────────────────────────────────────────
-  String currentScannedEan = '';
+  @override
+  final RxString currentScannedEan = ''.obs;
 
   // ── Parent-backed warehouse ───────────────────────────────────────────
   final RxnString itemWarehouse = RxnString();
@@ -114,7 +118,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     PurchaseReceiptItem? editingItem,
   }) {
     _parent = parent;
-    currentScannedEan = scannedEan ?? '';
+    currentScannedEan.value = scannedEan ?? '';
 
     if (editingItem != null) {
       final items  = parent.purchaseReceipt.value?.items ?? [];
