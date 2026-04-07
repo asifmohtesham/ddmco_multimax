@@ -138,6 +138,22 @@ class StockEntryFormController extends GetxController
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
+  // ── Navigation helper ─────────────────────────────────────────────────────────────────────────────
+  //
+  // Get.back() pops whatever is topmost on the GetX navigator stack.
+  // When a GlobalSnackbar (SnackbarController) is open its overlay route
+  // sits above the page/sheet being targeted, so a bare Get.back() would
+  // dismiss the snackbar instead of the intended route.
+  //
+  // _safeBack() closes any open snackbar first, then calls Get.back().
+  // Use this helper everywhere a programmatic full-page or sheet dismissal
+  // is needed; bare Get.back() is still correct inside snackbar callbacks
+  // (e.g. "Undo" actions that intentionally dismiss the snackbar).
+  void _safeBack() {
+    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    Get.back();
+  }
+
   // ── Domain helpers ───────────────────────────────────────────────────────────────────────────────────
 
   String getTypeHelperText(String type) {
@@ -847,7 +863,10 @@ class StockEntryFormController extends GetxController
         (items.lastOrNull?.name ?? '');
     barcodeController.clear();
     triggerHighlight(highlightKey);
-    if (Get.isBottomSheetOpen == true) Get.back();
+    // fix(Commit 3): use _safeBack() so that a GlobalSnackbar that fired
+    // during submit() (e.g. validation warning) is closed first; a bare
+    // Get.back() would pop the snackbar overlay instead of the sheet.
+    if (Get.isBottomSheetOpen == true) _safeBack();
     if (mode == 'new') {
       saveStockEntry();
     } else {
@@ -859,8 +878,13 @@ class StockEntryFormController extends GetxController
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
 
   void confirmAndDeleteItem(StockEntryItem item) {
+    // fix(Commit 3): use _safeBack() so that any open snackbar is closed
+    // before the sheet is dismissed.  A bare Get.back() when a snackbar
+    // overlay is present would pop the snackbar instead of the sheet,
+    // leaving the item-form sheet on screen while the confirm dialog opens
+    // behind it.
     if (isItemSheetOpen.value) {
-      if (Get.isBottomSheetOpen == true) Get.back();
+      if (Get.isBottomSheetOpen == true) _safeBack();
     }
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
@@ -1323,7 +1347,11 @@ class StockEntryFormController extends GetxController
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
         isDirty.value = false;
-        Get.back();
+        // fix(Commit 3): use _safeBack() so any open snackbar is closed
+        // before the page is popped.  A bare Get.back() when a
+        // GlobalSnackbar is visible would dismiss the snackbar overlay
+        // instead of the form page.
+        _safeBack();
       },
     );
   }
