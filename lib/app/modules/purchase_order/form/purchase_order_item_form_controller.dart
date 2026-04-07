@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:collection/collection.dart';
 import 'purchase_order_form_controller.dart';
@@ -16,6 +17,10 @@ import 'purchase_order_form_controller.dart';
 ///     ItemSheetControllerBase declares `bool isAddingItemFlag` (plain bool);
 ///     assigning the RxBool directly caused a type mismatch at compile time.
 ///   • adjustQty kept as `int` — the base abstract is `void adjustQty(int delta)`.
+///
+/// Commit 3 fix:
+///   • Explicit import for save_icon_button.dart added so that SaveButtonState
+///     is resolved directly rather than via a transitive re-export.
 class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   late PurchaseOrderFormController _parent;
 
@@ -23,17 +28,17 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   final rateController         = TextEditingController();
   final scheduleDateController = TextEditingController();
 
-  // ── PO-specific Rx ───────────────────────────────────────────────────────
+  // ── PO-specific Rx ───────────────────────────────────────────────
   var sheetRate = 0.0.obs;
   double get sheetAmount =>
       (double.tryParse(qtyController.text) ?? 0.0) * sheetRate.value;
 
-  // ── Dirty-check snapshot ────────────────────────────────────────────────
+  // ── Dirty-check snapshot ────────────────────────────────────────────
   double _initialQty  = 0.0;
   double _initialRate = 0.0;
   String _initialDate = '';
 
-  // ── ItemSheetControllerBase abstract overrides ────────────────────────────
+  // ── ItemSheetControllerBase abstract overrides ─────────────────────────────
 
   @override
   String? get resolvedWarehouse => null; // PO has no warehouse concept
@@ -74,7 +79,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── Listener helpers ────────────────────────────────────────────────────────
+  // ── Listener helpers ──────────────────────────────────────────────────────
   void _initPOListeners() {
     scheduleDateController.addListener(validateSheet);
     scheduleDateController.addListener(_resetSaveState);
@@ -96,7 +101,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────────
 
   @override
   void onClose() {
@@ -110,7 +115,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     super.onClose();
   }
 
-  // ── Initialise ─────────────────────────────────────────────────────────────
+  // ── Initialise ─────────────────────────────────────────────────────────
 
   void initialise({
     required PurchaseOrderFormController parentController,
@@ -172,14 +177,14 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     validateSheet();
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  // ── Private helpers ────────────────────────────────────────────────────
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
   }
 
-  // ── validateSheet ──────────────────────────────────────────────────────────
+  // ── validateSheet ──────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
@@ -204,7 +209,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     }
   }
 
-  // ── deleteCurrentItem ────────────────────────────────────────────────────────
+  // ── deleteCurrentItem ───────────────────────────────────────────────────────
 
   @override
   Future<void> deleteCurrentItem() async {
@@ -215,7 +220,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent.confirmAndDeleteItem(item);
   }
 
-  // ── submit ────────────────────────────────────────────────────────────────────
+  // ── submit ──────────────────────────────────────────────────────────────
 
   @override
   Future<void> submit() async {
@@ -255,11 +260,13 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
         receivedQty:  0.0,
         rate:         rate,
         amount:       qty * rate,
-        uom:          '',
+        uom:          uom.value,
+        description:  '',
         scheduleDate: scheduleDate,
       );
       _parent.addItemLocally(newItem);
     }
+
     Get.back();
   }
 }

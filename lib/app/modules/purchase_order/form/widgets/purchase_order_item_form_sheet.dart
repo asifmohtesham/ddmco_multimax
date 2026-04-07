@@ -27,10 +27,19 @@ import 'package:multimax/app/data/utils/app_constants.dart';
 /// spacers between custom fields — they stack on top of the automatic
 /// padding and produce double the intended gap (36 px instead of 20 px),
 /// which is inconsistent with every other DocType item sheet.
+///
+/// ## Commit 3 fix
+///
+/// [scrollController] changed from `ScrollController?` (nullable) to
+/// `ScrollController` (non-nullable, required). [UniversalItemFormSheet]
+/// declares `required ScrollController scrollController`; passing a nullable
+/// value was a compile-time type error. The parent [_openItemSheet] always
+/// supplies a non-null [ScrollController] from the
+/// [DraggableScrollableSheet] builder, so this change is safe.
 class PurchaseOrderItemFormSheet extends StatelessWidget {
-  final ScrollController? scrollController;
+  final ScrollController scrollController;
 
-  const PurchaseOrderItemFormSheet({super.key, this.scrollController});
+  const PurchaseOrderItemFormSheet({super.key, required this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +59,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
       },
       onScan: null,
       customFields: [
-        // ── Reqd By Date ─────────────────────────────────────────────────────
+        // ── Reqd By Date ───────────────────────────────────────────────────
         // NOTE: no SizedBox spacers between fields.
         // GlobalItemFormSheet wraps each customField in Padding(bottom: 20)
         // automatically — adding manual spacers would double the gap.
@@ -105,7 +114,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
           ),
         ),
 
-        // ── Running Amount tile ──────────────────────────────────────────────
+        // ── Running Amount tile ───────────────────────────────────────────────
         Obx(() => Container(
           padding:    const EdgeInsets.all(12),
           decoration: BoxDecoration(
