@@ -1,18 +1,20 @@
 class DeliveryNote {
   final String name;
-  final String customer;
+  String customer;
   final double grandTotal;
-  final String postingDate;
-  final String modified;
+  String postingDate;
+  String modified;
   final String creation;
   final String status;
   final String currency;
   final String? poNo;
   final double totalQty;
-  final int docstatus;
-  final String? setWarehouse;
+  int docstatus;
+  String? setWarehouse;
   final String? owner;
   final String? modifiedBy;
+  String? postingTime;
+  String? customPosUpload;
   final List<DeliveryNoteItem> items;
 
   DeliveryNote({
@@ -30,6 +32,8 @@ class DeliveryNote {
     this.setWarehouse,
     this.owner,
     this.modifiedBy,
+    this.postingTime,
+    this.customPosUpload,
     required this.items,
   });
 
@@ -53,6 +57,8 @@ class DeliveryNote {
       setWarehouse: json['set_warehouse'],
       owner: json['owner'],
       modifiedBy: json['modified_by'],
+      postingTime: json['posting_time'],
+      customPosUpload: json['custom_pos_upload'],
       items: items,
     );
   }
@@ -62,6 +68,7 @@ class DeliveryNote {
       'modified': modified,
       'customer': customer,
       'posting_date': postingDate,
+      'posting_time': postingTime,
       'currency': currency,
       'po_no': poNo,
       'docstatus': docstatus,
@@ -87,6 +94,8 @@ class DeliveryNote {
     String? setWarehouse,
     String? owner,
     String? modifiedBy,
+    String? postingTime,
+    String? customPosUpload,
     List<DeliveryNoteItem>? items,
   }) {
     return DeliveryNote(
@@ -104,6 +113,8 @@ class DeliveryNote {
       setWarehouse: setWarehouse ?? this.setWarehouse,
       owner: owner ?? this.owner,
       modifiedBy: modifiedBy ?? this.modifiedBy,
+      postingTime: postingTime ?? this.postingTime,
+      customPosUpload: customPosUpload ?? this.customPosUpload,
       items: items ?? this.items,
     );
   }
