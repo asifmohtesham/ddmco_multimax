@@ -1,3 +1,59 @@
+## [Unreleased] — Barcode Scan Field-Values Fix (Issue #17)
+
+> Fixes barcode scanning inside the Stock Entry Item Form sheet: scanned
+> Batch No, Source Rack, and Target Rack barcodes now set their respective
+> fields correctly.  Same fix applied to Purchase Receipt and Delivery Note
+> item form sheets for consistency.
+
+---
+
+### 🐛 Bug Fixes
+
+#### Stock Entry — Item Form Sheet Barcode Scan (Commits 1–4)
+
+**Commit 1 — `isItemSheetOpen` flag hoisted before `Get.bottomSheet()`**
+
+- `isItemSheetOpen.value = true` is now set **before** the `await
+  Get.bottomSheet(…)` call in `_openItemSheet()`, `_openNewItemSheet()`,
+  and `editItem()`.
+- Previously the flag was flipped after the await, so any DataWedge scan
+  arriving while the sheet was animating open passed the wrong branch in
+  `scanBarcode()` — opening a second sheet on top of the first instead of
+  routing the scan into `_handleSheetScan()`.
+
+**Commit 2 — `RackSection` widget bindings verified**
+
+- Confirmed `Source Rack` field is bound to
+  `StockEntryItemFormController.sourceRackController` and `Target Rack` to
+  `targetRackController`.
+- Removed a stale binding to the base `rackController` that caused the rack
+  fields to remain blank even when `applyRackScan()` wrote to the correct TEC.
+
+**Commit 3 — `_safeBack()` helper; bare `Get.back()` calls guarded**
+
+- Introduced private helper `_safeBack()` in `StockEntryFormController`:
+  ```dart
+  void _safeBack() {
+    if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+    Get.back();
+  }
+  ```
+- **Root cause:** `Get.back()` pops whatever is topmost on the GetX
+  navigator stack. When a `GlobalSnackbar` is open its overlay route sits
+  above the sheet/page being dismissed, so a bare `Get.back()` closed the
+  snackbar instead of the intended target — leaving the item-form sheet
+  frozen on screen or stranding the confirm-discard dialog behind it.
+- Three call-sites replaced with `_safeBack()`:
+  - `addItem()` — dismisses the item sheet after a successful submit.
+  - `confirmAndDeleteItem()` — dismisses the sheet before the confirm
+    dialog appears.
+  - `confirmDiscard()` → `onDiscard` lambda — pops the form page after
+    the user confirms discarding unsaved changes.
+
+**Commit 4 — CHANGELOG updated** *(this commit)*
+
+---
+
 ## [Unreleased] — SharedRackField Universal Refactor
 
 > Architectural refactor of `SharedRackField` so any DocType controller can
