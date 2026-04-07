@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart'; // clampDouble
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/theme/app_bar_tokens.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Heights — keep all magic numbers in one place.
@@ -534,7 +535,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         leading: _buildLeading(context),
         middle: AutoSizeText(
           title,
-          style: titleStyle,
+          style: titleStyle?.copyWith(color: AppBarTokens.titleAccent(context)),
           maxLines: _kAutoSizeMaxLines,
           minFontSize: _kAutoSizeMinFont,
           maxFontSize: maxFontSize,
