@@ -83,7 +83,11 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
       ];
     }
     _ctrl.applyFilters(filters);
-    Get.back();
+    // Use Navigator.of(context).pop() instead of Get.back().
+    // Get.back() unconditionally calls Get.closeCurrentSnackbar() before
+    // popping; when a SnackbarController is queued but not yet attached,
+    // its late AnimationController throws LateInitializationError.
+    Navigator.of(context).pop();
   }
 
   void _clear() {
@@ -93,7 +97,7 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
     _endDate.value = null;
     _dateRangeController.clear();
     _ctrl.clearFilters();
-    Get.back();
+    Navigator.of(context).pop(); // same reason as _apply
   }
 
   int get _localFilterCount {

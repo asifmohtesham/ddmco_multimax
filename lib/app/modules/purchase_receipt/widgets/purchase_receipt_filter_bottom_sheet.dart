@@ -42,7 +42,11 @@ class _PurchaseReceiptFilterBottomSheetState extends State<PurchaseReceiptFilter
     }
 
     controller.applyFilters(filters);
-    Get.back();
+    // Use Navigator.of(context).pop() instead of Get.back().
+    // Get.back() unconditionally calls Get.closeCurrentSnackbar() before
+    // popping; when a SnackbarController is queued but not yet attached,
+    // its late AnimationController throws LateInitializationError.
+    Navigator.of(context).pop();
   }
 
   void _clearFilters() {
@@ -51,6 +55,9 @@ class _PurchaseReceiptFilterBottomSheetState extends State<PurchaseReceiptFilter
       selectedStatus = null;
     });
     controller.clearFilters();
+    // Note: _clearFilters is called by GlobalFilterBottomSheet's onClear
+    // callback which does NOT pop the sheet — the sheet stays open for
+    // the user to re-configure. No pop needed here.
   }
 
   @override
