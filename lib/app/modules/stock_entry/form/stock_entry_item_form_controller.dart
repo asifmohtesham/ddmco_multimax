@@ -102,6 +102,14 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • prepareForItem() now calls removeSheetListeners() before
 ///     addSheetListeners() (Rule 3 — tec_lifecycle_rules.dart) to prevent
 ///     listener accumulation across reused controller sessions.
+///
+/// fix(se-item-form): extend removeSheetListeners to cover dual-rack TECs
+///   • Overrides removeSheetListeners() to also remove validateSheet and
+///     _resetSaveStateOnEdit listeners from sourceRackController and
+///     targetRackController before delegating to super.
+///   • Ensures Rule 3 (tec_lifecycle_rules.dart) teardown in prepareForItem()
+///     is complete for all TECs owned by this controller, not just the
+///     base-class trio (batch/rack/qty).
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin
     implements DualRackDelegate {
@@ -413,6 +421,29 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // Base class handles batch/rack/qty/scroll/focus via disposeControllers()
     // which is itself deferred + guarded (Rules 1 & 2).
     super.onClose();
+  }
+
+  /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
+  /// listeners from the dual-rack TECs owned by this subclass.
+  ///
+  /// ## Rule 3 — tec_lifecycle_rules.dart
+  ///
+  /// The base implementation only knows about [batchController],
+  /// [rackController], and [qtyController].  [sourceRackController] and
+  /// [targetRackController] are declared here and are invisible to the base,
+  /// so their listeners would otherwise survive across [prepareForItem] calls,
+  /// stacking duplicate [validateSheet] / [_resetSaveStateOnEdit] invocations
+  /// on every keystroke and leaving stale closures that fire after disposal.
+  ///
+  /// This override removes both listener variants from both dual-rack TECs
+  /// first, then delegates to [super.removeSheetListeners] for the base trio.
+  @override
+  void removeSheetListeners() {
+    try { sourceRackController.removeListener(validateSheet); } catch (_) {}
+    try { targetRackController.removeListener(validateSheet); } catch (_) {}
+    try { sourceRackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
+    try { targetRackController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
+    super.removeSheetListeners();
   }
 
   // ── Derived / computed ────────────────────────────────────────────────────────
