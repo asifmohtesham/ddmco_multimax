@@ -73,6 +73,12 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 ///   - docStatus seeded in initForEdit / reset in initForNewItem.
 ///
 /// fix(docstatus): read from parent document, not item row.
+///
+/// Commit 2:
+///   deleteCurrentItem() now calls closeSheet() (base-class helper that
+///   uses the captured sheetContext via Navigator.of) instead of the bare
+///   Get.back() call.  This prevents the sheet from failing to close when
+///   Get.context points to the wrong route during fast scan sequences.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin {
 
@@ -190,12 +196,18 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── deleteCurrentItem ──────────────────────────────────────────────────────
+  /// Removes the current item row and closes the sheet.
+  ///
+  /// Commit 2: replaced bare [Get.back()] with [closeSheet()] so the sheet
+  /// is popped via the captured [sheetContext] (scoped to the sheet's own
+  /// navigator entry) rather than the global GetX navigator, which can
+  /// target the wrong route during fast scan sequences.
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
     _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
     _parent.deliveryNote.refresh();
-    Get.back();
+    closeSheet();
   }
 
   // ── SerialFieldMixin wiring ────────────────────────────────────────────────
@@ -266,7 +278,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (!canBrowseRacks) return null;
     if (isValidatingRack.value) return null;
 
-    final ctx = Get.context;
+    // Commit 2: prefer captured sheetContext; fall back to Get.context.
+    final ctx = sheetContext ?? Get.context;
     if (ctx == null) return null;
 
     final pickerCtrl = Get.put(RackPickerController(), tag: _kPickerTag);
