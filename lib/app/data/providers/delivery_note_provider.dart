@@ -55,4 +55,18 @@ class DeliveryNoteProvider {
   Future<Response> getItemDetails(String barcode) async {
     return _apiProvider.getDocument('Item', barcode.substring(0, 7));
   }
+
+  Future<Response> createDeliveryNote(
+      Map<String, dynamic> data) async {
+    return _apiProvider.createDocument('Delivery Note', data);
+  }
+
+  Future<Response> updateDeliveryNote(
+      String name, Map<String, dynamic> data) async {
+    return _apiProvider.updateDocument('Delivery Note', name, data);
+  }
+
+  Future<Response> submitDeliveryNote(String name) async {
+    return _apiProvider.submitDocument('Delivery Note', name);
+  }
 }
