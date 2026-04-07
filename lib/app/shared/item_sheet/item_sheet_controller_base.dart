@@ -50,6 +50,23 @@ class BatchResult {
 ///   • [openBatchPicker]           — canonical picker lifecycle shared by all
 ///     concrete controllers.  SE overrides to pre-fetch [batchWiseHistory].
 ///
+/// ## TEC Lifecycle
+///
+/// All [TextEditingController], [FocusNode], and [ScrollController] fields
+/// in this class and its subclasses MUST follow the four rules documented in
+/// `tec_lifecycle_rules.dart`.  The disposal contract is:
+///
+///   • [disposeControllers] is the single disposal path — guarded by
+///     [_controllersDisposed] so it is safe to call any number of times.
+///   • [onClose] delegates to [disposeControllers]; it does NOT contain an
+///     independent inline disposal block.
+///   • Subclass [onClose] overrides that own additional TECs (e.g.
+///     [StockEntryItemFormController.sourceRackController]) MUST defer their
+///     disposal via `addPostFrameCallback` (Rule 1) and call `super.onClose()`
+///     AFTER scheduling the deferred callback.
+///   • [addSheetListeners] must always be preceded by [removeSheetListeners]
+///     (Rule 3) — see [prepareForItem] in concrete subclasses.
+///
 /// ## Changelog
 ///
 ///   isSheetValid     — promoted from computed bool getter to RxBool so
@@ -74,7 +91,8 @@ class BatchResult {
 ///                      snapshotState used by PO and PS controllers.
 ///   sheetScrollController — concrete ScrollController exposed so parent
 ///                      orchestrators can pass it to UniversalItemFormSheet.
-///   disposeControllers — public teardown helper.
+///   disposeControllers — public teardown helper; now idempotent via
+///                      _controllersDisposed guard (Rule 2).
 ///   softResetBatch / softResetRack — reset validity flags without zeroing
 ///                      balances (DN-8 fix).
 ///   validateBatchOnInit — convenience post-frame wrapper.
@@ -91,6 +109,8 @@ class BatchResult {
 ///     so the bottom-sheet exit animation completes before controllers are
 ///     invalidated.  Prevents "TextEditingController was used after being
 ///     disposed" crash triggered by back-nav with keyboard open.
+///   fix(item-sheet): guard disposeControllers against double-dispose
+///     — _controllersDisposed bool + onClose delegates to disposeControllers.
 abstract class ItemSheetControllerBase extends GetxController
     implements
         RackFieldWithBrowseDelegate,
@@ -232,6 +252,13 @@ abstract class ItemSheetControllerBase extends GetxController
   // ── Auto-submit worker ──────────────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
+  // ── TEC disposal guard (Rule 2 — tec_lifecycle_rules.dart) ─────────────────
+  //
+  // Set to true the first time disposeControllers() runs.  All subsequent
+  // calls become no-ops, making the disposal path idempotent regardless of
+  // whether GetX's onClose() or a parent-orchestrated cleanup fires first.
+  bool _controllersDisposed = false;
+
   // ── Abstract interface ───────────────────────────────────────────────────────────
   String? get resolvedWarehouse;
   bool get requiresBatch;
@@ -364,51 +391,42 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── disposeControllers ─────────────────────────────────────────────────────────
-  /// Public teardown helper for call sites that need to trigger disposal
-  /// outside of the normal GetX lifecycle (e.g. parent-orchestrated cleanup).
+  /// Public teardown helper — the single authoritative disposal path for all
+  /// TECs, FocusNodes, and ScrollControllers owned by this base class.
   ///
-  /// Uses the same deferred-dispose pattern as [onClose] to guard against
-  /// use-after-dispose when called while an exit animation is in progress.
+  /// ## Idempotency (Rule 2 — tec_lifecycle_rules.dart)
+  ///
+  /// This method is guarded by [_controllersDisposed].  It is safe to call
+  /// any number of times and from any combination of:
+  ///   • GetX's automatic [onClose] (called on `Get.delete` / route pop), and
+  ///   • Parent-orchestrated cleanup (e.g. `StockEntryFormController
+  ///     .closeItemSheet()` calling `itemController.disposeControllers()`).
+  ///
+  /// ## Deferred disposal (Rule 1 — tec_lifecycle_rules.dart)
+  ///
+  /// Disposal is scheduled for the next frame via [WidgetsBinding
+  /// .addPostFrameCallback] so the bottom-sheet exit animation frame
+  /// completes before any [TextEditingController] is invalidated.  Flutter's
+  /// `_AnimatedState.didUpdateWidget` calls `controller.addListener()` during
+  /// that frame; disposing before it runs causes:
+  ///
+  ///   "A TextEditingController was used after being disposed."
+  ///
+  /// ## Subclass contract
+  ///
+  /// Subclasses that declare additional TECs (e.g. [sourceRackController],
+  /// [targetRackController] in [StockEntryItemFormController]) MUST:
+  ///   1. Capture their controllers into local variables before calling
+  ///      `super.onClose()`.
+  ///   2. Schedule disposal via `addPostFrameCallback` (Rule 1).
+  ///   3. Call `super.onClose()` — which calls this method — AFTER
+  ///      scheduling the deferred callback.
   void disposeControllers() {
-    final textControllers = <TextEditingController>[
-      batchController,
-      rackController,
-      qtyController,
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final c in textControllers) {
-        try { c.dispose(); } catch (_) {}
-      }
-      try { sheetScrollController.dispose(); } catch (_) {}
-      try { rackFocusNode.dispose(); } catch (_) {}
-    });
-  }
+    if (_controllersDisposed) return; // ← idempotent guard (Rule 2)
+    _controllersDisposed = true;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────────
-  @override
-  void onClose() {
-    _autoSubmitWorker?.dispose();
+    removeSheetListeners(); // ← Rule 3: remove before invalidating controllers
 
-    // ── Deferred TextEditingController / FocusNode / ScrollController disposal ──
-    //
-    // Problem: GetX calls onClose() synchronously when the bottom sheet is
-    // dismissed.  If the keyboard was open, Flutter schedules one final
-    // build/layout frame to animate the sheet's exit transition.  During
-    // that frame the floating-label AnimatedState inside each TextFormField
-    // calls controller.addListener() — but the controller is already
-    // disposed, producing:
-    //
-    //   "A TextEditingController was used after being disposed."
-    //
-    // Fix: capture all disposable objects into local variables BEFORE
-    // super.onClose() runs (which may null out fields), then schedule their
-    // disposal for the next frame.  By then the exit animation frame has
-    // already been committed and no widget in the dying subtree holds an
-    // active listener reference.
-    //
-    // The local-variable capture is necessary because super.onClose() → GetX
-    // may GC this controller instance; accessing instance fields after that
-    // point is unsafe.
     final textControllers = <TextEditingController>[
       batchController,
       rackController,
@@ -417,6 +435,7 @@ abstract class ItemSheetControllerBase extends GetxController
     final scroll = sheetScrollController;
     final focus  = rackFocusNode;
 
+    // Rule 1: defer to post-frame so exit animation completes first.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       for (final c in textControllers) {
         try { c.dispose(); } catch (_) {}
@@ -424,7 +443,15 @@ abstract class ItemSheetControllerBase extends GetxController
       try { scroll.dispose(); } catch (_) {}
       try { focus.dispose();  } catch (_) {}
     });
+  }
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
+  @override
+  void onClose() {
+    _autoSubmitWorker?.dispose();
+    // Delegate to the single guarded disposal path — never inline dispose here.
+    // See disposeControllers() Dartdoc and tec_lifecycle_rules.dart Rule 2.
+    disposeControllers();
     super.onClose();
   }
 
@@ -633,7 +660,7 @@ abstract class ItemSheetControllerBase extends GetxController
         final expiry = DateTime.tryParse(expiryRaw);
         if (expiry != null) parts.add('Exp: ${DateFormat('dd MMM yyyy').format(expiry)}');
       }
-      if (parts.isNotEmpty) batchInfoTooltip.value = parts.join('  •  ');
+      if (parts.isNotEmpty) batchInfoTooltip.value = parts.join('  \u2022  ');
 
       isBatchValid.value = true;
       await fetchBatchBalance();
