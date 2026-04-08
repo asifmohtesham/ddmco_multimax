@@ -293,6 +293,10 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             ),
 
             // ── List content ───────────────────────────────────────────────
+            // ✅ Outer Obx reads ONLY: isLoading, stockEntries.isEmpty, hasMore.
+            // activeFilters and searchQuery are now owned by _EmptyStockEntryState
+            // which has its own internal Obx — they no longer cause SliverList
+            // rebuilds on every search keystroke.
             Obx(() {
               if (controller.isLoading.value &&
                   controller.stockEntries.isEmpty) {
@@ -302,85 +306,11 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
               }
 
               if (controller.stockEntries.isEmpty) {
-                final bool hasFilters =
-                    controller.activeFilters.isNotEmpty ||
-                        controller.searchQuery.value.isNotEmpty;
-                String emptySubtitle;
-                if (hasFilters) {
-                  final parts = <String>[];
-                  final af = controller.activeFilters;
-                  if (af.containsKey('docstatus')) {
-                    const labels = {
-                      0: 'Draft',
-                      1: 'Submitted',
-                      2: 'Cancelled'
-                    };
-                    parts.add(
-                        'Status: ${labels[af['docstatus']] ?? af['docstatus']}');
-                  }
-                  if (af.containsKey('stock_entry_type')) {
-                    parts.add('Type: ${af['stock_entry_type']}');
-                  }
-                  if (controller.searchQuery.value.isNotEmpty) {
-                    parts.add('Search: "${controller.searchQuery.value}"');
-                  }
-                  emptySubtitle = parts.isNotEmpty
-                      ? 'No entries found for ${parts.join(' + ')}.'
-                      : 'Try adjusting your filters or search query.';
-                } else {
-                  emptySubtitle = 'Pull to refresh or create a new one.';
-                }
-
-                return SliverFillRemaining(
+                // ✅ Delegate to extracted widget — owns its own Obx for
+                //    activeFilters + searchQuery reads internally.
+                return const SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.inventory_2_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Entries'
-                                : 'No Stock Entries',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            emptySubtitle,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchStockEntries(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: _EmptyStockEntryState(),
                 );
               }
 
@@ -414,6 +344,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
                     final entry = controller.stockEntries[index];
 
+                    // ✅ Per-card Obx — correctly scoped to expandedEntryName
+                    //    and isLoadingDetails only. Unchanged.
                     return Obx(() {
                       final isExpanded =
                           controller.expandedEntryName.value == entry.name;
@@ -635,6 +567,101 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           textAlign: alignRight ? TextAlign.end : TextAlign.start,
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _EmptyStockEntryState
+//
+// Extracted from the outer list Obx() so that reads of activeFilters and
+// searchQuery are scoped entirely within this widget's own internal Obx().
+// The outer sliver Obx() now only tracks: isLoading, stockEntries.isEmpty,
+// hasMore — preventing SliverList rebuilds on every search keystroke.
+// ─────────────────────────────────────────────────────────────────────────────
+class _EmptyStockEntryState extends GetView<StockEntryController> {
+  const _EmptyStockEntryState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // ✅ Obx wraps ONLY the Center widget that reads activeFilters +
+    //    searchQuery. Layout ancestors (SliverFillRemaining, Center) are
+    //    static and never rebuilt by reactive changes.
+    return Center(
+      child: Obx(() {
+        final bool hasFilters = controller.activeFilters.isNotEmpty ||
+            controller.searchQuery.value.isNotEmpty;
+
+        String emptySubtitle;
+        if (hasFilters) {
+          final parts = <String>[];
+          final af = controller.activeFilters;
+          if (af.containsKey('docstatus')) {
+            const labels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
+            parts.add(
+                'Status: ${labels[af['docstatus']] ?? af['docstatus']}');
+          }
+          if (af.containsKey('stock_entry_type')) {
+            parts.add('Type: ${af['stock_entry_type']}');
+          }
+          if (controller.searchQuery.value.isNotEmpty) {
+            parts.add('Search: "${controller.searchQuery.value}"');
+          }
+          emptySubtitle = parts.isNotEmpty
+              ? 'No entries found for ${parts.join(' + ')}.'
+              : 'Try adjusting your filters or search query.';
+        } else {
+          emptySubtitle = 'Pull to refresh or create a new one.';
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                hasFilters
+                    ? Icons.filter_alt_off_outlined
+                    : Icons.inventory_2_outlined,
+                size: 64,
+                color: colorScheme.outlineVariant,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                hasFilters ? 'No Matching Entries' : 'No Stock Entries',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                emptySubtitle,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 24),
+              if (hasFilters)
+                FilledButton.tonalIcon(
+                  onPressed: controller.clearFilters,
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('Clear Filters'),
+                )
+              else
+                FilledButton.tonalIcon(
+                  onPressed: () =>
+                      controller.fetchStockEntries(clear: true),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reload'),
+                ),
+            ],
+          ),
+        );
+      }),
     );
   }
 }
