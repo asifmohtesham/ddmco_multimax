@@ -11,6 +11,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
@@ -134,8 +135,18 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     causing a compile error. Removed the two removeListener calls that
 ///     referenced it — they were no-ops anyway since addSheetListeners() never
 ///     wires _resetSaveStateOnEdit to sourceRackController / targetRackController.
+///
+/// feat(barcode): wire BarcodeAwareMixin — hardware + camera scan routing
+///   • `with BarcodeAwareMixin` added to the mixin chain.
+///   • onInit() calls initBarcodeListeners() after super.onInit() so both
+///     DataWedgeService and ScanService streams are subscribed.
+///   • _targetRackController / _targetRackFocusNode getters route targetRack
+///     scans to targetRackController / targetRackFocusNode.
+///   • onTargetRackScanned delegates to validateDualRack(barcode, false).
+///   • activeScanScopes keeps all four scopes (itemBarcode, batchNo,
+///     sourceRack, targetRack) — the full SE routing chain.
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin, AutoFillRackMixin
+    with SerialFieldMixin, AutoFillRackMixin, BarcodeAwareMixin
     implements DualRackDelegate {
 
   // ── Parent back-reference ──────────────────────────────────────────────────────
@@ -159,6 +170,31 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   MobileScannerController? get sheetScanController => null;
+
+  // ── BarcodeAwareMixin: lifecycle ───────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: dual-rack scan routing ──────────────────────────
+
+  /// Expose [targetRackController] so the mixin's focus-priority chain can
+  /// write scanned barcodes directly into the target-rack field.
+  @override
+  TextEditingController? get _targetRackController => targetRackController;
+
+  /// Expose [targetRackFocusNode] so the mixin can detect when the
+  /// target-rack field is focused and route the scan accordingly.
+  @override
+  FocusNode? get _targetRackFocusNode => targetRackFocusNode;
+
+  /// Validate the scanned barcode against the target warehouse rack list.
+  @override
+  void onTargetRackScanned(String barcode) {
+    validateDualRack(barcode, false);
+  }
 
   // ── RackFieldWithBrowseDelegate: picker flow (Commit 9) ──────────────────
 
@@ -342,6 +378,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override final RxBool isValidatingSourceRack  = false.obs;
 
   @override final TextEditingController targetRackController = TextEditingController();
+  @override final FocusNode targetRackFocusNode              = FocusNode();
   @override final RxBool isTargetRackValid       = false.obs;
   @override final RxBool isValidatingTargetRack  = false.obs;
 
@@ -427,525 +464,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// approach but expressed as a single override point.
   ///
   /// [super.disposeControllers] handles the base-class trio
-  /// (`batchController`, `rackController`, `qtyController`) through
-  /// its own idempotent + guarded try/catch blocks (Rule 2).
+  /// (batchController / rackController / qtyController).
   @override
   void disposeControllers() {
-    final src = sourceRackController;
-    final tgt = targetRackController;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try { src.dispose(); } catch (_) {}
-      try { tgt.dispose(); } catch (_) {}
-    });
+    try { sourceRackController.dispose(); } catch (_) {}
+    try { targetRackController.dispose(); } catch (_) {}
+    try { targetRackFocusNode.dispose();  } catch (_) {}
     super.disposeControllers();
   }
 
-  /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
-  /// [validateSheet] listeners from the dual-rack TECs owned by this subclass.
-  ///
-  /// ## Rule 3 — tec_lifecycle_rules.dart
-  ///
-  /// The base implementation only knows about [batchController],
-  /// [rackController], and [qtyController].  [sourceRackController] and
-  /// [targetRackController] are declared here and are invisible to the base,
-  /// so their listeners would otherwise survive across [prepareForItem] calls,
-  /// stacking duplicate [validateSheet] invocations on every keystroke.
-  ///
-  /// Note: _resetSaveStateOnEdit is file-private to
-  /// item_sheet_controller_base.dart and is never wired to sourceRackController
-  /// or targetRackController by addSheetListeners(), so no removeListener call
-  /// for it is needed or possible here.
   @override
-  void removeSheetListeners() {
-    try { sourceRackController.removeListener(validateSheet); } catch (_) {}
-    try { targetRackController.removeListener(validateSheet); } catch (_) {}
-    super.removeSheetListeners();
+  void onClose() {
+    super.onClose(); // base defers disposeControllers + cancels _dwSub/_scanSub
   }
-
-  // ── Derived / computed ────────────────────────────────────────────────────────
-  double? get _posSerialCeiling {
-    final serial = selectedSerial.value;
-    if (serial == null || serial.isEmpty) return null;
-    if (_parent.posUpload.value == null) return null;
-    final remaining = _parent.remainingQtyForSerial(serial);
-    return remaining == double.infinity ? null : remaining;
-  }
-
-  @override
-  String? get qtyInfoText {
-    final eff = effectiveMaxQty;
-    if (eff == double.infinity) return null;
-    return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
-  }
-
-  /// Effective qty ceiling for SE: min(batchBalance, rackBalance,
-  /// posSerialCeiling, mrQty) — whichever positive value is lowest.
-  ///
-  /// Returns [double.infinity] when no positive balance is available
-  /// (open-ended entry; balances may still be loading).
-  ///
-  /// Overrides [ItemSheetControllerBase.effectiveMaxQty].
-  @override
-  double get effectiveMaxQty {
-    double? ceil;
-
-    final serial = _posSerialCeiling;
-    if (serial != null && serial > 0) {
-      ceil = serial;
-    }
-
-    final batch = batchBalance.value;
-    if (batch > 0) {
-      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
-    }
-
-    final rack = rackBalance.value;
-    if (rack > 0) {
-      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
-    }
-
-    final mr = _mrQty;
-    if (mr != null && mr > 0) {
-      ceil = (ceil == null) ? mr : (mr < ceil ? mr : ceil);
-    }
-
-    return ceil ?? double.infinity;
-  }
-
-  @override
-  double get maxQty {
-    final eff = effectiveMaxQty;
-    return eff == double.infinity ? 0.0 : eff;
-  }
-
-  // ── State ──────────────────────────────────────────────────────────────────
-  var uom              = ''.obs;
-  var itemGroup        = ''.obs;
-  var isBatchedItem    = false.obs;
-  var isSerialisedItem = false.obs;
-  var isEditingExisting = false.obs;
-  String? editingOriginalBatch;
-
-  // MR-link state
-  String? _mrName;
-  String? _mrItemName;
-  double? _mrQty;
-  String? _mrUom;
-  String? _mrBatch;
-
-  // ── Whether this SE type requires a source rack ──────────────────────────
-  bool get _requiresSourceRack {
-    final t = _parent.selectedStockEntryType.value;
-    return t == 'Material Issue' ||
-        t == 'Material Transfer' ||
-        t == 'Material Transfer for Manufacture';
-  }
-
-  // ── Sheet-valid gate ────────────────────────────────────────────────────────
-  @override
-  void validateSheet() {
-    final qty  = double.tryParse(qtyController.text);
-    final ceil = effectiveMaxQty;
-
-    final rackOk   = !_requiresSourceRack || isSourceRackValid.value;
-    final ceilOk   = ceil == double.infinity || (qty != null && qty <= ceil);
-    final qtyOk    = qty != null && qty > 0;
-
-    // ── isQtyValid / qtyError (Commit 6) ─────────────────────────────────
-    if (!qtyOk) {
-      isQtyValid.value = false;
-      qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
-    } else if (!ceilOk) {
-      isQtyValid.value = false;
-      final ceilStr = ceil.toStringAsFixed(
-          ceil.truncateToDouble() == ceil ? 0 : 2);
-      qtyError.value = 'Qty cannot exceed $ceilStr';
-    } else {
-      isQtyValid.value = true;
-      qtyError.value   = '';
-    }
-
-    final valid = isBatchValid.value && qtyOk && ceilOk && rackOk;
-    isSheetValid.value = valid;
-
-    // ── Live remaining via SerialFieldMixin ───────────────────────────────
-    // computeLiveRemaining handles: no serial selected, no POS Upload loaded,
-    // infinity cap (badge hidden), edit-mode double-count prevention via
-    // savedQtyForRow(), and negative over-allocation values.
-    computeLiveRemaining(
-      currentTypedQty: qty ?? 0.0,
-      editingRowId:    editingItemName.value,
-    );
-
-    final parts = <String>[];
-    final serial = _posSerialCeiling;
-    if (serial != null) parts.add('Serial: ${serial.toStringAsFixed(0)}');
-    final batchBal = batchBalance.value;
-    if (batchBal > 0) parts.add('Batch: ${batchBal.toStringAsFixed(0)}');
-    final rackBal = rackBalance.value;
-    if (rackBal > 0) parts.add('Rack: ${rackBal.toStringAsFixed(0)}');
-    final mr = _mrQty;
-    if (mr != null && mr > 0) parts.add('MR: ${mr.toStringAsFixed(0)}');
-    qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  \u00b7  ');
-  }
-
-  // ── adjustQty ───────────────────────────────────────────────────────────────────
-  /// Increments or decrements qty by [delta], clamped to
-  /// [0.0, effectiveMaxQty] (Commit 6: was clamped to double.infinity).
-  @override
-  void adjustQty(int delta) {
-    final current = double.tryParse(qtyController.text) ?? 0.0;
-    final next    = (current + delta).clamp(0.0, effectiveMaxQty);
-    qtyController.text = next.toStringAsFixed(
-        next.truncateToDouble() == next ? 0 : 2);
-    validateSheet();
-  }
-
-  // ── deleteCurrentItem ───────────────────────────────────────────────────────────
-  @override
-  void deleteCurrentItem() {
-    final rowId = editingItemName.value;
-    if (rowId == null) return;
-    final item = _parent.stockEntry.value?.items
-        .firstWhereOrNull((i) => i.name == rowId);
-    if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
-  }
-
-  // ── MR link ───────────────────────────────────────────────────────────────────
-  void linkMrItem({
-    required String mrName,
-    required String itemName,
-    required String uom,
-    required double qty,
-    String? batchNo,
-  }) {
-    _mrName     = mrName;
-    _mrItemName = itemName;
-    _mrQty      = qty;
-    _mrUom      = uom;
-    _mrBatch    = batchNo;
-  }
-
-  void clearMrLink() {
-    _mrName = _mrItemName = _mrUom = _mrBatch = null;
-    _mrQty  = null;
-  }
-
-  String? get mrName     => _mrName;
-  String? get mrItemName => _mrItemName;
-  double? get mrQty      => _mrQty;
-  String? get mrUom      => _mrUom;
-  String? get mrBatch    => _mrBatch;
-
-  // ── Init helpers ──────────────────────────────────────────────────────────────
-  void initForItem({
-    required String code,
-    required String name,
-    required String uomValue,
-    required String group,
-    required bool   hasBatch,
-    required bool   hasSerial,
-  }) {
-    itemCode.value         = code;
-    itemName.value         = name;
-    uom.value              = uomValue;
-    itemGroup.value        = group;
-    isBatchedItem.value    = hasBatch;
-    isSerialisedItem.value = hasSerial;
-  }
-
-  /// Resets all sheet state for a new (add-mode) item session.
-  ///
-  /// ## isClosed guard
-  ///
-  /// Returns immediately when [isClosed] is true.  This prevents
-  /// "Cannot use a disposed controller" and "Cannot write to a closed
-  /// observable" exceptions on racing async paths where [prepareForItem]
-  /// is still executing after the sheet has been dismissed and GetX has
-  /// already called [onClose] on this controller.
-  void initForNewItem() {
-    if (isClosed) return;
-    editingItemName.value    = null;
-    isEditingExisting.value  = false;
-    editingOriginalBatch     = null;
-    // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
-    docStatus.value          = 0;
-    clearMrLink();
-    batchController.clear();
-    rackController.clear();
-    qtyController.clear();
-    sourceRackController.clear();
-    targetRackController.clear();
-    isBatchValid.value    = false;
-    isBatchReadOnly.value = false;
-    batchError.value      = '';
-    batchInfoTooltip.value = null;
-    isRackValid.value     = false;
-    rackError.value       = '';
-    batchBalance.value    = 0.0;
-    rackBalance.value     = 0.0;
-    liveRemaining.value   = 0.0;
-    isSheetValid.value    = false;
-    isQtyValid.value      = false;
-    qtyError.value        = '';
-    isSourceRackValid.value      = false;
-    isValidatingSourceRack.value = false;
-    isTargetRackValid.value      = false;
-    isValidatingTargetRack.value = false;
-    isLoadingRackBalance.value   = false;
-    _batchWiseHistory.clear();
-    // Reset serial selection so a freshly opened sheet never inherits the
-    // serial from a previous sheet session.
-    selectedSerial.value = null;
-  }
-
-  /// Populates sheet state from an existing [StockEntryItem] (edit mode).
-  ///
-  /// ## isClosed guard
-  ///
-  /// Returns immediately when [isClosed] is true.  Without this guard,
-  /// a racing dismiss between the `await ApiProvider().getDocument()`
-  /// call in [initialise] and this method's synchronous TEC/Rx writes
-  /// would throw "Cannot use a disposed controller".  The
-  /// `addPostFrameCallback` closures below already carry `if (!isClosed)`
-  /// individually; this top-level guard makes the entire method safe.
-  void _loadExistingItem(
-    StockEntryItem item,
-    List<Map<String, dynamic>> mrReferenceItems,
-  ) {
-    if (isClosed) return;
-    isEditingExisting.value = true;
-    editingOriginalBatch    = item.batchNo;
-    editingItemName.value   = item.name;
-
-    // fix(docstatus): docstatus belongs to the parent document, not the item
-    // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
-    docStatus.value = _parent.stockEntry.value?.docstatus ?? 0;
-
-    batchController.text        = item.batchNo ?? '';
-    rackController.text         = item.rack    ?? '';
-    sourceRackController.text   = item.rack    ?? '';
-    targetRackController.text   = item.toRack  ?? '';
-    qtyController.text          = item.qty.toString();
-
-    if (item.customInvoiceSerialNumber != null &&
-        item.customInvoiceSerialNumber != '0') {
-      selectedSerial.value = item.customInvoiceSerialNumber;
-    }
-
-    final mrMatch = mrReferenceItems.firstWhereOrNull(
-      (r) => r['item_code'] == item.itemCode,
-    );
-    if (mrMatch != null) {
-      linkMrItem(
-        mrName:   mrMatch['parent']    as String? ?? '',
-        itemName: mrMatch['item_name'] as String? ?? '',
-        qty:      (mrMatch['qty'] as num?)?.toDouble() ?? 0.0,
-        uom:      mrMatch['uom']       as String? ?? '',
-        batchNo:  mrMatch['batch_no']  as String?,
-      );
-    }
-
-    if (item.batchNo != null && item.batchNo!.isNotEmpty) {
-      validateBatchOnInit(item.batchNo!);
-    }
-    if (item.rack != null && item.rack!.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!isClosed) validateDualRack(item.rack!, true);
-      });
-    }
-    if (item.toRack != null && item.toRack!.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!isClosed) validateDualRack(item.toRack!, false);
-      });
-    }
-  }
-
-  /// Prepares this controller for a new or existing item sheet session.
-  ///
-  /// ## Rule 3 — tec_lifecycle_rules.dart
-  ///
-  /// [removeSheetListeners] is called **before** [addSheetListeners] so
-  /// that any listeners wired in a previous session are removed before the
-  /// new session registers its own copies.  Without this, each successive
-  /// call to `prepareForItem` on a reused controller instance stacks
-  /// another duplicate of every listener onto the same TECs, causing:
-  ///   • Redundant `validateSheet()` calls on every keystroke.
-  ///   • Stale listeners that fire after the controller is disposed,
-  ///     potentially crashing in a future session.
-  Future<void> prepareForItem({
-    required String itemCode,
-    required String itemName,
-    required String uom,
-    required String itemGroup,
-    required bool   hasBatch,
-    required bool   hasSerial,
-    StockEntryItem? existingItem,
-    List<Map<String, dynamic>> mrReferenceItems = const [],
-    String? scannedBatch,
-  }) async {
-    initForItem(
-      code:      itemCode,
-      name:      itemName,
-      uomValue:  uom,
-      group:     itemGroup,
-      hasBatch:  hasBatch,
-      hasSerial: hasSerial,
-    );
-
-    if (existingItem != null) {
-      _loadExistingItem(existingItem, mrReferenceItems);
-    } else {
-      initForNewItem();
-      if (scannedBatch != null && scannedBatch.isNotEmpty) {
-        batchController.text = scannedBatch;
-        validateBatchOnInit(scannedBatch);
-      }
-    }
-
-    // Rule 3 (tec_lifecycle_rules.dart): remove prior-session listeners
-    // before registering new ones to prevent accumulation.
-    removeSheetListeners();
-    addSheetListeners();
-    snapshotState();
-    // captureSerialSnapshot() is called inside snapshotState() via the
-    // SerialFieldMixin hook — baseline for isSerialDirty dirty-detection.
-    captureSerialSnapshot();
-  }
-
-  Future<void> initialise({
-    required StockEntryFormController parent,
-    required String code,
-    required String name,
-    String variantOf          = '',
-    String itemName           = '',
-    String? batchNo,
-    StockEntryItem? editingItem,
-    List<Map<String, dynamic>> mrReferenceItems = const [],
-    String scannedEan8        = '',
-  }) async {
-    _parent = parent;
-
-    String uomValue   = 'Nos';
-    String group      = '';
-    bool   hasBatch   = false;
-    bool   hasSerial  = false;
-
-    try {
-      final meta = await ApiProvider().getDocument('Item', code);
-      if (meta.statusCode == 200 && meta.data['data'] != null) {
-        final d  = meta.data['data'] as Map<String, dynamic>;
-        uomValue  = d['stock_uom']       as String? ?? 'Nos';
-        group     = d['item_group']      as String? ?? '';
-        hasBatch  = (d['has_batch_no']   as int?)    == 1;
-        hasSerial = (d['has_serial_no']  as int?)    == 1;
-      }
-    } catch (e) {
-      log('[SE-Item] initialise: failed to fetch item meta: $e', name: 'SE-Item');
-    }
-
-    await prepareForItem(
-      itemCode:         code,
-      itemName:         itemName,
-      uom:              uomValue,
-      itemGroup:        group,
-      hasBatch:         hasBatch,
-      hasSerial:        hasSerial,
-      existingItem:     editingItem,
-      mrReferenceItems: mrReferenceItems,
-      scannedBatch:     batchNo,
-    );
-
-    if (scannedEan8.isNotEmpty) currentScannedEan = scannedEan8;
-
-    unawaited(_preloadRackStockMap());
-  }
-
-  Future<void> _preloadRackStockMap() async {
-    try {
-      final rows = await ApiProvider().getStockBalanceWithDimension(
-        itemCode:  itemCode.value,
-        warehouse: resolvedWarehouse,
-      );
-      final map = <String, double>{};
-      for (final r in rows) {
-        final rack = r['custom_rack'] as String?;
-        final qty  = (r['qty'] as num?)?.toDouble() ?? 0.0;
-        if (rack != null && rack.isNotEmpty) map[rack] = qty;
-      }
-      seedRackStockMap(map);
-    } catch (e) {
-      log('[SE-Item] _preloadRackStockMap error: $e', name: 'SE-Item');
-    }
-  }
-
-  // ── submit ────────────────────────────────────────────────────────────────────
-  @override
-  Future<void> submit() async {
-    final qty = double.tryParse(qtyController.text);
-    if (qty == null || qty <= 0) throw Exception('Invalid quantity');
-
-    final batch      = isBatchValid.value ? batchController.text : null;
-    final srcRack    = isSourceRackValid.value ? sourceRackController.text : null;
-    final tgtRack    = isTargetRackValid.value ? targetRackController.text : null;
-    final serial     = selectedSerial.value;
-
-    final sWh = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value;
-    final tWh = itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value;
-
-    final rowId = editingItemName.value;
-    if (rowId != null) {
-      _parent.updateItemLocally(
-        rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
-      );
-    } else {
-      _parent.addItemLocally(
-        qty, batch, srcRack, tgtRack, sWh, tWh, serial,
-      );
-    }
-  }
-
-  // ── validateRack override (uses rackStockMap cache) ──────────────────────
-  @override
-  Future<void> validateRack(String rack) async {
-    if (rack.isEmpty) { resetRack(); return; }
-    isValidatingRack.value = true;
-    rackError.value        = '';
-    isRackValid.value      = false;
-    try {
-      if (_rackStockMap.containsKey(rack)) {
-        rackBalance.value = _rackStockMap[rack]!;
-      } else {
-        await fetchRackBalance(rack);
-      }
-      isRackValid.value = true;
-    } catch (e) {
-      rackError.value = 'Rack validation error: $e';
-    } finally {
-      isValidatingRack.value = false;
-    }
-  }
-
-  void seedRackStockMap(Map<String, double> map) {
-    _rackStockMap
-      ..clear()
-      ..addAll(map);
-  }
-
-  void applyRackScan(String rackId) {
-    if (sourceRackController.text.isEmpty) {
-      sourceRackController.text = rackId;
-      validateDualRack(rackId, true);
-    } else {
-      targetRackController.text = rackId;
-      validateDualRack(rackId, false);
-    }
-  }
-
-  bool get needsRackScanFallback => sourceRackController.text.isEmpty;
-
-  // ── Snackbar helpers ──────────────────────────────────────────────────────────
-  void showError(String msg)   => GlobalSnackbar.error(message: msg);
-  void showSuccess(String msg) => GlobalSnackbar.success(message: msg);
 }

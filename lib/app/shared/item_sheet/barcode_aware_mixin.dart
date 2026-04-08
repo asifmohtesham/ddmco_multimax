@@ -2,10 +2,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 import 'item_sheet_controller_base.dart';
 import 'scan_scope.dart';
 
-/// Centralises [DataWedgeService] scan routing for all
+/// Centralises [DataWedgeService] + [ScanService] scan routing for all
 /// [ItemSheetControllerBase] subclasses.
 ///
 /// ## Applying the mixin
@@ -20,6 +21,16 @@ import 'scan_scope.dart';
 ///   }
 /// }
 /// ```
+///
+/// ## Two scan sources
+///
+/// | Source | Service | Use-case |
+/// |---|---|---|
+/// | DataWedge | [DataWedgeService] | Zebra/Honeywell hardware trigger |
+/// | Camera | [ScanService] | In-app MobileScanner camera scan |
+///
+/// Both streams are merged into the same [_onRaw] dispatch handler so
+/// field-routing, deduplication, and `isScanning` pulse are source-agnostic.
 ///
 /// ## Routing priority
 ///
@@ -42,9 +53,11 @@ import 'scan_scope.dart';
 ///
 /// DataWedge hardware scanners commonly fire 2–3 duplicate events per
 /// physical trigger pull within a 300 ms window. The mixin discards
-/// identical values arriving within that window.
+/// identical values arriving within that window — applies equally to
+/// both DataWedge and ScanService events.
 mixin BarcodeAwareMixin on ItemSheetControllerBase {
   StreamSubscription<String>? _dwSub;
+  StreamSubscription<String>? _scanSub;
 
   String? _lastRaw;
   DateTime? _lastTime;
@@ -72,12 +85,19 @@ mixin BarcodeAwareMixin on ItemSheetControllerBase {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
 
-  /// Subscribe to [DataWedgeService]. Call from [onInit] after `super.onInit()`.
+  /// Subscribe to [DataWedgeService] and [ScanService].
+  /// Call from [onInit] after `super.onInit()`.
   ///
-  /// Safe to call multiple times — cancels the previous subscription first.
+  /// Safe to call multiple times — cancels previous subscriptions first.
   void initBarcodeListeners() {
     _dwSub?.cancel();
+    _scanSub?.cancel();
+
     _dwSub = Get.find<DataWedgeService>()
+        .barcodeStream
+        .listen(_onRaw);
+
+    _scanSub = Get.find<ScanService>()
         .barcodeStream
         .listen(_onRaw);
   }
@@ -86,6 +106,8 @@ mixin BarcodeAwareMixin on ItemSheetControllerBase {
   void onClose() {
     _dwSub?.cancel();
     _dwSub = null;
+    _scanSub?.cancel();
+    _scanSub = null;
     super.onClose();
   }
 
