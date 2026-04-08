@@ -125,14 +125,22 @@ class DeliveryNoteFormController extends GetxController
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     disposeFeedback();
-    log('[DN:onClose] _scanWorker disposed', name: 'DN');
-    barcodeController.dispose();
-    scrollController.dispose();
+
+    // Capture before super.onClose() so references survive.
+    final bc = barcodeController;
+    final sc = scrollController;
+
     super.onClose();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      bc.dispose();
+      sc.dispose();
+    });
   }
 
   // ── Raw scan entry point ──────────────────────────────────────────────────
   void _onRawScan(String code) {
+    if (isClosed) return;                               // ← add guard
     if (code.isEmpty) return;
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
     final clean = code.trim();
