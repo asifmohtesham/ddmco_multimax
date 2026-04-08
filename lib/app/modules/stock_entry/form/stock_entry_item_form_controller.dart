@@ -431,8 +431,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// its own idempotent + guarded try/catch blocks (Rule 2).
   @override
   void disposeControllers() {
-    try { sourceRackController.dispose(); } catch (_) {}
-    try { targetRackController.dispose(); } catch (_) {}
+    final src = sourceRackController;
+    final tgt = targetRackController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try { src.dispose(); } catch (_) {}
+      try { tgt.dispose(); } catch (_) {}
+    });
     super.disposeControllers();
   }
 

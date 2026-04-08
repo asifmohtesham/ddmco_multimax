@@ -292,17 +292,7 @@ class StockEntryFormController extends GetxController
     ever(selectedToWarehouse,      (_) => _markDirty());
     ever(selectedStockEntryType,   (_) => _markDirty());
 
-    customReferenceNoController.addListener(() {
-      final current = customReferenceNoController.text;
-      if (current != _initialReferenceNo) _markDirty();
-      if (entrySource == StockEntrySource.manual &&
-          selectedStockEntryType.value == 'Material Issue' &&
-          current.isNotEmpty) {
-        if (current.startsWith('KX') || current.startsWith('MX')) {
-          fetchPosUpload(current);
-        }
-      }
-    });
+    customReferenceNoController.addListener(_onReferenceNoChanged);
   }
 
   @override
@@ -310,13 +300,29 @@ class StockEntryFormController extends GetxController
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
+    _scanWorker?.dispose();                    // cancel the ever() Worker
     final bcc = barcodeController;
     final crc = customReferenceNoController;
+    final sc  = scrollController;
+    customReferenceNoController.removeListener(_onReferenceNoChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      bcc.dispose();
-      crc.dispose();
+      try { bcc.dispose(); } catch (_) {}
+      try { crc.dispose(); } catch (_) {}
+      try { sc.dispose();  } catch (_) {}      // scrollController was never disposed
     });
     super.onClose();
+  }
+
+  void _onReferenceNoChanged() {
+    final current = customReferenceNoController.text;
+    if (current != _initialReferenceNo) _markDirty();
+    if (entrySource == StockEntrySource.manual &&
+        selectedStockEntryType.value == 'Material Issue' &&
+        current.isNotEmpty) {
+      if (current.startsWith('KX') || current.startsWith('MX')) {
+        fetchPosUpload(current);
+      }
+    }
   }
 
   // ── Scan behaviour ───────────────────────────────────────────────────────────────────────────────────
@@ -1038,7 +1044,9 @@ class StockEntryFormController extends GetxController
       );
     } finally {
       isItemSheetOpen.value = false;
-      Get.delete<StockEntryItemFormController>();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.delete<StockEntryItemFormController>();
+      });
     }
   }
 
