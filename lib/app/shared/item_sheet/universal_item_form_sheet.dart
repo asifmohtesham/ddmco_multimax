@@ -5,7 +5,20 @@ import 'item_sheet_controller_base.dart';
 
 /// Universal wrapper around [GlobalItemFormSheet] for all DocType item sheets.
 ///
-/// ## Qty wiring (Commit 7)
+/// ## Scan freeze guard (Commit 7)
+///
+/// [GlobalItemFormSheet] is now wrapped in [AbsorbPointer] keyed to
+/// [ItemSheetControllerBase.isScanning].  While a DataWedge hardware scan
+/// event is being processed (`isScanning == true`), all pointer events are
+/// discarded so that mid-scan taps cannot corrupt partially-written field
+/// text.  [AnimatedOpacity] dims the sheet to 0.7 to give visual feedback
+/// that a scan is in flight.
+///
+/// Both `absorbing` and `opacity` read `controller.isScanning.value`, which
+/// is already unwrapped inside the existing [Obx] builder — no additional
+/// reactive wrapper is needed.
+///
+/// ## Qty wiring (Commit 6)
 ///
 /// The five raw qty params that previously bridged [ItemSheetControllerBase]
 /// to [GlobalItemFormSheet] have been removed:
@@ -60,56 +73,65 @@ class UniversalItemFormSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final isEditing = controller.editingItemName.value != null;
+      final scanning  = controller.isScanning.value;
 
-      return GlobalItemFormSheet(
-        key: const ValueKey('universal_item_sheet'),
+      return AbsorbPointer(
+        absorbing: scanning,
+        child: AnimatedOpacity(
+          opacity:  scanning ? 0.7 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: GlobalItemFormSheet(
+            key: const ValueKey('universal_item_sheet'),
 
-        // ── Identity ────────────────────────────────────────────────────────────
-        formKey:          controller.formKey,
-        scrollController: scrollController,
-        title:            isEditing ? 'Update Item' : 'Add Item',
-        itemCode:         controller.itemCode.value,
-        itemName:         controller.itemName.value,
-        itemSubtext:      itemSubtext,
+            // ── Identity ──────────────────────────────────────────────────────
+            formKey:          controller.formKey,
+            scrollController: scrollController,
+            title:            isEditing ? 'Update Item' : 'Add Item',
+            itemCode:         controller.itemCode.value,
+            itemName:         controller.itemName.value,
+            itemSubtext:      itemSubtext,
 
-        // ── Metadata footer ───────────────────────────────────────────────
-        owner:      controller.itemOwner.value,
-        creation:   controller.itemCreation.value,
-        modified:   controller.itemModified.value,
-        modifiedBy: controller.itemModifiedBy.value,
+            // ── Metadata footer ───────────────────────────────────────────────
+            owner:      controller.itemOwner.value,
+            creation:   controller.itemCreation.value,
+            modified:   controller.itemModified.value,
+            modifiedBy: controller.itemModifiedBy.value,
 
-        // ── Qty ──────────────────────────────────────────────────────────────────
-        // controller implements QtyFieldWithPlusMinusDelegate (which extends
-        // QtyFieldDelegate) — pass it directly.  SharedQtyField reads all
-        // reactive qty state (isQtyReadOnly, effectiveMaxQty, qtyError,
-        // qtyInfoText, qtyInfoTooltip, adjustQty) from the delegate's Rx fields
-        // without any unwrapping needed here.
-        qtyDelegate:     controller,
-        qtyAccentColor:  controller.accentColor,
+            // ── Qty ───────────────────────────────────────────────────────────
+            // controller implements QtyFieldWithPlusMinusDelegate (which extends
+            // QtyFieldDelegate) — pass it directly.  SharedQtyField reads all
+            // reactive qty state (isQtyReadOnly, effectiveMaxQty, qtyError,
+            // qtyInfoText, qtyInfoTooltip, adjustQty) from the delegate's Rx
+            // fields without any unwrapping needed here.
+            qtyDelegate:    controller,
+            qtyAccentColor: controller.accentColor,
 
-        // ── Save / delete ────────────────────────────────────────────────
-        isSaveEnabledRx:  controller.isSheetValid,
-        isSaveEnabled:    isSaveEnabled,
-        // Unwrap RxBool → bool.
-        isLoading:        controller.isSheetLoading.value,
-        // Group C fix: forward the controller's live save-button state machine
-        // so _AnimatedSaveButton transitions correctly through loading / success
-        // / error states.  Without this the button observed a dead idle.obs.
-        saveButtonState:  controller.saveButtonState,
-        onSubmit:         onSubmit,
-        onDelete: isEditing
-            ? () => controller.deleteCurrentItem()
-            : null,
+            // ── Save / delete ─────────────────────────────────────────────────
+            isSaveEnabledRx:  controller.isSheetValid,
+            isSaveEnabled:    isSaveEnabled,
+            // Unwrap RxBool → bool.
+            isLoading:        controller.isSheetLoading.value,
+            // Group C fix: forward the controller's live save-button state
+            // machine so _AnimatedSaveButton transitions correctly through
+            // loading / success / error states.  Without this the button
+            // observed a dead idle.obs and never transitioned.
+            saveButtonState:  controller.saveButtonState,
+            onSubmit:         onSubmit,
+            onDelete: isEditing
+                ? () => controller.deleteCurrentItem()
+                : null,
 
-        // ── Scan footer ─────────────────────────────────────────────────
-        onScan:         onScan,
-        // MobileScannerController is not a TextEditingController; pass null.
-        // Sheets that embed a live camera scanner wire it inside customFields.
-        scanController: null,
-        isScanning:     controller.isScanning.value,
+            // ── Scan footer ───────────────────────────────────────────────────
+            onScan:         onScan,
+            // MobileScannerController is not a TextEditingController; pass null.
+            // Sheets that embed a live camera scanner wire it inside customFields.
+            scanController: null,
+            isScanning:     scanning,
 
-        // ── DocType-specific fields ───────────────────────────────────────
-        customFields: customFields,
+            // ── DocType-specific fields ───────────────────────────────────────
+            customFields: customFields,
+          ),
+        ),
       );
     });
   }
