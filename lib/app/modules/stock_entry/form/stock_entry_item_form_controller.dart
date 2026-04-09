@@ -145,6 +145,16 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • onTargetRackScanned delegates to validateDualRack(barcode, false).
 ///   • activeScanScopes keeps all four scopes (itemBarcode, batchNo,
 ///     sourceRack, targetRack) — the full SE routing chain.
+///
+/// feat(barcode): implement onItemBarcodeScanned — SE item lookup on scan
+///   • Overrides BarcodeAwareMixin.onItemBarcodeScanned(String barcode) to
+///     store the raw EAN in currentScannedEan and delegate item lookup to
+///     _parent.onItemBarcodeScanned(barcode), which is the existing parent-
+///     level handler responsible for resolving the barcode to an itemCode
+///     and calling prepareForItem() on this controller.
+///   • currentScannedEan is set before the parent call so that any sync
+///     path inside the parent that reads currentScannedEan (e.g. to open a
+///     variant picker) sees the correct value immediately.
 class StockEntryItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin, BarcodeAwareMixin
     implements DualRackDelegate {
@@ -176,6 +186,23 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void onInit() {
     super.onInit();
     initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: item barcode scan ───────────────────────────────
+
+  /// Called by [BarcodeAwareMixin._applyToScope] when a scan is routed to
+  /// [ScanScope.itemBarcode] (Priority 1 focus win, Priority 2 first-empty,
+  /// or Priority 3 fallback).
+  ///
+  /// Stores the raw EAN/barcode in [currentScannedEan] so the parent can
+  /// read it synchronously during variant resolution, then delegates to
+  /// [_parent.onItemBarcodeScanned] to run the full item-lookup flow
+  /// (API call → prepareForItem).
+  @override
+  void onItemBarcodeScanned(String barcode) {
+    if (isClosed) return;
+    currentScannedEan = barcode;
+    _parent.onItemBarcodeScanned(barcode);
   }
 
   // ── BarcodeAwareMixin: dual-rack scan routing ──────────────────────────
