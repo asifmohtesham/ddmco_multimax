@@ -127,6 +127,9 @@ import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dar
 /// |                             | [ItemSheetControllerBase] adopts interface with 4 overrides.     |
 /// | Commit 3 (Dartdoc)          | Expand class-level Dartdoc: mode table, parameter table,         |
 /// |                             | validateSheet cross-ref, balance source example, changelog table.|
+/// | Commit 4                    | _SimpleField wires c.batchFocusNode into TextField so            |
+/// |                             | BarcodeAwareMixin routes scans to ScanScope.batchNo when         |
+/// |                             | the batch field has keyboard focus.                              |
 class SharedBatchField extends StatelessWidget {
   final BatchNoFieldWithBrowseDelegate c;
   final Color  accentColor;
@@ -283,6 +286,10 @@ class _SimpleField extends StatelessWidget {
             color: borderColor,
             child: TextField(
               controller: c.batchController,
+              // Commit 4: wire batchFocusNode so BarcodeAwareMixin._focusedScope
+              // detects focus → ScanScope.batchNo and routes scans directly
+              // into the batch field when it has keyboard focus.
+              focusNode:  c.batchFocusNode,
               readOnly:   isReadOnly,
               style:      theme.textTheme.bodyMedium,
               textInputAction: TextInputAction.done,

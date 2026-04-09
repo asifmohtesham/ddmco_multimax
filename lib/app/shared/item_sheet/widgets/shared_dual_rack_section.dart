@@ -23,6 +23,15 @@ import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 /// [StockEntryItemFormController] implements [DualRackDelegate] additively;
 /// all existing call sites (SE form) compile without change.
 ///
+/// ## FocusNode wiring (Commit 4)
+///
+/// [DualRackDelegate] now exposes [DualRackDelegate.sourceFocusNode] and
+/// [DualRackDelegate.targetFocusNode].  Both are forwarded into their
+/// respective [ValidatedRackField] calls so that
+/// [BarcodeAwareMixin._focusedScope] can detect which rack field has
+/// keyboard focus and route scans to the correct [ScanScope] without
+/// casting to the concrete SE controller.
+///
 /// ## Picker lifecycle
 /// [_openRackPicker] registers a scoped [RackPickerController] with a unique
 /// tag, fires [RackPickerController.load] in the background, presents
@@ -39,6 +48,9 @@ import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
 ///      DualRackDelegate intentionally does not expose rackStockMap; the
 ///      live batch-ledger API inside RackPickerController.load() is the
 ///      authoritative source, making the snapshot fallback redundant here.
+/// Commit 4 (build-3): wire sourceFocusNode / targetFocusNode into
+///      ValidatedRackField calls — closes the focus-routing gap for SE
+///      dual-rack sheets.
 class SharedDualRackSection extends StatelessWidget {
   final DualRackDelegate controller;
 
@@ -132,6 +144,9 @@ class SharedDualRackSection extends StatelessWidget {
             child: Obx(() => ValidatedRackField(
                   key:            const ValueKey('source_rack_field'),
                   textController: controller.sourceRackController,
+                  // Commit 4: wire sourceFocusNode so BarcodeAwareMixin
+                  // _focusedScope detects focus → ScanScope.sourceRack.
+                  focusNode:      controller.sourceFocusNode,
                   isValid:        controller.isSourceRackValid.value,
                   isValidating:   controller.isValidatingSourceRack.value,
                   label:          'Source Rack',
@@ -167,6 +182,9 @@ class SharedDualRackSection extends StatelessWidget {
             child: Obx(() => ValidatedRackField(
                   key:            const ValueKey('target_rack_field'),
                   textController: controller.targetRackController,
+                  // Commit 4: wire targetFocusNode so BarcodeAwareMixin
+                  // _focusedScope detects focus → ScanScope.targetRack.
+                  focusNode:      controller.targetFocusNode,
                   isValid:        controller.isTargetRackValid.value,
                   isValidating:   controller.isValidatingTargetRack.value,
                   label:          'Target Rack',

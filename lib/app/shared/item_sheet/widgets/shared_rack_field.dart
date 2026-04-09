@@ -81,6 +81,8 @@ import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.d
 /// DN-10: add balanceOverride callback — parity with SharedBatchField P2-1.
 ///   Callers that need a live RxDouble balance (e.g. DeliveryNote rackBalance)
 ///   pass balanceOverride; all existing callers fall back to _rackBalance().
+/// Commit 4: _EditModeRack wires c.rackFocusNode into ValidatedRackField
+///   so BarcodeAwareMixin._focusedScope detects focus in edit-mode sheets.
 class SharedRackField extends StatelessWidget {
   final RackFieldWithBrowseDelegate c;
   final Color  accentColor;
@@ -244,6 +246,9 @@ class _SimpleRack extends StatelessWidget {
 // (unchanged from Commit-E).
 //
 // DN-10: rackBal now respects balanceOverride, matching _SimpleRack.
+//
+// Commit 4: c.rackFocusNode forwarded to ValidatedRackField so
+// BarcodeAwareMixin._focusedScope detects focus in edit-mode sheets.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
   const _EditModeRack(this.w);
@@ -260,7 +265,7 @@ class _EditModeRack extends StatelessWidget {
 
       // Derive the border accent colour to match _SimpleRack behaviour:
       // green when valid, error colour on error, accent otherwise.
-      final theme = Theme.of(context);
+      final theme       = Theme.of(context);
       final hasError    = c.rackError.value.isNotEmpty;
       final borderColor = hasError
           ? theme.colorScheme.error
@@ -271,28 +276,24 @@ class _EditModeRack extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Bug 2 fix: wrap ValidatedRackField in buildInputGroup so the
-          // section label (w.label, e.g. 'Rack' / 'Source Rack') is
-          // rendered above the field, consistent with every other
-          // SharedXxxField in the sheet.
           GlobalItemFormSheet.buildInputGroup(
             label: w.label,
             color: borderColor,
             child: ValidatedRackField(
-              key:            const ValueKey('shared_rack_edit'),
               textController: c.rackController,
+              // Commit 4: wire FocusNode so BarcodeAwareMixin._focusedScope
+              // can detect focus → ScanScope.sourceRack in edit-mode sheets.
+              focusNode:      c.rackFocusNode,
               isValid:        isValid,
               isValidating:   validating,
-              label:          w.hint,   // inner field hint/label
+              label:          w.hint,
               color:          w.accentColor,
               onReset:        c.resetRack,
               onValidate:     () => c.validateRack(c.rackController.text),
-              onSubmitted:    (val) => c.validateRack(val),
+              onSubmitted:    c.validateRack,
               onPickerTap:    w.onPickerTap,
             ),
           ),
-          // DN-9: forceShow: validating || isValid — chip stays visible after
-          // validation completes even when rackBalance is momentarily 0.0.
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,

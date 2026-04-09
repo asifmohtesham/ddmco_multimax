@@ -29,6 +29,14 @@ import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart'
 /// It never reads from a controller, never modifies state, and never owns
 /// a [TextEditingController] lifecycle.
 ///
+/// ## FocusNode (Commit 4)
+///
+/// The optional [focusNode] param is forwarded directly to
+/// [ValidatedFieldWidget], which passes it to the inner [TextFormField].
+/// Callers should pass the controller's FocusNode so that
+/// [BarcodeAwareMixin._focusedScope] can detect which rack field has
+/// keyboard focus and route scans accordingly.
+///
 /// ## Picker integration
 ///
 /// Pass [onPickerTap] to show a rack-picker icon button (shelves icon) in
@@ -50,6 +58,7 @@ import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart'
 /// Obx(() => ValidatedRackField(
 ///   key:            const ValueKey('rack_dn'),
 ///   textController: controller.rackController,
+///   focusNode:      controller.rackFocusNode,   // Commit 4
 ///   isValid:        controller.isRackValid.value,
 ///   isValidating:   controller.isValidatingRack.value,
 ///   label:          'Enter or scan rack ID',
@@ -65,6 +74,17 @@ class ValidatedRackField extends StatelessWidget {
   /// The widget never modifies the controller; it only reads `.text`
   /// for the [ValidatedFieldWidget] delegation.
   final TextEditingController textController;
+
+  /// Optional focus node forwarded to [ValidatedFieldWidget].
+  ///
+  /// Pass the controller's FocusNode (e.g. [ItemSheetControllerBase.rackFocusNode]
+  /// for source rack, or the SE controller's `targetRackFocusNode` for
+  /// target rack) so that [BarcodeAwareMixin._focusedScope] can detect
+  /// keyboard focus and route scans to the correct scope.
+  ///
+  /// When null (default) the inner [TextFormField] manages its own focus
+  /// — existing behaviour is unchanged.
+  final FocusNode? focusNode;
 
   /// Whether the current rack value has been confirmed valid by the server.
   /// When `true`, the field becomes read-only and the edit (✏) suffix is shown.
@@ -111,6 +131,7 @@ class ValidatedRackField extends StatelessWidget {
   const ValidatedRackField({
     super.key,
     required this.textController,
+    this.focusNode,
     required this.isValid,
     required this.isValidating,
     required this.label,
@@ -159,6 +180,7 @@ class ValidatedRackField extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValidatedFieldWidget(
       controller: textController,
+      focusNode:  focusNode,
       color: color,
       hintText: label,
       // Field becomes read-only once validated so accidental edits do not

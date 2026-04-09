@@ -32,11 +32,28 @@ import 'package:get/get.dart';
 /// [selectedStockEntryType].  This is intentionally on the interface
 /// because the dual-rack widget is inherently movement-type-aware —
 /// any future adopter will need to supply an equivalent discriminant.
+///
+/// ## FocusNode contract (Commit 4)
+///
+/// [sourceFocusNode] and [targetFocusNode] are added so
+/// [SharedDualRackSection] can forward them into [ValidatedRackField]
+/// without casting to the concrete SE controller.  The barcode mixin's
+/// `_focusedScope()` check requires the nodes to be the exact same
+/// instances that the mixin reads (`rackFocusNode` for source,
+/// `_targetRackFocusNode` for target).  Concrete implementations must
+/// return those same instances here.
 abstract interface class DualRackDelegate {
   // ── Source rack ──────────────────────────────────────────────────────────
   TextEditingController get sourceRackController;
   RxBool get isSourceRackValid;
   RxBool get isValidatingSourceRack;
+
+  /// FocusNode for the source-rack field.
+  ///
+  /// Must be the same instance as [ItemSheetControllerBase.rackFocusNode]
+  /// so that [BarcodeAwareMixin._focusedScope] correctly maps
+  /// `hasFocus` → [ScanScope.sourceRack].
+  FocusNode get sourceFocusNode;
 
   void resetSourceRackValidation();
   Future<void> validateDualRack(String rack, bool isSource);
@@ -45,6 +62,14 @@ abstract interface class DualRackDelegate {
   TextEditingController get targetRackController;
   RxBool get isTargetRackValid;
   RxBool get isValidatingTargetRack;
+
+  /// FocusNode for the target-rack field.
+  ///
+  /// Must be the same instance as the concrete controller's
+  /// `_targetRackFocusNode` override so that
+  /// [BarcodeAwareMixin._focusedScope] correctly maps
+  /// `hasFocus` → [ScanScope.targetRack].
+  FocusNode get targetFocusNode;
 
   void resetTargetRackValidation();
 
