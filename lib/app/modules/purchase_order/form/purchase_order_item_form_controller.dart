@@ -6,6 +6,8 @@ import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/scan_scope.dart';
 import 'package:collection/collection.dart';
 import 'purchase_order_form_controller.dart';
 
@@ -16,8 +18,20 @@ import 'purchase_order_form_controller.dart';
 ///     ItemSheetControllerBase declares `bool isAddingItemFlag` (plain bool);
 ///     assigning the RxBool directly caused a type mismatch at compile time.
 ///   • adjustQty kept as `int` — the base abstract is `void adjustQty(int delta)`.
-class PurchaseOrderItemFormController extends ItemSheetControllerBase {
+///
+/// Commit 6 (BarcodeAwareMixin wiring):
+///   - `with BarcodeAwareMixin` added to the mixin chain.
+///   - onInit() calls initBarcodeListeners() after super.onInit().
+///   - activeScanScopes overridden to [itemBarcode] — PO has no batch or
+///     rack fields on the item sheet.
+///   - onItemBarcodeScanned stores barcode in currentScannedEan and
+///     delegates to _parent.onItemBarcodeScanned(barcode).
+class PurchaseOrderItemFormController extends ItemSheetControllerBase
+    with BarcodeAwareMixin {
   late PurchaseOrderFormController _parent;
+
+  // ── In-sheet scan context ──────────────────────────────────────────────────
+  String currentScannedEan = '';
 
   // ── PO-specific field controllers ─────────────────────────────────────────
   final rateController         = TextEditingController();
@@ -36,7 +50,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   // ── ItemSheetControllerBase abstract overrides ────────────────────────────
 
   @override
-  String? get resolvedWarehouse => null; // PO has no warehouse concept
+  String? get resolvedWarehouse => null;
 
   @override
   bool get requiresBatch => false;
@@ -50,19 +64,37 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  /// PO has no stock context; no qty-info label needed.
   @override
   String get qtyInfoText => '';
 
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
 
-  /// PO sheet has no embedded scanner.
   @override
   MobileScannerController? get sheetScanController => null;
 
+  // ── BarcodeAwareMixin: lifecycle ───────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: scope override ──────────────────────────────────────
+  /// PO item sheet has no batch or rack fields; only item-barcode scan applies.
+  @override
+  List<ScanScope> get activeScanScopes =>
+      const [ScanScope.itemBarcode];
+
+  // ── BarcodeAwareMixin: item barcode scan ───────────────────────────────────
+  @override
+  void onItemBarcodeScanned(String barcode) {
+    if (isClosed) return;
+    currentScannedEan = barcode;
+    _parent.onItemBarcodeScanned(barcode);
+  }
+
   /// ±1 stepper, unbounded ceiling (PO has no stock cap).
-  /// Commit 9: signature kept as `int` — base abstract is `void adjustQty(int delta)`.
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -129,7 +161,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     _parent = parentController;
 
     editingItemName.value = rowId;
-    // isAddMode is a computed getter (rowId == null) — no assignment.
 
     itemCode.value = code;
     itemName.value = name;
@@ -139,8 +170,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     itemModified.value   = modified;
     itemModifiedBy.value = modifiedBy;
 
-    // Commit 9: base declares `bool isAddingItemFlag` (plain bool).
-    // Extract .value from the RxBool to satisfy the type.
     isAddingItemFlag = _parent.isAddingItem.value;
 
     qtyController.text          = qty.toStringAsFixed(0);

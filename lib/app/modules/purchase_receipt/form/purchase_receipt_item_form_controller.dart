@@ -7,6 +7,8 @@ import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/scan_scope.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 
 /// Item-level sheet controller for Purchase Receipt.
@@ -33,21 +35,23 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///
 /// Commit 6 (QtyFieldWithPlusMinusDelegate wiring):
 ///  • effectiveMaxQty overrides base: poQty.value when positive, else
-///    double.infinity (PO-qty is the only ceiling for inbound receipts;
-///    batch/rack balances are irrelevant for incoming stock).
-///  • adjustQty clamps to effectiveMaxQty (was double.infinity).
-///  • validateSheet additionally enforces qty <= poQty ceiling in the
-///    validity gate, and writes isQtyValid.value / qtyError.value so
-///    SharedQtyField can show an inline error beneath the qty field.
-///  • docStatus seeded in initForEdit / reset in initForCreate so the
-///    ever() worker in ItemSheetControllerBase.onInit locks isQtyReadOnly
-///    when docstatus == 1 (submitted).
+///    double.infinity.
+///  • adjustQty clamps to effectiveMaxQty.
+///  • validateSheet additionally enforces qty <= poQty ceiling.
+///  • docStatus seeded in initForEdit / reset in initForCreate.
 ///
 /// fix(docstatus): read from parent document, not item row.
-///   PurchaseReceiptItem does not carry a docstatus field — docstatus belongs
-///   to the parent PurchaseReceipt only.  Both initForCreate and initForEdit
-///   now read _parent.purchaseReceipt.value?.docstatus ?? 0.
-class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
+///
+/// Commit 6 (BarcodeAwareMixin wiring):
+///  - `with BarcodeAwareMixin` added to the mixin chain.
+///  - onInit() calls initBarcodeListeners() after super.onInit().
+///  - activeScanScopes overridden to [itemBarcode, batchNo, sourceRack] —
+///    PR has no targetRack field.
+///  - onItemBarcodeScanned stores barcode in currentScannedEan and
+///    delegates to _parent.onItemBarcodeScanned(barcode).
+///  - applyRackScan() removed — superseded by BarcodeAwareMixin routing.
+class PurchaseReceiptItemFormController extends ItemSheetControllerBase
+    with BarcodeAwareMixin {
 
   // ── Parent back-reference ───────────────────────────────────────────────
   late PurchaseReceiptFormController _parent;
@@ -75,7 +79,29 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   @override
   MobileScannerController? get sheetScanController => null;
 
-  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
+  // ── BarcodeAwareMixin: lifecycle ───────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: scope override ──────────────────────────────────────
+  /// PR item sheet uses item-barcode, batch, and source-rack scopes.
+  /// No targetRack field exists on this sheet.
+  @override
+  List<ScanScope> get activeScanScopes =>
+      const [ScanScope.itemBarcode, ScanScope.batchNo, ScanScope.sourceRack];
+
+  // ── BarcodeAwareMixin: item barcode scan ───────────────────────────────────
+  @override
+  void onItemBarcodeScanned(String barcode) {
+    if (isClosed) return;
+    currentScannedEan = barcode;
+    _parent.onItemBarcodeScanned(barcode);
+  }
+
+  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty ────────────────────
   @override
   double get effectiveMaxQty {
     final po = poQty.value;
@@ -231,8 +257,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     String? batchNo,
   }) {
     editingItemName.value = null;
-    // fix(docstatus): docstatus belongs to the parent document, not the item
-    // row. Read from parent PurchaseReceipt to drive the isQtyReadOnly lock.
     docStatus.value       = _parent.purchaseReceipt.value?.docstatus ?? 0;
     itemCode.value        = code;
     itemName.value        = name;
@@ -263,8 +287,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     required PurchaseReceiptItem item,
   }) {
     editingItemName.value = item.name;
-    // fix(docstatus): docstatus belongs to the parent document, not the item
-    // row. Read from parent PurchaseReceipt to drive the isQtyReadOnly lock.
     docStatus.value       = _parent.purchaseReceipt.value?.docstatus ?? 0;
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
@@ -341,7 +363,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
         return;
       }
 
-      final scanned = _parent.currentScannedEan.trim();
+      final scanned = currentScannedEan.trim();
       if (scanned.isNotEmpty && scanned == trimmed) {
         batchError.value = 'Batch cannot be identical to scanned EAN/barcode.';
         validateSheet();
@@ -408,13 +430,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────────
-  void applyRackScan(String rackId) {
-    final id = rackId.trim();
-    if (id.isEmpty) return;
-    rackController.text = id;
-    validateRack(id);
-  }
-
   void clearAll() {
     batchController.clear();
     rackController.clear();

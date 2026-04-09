@@ -8,6 +8,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/scan_scope.dart';
 
 // Picker
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
@@ -73,13 +75,25 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 ///   - docStatus seeded in initForEdit / reset in initForNewItem.
 ///
 /// fix(docstatus): read from parent document, not item row.
+///
+/// Commit 6 (BarcodeAwareMixin wiring):
+///   - `with BarcodeAwareMixin` added to the mixin chain.
+///   - onInit() calls initBarcodeListeners() after super.onInit().
+///   - activeScanScopes overridden to [itemBarcode, batchNo] — DN has no
+///     rack-scan field on the item sheet.
+///   - onItemBarcodeScanned stores barcode in currentScannedEan and
+///     delegates to _parent.onItemBarcodeScanned(barcode).
+///   - applyRackScan() removed — superseded by BarcodeAwareMixin routing.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin, AutoFillRackMixin {
+    with SerialFieldMixin, AutoFillRackMixin, BarcodeAwareMixin {
 
   // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
   DeliveryNoteFormController get parent => _parent;
+
+  // ── In-sheet scan context ──────────────────────────────────────────────────
+  String currentScannedEan = '';
 
   // ── Local reactive state ───────────────────────────────────────────────────
   final RxString itemCodeRx       = ''.obs;
@@ -107,6 +121,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   MobileScannerController? get sheetScanController => null;
+
+  // ── BarcodeAwareMixin: lifecycle ───────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: scope override ──────────────────────────────────────
+  /// DN item sheet has no rack-scan field; suppress sourceRack + targetRack.
+  @override
+  List<ScanScope> get activeScanScopes =>
+      const [ScanScope.itemBarcode, ScanScope.batchNo];
+
+  // ── BarcodeAwareMixin: item barcode scan ───────────────────────────────────
+  @override
+  void onItemBarcodeScanned(String barcode) {
+    if (isClosed) return;
+    currentScannedEan = barcode;
+    _parent.onItemBarcodeScanned(barcode);
+  }
 
   // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
   @override
@@ -146,16 +181,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
-  /// Delegates to the parent controller's POS qty-cap lookup.
-  /// The parent resolves serial (= idx string) → PosUploadItem.quantity.
   @override
   double posItemQtyForSerial(String serial) =>
       _parent.posQtyCapForSerial(serial);
 
   // ── SerialFieldMixin: sumQtyUsedForSerial override ────────────────────────
-  /// Walks the parent document's in-memory items list synchronously.
-  /// Excludes the row currently being edited to avoid double-counting
-  /// (savedQtyForRow adds it back with the correct value).
   @override
   double sumQtyUsedForSerial(String serial) =>
       _parent.scannedQtyForSerial(
@@ -164,10 +194,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       );
 
   // ── SerialFieldMixin: savedQtyForRow override ─────────────────────────────
-  /// Returns the already-saved qty of the row being edited.
-  /// Used by computeLiveRemaining to undo the double-count exclusion
-  /// performed by sumQtyUsedForSerial above, then subtract the live
-  /// typed qty instead.
   @override
   double savedQtyForRow(String rowId) {
     final item = _parent.items.firstWhere(
@@ -210,18 +236,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── SerialFieldMixin: rich dropdown row metadata ──────────────────────────
-  /// Resolves serial (= idx string) → PosUploadItem → SerialDropdownItem so
-  /// the dropdown shows a two-line tile: item name + ×qty.
-  ///
-  /// Returns null when the parent has no POS Upload loaded or when the
-  /// serial does not map to a known POS item — the widget falls back to the
-  /// plain index badge in those cases.
   @override
   SerialDropdownItem? posDropdownItemFor(String serial) {
     final upload = _parent.posUpload.value;
     if (upload == null) return null;
 
-    // serial == idx.toString(); find the PosUploadItem with matching idx.
     final idx = int.tryParse(serial);
     if (idx == null) return null;
 
@@ -444,8 +463,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       selectedSerial.value = null;
     }
 
-    // Seed liveRemaining at open time using the mixin formula so the badge
-    // is correct before the user types anything.
     final existingQtyDouble = item.qty;
     computeLiveRemaining(
       currentTypedQty: existingQtyDouble,
@@ -495,7 +512,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
 
-    // Update live-remaining badge via mixin formula.
     computeLiveRemaining(
       currentTypedQty: qty ?? 0.0,
       editingRowId: editingItemName.value,
@@ -593,13 +609,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  void applyRackScan(String rackId) {
-    final id = rackId.trim();
-    if (id.isEmpty) return;
-    rackController.text = id;
-    validateRack(id);
-  }
-
   void clearAll() {
     batchController.clear();
     rackController.clear();
@@ -609,20 +618,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     selectedSerial.value  = null;
     liveRemaining.value   = 0.0;
     rackStockMapRx.clear();
-  }
-
-  String get currentItemDisplay =>
-      [itemCode.value, itemNameRx.value]
-          .where((e) => e.trim().isNotEmpty)
-          .join(' - ');
-
-  bool get hasExistingRackMap => rackStockMapRx.isNotEmpty;
-
-  Future<void> ensureReadyForOpen() async {}
-
-  @override
-  void onClose() {
-    removeSheetListeners();
-    super.onClose();
+    validateSheet();
   }
 }

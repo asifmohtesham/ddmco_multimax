@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/scan_scope.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
@@ -23,10 +25,21 @@ import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_control
 ///     pre-selected (read-only) on sheet open.
 ///   • [computeLiveRemaining] wired into [validateSheet] — cap badge reacts
 ///     to every qty keystroke.
+///
+/// Commit 6 (BarcodeAwareMixin wiring):
+///   - `with BarcodeAwareMixin` added to the mixin chain.
+///   - onInit() calls initBarcodeListeners() after super.onInit().
+///   - activeScanScopes overridden to [itemBarcode] — PS has no batch or
+///     rack fields on the item sheet.
+///   - onItemBarcodeScanned stores barcode in currentScannedEan and
+///     delegates to _parent.onItemBarcodeScanned(barcode).
 class PackingSlipItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin {
+    with SerialFieldMixin, BarcodeAwareMixin {
   // ── Parent reference ───────────────────────────────────────────────────────
   late PackingSlipFormController _parent;
+
+  // ── In-sheet scan context ──────────────────────────────────────────────────
+  String currentScannedEan = '';
 
   // ── ItemSheetControllerBase abstract overrides ─────────────────────────────
 
@@ -58,6 +71,27 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   @override
   MobileScannerController? get sheetScanController => null;
 
+  // ── BarcodeAwareMixin: lifecycle ───────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    initBarcodeListeners();
+  }
+
+  // ── BarcodeAwareMixin: scope override ──────────────────────────────────────
+  /// PS item sheet has no batch or rack fields; only item-barcode scan applies.
+  @override
+  List<ScanScope> get activeScanScopes =>
+      const [ScanScope.itemBarcode];
+
+  // ── BarcodeAwareMixin: item barcode scan ───────────────────────────────────
+  @override
+  void onItemBarcodeScanned(String barcode) {
+    if (isClosed) return;
+    currentScannedEan = barcode;
+    _parent.onItemBarcodeScanned(barcode);
+  }
+
   @override
   void adjustQty(int delta) {
     final current = double.tryParse(qtyController.text) ?? 0.0;
@@ -76,11 +110,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   Future<void> deleteCurrentItem() => _parent.deleteCurrentItem();
 
   // ── SerialFieldMixin: availableSerialNos ────────────────────────────────────
-  //
-  // PS serial field is read-only: the serial is fixed by the linked DN item.
-  // We expose it as a single-element list so SharedInvoiceSerialNumberField
-  // renders the dropdown pre-selected (no user selection needed).
-  // Return [] when no POS Upload is loaded → widget hidden entirely.
   @override
   List<String> get availableSerialNos {
     if (_parent.posUpload.value == null) return [];
@@ -90,17 +119,11 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   }
 
   // ── SerialFieldMixin: POS qty cap for a given serial ───────────────────────
-  //
-  // Delegates to PackingSlipFormController.posQtyCapForSerial(serial) which
-  // resolves serial → idx → PosUploadItem.quantity.
   @override
   double posItemQtyForSerial(String serial) =>
       _parent.posQtyCapForSerial(serial);
 
   // ── SerialFieldMixin: sum of all committed rows for this serial ────────────
-  //
-  // Walks the current slip's in-memory items list — no API call.
-  // PS items carry customInvoiceSerialNumber so we match on that field.
   @override
   double sumQtyUsedForSerial(String serial) {
     return (_parent.packingSlip.value?.items ?? [])
@@ -127,11 +150,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
       return;
     }
 
-    // ── Live remaining via SerialFieldMixin ──────────────────────────────────
-    // computeLiveRemaining handles: no serial, no POS Upload (availableSerialNos
-    // empty → selectedSerial null → liveRemaining stays 0), infinity cap
-    // (badge hidden by widget), and edit-mode via savedQtyForRow (PS item
-    // controller is always in add mode — savedQtyForRow default 0.0 is correct).
     computeLiveRemaining(
       currentTypedQty: qty,
       editingRowId:    editingItemName.value,
@@ -162,17 +180,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
 
-    // ── Seed selectedSerial from parent's currentSerial ──────────────────────
-    // PS serial is fixed by the linked DN item; we pre-select it so the
-    // read-only dropdown opens already showing the correct serial, and
-    // computeLiveRemaining has a non-null serial to work with immediately.
     final serial = parent.currentSerial;
     if (serial != null && serial.isNotEmpty && serial != '0') {
       selectedSerial.value = serial;
     } else {
       selectedSerial.value = null;
     }
-    // Baseline for isSerialDirty — must follow the seed above.
     captureSerialSnapshot();
 
     if (editingItem != null) {
