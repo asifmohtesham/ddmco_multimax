@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/qty_cap_delegate.dart';
@@ -114,7 +115,11 @@ class BatchResult {
 ///   feat(barcode): add itemBarcodeFocusNode + batchFocusNode
 ///     — BarcodeAwareMixin resolves all focus nodes through the base type
 ///       without casting.  Both nodes disposed in disposeControllers().
+///   feat(barcode): wire BarcodeAwareMixin
+///     — initBarcodeListeners() called in onInit(); mixin onClose() cancels
+///       stream subscriptions automatically via super.onClose() chain.
 abstract class ItemSheetControllerBase extends GetxController
+    with BarcodeAwareMixin
     implements
         RackFieldWithBrowseDelegate,
         BatchNoFieldWithBrowseDelegate,
@@ -323,6 +328,7 @@ abstract class ItemSheetControllerBase extends GetxController
     ever(docStatus, (_) {
       _isQtyReadOnly.value = docStatus.value == 1;
     });
+    initBarcodeListeners();
   }
 
   // ── Sheet listener management (Rule 3) ────────────────────────────────────
